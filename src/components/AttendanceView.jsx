@@ -125,6 +125,7 @@ export default function AttendanceView({
   // Video and Stream element refs
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const gpsRequestRef = useRef(null);
 
   // Check if camera permission is active on mount / teardown
   useEffect(() => {
@@ -144,7 +145,7 @@ export default function AttendanceView({
         setCapturedSelfie(event.detail.base64);
         setCameraError(null);
       } else {
-        setCameraError('Camera capture was cancelled or unavailable.');
+        setCameraError(event.detail?.error || 'Camera capture was cancelled or unavailable.');
       }
     };
 
@@ -155,16 +156,34 @@ export default function AttendanceView({
   useEffect(() => {
     const handleMobileBiometricResult = (event) => {
       setFingerprintScanning(false);
-      setFingerprintProgress(event.detail?.success ? 100 : 0);
-      setFingerprintVerified(Boolean(event.detail?.success));
+      setFingerprintProgress(0);
+      setFingerprintVerified(false);
       setFingerprintProof('');
-      if (!event.detail?.success) {
-        setCameraError('Biometric verification was cancelled or not completed.');
-      }
+      setCameraError(event.detail?.success
+        ? 'Phone unlock alone cannot verify attendance. Use a registered passkey so the server can validate your biometric.'
+        : 'Biometric verification was cancelled or not completed.');
     };
 
     window.addEventListener('dilg-biometric-result', handleMobileBiometricResult);
     return () => window.removeEventListener('dilg-biometric-result', handleMobileBiometricResult);
+  }, []);
+
+  useEffect(() => {
+    const handleMobileLocationResult = (event) => {
+      const result = event.detail || {};
+      if (!gpsRequestRef.current || result.requestId !== gpsRequestRef.current) return;
+      gpsRequestRef.current = null;
+      if (!result.success || !result.coords) {
+        setGpsChecked(true);
+        setLocationError(result.error || 'Location permission is required before continuing.');
+        setGpsLoading(false);
+        return;
+      }
+      updateGpsPosition(result.coords.latitude, result.coords.longitude);
+    };
+
+    window.addEventListener('dilg-location-result', handleMobileLocationResult);
+    return () => window.removeEventListener('dilg-location-result', handleMobileLocationResult);
   }, []);
 
   const [currentTime, setCurrentTime] = useState(() => new Date().toLocaleTimeString('en-US', {
@@ -405,6 +424,25 @@ export default function AttendanceView({
     return assignmentLocations[targetKey] || assignmentLocations[selectedMuni];
   };
 
+  const updateGpsPosition = (latitude, longitude) => {
+    setGpsChecked(true);
+    const lat = Number(Number(latitude).toFixed(4));
+    const lon = Number(Number(longitude).toFixed(4));
+    const assignedCoords = resolveAssignedCoordinates();
+    setCoordinates({ lat, lon });
+
+    if (!assignedCoords) {
+      setGpsVerdict('Out of Range');
+      setMockProximity(999);
+    } else {
+      const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
+      setMockProximity(distance);
+      setGpsVerdict(distance <= GEO_THRESHOLD_METERS ? 'In Range' : 'Out of Range');
+      syncGeofenceStatus(lat, lon, assignedCoords);
+    }
+    setGpsLoading(false);
+  };
+
   const syncGeofenceStatus = async (lat, lon, targetCoords) => {
     const employeeId = user?.employeeId || fillId;
     if (!employeeId || !lat || !lon) return;
@@ -438,6 +476,15 @@ export default function AttendanceView({
   };
 
   const handleGetLiveGPS = () => {
+    if (isMobileApp && window.ReactNativeWebView) {
+      setGpsLoading(true);
+      setLocationError('');
+      const requestId = `gps-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      gpsRequestRef.current = requestId;
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-location-auth', requestId }));
+      return;
+    }
+
     if (!navigator.geolocation) {
       setLocationError('Browser GPS is not available on this device.');
       return;
@@ -448,27 +495,11 @@ export default function AttendanceView({
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setGpsChecked(true);
-        const lat = Number(position.coords.latitude.toFixed(4));
-        const lon = Number(position.coords.longitude.toFixed(4));
-        const assignedCoords = resolveAssignedCoordinates();
-        setCoordinates({ lat, lon });
-
-        if (!assignedCoords) {
-          setGpsVerdict('Out of Range');
-          setMockProximity(999);
-        } else {
-          const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
-          setMockProximity(distance);
-          const verdict = distance <= GEO_THRESHOLD_METERS ? 'In Range' : 'Out of Range';
-          setGpsVerdict(verdict);
-          syncGeofenceStatus(lat, lon, assignedCoords);
-        }
-        setGpsLoading(false);
+        updateGpsPosition(position.coords.latitude, position.coords.longitude);
       },
       () => {
         setGpsChecked(true);
-        setLocationError('GPS permission denied. Please allow location access before continuing.');
+        setLocationError('GPS permission denied. Allow location access for WorkMate in your phone settings, then retry.');
         setGpsLoading(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -1238,13 +1269,18 @@ export default function AttendanceView({
                           </button>
                           <div className="space-y-1">
                             <p className="text-xs font-black text-slate-300 uppercase tracking-wider">USE DEVICE BIOMETRIC</p>
-                            <p className="text-[10px] text-slate-500 leading-relaxed">Confirm with Windows Hello or a supported device fingerprint sensor.</p>
+                            <p className="text-[10px] text-slate-500 leading-relaxed">Use a registered passkey with device fingerprint or screen lock.</p>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
+                {cameraError && (
+                  <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                    {cameraError}
+                  </p>
+                )}
               </div>
             )}
           </div>

@@ -8,7 +8,12 @@ import { User } from '../models/User.js';
 import { createVerificationProof } from '../utils/verificationProof.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 
-const getRpId = () => process.env.WEBAUTHN_RP_ID || new URL(getFrontendOrigin()).hostname;
+const getRpId = () => {
+  const configuredRpId = process.env.WEBAUTHN_RP_ID;
+  const isLocalRpId = configuredRpId === 'localhost' || configuredRpId === '127.0.0.1';
+  if (configuredRpId && !(process.env.VERCEL && isLocalRpId)) return configuredRpId;
+  return new URL(getFrontendOrigin()).hostname;
+};
 const getOrigin = () => getFrontendOrigin();
 const toBase64Url = value => Buffer.from(value).toString('base64url');
 const challengeExpiry = () => new Date(Date.now() + 5 * 60 * 1000);

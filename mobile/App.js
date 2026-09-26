@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Camera from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
@@ -24,14 +23,6 @@ export default function App() {
 	const [hasError, setHasError] = useState(false);
 
 	useEffect(() => {
-		const requestPermission = (permissionRequest) => {
-			if (typeof permissionRequest !== 'function') return;
-			Promise.resolve(permissionRequest()).catch(() => {});
-		};
-
-		requestPermission(Camera.requestCameraPermissionsAsync);
-		requestPermission(Location.requestForegroundPermissionsAsync);
-
 		if (Platform.OS !== 'android') return undefined;
 
 		const handleBackPress = () => {
@@ -53,17 +44,24 @@ export default function App() {
 		}
 
 		if (message?.type === 'dilg-camera-auth') {
-			const result = await ImagePicker.launchCameraAsync({
-				mediaTypes: ['images'],
-				cameraType: ImagePicker.CameraType.front,
-				allowsEditing: false,
-				quality: 0.8,
-				base64: true
-			});
-			const asset = result.canceled ? null : result.assets?.[0];
-			const payload = asset?.base64
-				? { success: true, base64: `data:image/jpeg;base64,${asset.base64}` }
-				: { success: false };
+			let payload;
+			try {
+				const permission = await ImagePicker.requestCameraPermissionsAsync();
+				if (!permission.granted) throw new Error('Close floating bubbles or overlays, then allow WorkMate camera access in the Android prompt. If no prompt appears, enable Camera in WorkMate app settings.');
+				const result = await ImagePicker.launchCameraAsync({
+					mediaTypes: ['images'],
+					cameraType: ImagePicker.CameraType.front,
+					allowsEditing: false,
+					quality: 0.8,
+					base64: true
+				});
+				const asset = result.canceled ? null : result.assets?.[0];
+				payload = asset?.base64
+					? { success: true, base64: `data:image/jpeg;base64,${asset.base64}` }
+					: { success: false, error: 'Camera capture was cancelled.' };
+			} catch (error) {
+				payload = { success: false, error: error.message || 'Camera permission or capture failed.' };
+			}
 			webViewRef.current?.injectJavaScript(
 				`window.dispatchEvent(new CustomEvent('dilg-camera-result',{detail:${JSON.stringify(payload)}})); true;`
 			);
@@ -95,7 +93,7 @@ export default function App() {
 		if (message?.type === 'dilg-location-auth') {
 			try {
 				const permission = await Location.requestForegroundPermissionsAsync();
-				if (permission.status !== 'granted') throw new Error('Location permission denied.');
+				if (permission.status !== 'granted') throw new Error('Close floating bubbles or overlays, then allow WorkMate location access in the Android prompt. If no prompt appears, enable Location in WorkMate app settings.');
 				const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
 				const payload = {
 					success: true,
