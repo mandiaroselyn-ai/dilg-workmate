@@ -95,9 +95,11 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [statusFilter, setStatusFilter] = useState('All');
   const [editingId, setEditingId] = useState(null);
   const [toast, setToast] = useState('');
+  const [toastIsError, setToastIsError] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [facePhotoPreparing, setFacePhotoPreparing] = useState(false);
+  const [faceEnrollmentLoading, setFaceEnrollmentLoading] = useState(false);
 
   const totalCount = employees.length;
   const activeCount = employees.filter((emp) => /active|present/i.test(emp.employmentStatus || emp.status || '')).length;
@@ -119,18 +121,34 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     return key === selectedId;
   });
 
-  const notify = (message) => {
+  const notify = (message, isError = false) => {
     setToast(message);
-    window.setTimeout(() => setToast(''), 2500);
+    setToastIsError(isError);
+    window.setTimeout(() => setToast(''), 6000);
   };
 
   const handleFaceEnrollment = async () => {
-    if (!selectedEmployee || !onEnrollEmployeeFace) return;
+    if (!selectedEmployee?.employeeId) {
+      notify('This employee has no employee ID. Add a valid employee ID before enrolling a face.', true);
+      return;
+    }
+    if (!selectedEmployee.profilePicture?.startsWith('data:image/')) {
+      notify('Upload a face selfie first, then select Enroll Face.', true);
+      return;
+    }
+    if (!onEnrollEmployeeFace) {
+      notify('Face enrollment is unavailable. Refresh the HR portal and try again.', true);
+      return;
+    }
+
+    setFaceEnrollmentLoading(true);
     try {
       await onEnrollEmployeeFace(selectedEmployee);
       notify('Employee face enrolled successfully.');
     } catch (error) {
-      notify(error.message || 'Face enrollment failed.');
+      notify(error.message || 'Face enrollment failed. Check the server configuration and try again.', true);
+    } finally {
+      setFaceEnrollmentLoading(false);
     }
   };
 
@@ -140,11 +158,11 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     input.value = '';
     if (!file || !selectedEmployee) return;
     if (!file.type.startsWith('image/')) {
-      notify('Choose an image file for the face selfie.');
+      notify('Choose an image file for the face selfie.', true);
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
-      notify('Choose an image smaller than 20 MB.');
+      notify('Choose an image smaller than 20 MB.', true);
       return;
     }
 
@@ -158,7 +176,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       }));
       notify('Selfie ready. Select Enroll Face to register it.');
     } catch (error) {
-      notify(error.message || 'Unable to prepare this selfie.');
+      notify(error.message || 'Unable to prepare this selfie.', true);
     } finally {
       setFacePhotoPreparing(false);
     }
@@ -451,15 +469,28 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             <button
               type="button"
               onClick={handleFaceEnrollment}
-              disabled={facePhotoPreparing || !selectedEmployee.profilePicture?.startsWith('data:image/')}
+              disabled={facePhotoPreparing || faceEnrollmentLoading || !selectedEmployee.profilePicture?.startsWith('data:image/')}
               className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Enroll Face
+              {faceEnrollmentLoading ? 'Enrolling Face...' : selectedEmployee.faceEnrolledAt ? 'Re-enroll Face' : 'Enroll Face'}
             </button>
             <span className="self-center text-[10px] font-semibold text-slate-500">
-              {selectedEmployee.profilePicture?.startsWith('data:image/') ? 'Selfie ready for enrollment' : 'Upload a selfie first'}
+              {selectedEmployee.faceEnrolledAt
+                ? `Face enrolled ${new Date(selectedEmployee.faceEnrolledAt).toLocaleDateString()}`
+                : selectedEmployee.profilePicture?.startsWith('data:image/')
+                  ? 'Selfie ready for enrollment'
+                  : 'Upload a selfie first'}
             </span>
           </div>
+          {toast && (
+            <div role={toastIsError ? 'alert' : 'status'} className={`mt-3 rounded-xl border px-3 py-2 text-xs font-bold ${
+              toastIsError
+                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            }`}>
+              {toast}
+            </div>
+          )}
         </section>
 
         <section className="grid gap-3 md:grid-cols-2">
@@ -499,7 +530,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         </div>
 
         {toast && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-700">
+          <div role={toastIsError ? 'alert' : 'status'} className={`rounded-xl border px-3 py-2 text-xs font-black ${
+            toastIsError ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}>
             {toast}
           </div>
         )}
