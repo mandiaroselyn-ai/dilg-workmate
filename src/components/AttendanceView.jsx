@@ -113,6 +113,8 @@ export default function AttendanceView({
   const [cameraActive, setCameraActive] = useState(false);
   const [capturedSelfie, setCapturedSelfie] = useState(null);
   const [cameraError, setCameraError] = useState(null);
+  const [faceVerifying, setFaceVerifying] = useState(false);
+  const [faceVerification, setFaceVerification] = useState(null);
 
   // Fingerprint States
   const [fingerprintScanning, setFingerprintScanning] = useState(false);
@@ -152,6 +154,43 @@ export default function AttendanceView({
     window.addEventListener('dilg-camera-result', handleMobileCameraResult);
     return () => window.removeEventListener('dilg-camera-result', handleMobileCameraResult);
   }, []);
+
+  useEffect(() => {
+    if (!capturedSelfie) {
+      setFaceVerifying(false);
+      setFaceVerification(null);
+      return undefined;
+    }
+
+    let active = true;
+    setFaceVerifying(true);
+    setFaceVerification(null);
+    setCameraError(null);
+
+    const verifySelfie = async () => {
+      if (!user?.employeeId) throw new Error('Your account is missing an employee ID.');
+      const response = await fetch('/api/face/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employeeId: user.employeeId, image: capturedSelfie })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success || !result.matched) {
+        throw new Error(result?.error || 'Face does not match the employee account.');
+      }
+      if (active) setFaceVerification(result);
+    };
+
+    verifySelfie()
+      .catch(error => {
+        if (active) setCameraError(`Selfie verification failed: ${error.message}`);
+      })
+      .finally(() => {
+        if (active) setFaceVerifying(false);
+      });
+
+    return () => { active = false; };
+  }, [capturedSelfie, user?.employeeId]);
 
   useEffect(() => {
     const handleMobileBiometricResult = (event) => {
@@ -638,24 +677,10 @@ export default function AttendanceView({
           return;
         }
 
-        let faceVerification = { matched: false, confidence: 0, provider: '', verifiedAt: null, verificationProof: '' };
-        if (capturedSelfie && user?.employeeId) {
-          try {
-            const response = await fetch('/api/face/verify', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ employeeId: user.employeeId, image: capturedSelfie })
-            });
-            const result = await response.json();
-            if (!response.ok || !result.success || !result.matched) {
-              throw new Error(result?.error || 'Face does not match the employee account.');
-            }
-            faceVerification = result;
-          } catch (error) {
-            setLocationError(`Face verification failed: ${error.message}`);
-            autoClockInRef.current = false;
-            return;
-          }
+        if (!faceVerification?.matched) {
+          setCameraError('Complete a successful selfie face match before Time In.');
+          autoClockInRef.current = false;
+          return;
         }
 
         onTimeIn(
@@ -739,14 +764,14 @@ export default function AttendanceView({
       return;
     }
 
-    if (!capturedSelfie || !fingerprintVerified || !geofenceStatus.inRange || autoClockInRef.current) {
+    if (!capturedSelfie || !faceVerification?.matched || faceVerifying || !fingerprintVerified || !geofenceStatus.inRange || autoClockInRef.current) {
       return;
     }
 
     autoClockInRef.current = true;
     setLocationError('Auto clock-in triggered: employee entered the assigned geofence.');
     executeClockIn();
-  }, [isCurrentlyActive, capturedSelfie, fingerprintVerified, geofenceStatus.inRange]);
+  }, [isCurrentlyActive, capturedSelfie, faceVerification, faceVerifying, fingerprintVerified, geofenceStatus.inRange]);
 
   useEffect(() => {
     if (!isCurrentlyActive) {
@@ -1113,10 +1138,14 @@ export default function AttendanceView({
                         <Camera className="w-4 h-4 text-[#1e40af]" />
                         I. Real-time Selfie Capture
                       </span>
-                      {capturedSelfie ? (
+                      {faceVerifying ? (
+                        <span className="text-[10px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full font-black border border-blue-200">VERIFYING FACE</span>
+                      ) : faceVerification?.matched ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">
                           ✓ FACE MATCH VERIFIED
                         </span>
+                      ) : capturedSelfie ? (
+                        <span className="text-[10px] text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full font-black border border-rose-200">NOT VERIFIED</span>
                       ) : (
                         <span className="text-[10px] text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full font-black border border-amber-200 animate-pulse">
                           REQUIRED
@@ -1134,17 +1163,18 @@ export default function AttendanceView({
                             className="w-full h-full object-cover"
                             referrerPolicy="no-referrer"
                           />
-                          <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute inset-0 bg-black/30 sm:bg-black/50 flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                             <button
+                              type="button"
                               onClick={handleResetSelfie}
                               className="bg-white text-rose-600 font-bold text-xs px-4 py-2 rounded-lg hover:bg-rose-50 transition-all shadow cursor-pointer"
                             >
                               Retake Snapshot
                             </button>
                           </div>
-                          <div className="absolute bottom-3 left-3 right-3 bg-emerald-950/90 backdrop-blur-md text-white text-xs py-2 px-3 rounded-lg text-center font-mono font-bold flex items-center justify-center gap-2 border border-emerald-500/20">
-                            <CheckCircle className="w-4 h-4 text-emerald-400" />
-                            <span>SECURE FACIAL DISPATCH CONFIRMED</span>
+                          <div className={`absolute bottom-3 left-3 right-3 backdrop-blur-md text-white text-[10px] py-2 px-3 rounded-lg text-center font-mono font-bold flex items-center justify-center gap-2 border ${faceVerification?.matched ? 'bg-emerald-950/90 border-emerald-500/20' : faceVerifying ? 'bg-blue-950/90 border-blue-500/20' : 'bg-amber-950/90 border-amber-500/20'}`}>
+                            {faceVerification?.matched ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : faceVerifying ? <RefreshCw className="w-4 h-4 text-blue-300 animate-spin" /> : <AlertCircle className="w-4 h-4 text-amber-300" />}
+                            <span>{faceVerification?.matched ? 'FACE MATCH VERIFIED' : faceVerifying ? 'VERIFYING FACE MATCH...' : 'SELFIE NOT VERIFIED'}</span>
                           </div>
                         </div>
                       ) : cameraActive ? (
@@ -1306,7 +1336,7 @@ export default function AttendanceView({
                 <button
                   id="btn-punch-in"
                   onClick={executeClockIn}
-                  disabled={isCurrentlyActive || !capturedSelfie || !fingerprintVerified || gpsLoading}
+                  disabled={isCurrentlyActive || !capturedSelfie || faceVerifying || !faceVerification?.matched || !fingerprintVerified || gpsLoading}
                   className="flex-1 min-w-[42%] max-w-[48%] px-4 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
                 >
                   <Play className="w-4 h-4 fill-white shrink-0" />
