@@ -14,6 +14,9 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        workbox: {
+          navigateFallbackDenylist: [/^\/api\//]
+        },
         manifest: {
           name: 'DILG WorkMate',
           short_name: 'WorkMate',
