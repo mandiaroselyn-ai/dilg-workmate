@@ -18,6 +18,7 @@ import {
   Users,
   X
 } from 'lucide-react';
+import { resizeFaceImage } from '../utils/faceImage';
 
 const emptyForm = {
   firstName: '',
@@ -80,31 +81,6 @@ const normalizeEmployee = (employee = {}) => {
     accessLevel: employee.accessLevel || 'employee'
   };
 };
-
-const resizeFaceImage = (file) => new Promise((resolve, reject) => {
-  const objectUrl = URL.createObjectURL(file);
-  const image = new Image();
-  image.onload = () => {
-    URL.revokeObjectURL(objectUrl);
-    try {
-      const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext('2d');
-      if (!context) throw new Error('Unable to process this image.');
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
-    } catch (error) {
-      reject(error);
-    }
-  };
-  image.onerror = () => {
-    URL.revokeObjectURL(objectUrl);
-    reject(new Error('Unable to read this image. Choose another photo.'));
-  };
-  image.src = objectUrl;
-});
 
 const statusStyle = (status = '') => {
   if (/active/i.test(status)) return 'bg-emerald-50 text-emerald-700';

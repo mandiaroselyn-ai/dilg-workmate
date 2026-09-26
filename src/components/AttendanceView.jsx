@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { resizeFaceImage } from '../utils/faceImage';
 
 export default function AttendanceView({
   user,
@@ -127,6 +128,7 @@ export default function AttendanceView({
   // Video and Stream element refs
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const selfieFileInputRef = useRef(null);
   const gpsRequestRef = useRef(null);
 
   // Check if camera permission is active on mount / teardown
@@ -253,6 +255,12 @@ export default function AttendanceView({
       return;
     }
     if (preferReal) {
+      const prefersDeviceCameraPicker = window.matchMedia?.('(pointer: coarse)').matches
+        || !navigator.mediaDevices?.getUserMedia;
+      if (prefersDeviceCameraPicker) {
+        selfieFileInputRef.current?.click();
+        return;
+      }
       try {
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
@@ -271,7 +279,9 @@ export default function AttendanceView({
         }, 300);
       } catch (err) {
         console.warn("Real camera access failed", err);
-        setCameraError("Real camera access is required. Please allow camera permissions and retry.");
+        setCameraError(err.name === 'NotAllowedError'
+          ? 'Camera permission was denied. Allow camera access in browser settings, or use the phone camera picker.'
+          : 'Live camera could not start. Use the phone camera picker to take your selfie.');
         setUseRealCamera(true);
         setCameraActive(false);
       }
@@ -279,6 +289,22 @@ export default function AttendanceView({
       setCameraError("Real camera access is required for selfie verification.");
       setUseRealCamera(true);
       setCameraActive(false);
+    }
+  };
+
+  const handleDeviceSelfieSelected = async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+
+    try {
+      const selfie = await resizeFaceImage(file);
+      setUseRealCamera(true);
+      setCapturedSelfie(selfie);
+      setCameraError(null);
+    } catch (error) {
+      setCameraError(error.message || 'Unable to read the selfie. Please try again.');
     }
   };
 
@@ -1155,6 +1181,14 @@ export default function AttendanceView({
 
                     {/* Camera Feed or Captured Photo - responsive height on mobile */}
                     <div className="h-56 sm:h-72 bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center relative border border-dashed border-slate-300">
+                      <input
+                        ref={selfieFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="user"
+                        className="sr-only"
+                        onChange={handleDeviceSelfieSelected}
+                      />
                       {capturedSelfie ? (
                         <div className="relative w-full h-full group">
                           <img 
