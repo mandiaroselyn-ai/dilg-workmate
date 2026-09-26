@@ -749,15 +749,14 @@ export default function AttendanceView({
   const isWithinAssignment = hasGpsPosition && siteLocation
     ? isWithinAssignedLocation(coordinates.lat, coordinates.lon, siteLocation, GEO_THRESHOLD_METERS)
     : false;
+  const isAssignmentVerified = isWithinAssignment && gpsAccuracy !== null && gpsAccuracy <= 50;
   const geofenceDescription = assignmentMode === 'field'
     ? 'Barangay boundary + 150m GPS tolerance'
     : '150m from assigned address';
 
   const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
   const embedZoom = 17;
-  const mapEmbedUrl = hasGpsPosition && assignedCoords
-    ? `https://maps.google.com/maps?saddr=${coordinates.lat},${coordinates.lon}&daddr=${assignedCoords.lat},${assignedCoords.lon}&z=${embedZoom}&output=embed`
-    : `https://maps.google.com/maps?q=${mapFocus.lat},${mapFocus.lon}&z=${embedZoom}&output=embed`;
+  const mapEmbedUrl = `https://maps.google.com/maps?q=${mapFocus.lat},${mapFocus.lon}&z=${embedZoom}&output=embed`;
   const googleMapsUrl = hasGpsPosition && assignedCoords
     ? `https://www.google.com/maps/dir/?api=1&origin=${coordinates.lat},${coordinates.lon}&destination=${assignedCoords.lat},${assignedCoords.lon}`
     : `https://www.google.com/maps/search/?api=1&query=${mapFocus.lat},${mapFocus.lon}`;
@@ -1583,11 +1582,23 @@ export default function AttendanceView({
               </h4>
             </div>
 
-            <div className="bg-gradient-to-r from-rose-50 to-rose-50/40 border border-rose-200 rounded-lg p-2.5 flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0" />
-              <div className="text-[11px] font-bold text-rose-900 leading-tight">
-                <div>Assigned Site: <span className="text-rose-700 font-black">{effectiveLocation}</span></div>
-                <div className="text-[10px] text-rose-700 font-semibold">{geofenceDescription}</div>
+            <div className={`rounded-lg border p-2.5 flex items-center gap-2 ${
+              isAssignmentVerified
+                ? 'bg-emerald-50 border-emerald-200'
+                : 'bg-rose-50/60 border-rose-200'
+            }`}>
+              <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                isAssignmentVerified ? 'bg-emerald-500' : 'bg-rose-500'
+              }`} />
+              <div className={`text-[11px] font-bold leading-tight ${
+                isAssignmentVerified ? 'text-emerald-900' : 'text-rose-900'
+              }`}>
+                <div>Assigned Site: <span className={`font-black ${
+                  isAssignmentVerified ? 'text-emerald-700' : 'text-rose-700'
+                }`}>{effectiveLocation}</span></div>
+                <div className={`text-[10px] font-semibold ${
+                  isAssignmentVerified ? 'text-emerald-700' : 'text-rose-700'
+                }`}>{geofenceDescription}</div>
               </div>
             </div>
 
@@ -1601,9 +1612,37 @@ export default function AttendanceView({
               />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold text-slate-600">
-              <span>{hasGpsPosition ? `Google Maps route: current GPS to ${effectiveLocation}` : `Google Maps target: ${effectiveLocation}`}</span>
-              <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-700 underline">Open in Google Maps</a>
+              <span>
+                {hasGpsPosition
+                  ? `Google Maps pin: your current GPS location (${coordinates.lat}, ${coordinates.lon})`
+                  : `Google Maps target: ${effectiveLocation}`}
+              </span>
+              <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-700 underline">
+                {hasGpsPosition ? `Open route to ${effectiveLocation}` : 'Open in Google Maps'}
+              </a>
             </div>
+
+            {isAssignmentVerified ? (
+              <div role="status" className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2.5 text-emerald-800">
+                <p className="flex items-center gap-2 text-xs font-extrabold">
+                  <CheckCircle className="h-4 w-4 shrink-0" />
+                  ASSIGNED LOCATION VERIFIED — YOU ARE WITHIN THE ASSIGNED AREA
+                </p>
+                <p className="mt-1 text-[10px] font-semibold">
+                  GPS is {mockProximity}m from the assigned map location with ±{Math.round(gpsAccuracy)}m accuracy.
+                </p>
+              </div>
+            ) : hasGpsPosition && siteLocation && isWithinAssignment ? (
+              <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-amber-800">
+                <p className="text-xs font-extrabold">Location matches, but GPS accuracy is not verified</p>
+                <p className="mt-1 text-[10px] font-semibold">
+                  {gpsAccuracy === null
+                    ? 'GPS accuracy is unavailable.'
+                    : `Current GPS accuracy is ±${Math.round(gpsAccuracy)}m; 50m or better is required.`}
+                  {' '}Refresh GPS to verify before Time In.
+                </p>
+              </div>
+            ) : null}
 
             {locationError && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] font-semibold text-amber-700">
