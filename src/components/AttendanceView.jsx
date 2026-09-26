@@ -119,8 +119,8 @@ export default function AttendanceView({
   const [fingerprintProgress, setFingerprintProgress] = useState(0);
   const [fingerprintVerified, setFingerprintVerified] = useState(false);
   const [fingerprintProof, setFingerprintProof] = useState('');
-  const isMobileApp = typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).get('platform') === 'mobile';
+  const hasNativeBridge = typeof window !== 'undefined'
+    && Boolean(window.ReactNativeWebView);
 
   // Video and Stream element refs
   const videoRef = useRef(null);
@@ -208,7 +208,7 @@ export default function AttendanceView({
 
   const handleStartCamera = async (preferReal) => {
     setCameraError(null);
-    if (isMobileApp && window.ReactNativeWebView && preferReal) {
+    if (hasNativeBridge && preferReal) {
       setCameraActive(true);
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-camera-auth' }));
       return;
@@ -476,7 +476,7 @@ export default function AttendanceView({
   };
 
   const handleGetLiveGPS = () => {
-    if (isMobileApp && window.ReactNativeWebView) {
+    if (hasNativeBridge) {
       setGpsLoading(true);
       setLocationError('');
       const requestId = `gps-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1198,6 +1198,7 @@ export default function AttendanceView({
                           </div>
                           <div className="flex justify-center gap-2 pt-1">
                             <button
+                              type="button"
                               onClick={() => handleStartCamera(true)}
                               className="inline-flex items-center gap-1.5 text-xs font-black text-white bg-[#1e40af] hover:bg-blue-800 transition-all px-3.5 py-2.5 rounded-lg cursor-pointer shadow-sm"
                             >
@@ -1476,6 +1477,7 @@ export default function AttendanceView({
             <div className="flex items-center gap-2">
               <button
                 id="btn-re-verify-gps"
+                type="button"
                 onClick={handleGetLiveGPS}
                 disabled={gpsLoading}
                 className="text-[11px] font-bold text-white bg-[#1e40af] hover:bg-blue-800 disabled:bg-slate-150 disabled:text-slate-400 py-2 px-3 rounded-md flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed transition-all"
