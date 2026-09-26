@@ -428,10 +428,10 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                   <div className="space-y-1">
                     <h2 className="font-extrabold text-lg tracking-tight text-slate-900 flex items-center gap-2">
                       <Lock className="w-5 h-5 text-indigo-600" />
-                      <span>Official DILG Employee Log In</span>
+                      <span>DILG HR &amp; Supervisor Login</span>
                     </h2>
                     <p className="text-xs text-slate-500 font-medium">
-                      Log in using your official DILG Government Email credentials.
+                      For authorized HR/Admin and Supervisor accounts. Log in with your official DILG email.
                     </p>
                   </div>
 
