@@ -40,8 +40,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [registeredUsers, setRegisteredUsers] = useState([]);
 
   useEffect(() => {
-    const handleGoogleMessage = (event) => {
-      const data = event.data;
+    const handleGoogleData = (data) => {
       if (!data || typeof data !== 'object') return;
 
       if (data.type === 'google-login-success') {
@@ -60,7 +59,20 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       }
     };
 
+    const handleGoogleMessage = (event) => {
+      handleGoogleData(event.data);
+    };
+
     window.addEventListener('message', handleGoogleMessage);
+    const googleAuthPayload = new URLSearchParams(window.location.hash.slice(1)).get('google-auth');
+    if (googleAuthPayload) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      try {
+        handleGoogleData(JSON.parse(googleAuthPayload));
+      } catch {
+        setGoogleError('Google sign-in returned an invalid response.');
+      }
+    }
     return () => window.removeEventListener('message', handleGoogleMessage);
   }, [onLogin]);
 
@@ -75,6 +87,10 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
     const left = window.screenX + (window.innerWidth - width) / 2;
     const top = window.screenY + (window.innerHeight - height) / 2;
     const googleUrl = `/api/auth/google/url${mobileOnly ? '?mobile=1' : ''}`;
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      window.location.assign(googleUrl);
+      return;
+    }
     const popup = window.open(
       googleUrl,
       'GoogleSignIn',

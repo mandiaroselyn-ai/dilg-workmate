@@ -8,6 +8,7 @@ import { Leave } from '../models/leaveModel.js';
 import { isConnected } from '../config/db.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
+import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 
 function ensureConnected() {
   if (!isConnected()) {
@@ -219,7 +220,7 @@ const createTransporter = () => {
 };
 
 const sendPasswordResetEmail = async (transporter, email, token) => {
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/?resetToken=${encodeURIComponent(token)}`;
+  const resetUrl = `${getFrontendOrigin()}/?resetToken=${encodeURIComponent(token)}`;
   const message = {
     from: process.env.EMAIL_FROM,
     to: email,

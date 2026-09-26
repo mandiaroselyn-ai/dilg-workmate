@@ -68,10 +68,16 @@ dilg-workmate/
 The root Vercel configuration builds the Vite frontend into `dist`; requests under `/api/*` are handled by the serverless function in `api/[...path].js`.
 
 1. Import the repository into Vercel and keep the project root set to the repository root. Use `npx vite build` as the build command and `dist` as the output directory; these are also declared in `vercel.json`.
-2. Add `MONGODB_URI` in the Vercel project environment variables. Use a MongoDB Atlas database user with only the permissions this application needs, and configure Atlas Network Access so Vercel can reach the cluster.
-3. Add OAuth, email, SMS, or AWS Rekognition variables only when enabling those integrations. The backend reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, `FRONTEND_URL`, `UNISMS_API_KEY`, `UNISMS_API_URL`, `UNISMS_SENDER_ID`, and the `AWS_*` face-verification settings.
-   For server-verified fingerprint/passkey attendance, set `WEBAUTHN_RP_ID` to the frontend hostname (for example `localhost` locally or your production domain) and keep `FRONTEND_URL` set to the exact origin used by the browser.
-4. Deploy from the Vercel dashboard or run `vercel --prod` from the repository root.
+2. Add `MONGO_URI` (or `MONGODB_URI`) and a strong `JWT_SECRET` in the Vercel project environment variables. Use a MongoDB Atlas database user with only the permissions this application needs, and configure Atlas Network Access so Vercel can reach the cluster. Vercel deployments use dynamic egress IPs; use a supported static-egress option or configure Atlas access accordingly.
+3. For the `https://dilg-workmate.vercel.app` production URL, set these Vercel Production variables:
+   ```text
+   FRONTEND_URL=https://dilg-workmate.vercel.app
+   GOOGLE_REDIRECT_URI=https://dilg-workmate.vercel.app/api/auth/google/callback
+   WEBAUTHN_RP_ID=dilg-workmate.vercel.app
+   ```
+   Add the exact `GOOGLE_REDIRECT_URI` above to **Authorized redirect URIs** for the same Google Web OAuth client whose ID is in `GOOGLE_CLIENT_ID`. Also set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Vercel; do not expose the secret as a frontend variable. If the production domain changes, update these values and the Google OAuth client together.
+4. Add OAuth, email, SMS, or AWS Rekognition variables only when enabling those integrations. The backend reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, `FRONTEND_URL`, `UNISMS_API_KEY`, `UNISMS_API_URL`, `UNISMS_SENDER_ID`, and the `AWS_*` face-verification settings.
+5. Deploy from the Vercel dashboard or run `vercel --prod` from the repository root.
 
 Do not commit `.env` files or put secrets in frontend variables. Default supervisor and HR accounts are only seeded when `SEED_DEFAULT_ACCOUNTS=true` and both `DEFAULT_SUPERVISOR_PASSWORD` and `DEFAULT_HR_ADMIN_PASSWORD` are set to unique passwords of at least 12 characters. Remove these seed variables after initial provisioning and rotate any existing credentials before exposing the deployment publicly.
 

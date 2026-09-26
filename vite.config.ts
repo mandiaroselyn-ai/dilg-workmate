@@ -49,6 +49,7 @@ export default defineConfig(() => {
       // `127.0.0.1` and LAN addresses are reachable. Use `true` to let
       // Vite pick the appropriate host binding cross-platform.
       host: true,
+      allowedHosts: process.env.LOCAL_TUNNEL_HOST ? [process.env.LOCAL_TUNNEL_HOST] : [],
       proxy: {
         '/api': {
           target: backendTarget,

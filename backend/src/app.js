@@ -9,18 +9,44 @@ import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import { apiErrorHandler, apiNotFound, validateApiBody } from './middleware/requestSecurity.js';
+import { getAllowedFrontendOrigins } from './utils/frontendOrigin.js';
+
+const isAllowedDevelopmentOrigin = origin => {
+  if (process.env.NODE_ENV === 'production') return false;
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (protocol !== 'http:') return false;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+    return /^10\./.test(hostname)
+      || /^192\.168\./.test(hostname)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+  } catch {
+    return false;
+  }
+};
 
 export function createApiApp() {
   const app = express();
   app.disable('x-powered-by');
+  if (process.env.VERCEL) app.set('trust proxy', 1);
+  else if (process.env.NODE_ENV !== 'production') app.set('trust proxy', 'loopback');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-  const allowedOrigin = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const allowedOrigins = getAllowedFrontendOrigins();
+  if (allowedOrigins.size === 0) allowedOrigins.add('http://localhost:5173');
   app.use('/api', (req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && origin !== allowedOrigin) return res.status(403).json({ success: false, error: 'Origin is not allowed.' });
+    let requestOrigin;
+    try {
+      requestOrigin = origin ? new URL(origin).origin : null;
+    } catch {
+      return res.status(403).json({ success: false, error: 'Origin is not allowed.' });
+    }
+    if (requestOrigin && !allowedOrigins.has(requestOrigin) && !isAllowedDevelopmentOrigin(requestOrigin)) {
+      return res.status(403).json({ success: false, error: 'Origin is not allowed.' });
+    }
     if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     next();

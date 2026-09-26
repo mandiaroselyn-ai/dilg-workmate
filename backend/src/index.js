@@ -27,6 +27,7 @@ async function startServer() {
         middlewareMode: true,
         hmr: false,
         ws: false,
+        allowedHosts: [new URL(process.env.FRONTEND_URL || 'http://localhost:5173').hostname],
         // Expo/Metro owns the native project files; web Vite must not watch them.
         watch: {
           ignored: ['**/mobile/**']

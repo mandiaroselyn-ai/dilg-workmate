@@ -8,6 +8,11 @@ let initializationPromise;
 
 export default async function handler(req, res) {
   try {
+    const requestUrl = req.url || '/';
+    if (!/^\/api(?:\/|\?|$)/.test(requestUrl)) {
+      req.url = `/api${requestUrl.startsWith('/') ? '' : '/'}${requestUrl}`;
+    }
+
     if (!initializationPromise) {
       initializationPromise = (async () => {
         await connectDB();

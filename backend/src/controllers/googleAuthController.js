@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
+import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -134,13 +135,23 @@ export const googleAuthCallback = async (req, res) => {
     }
 
     const token = createAuthToken(user);
-    const frontendOrigin = new URL(process.env.FRONTEND_URL || 'http://localhost:5173').origin;
+    const frontendOrigin = getFrontendOrigin(req);
+    const successMessage = {
+      type: 'google-login-success',
+      token,
+      user: toSafeUser(user)
+    };
     const html = `
       <html>
         <body>
           <script>
-            window.opener.postMessage({ type: 'google-login-success', token: ${JSON.stringify(token)}, user: ${JSON.stringify(toSafeUser(user))} }, ${JSON.stringify(frontendOrigin)});
-            window.close();
+            const message = ${JSON.stringify(successMessage)};
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage(message, ${JSON.stringify(frontendOrigin)});
+              window.close();
+            } else {
+              window.location.replace(${JSON.stringify(`${frontendOrigin}/#google-auth=`)} + encodeURIComponent(JSON.stringify(message)));
+            }
           </script>
         </body>
       </html>
@@ -154,12 +165,19 @@ export const googleAuthCallback = async (req, res) => {
       redirect.searchParams.set('error', error.message || 'Google sign-in failed.');
       return res.redirect(redirect.toString());
     }
+    const frontendOrigin = getFrontendOrigin(req);
+    const failureMessage = { type: 'google-login-failure', error: error.message || 'Google sign-in failed.' };
     const html = `
       <html>
         <body>
           <script>
-            window.opener.postMessage({ type: 'google-login-failure', error: ${JSON.stringify(error.message)} }, '*');
-            window.close();
+            const message = ${JSON.stringify(failureMessage)};
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage(message, ${JSON.stringify(frontendOrigin)});
+              window.close();
+            } else {
+              window.location.replace(${JSON.stringify(`${frontendOrigin}/#google-auth=`)} + encodeURIComponent(JSON.stringify(message)));
+            }
           </script>
         </body>
       </html>
