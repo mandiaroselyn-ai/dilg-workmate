@@ -339,11 +339,11 @@ export default function AttendanceView({
     setCameraError(null);
 
     try {
-      let optionsResponse = await fetch('/api/biometric/authenticate/options', { method: 'POST' });
+      let optionsResponse = await fetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
       let options;
       let registration = false;
       if (optionsResponse.status === 404) {
-        optionsResponse = await fetch('/api/biometric/register/options', { method: 'POST' });
+        optionsResponse = await fetch('/api/biometric/action?action=register-options', { method: 'POST' });
         registration = true;
       }
       options = await optionsResponse.json();
@@ -366,7 +366,8 @@ export default function AttendanceView({
         : await navigator.credentials.get({ publicKey });
       if (!credential) throw new Error('Biometric verification was cancelled.');
 
-      const verifyPath = registration ? '/api/biometric/register/verify' : '/api/biometric/authenticate/verify';
+      const verifyAction = registration ? 'register-verify' : 'authenticate-verify';
+      const verifyPath = `/api/biometric/action?action=${verifyAction}`;
       const verifyResponse = await fetch(verifyPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -376,7 +377,7 @@ export default function AttendanceView({
       if (!verifyResponse.ok || !verification.success) throw new Error(verification.error || 'Server biometric verification failed.');
 
       if (registration) {
-        const authOptionsResponse = await fetch('/api/biometric/authenticate/options', { method: 'POST' });
+        const authOptionsResponse = await fetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
         const authOptions = await authOptionsResponse.json();
         const authCredential = await navigator.credentials.get({
           publicKey: {
@@ -385,7 +386,7 @@ export default function AttendanceView({
             allowCredentials: (authOptions.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
           }
         });
-        const authVerificationResponse = await fetch('/api/biometric/authenticate/verify', {
+        const authVerificationResponse = await fetch('/api/biometric/action?action=authenticate-verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(credentialToJson(authCredential))
@@ -448,7 +449,7 @@ export default function AttendanceView({
     if (!employeeId || !lat || !lon) return;
 
     try {
-      const response = await fetch('/api/dtr/geofence/check', {
+      const response = await fetch('/api/dtr/action?action=geofence-check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -509,7 +510,7 @@ export default function AttendanceView({
   // Send location tracking update to backend
   const sendLocationUpdate = async (lat, lon, accuracy) => {
     try {
-      const response = await fetch('/api/dtr/location/update', {
+      const response = await fetch('/api/dtr/action?action=location-update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
