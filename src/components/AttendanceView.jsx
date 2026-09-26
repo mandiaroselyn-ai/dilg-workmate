@@ -74,6 +74,7 @@ export default function AttendanceView({
   // Geolocation states
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsChecked, setGpsChecked] = useState(false);
+  const [hasGpsPosition, setHasGpsPosition] = useState(false);
   const [gpsVerdict, setGpsVerdict] = useState('Out of Range');
   const [coordinates, setCoordinates] = useState({ lat: 13.4474, lon: 121.8344 });
   const [mockProximity, setMockProximity] = useState(999); // meters away from center
@@ -511,12 +512,14 @@ export default function AttendanceView({
       || parsedLatitude < -90 || parsedLatitude > 90
       || parsedLongitude < -180 || parsedLongitude > 180) {
       setGpsChecked(true);
+      setHasGpsPosition(false);
       setLocationError('The device returned invalid GPS coordinates. Turn on Location Services and retry.');
       setGpsLoading(false);
       return;
     }
 
     setGpsChecked(true);
+  setHasGpsPosition(true);
     setLocationError('');
     const lat = Number(parsedLatitude.toFixed(4));
     const lon = Number(parsedLongitude.toFixed(4));
@@ -570,6 +573,8 @@ export default function AttendanceView({
   const handleGetLiveGPS = () => {
     if (hasNativeBridge) {
       setGpsLoading(true);
+      setGpsChecked(false);
+      setHasGpsPosition(false);
       setLocationError('');
       const requestId = `gps-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       gpsRequestRef.current = requestId;
@@ -591,6 +596,8 @@ export default function AttendanceView({
     }
 
     setGpsLoading(true);
+    setGpsChecked(false);
+    setHasGpsPosition(false);
     setLocationError('');
 
     navigator.geolocation.getCurrentPosition(
@@ -673,7 +680,9 @@ export default function AttendanceView({
   const distanceToAssignment = assignedCoords
     ? computeDistanceMeters(coordinates.lat, coordinates.lon, assignedCoords.lat, assignedCoords.lon)
     : null;
-  const isWithinAssignment = assignedCoords ? distanceToAssignment <= GEO_THRESHOLD_METERS : false;
+  const isWithinAssignment = hasGpsPosition && assignedCoords
+    ? distanceToAssignment <= GEO_THRESHOLD_METERS
+    : false;
 
   const getMapPosition = (lat, lon, centerLat, centerLon, spanLat, spanLon) => {
     // Match OpenStreetMap's Web Mercator projection for the overlay markers.
@@ -709,7 +718,7 @@ export default function AttendanceView({
     current: currentMapPosition,
     assigned: assignedMapPosition
   };
-  const mapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${(mapCenterLon - visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat - visibleMapSpanLat / 2).toFixed(5)}%2C${(mapCenterLon + visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat + visibleMapSpanLat / 2).toFixed(5)}&layer=mapnik&marker=${coordinates.lat}%2C${coordinates.lon}`;
+  const mapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${(mapCenterLon - visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat - visibleMapSpanLat / 2).toFixed(5)}%2C${(mapCenterLon + visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat + visibleMapSpanLat / 2).toFixed(5)}&layer=mapnik&marker=${assignedCoords?.lat ?? 13.4474}%2C${assignedCoords?.lon ?? 121.8344}`;
 
   const autoClockInRef = useRef(false);
   const autoClockOutRef = useRef(false);
@@ -1432,8 +1441,8 @@ export default function AttendanceView({
             {/* Validation helper label */}
             {!isCurrentlyActive && (
               <div className="text-[10px] font-bold text-slate-500 flex flex-wrap gap-2 items-center justify-end">
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${gpsChecked ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
-                  {gpsChecked ? '✓ GPS Located' : '✗ GPS Not Checked'}
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${hasGpsPosition ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
+                  {hasGpsPosition ? '✓ GPS Located' : '✗ GPS Not Checked'}
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${isWithinAssignment ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
                   {isWithinAssignment ? '✓' : '✗'} Assigned Location Match
@@ -1508,16 +1517,18 @@ export default function AttendanceView({
               >
                 <span className="block h-4 w-4 rounded-full border-2 border-white bg-rose-600 shadow-lg" />
               </div>
-              <div
-                className="pointer-events-none absolute z-20"
-                style={{
-                  left: `${offsetPositions.current.left}%`,
-                  top: `${offsetPositions.current.top}%`,
-                  transform: 'translate(-50%, -50%)'
-                }}
-              >
-                <span className="block h-5 w-5 rounded-full border-2 border-white bg-blue-700 shadow-lg animate-pulse" />
-              </div>
+              {hasGpsPosition && (
+                <div
+                  className="pointer-events-none absolute z-20"
+                  style={{
+                    left: `${offsetPositions.current.left}%`,
+                    top: `${offsetPositions.current.top}%`,
+                    transform: 'translate(-50%, -50%)'
+                  }}
+                >
+                  <span className="block h-5 w-5 rounded-full border-2 border-white bg-blue-700 shadow-lg animate-pulse" />
+                </div>
+              )}
               <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-md">
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />Assigned Site</span>
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-blue-700" />Current Location</span>
@@ -1541,7 +1552,7 @@ export default function AttendanceView({
               </div>
 
               <div className="absolute bottom-0 text-center font-mono text-[11px] text-slate-500 leading-none">
-                Distance: <span className="text-[#1e40af] font-extrabold">{mockProximity} meters</span>
+                Distance: <span className="text-[#1e40af] font-extrabold">{hasGpsPosition ? `${mockProximity} meters` : 'Waiting for GPS'}</span>
               </div>
             </div>
 
@@ -1549,15 +1560,15 @@ export default function AttendanceView({
             <div className="space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-100 font-mono text-[11px] text-slate-500">
               <div className="flex justify-between">
                 <span>Your Current Position:</span>
-                <span className="text-slate-800 font-bold">{coordinates.lat}° / {coordinates.lon}°</span>
+                <span className="text-slate-800 font-bold">{hasGpsPosition ? `${coordinates.lat}° / ${coordinates.lon}°` : 'Waiting for GPS fix'}</span>
               </div>
               <div className="flex justify-between">
                 <span>Distance from Site:</span>
-                <span className={`text-slate-800 font-bold ${distanceToAssignment !== null && distanceToAssignment <= GEO_THRESHOLD_METERS ? 'text-emerald-700' : 'text-rose-700'}`}>{mockProximity} m</span>
+                <span className={`text-slate-800 font-bold ${isWithinAssignment ? 'text-emerald-700' : hasGpsPosition ? 'text-rose-700' : 'text-slate-500'}`}>{hasGpsPosition ? `${mockProximity} m` : 'Waiting for GPS'}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-100 font-bold">
                 <span>Status:</span>
-                <span className={isWithinAssignment ? 'text-emerald-700' : 'text-rose-700'}>{isWithinAssignment ? '✓ WITHIN GEOFENCE' : '✗ OUTSIDE GEOFENCE'}</span>
+                <span className={isWithinAssignment ? 'text-emerald-700' : hasGpsPosition ? 'text-rose-700' : 'text-slate-500'}>{isWithinAssignment ? '✓ WITHIN GEOFENCE' : hasGpsPosition ? '✗ OUTSIDE GEOFENCE' : 'GPS NOT VERIFIED'}</span>
               </div>
             </div>
           </div>
@@ -1565,7 +1576,12 @@ export default function AttendanceView({
           <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between relative z-10 gap-2">
             {/* Geofence Check Indicator */}
             <div className="flex items-center gap-1.5">
-              {gpsVerdict === 'In Range' ? (
+              {!hasGpsPosition ? (
+                <div className="flex items-center gap-1.5 text-xs text-slate-600 font-bold bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                  <Compass className="w-3.5 h-3.5 text-slate-500" />
+                  <span>{gpsLoading ? 'LOCATING...' : 'GPS NOT CHECKED'}</span>
+                </div>
+              ) : gpsVerdict === 'In Range' ? (
                 <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
                   <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Geofence: IN RANGE</span>
