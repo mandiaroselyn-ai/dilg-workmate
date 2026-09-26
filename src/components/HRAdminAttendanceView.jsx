@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   AlertCircle,
   ArrowRight,
@@ -17,6 +17,7 @@ import {
   Plane
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { apiFetch } from '../utils/api';
 
 const statusStyles = {
   Present: ['bg-emerald-50 text-emerald-700', CheckCircle2],
@@ -37,7 +38,8 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const [locationSearch, setLocationSearch] = useState('');
   const [locationStatus, setLocationStatus] = useState('All Status');
   const [mapVisible, setMapVisible] = useState(false);
-  const [lastGpsRefresh, setLastGpsRefresh] = useState('Not refreshed');
+  const [lastGpsRefresh, setLastGpsRefreshText] = useState('Not refreshed');
+  const [liveLocations, setLiveLocations] = useState([]);
   const [issueSearch, setIssueSearch] = useState('');
   const [issueFilter, setIssueFilter] = useState('All Issues');
   const [dtrSearch, setDtrSearch] = useState('');
@@ -48,6 +50,29 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const openDtrRecords = () => onOpenTab?.('dtr_records');
   const today = new Date().toISOString().split('T')[0];
   const records = attendanceHistory.filter(record => record.date === today);
+  const refreshLiveGps = useCallback(async () => {
+    setLastGpsRefreshText('Refreshing live locations...');
+    try {
+      const response = await apiFetch('/api/dtr/location/live');
+      const result = await response.json();
+      if (!response.ok || !result.success || !Array.isArray(result.locations)) {
+        throw new Error(result.error || 'Unable to load live employee locations.');
+      }
+      setLiveLocations(result.locations);
+      setLastGpsRefreshText(new Date().toLocaleTimeString());
+    } catch (error) {
+      setLastGpsRefreshText(`Refresh failed: ${error.message || 'Unable to load live employee locations.'}`);
+    }
+  }, []);
+  const setLastGpsRefresh = refreshLiveGps;
+
+  useEffect(() => {
+    if (activeSection !== 'GPS & Geofence') return undefined;
+    void refreshLiveGps();
+    const interval = window.setInterval(() => { void refreshLiveGps(); }, 60000);
+    return () => window.clearInterval(interval);
+  }, [activeSection, refreshLiveGps]);
+
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const rows = employees.map(employee => {
     const record = records.find(item => matchesAttendanceEmployee(item, employee));
@@ -100,9 +125,18 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const incompleteDtr = dtrRows.filter(row => row.status === 'Incomplete').length;
   const reviewDtr = dtrRows.filter(row => row.status !== 'Complete' || !row.record.selfieUrl || !row.record.fingerprintVerified).length;
   const locationRows = employees.map(employee => {
-    const record = records.find(item => matchesAttendanceEmployee(item, employee));
+    const attendanceRecord = records.find(item => matchesAttendanceEmployee(item, employee));
+    const liveRecord = liveLocations.find(item => matchesAttendanceEmployee(item, employee));
+    const record = liveRecord || attendanceRecord;
     const gpsState = !record?.gpsStatus ? 'GPS Unavailable' : /in range/i.test(record.gpsStatus) ? 'Inside Assigned Area' : 'Outside Geofence';
-    return { employee, record, gpsState, distance: record?.distanceToAssignmentMeters, verified: record?.selfieUrl && record?.fingerprintVerified ? 'Verified' : 'Not verified' };
+    return {
+      employee,
+      record,
+      live: Boolean(liveRecord),
+      gpsState,
+      distance: record?.distanceToAssignmentMeters,
+      verified: attendanceRecord?.selfieUrl && attendanceRecord?.fingerprintVerified ? 'Verified' : 'Not verified'
+    };
   });
   const filteredLocationRows = locationRows.filter(row => (locationStatus === 'All Status' || row.gpsState === locationStatus) && `${row.employee.name || ''} ${row.employee.employeeId || ''} ${row.employee.office || ''} ${row.record?.location || ''}`.toLowerCase().includes(locationSearch.toLowerCase()));
   const insideCount = locationRows.filter(row => row.gpsState === 'Inside Assigned Area').length;
@@ -113,33 +147,36 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const filteredRows = rows.filter(row => (statusFilter === 'All' || row.status === statusFilter) && (employeeFilter === 'All Employees' || row.name === employeeFilter) && (officeFilter === 'All Offices' || row.office === officeFilter) && `${row.name} ${row.role} ${row.office} ${row.location}`.toLowerCase().includes(search.toLowerCase()));
 
   const selectedLocationRow = filteredLocationRows.find(row => {
-    if (!selectedEmployee) return row.gpsState !== 'GPS Unavailable';
+    if (!selectedEmployee) return row.live || row.gpsState !== 'GPS Unavailable';
     return row.employee?.employeeId === selectedEmployee.employeeId || row.employee?.email?.toLowerCase() === selectedEmployee.email?.toLowerCase() || row.employee?.name?.toLowerCase() === selectedEmployee.name?.toLowerCase();
   }) || filteredLocationRows[0] || locationRows[0] || null;
 
   const mapTargetEmployee = selectedLocationRow?.employee || null;
   const mapRecord = selectedLocationRow?.record || null;
-  const employeeCurrentLat = Number(mapRecord?.latitude ?? mapRecord?.selfieLatitude ?? 13.4474);
-  const employeeCurrentLon = Number(mapRecord?.longitude ?? mapRecord?.selfieLongitude ?? 121.8344);
-  const employeeAssignedLat = Number(mapRecord?.assignedLatitude ?? mapRecord?.latitude ?? 13.4474);
-  const employeeAssignedLon = Number(mapRecord?.assignedLongitude ?? mapRecord?.longitude ?? 121.8344);
-  const safeMapCenterLat = Number.isFinite(employeeCurrentLat) && Number.isFinite(employeeAssignedLat) ? (employeeCurrentLat + employeeAssignedLat) / 2 : 13.4474;
-  const safeMapCenterLon = Number.isFinite(employeeCurrentLon) && Number.isFinite(employeeAssignedLon) ? (employeeCurrentLon + employeeAssignedLon) / 2 : 121.8344;
-  const safeMapSpanLat = Math.max(0.06, Math.abs(employeeCurrentLat - employeeAssignedLat) * 2 + 0.05);
-  const safeMapSpanLon = Math.max(0.06, Math.abs(employeeCurrentLon - employeeAssignedLon) * 2 + 0.05);
+  const employeeCurrentLat = Number(mapRecord?.latitude ?? mapRecord?.selfieLatitude);
+  const employeeCurrentLon = Number(mapRecord?.longitude ?? mapRecord?.selfieLongitude);
+  const employeeAssignedLat = Number(mapRecord?.assignedLatitude ?? employeeCurrentLat);
+  const employeeAssignedLon = Number(mapRecord?.assignedLongitude ?? employeeCurrentLon);
+  const hasMapCoordinates = Number.isFinite(employeeCurrentLat) && Number.isFinite(employeeCurrentLon);
+  const safeMapCenterLat = hasMapCoordinates ? (employeeCurrentLat + employeeAssignedLat) / 2 : 0;
+  const safeMapCenterLon = hasMapCoordinates ? (employeeCurrentLon + employeeAssignedLon) / 2 : 0;
+  const safeMapSpanLat = Math.max(0.002, Math.abs(employeeCurrentLat - employeeAssignedLat) * 2 + 0.001);
+  const safeMapSpanLon = Math.max(0.002, Math.abs(employeeCurrentLon - employeeAssignedLon) * 2 + 0.001);
   const mapMinLon = safeMapCenterLon - safeMapSpanLon / 2;
-  const mapMaxLon = safeMapCenterLon + safeMapSpanLon / 2;
   const mapMinLat = safeMapCenterLat - safeMapSpanLat / 2;
-  const mapMaxLat = safeMapCenterLat + safeMapSpanLat / 2;
-  const currentMapPoint = {
+  const currentMapPoint = hasMapCoordinates ? {
     left: ((employeeCurrentLon - mapMinLon) / safeMapSpanLon) * 100,
-    top: ((mapMaxLat - employeeCurrentLat) / safeMapSpanLat) * 100
-  };
-  const assignedMapPoint = {
+    top: ((safeMapCenterLat + safeMapSpanLat / 2 - employeeCurrentLat) / safeMapSpanLat) * 100
+  } : { left: 50, top: 50 };
+  const assignedMapPoint = hasMapCoordinates ? {
     left: ((employeeAssignedLon - mapMinLon) / safeMapSpanLon) * 100,
-    top: ((mapMaxLat - employeeAssignedLat) / safeMapSpanLat) * 100
-  };
-  const liveGpsMapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${mapMinLon.toFixed(5)}%2C${mapMinLat.toFixed(5)}%2C${mapMaxLon.toFixed(5)}%2C${mapMaxLat.toFixed(5)}&layer=mapnik&marker=${employeeCurrentLat}%2C${employeeCurrentLon}`;
+    top: ((safeMapCenterLat + safeMapSpanLat / 2 - employeeAssignedLat) / safeMapSpanLat) * 100
+  } : { left: 50, top: 50 };
+  const liveGpsMapUrl = hasMapCoordinates
+    ? Number.isFinite(Number(mapRecord?.assignedLatitude)) && Number.isFinite(Number(mapRecord?.assignedLongitude))
+      ? `https://maps.google.com/maps?saddr=${employeeCurrentLat},${employeeCurrentLon}&daddr=${employeeAssignedLat},${employeeAssignedLon}&z=16&output=embed`
+      : `https://maps.google.com/maps?q=${employeeCurrentLat},${employeeCurrentLon}&z=16&output=embed`
+    : 'about:blank';
 
   return <div className="w-full min-w-0 space-y-5 overflow-x-hidden pb-24 sm:pb-0">
     <div className="flex min-w-0 gap-5 overflow-x-auto border-b border-slate-200 text-sm font-black text-slate-500"><div className="flex min-w-max gap-5">{['Monitoring', 'DTR Records', 'DTR Issues', 'GPS & Geofence', 'History'].map(tab => <button key={tab} onClick={() => tab === 'DTR Records' ? openDtrRecords() : tab === 'History' ? onOpenTab?.('attendance_history') : setActiveSection(tab)} className={`whitespace-nowrap border-b-2 px-1 pb-3 ${activeSection === tab ? 'border-blue-600 text-blue-700' : 'border-transparent hover:text-slate-800'}`}>{tab}</button>)}</div></div>

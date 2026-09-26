@@ -299,6 +299,13 @@ export const getLocationTracking = async (req, res) => {
     if (!employeeId) {
       return res.status(400).json({ success: false, error: 'Employee ID is required' });
     }
+    if (req.user?.accessLevel === 'employee'
+      && String(req.params.employeeId).toLowerCase() !== String(req.user.employeeId).toLowerCase()) {
+      return res.status(403).json({ success: false, error: 'You can only view your own location history.' });
+    }
+    if (!['employee', 'hr_admin', 'supervisor'].includes(req.user?.accessLevel)) {
+      return res.status(403).json({ success: false, error: 'You do not have permission to view location history.' });
+    }
 
     const history = await DtrLog.getLocationHistory(employeeId);
     
@@ -312,6 +319,16 @@ export const getLocationTracking = async (req, res) => {
     });
   } catch (error) {
     console.error('Get location history error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getActiveLocationTracking = async (_req, res) => {
+  try {
+    const locations = await DtrLog.getActiveLocationTracking();
+    res.status(200).json({ success: true, locations });
+  } catch (error) {
+    console.error('Get active location tracking error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 };

@@ -327,6 +327,54 @@ export const DtrLog = {
       };
     }
     return null;
+  },
+
+  getActiveLocationTracking: async () => {
+    ensureConnected();
+    const activeLogs = await MongoDtrLog.find(
+      { timeOut: null },
+      {
+        customId: 1,
+        employeeId: 1,
+        employeeEmail: 1,
+        employeeName: 1,
+        employeeOffice: 1,
+        location: 1,
+        workAssignment: 1,
+        latitude: 1,
+        longitude: 1,
+        assignedLatitude: 1,
+        assignedLongitude: 1,
+        distanceToAssignmentMeters: 1,
+        assignmentMatch: 1,
+        gpsStatus: 1,
+        locationHistory: { $slice: -1 },
+        lastLocationUpdate: 1,
+        createdAt: 1
+      }
+    ).sort({ lastLocationUpdate: -1, createdAt: -1 }).lean();
+
+    return activeLogs.map(log => {
+      const latestPoint = log.locationHistory?.[0];
+      return {
+        id: log.customId,
+        employeeId: log.employeeId,
+        employeeEmail: log.employeeEmail,
+        employeeName: log.employeeName,
+        employeeOffice: log.employeeOffice,
+        location: log.location,
+        workAssignment: log.workAssignment,
+        latitude: log.latitude,
+        longitude: log.longitude,
+        assignedLatitude: log.assignedLatitude,
+        assignedLongitude: log.assignedLongitude,
+        distanceToAssignmentMeters: log.distanceToAssignmentMeters,
+        assignmentMatch: log.assignmentMatch,
+        gpsStatus: log.gpsStatus,
+        gpsAccuracy: latestPoint?.accuracy ?? null,
+        lastLocationUpdate: log.lastLocationUpdate || latestPoint?.timestamp || log.createdAt
+      };
+    });
   }
 };
 

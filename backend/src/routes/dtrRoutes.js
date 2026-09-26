@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
+import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
 import { authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -15,6 +15,7 @@ router.put('/attendance/history', authorizeRoles('hr_admin'), bulkUpdateDtrHisto
 // Location tracking endpoints
 router.post('/location/update', updateLocationTracking);
 router.get('/location/history/:employeeId', getLocationTracking);
+router.get('/location/live', authorizeRoles('hr_admin', 'supervisor'), getActiveLocationTracking);
 router.post('/geofence/check', checkGeofenceStatus);
 router.post('/geofence/resolve', resolveGeofenceAssignment);
 
