@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, checkGeofenceStatus } from '../controllers/dtrController.js';
+import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
 import { authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -16,5 +16,6 @@ router.put('/attendance/history', authorizeRoles('hr_admin'), bulkUpdateDtrHisto
 router.post('/location/update', updateLocationTracking);
 router.get('/location/history/:employeeId', getLocationTracking);
 router.post('/geofence/check', checkGeofenceStatus);
+router.post('/geofence/resolve', resolveGeofenceAssignment);
 
 export default router;

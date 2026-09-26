@@ -424,7 +424,8 @@ export default function App() {
     faceMatchConfidence = 0,
     faceVerificationProvider = '',
     faceVerifiedAt = null,
-    faceVerificationProof = ''
+    faceVerificationProof = '',
+    assignmentSite = null
   ) => {
     const today = new Date().toISOString().split('T')[0];
     const timeString = new Date().toLocaleTimeString('en-US', {
@@ -445,6 +446,7 @@ export default function App() {
       assignedLongitude: assignedLongitude || null,
       distanceToAssignmentMeters: distanceToAssignment,
       assignmentMatch: assignmentMatch ?? false,
+      assignmentSite,
       selfieLatitude: lat,
       selfieLongitude: lon,
       status: 'Present',

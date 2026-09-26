@@ -30,6 +30,8 @@ import {
 import { jsPDF } from 'jspdf';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { resizeFaceImage } from '../utils/faceImage';
+import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
+import { isWithinAssignedLocation } from '../../shared/assignmentGeofence';
 
 export default function AttendanceView({
   user,
@@ -43,7 +45,9 @@ export default function AttendanceView({
   const [barangayLgu, setBarangayLgu] = useState('Tanza');
   const [assignedTask, setAssignedTask] = useState('Barangay Monitoring and LGU Coordination');
   const [assignmentMode, setAssignmentMode] = useState('field');
-  const [selectedAssignmentSiteId, setSelectedAssignmentSiteId] = useState('field:Boac:Tanza');
+  const [selectedOfficeId, setSelectedOfficeId] = useState('provincial');
+  const [wfhStreet, setWfhStreet] = useState('');
+  const [wfhLandmark, setWfhLandmark] = useState('');
   
   // Custom personnel fillable states
   const [fillName, setFillName] = useState(user?.name || 'Shen Mandia');
@@ -62,14 +66,22 @@ export default function AttendanceView({
   }, [user]);
 
   const GEO_THRESHOLD_METERS = 150;
-  const assignmentLocations = {
-    Boac: { lat: 13.4474, lon: 121.8344 },
-    Tanza: { lat: 13.4474, lon: 121.8344 },
-    Mogpog: { lat: 13.4983, lon: 121.8601 },
-    Gasan: { lat: 13.3197, lon: 121.8464 },
-    Buenavista: { lat: 13.4250, lon: 121.7417 },
-    Torrijos: { lat: 13.4077, lon: 121.7860 },
-    'Santa Cruz': { lat: 13.5355, lon: 121.9754 }
+  const municipalities = Object.keys(MARINDUQUE_MUNICIPALITIES);
+
+  const buildAssignmentSite = () => {
+    if (assignmentMode === 'office') {
+      return { mode: 'office', municipality: selectedMuni, officeId: selectedOfficeId };
+    }
+    if (assignmentMode === 'wfh') {
+      return {
+        mode: 'wfh',
+        municipality: selectedMuni,
+        barangay: barangayLgu,
+        street: wfhStreet,
+        landmark: wfhLandmark
+      };
+    }
+    return { mode: 'field', municipality: selectedMuni, barangay: barangayLgu };
   };
 
   // Geolocation states
@@ -78,6 +90,9 @@ export default function AttendanceView({
   const [hasGpsPosition, setHasGpsPosition] = useState(false);
   const [gpsVerdict, setGpsVerdict] = useState('Out of Range');
   const [coordinates, setCoordinates] = useState({ lat: 13.4474, lon: 121.8344 });
+  const [siteLocation, setSiteLocation] = useState(null);
+  const [siteLocationLoading, setSiteLocationLoading] = useState(false);
+  const [siteLocationError, setSiteLocationError] = useState('');
   const [mockProximity, setMockProximity] = useState(999); // meters away from center
   const [locationError, setLocationError] = useState('');
   const [showFullMap, setShowFullMap] = useState(false);
@@ -102,6 +117,34 @@ export default function AttendanceView({
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c);
   };
+
+  useEffect(() => {
+    let active = true;
+    setSiteLocation(null);
+    setSiteLocationError('');
+    setSiteLocationLoading(true);
+    setGeofenceStatus({ inRange: false, canAutoClockIn: false, eventType: null, message: '' });
+    setGpsVerdict('Out of Range');
+
+    fetch('/api/dtr/action?action=geofence-resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignmentSite: buildAssignmentSite() })
+    })
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'Could not locate the selected assignment.');
+        if (active) setSiteLocation(result.location);
+      })
+      .catch(error => {
+        if (active) setSiteLocationError(error.message || 'Could not locate the selected assignment.');
+      })
+      .finally(() => {
+        if (active) setSiteLocationLoading(false);
+      });
+
+    return () => { active = false; };
+  }, [assignmentMode, selectedMuni, barangayLgu, selectedOfficeId, wfhStreet, wfhLandmark]);
 
   const today = new Date().toISOString().split('T')[0];
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user));
@@ -133,6 +176,9 @@ export default function AttendanceView({
   const selfieFileInputRef = useRef(null);
   const gpsRequestRef = useRef(null);
   const gpsTimeoutRef = useRef(null);
+  const gpsPositionHandlerRef = useRef(null);
+  const siteLocationRef = useRef(null);
+  siteLocationRef.current = siteLocation;
 
   // Check if camera permission is active on mount / teardown
   useEffect(() => {
@@ -225,7 +271,7 @@ export default function AttendanceView({
         setGpsLoading(false);
         return;
       }
-      updateGpsPosition(result.coords.latitude, result.coords.longitude);
+      gpsPositionHandlerRef.current?.(result.coords.latitude, result.coords.longitude);
     };
 
     window.addEventListener('dilg-location-result', handleMobileLocationResult);
@@ -497,41 +543,6 @@ export default function AttendanceView({
     setFingerprintProgress(0);
   };
 
-  // Municipalities list of Marinduque
-  const municipalities = ['Boac', 'Mogpog', 'Gasan', 'Buenavista', 'Torrijos', 'Santa Cruz'];
-  const assignmentSiteOptions = [
-    { id: 'field:Boac:Tanza', mode: 'field', municipality: 'Boac', site: 'Tanza', label: 'Tanza Barangay, Boac' },
-    ...municipalities.map(municipality => ({
-      id: `field:${municipality}`,
-      mode: 'field',
-      municipality,
-      site: municipality,
-      label: `${municipality} field assignment`
-    })),
-    ...municipalities.map(municipality => ({
-      id: `office:${municipality}`,
-      mode: 'office',
-      municipality,
-      site: fillOffice || `${municipality} Municipal Office`,
-      label: `${fillOffice || `${municipality} Municipal Office`} - ${municipality}`
-    })),
-    ...municipalities.map(municipality => ({
-      id: `wfh:${municipality}`,
-      mode: 'wfh',
-      municipality,
-      site: 'Work From Home',
-      label: `Work From Home - ${municipality}`
-    }))
-  ];
-  const selectedAssignmentSite = assignmentSiteOptions.find(site => site.id === selectedAssignmentSiteId)
-    || assignmentSiteOptions[0];
-
-  const resolveAssignedCoordinates = () => {
-    const targetName = barangayLgu.trim().toLowerCase();
-    const targetKey = Object.keys(assignmentLocations).find(key => key.toLowerCase() === targetName);
-    return assignmentLocations[targetKey] || assignmentLocations[selectedMuni];
-  };
-
   const updateGpsPosition = (latitude, longitude) => {
     const parsedLatitude = Number(latitude);
     const parsedLongitude = Number(longitude);
@@ -546,24 +557,24 @@ export default function AttendanceView({
     }
 
     setGpsChecked(true);
-  setHasGpsPosition(true);
+    setHasGpsPosition(true);
     setLocationError('');
     const lat = Number(parsedLatitude.toFixed(4));
     const lon = Number(parsedLongitude.toFixed(4));
-    const assignedCoords = resolveAssignedCoordinates();
     setCoordinates({ lat, lon });
 
-    if (!assignedCoords) {
-      setGpsVerdict('Out of Range');
-      setMockProximity(999);
+    const assignedLocation = siteLocationRef.current;
+    if (!assignedLocation) {
+      setLocationError('GPS captured. Waiting for the selected assignment location to finish loading.');
     } else {
-      const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
+      const distance = computeDistanceMeters(lat, lon, assignedLocation.latitude, assignedLocation.longitude);
       setMockProximity(distance);
-      setGpsVerdict(distance <= GEO_THRESHOLD_METERS ? 'In Range' : 'Out of Range');
-      syncGeofenceStatus(lat, lon, assignedCoords);
+      setGpsVerdict(isWithinAssignedLocation(lat, lon, assignedLocation, GEO_THRESHOLD_METERS) ? 'In Range' : 'Out of Range');
+      syncGeofenceStatus(lat, lon, assignedLocation);
     }
     setGpsLoading(false);
   };
+  gpsPositionHandlerRef.current = updateGpsPosition;
 
   const syncGeofenceStatus = async (lat, lon, targetCoords) => {
     const employeeId = user?.employeeId || fillId;
@@ -577,8 +588,9 @@ export default function AttendanceView({
           latitude: lat,
           longitude: lon,
           employeeId,
-          assignedLatitude: targetCoords?.lat ?? assignedCoords?.lat,
-          assignedLongitude: targetCoords?.lon ?? assignedCoords?.lon
+          assignmentSite: buildAssignmentSite(),
+          assignedLatitude: targetCoords?.latitude,
+          assignedLongitude: targetCoords?.longitude
         })
       });
 
@@ -596,6 +608,15 @@ export default function AttendanceView({
       console.warn('Geofence status sync failed:', error);
     }
   };
+
+  useEffect(() => {
+    if (!siteLocation || !hasGpsPosition) return;
+    const distance = computeDistanceMeters(coordinates.lat, coordinates.lon, siteLocation.latitude, siteLocation.longitude);
+    const inRange = isWithinAssignedLocation(coordinates.lat, coordinates.lon, siteLocation, GEO_THRESHOLD_METERS);
+    setMockProximity(distance);
+    setGpsVerdict(inRange ? 'In Range' : 'Out of Range');
+    syncGeofenceStatus(coordinates.lat, coordinates.lon, siteLocation);
+  }, [siteLocation, hasGpsPosition, coordinates.lat, coordinates.lon]);
 
   const handleGetLiveGPS = () => {
     if (hasNativeBridge) {
@@ -699,17 +720,30 @@ export default function AttendanceView({
   const isWfhMode = assignmentMode === 'wfh';
   const requiresGps = true;
   const effectiveMuni = selectedMuni;
-  const effectiveBarangay = isOfficeMode ? `${fillOffice || selectedAssignmentSite.site} - Office Only` : isWfhMode ? 'Work From Home' : barangayLgu;
+  const selectedOffice = MARINDUQUE_OFFICES.find(office => office.id === selectedOfficeId);
+  const effectiveBarangay = isOfficeMode
+    ? selectedOffice?.barangay || ''
+    : barangayLgu;
   const effectiveTask = isOfficeMode ? 'Office-based administrative work' : isWfhMode ? 'Work From Home' : assignedTask;
-  const effectiveLocation = isOfficeMode ? `${fillOffice || selectedAssignmentSite.site}, ${effectiveMuni}` : isWfhMode ? `WFH, ${effectiveMuni}` : `${effectiveBarangay}, ${effectiveMuni}`;
+  const effectiveLocation = isOfficeMode
+    ? `${selectedOffice?.name || 'DILG Office'}, Brgy. ${effectiveBarangay}, ${effectiveMuni}`
+    : isWfhMode
+      ? [wfhStreet, wfhLandmark, `Brgy. ${effectiveBarangay}`, effectiveMuni, 'Marinduque', 'Philippines'].filter(Boolean).join(', ')
+      : `Brgy. ${effectiveBarangay}, ${effectiveMuni}, Marinduque`;
 
-  const assignedCoords = resolveAssignedCoordinates();
+  const assignmentSite = buildAssignmentSite();
+  const assignedCoords = siteLocation
+    ? { lat: siteLocation.latitude, lon: siteLocation.longitude }
+    : null;
   const distanceToAssignment = assignedCoords
     ? computeDistanceMeters(coordinates.lat, coordinates.lon, assignedCoords.lat, assignedCoords.lon)
     : null;
-  const isWithinAssignment = hasGpsPosition && assignedCoords
-    ? distanceToAssignment <= GEO_THRESHOLD_METERS
+  const isWithinAssignment = hasGpsPosition && siteLocation
+    ? isWithinAssignedLocation(coordinates.lat, coordinates.lon, siteLocation, GEO_THRESHOLD_METERS)
     : false;
+  const geofenceDescription = assignmentMode === 'field'
+    ? 'Barangay boundary + 150m GPS tolerance'
+    : '150m from assigned address';
 
   const getMapPosition = (lat, lon, centerLat, centerLon, spanLat, spanLon) => {
     // Match OpenStreetMap's Web Mercator projection for the overlay markers.
@@ -745,14 +779,14 @@ export default function AttendanceView({
     current: currentMapPosition,
     assigned: assignedMapPosition
   };
-  const mapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${(mapCenterLon - visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat - visibleMapSpanLat / 2).toFixed(5)}%2C${(mapCenterLon + visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat + visibleMapSpanLat / 2).toFixed(5)}&layer=mapnik&marker=${assignedCoords?.lat ?? 13.4474}%2C${assignedCoords?.lon ?? 121.8344}`;
+  const mapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${(mapCenterLon - visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat - visibleMapSpanLat / 2).toFixed(5)}%2C${(mapCenterLon + visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat + visibleMapSpanLat / 2).toFixed(5)}&layer=mapnik${assignedCoords ? `&marker=${assignedCoords.lat}%2C${assignedCoords.lon}` : ''}`;
 
   const autoClockInRef = useRef(false);
   const autoClockOutRef = useRef(false);
 
   const executeClockIn = async () => {
-    if (!navigator.geolocation || !assignedCoords) {
-      setLocationError('Current GPS location is required before Time In.');
+    if (!navigator.geolocation || !siteLocation) {
+      setLocationError(siteLocationError || 'Wait for the selected assignment site to finish locating before Time In.');
       autoClockInRef.current = false;
       return;
     }
@@ -764,16 +798,16 @@ export default function AttendanceView({
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
         const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
-        const verdict = distance <= GEO_THRESHOLD_METERS ? 'In Range' : 'Out of Range';
+        const verdict = isWithinAssignedLocation(lat, lon, siteLocation, GEO_THRESHOLD_METERS) ? 'In Range' : 'Out of Range';
 
         setCoordinates({ lat, lon });
         setMockProximity(distance);
         setGpsVerdict(verdict);
-        syncGeofenceStatus(lat, lon, assignedCoords);
+        syncGeofenceStatus(lat, lon, siteLocation);
         setGpsLoading(false);
 
         if (verdict !== 'In Range') {
-          setLocationError(`Time In blocked: you are ${distance} meters from the assigned site. The maximum allowed radius is 150 meters.`);
+          setLocationError(`Time In blocked: your GPS location is outside ${siteLocation.label}. Move to the assigned address and verify GPS again.`);
           autoClockInRef.current = false;
           return;
         }
@@ -807,7 +841,8 @@ export default function AttendanceView({
           faceVerification.confidence,
           faceVerification.provider,
           faceVerification.verifiedAt,
-          faceVerification.verificationProof
+          faceVerification.verificationProof,
+          assignmentSite
         );
         setCapturedSelfie(null);
         setFingerprintVerified(false);
@@ -826,8 +861,8 @@ export default function AttendanceView({
   };
 
   const executeClockOut = () => {
-    if (!navigator.geolocation || !assignedCoords) {
-      setLocationError('Current GPS location is required before Time Out.');
+    if (!navigator.geolocation || !siteLocation) {
+      setLocationError('Selected assignment location is not available for GPS verification.');
       return;
     }
 
@@ -837,16 +872,16 @@ export default function AttendanceView({
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
         const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
-        const verdict = distance <= GEO_THRESHOLD_METERS ? 'In Range' : 'Out of Range';
+        const verdict = isWithinAssignedLocation(lat, lon, siteLocation, GEO_THRESHOLD_METERS) ? 'In Range' : 'Out of Range';
 
         setCoordinates({ lat, lon });
         setMockProximity(distance);
         setGpsVerdict(verdict);
         setGpsLoading(false);
-        syncGeofenceStatus(lat, lon, assignedCoords);
+        syncGeofenceStatus(lat, lon, siteLocation);
 
         if (verdict !== 'In Range') {
-          setLocationError(`Time Out blocked: you are ${distance} meters from the assigned site. The maximum allowed radius is 150 meters.`);
+          setLocationError(`Time Out blocked: your GPS location is outside ${siteLocation.label}.`);
           return;
         }
 
@@ -1158,42 +1193,105 @@ export default function AttendanceView({
             </span>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Assigned Location / Barangay / Office</label>
-                <select
-                  id="select-assigned-site"
-                  value={selectedAssignmentSiteId}
-                  disabled={isCurrentlyActive}
-                  onChange={(event) => {
-                    const site = assignmentSiteOptions.find(option => option.id === event.target.value);
-                    if (!site) return;
-                    setSelectedAssignmentSiteId(site.id);
-                    setAssignmentMode(site.mode);
-                    setSelectedMuni(site.municipality);
-                    setBarangayLgu(site.site);
-                    setGpsChecked(false);
-                    setHasGpsPosition(false);
-                    setGpsVerdict('Out of Range');
-                    setGeofenceStatus({ inRange: false, canAutoClockIn: false, eventType: null, message: '' });
-                  }}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <optgroup label="Field / Barangay">
-                    {assignmentSiteOptions.filter(site => site.mode === 'field').map(site => (
-                      <option key={site.id} value={site.id}>{site.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Office">
-                    {assignmentSiteOptions.filter(site => site.mode === 'office').map(site => (
-                      <option key={site.id} value={site.id}>{site.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Work From Home">
-                    {assignmentSiteOptions.filter(site => site.mode === 'wfh').map(site => (
-                      <option key={site.id} value={site.id}>{site.label}</option>
-                    ))}
-                  </optgroup>
-                </select>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Assignment Role</label>
+                  <select
+                    id="select-assignment-mode"
+                    value={assignmentMode}
+                    disabled={isCurrentlyActive}
+                    onChange={(event) => {
+                      const mode = event.target.value;
+                      setAssignmentMode(mode);
+                      if (mode === 'office') {
+                        const office = MARINDUQUE_OFFICES.find(item => item.id === selectedOfficeId) || MARINDUQUE_OFFICES[0];
+                        setSelectedOfficeId(office.id);
+                        setSelectedMuni(office.municipality);
+                        setBarangayLgu(office.barangay);
+                      } else if (mode === 'field' && !MARINDUQUE_MUNICIPALITIES[selectedMuni].includes(barangayLgu)) {
+                        setBarangayLgu(MARINDUQUE_MUNICIPALITIES[selectedMuni][0]);
+                      }
+                      setGeofenceStatus({ inRange: false, canAutoClockIn: false, eventType: null, message: '' });
+                    }}
+                    className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="field">Field</option>
+                    <option value="wfh">Work From Home</option>
+                    <option value="office">Office</option>
+                  </select>
+                </div>
+
+                {isOfficeMode ? (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">DILG Office and Barangay</label>
+                    <select
+                      id="select-dilg-office"
+                      value={selectedOfficeId}
+                      disabled={isCurrentlyActive}
+                      onChange={(event) => {
+                        const office = MARINDUQUE_OFFICES.find(item => item.id === event.target.value);
+                        if (!office) return;
+                        setSelectedOfficeId(office.id);
+                        setSelectedMuni(office.municipality);
+                        setBarangayLgu(office.barangay);
+                      }}
+                      className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-800 disabled:bg-slate-100"
+                    >
+                      {MARINDUQUE_OFFICES.map(office => (
+                        <option key={office.id} value={office.id}>{office.name} - Brgy. {office.barangay}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Municipality</label>
+                      <select
+                        id="select-municipality"
+                        value={selectedMuni}
+                        disabled={isCurrentlyActive}
+                        onChange={(event) => {
+                          const municipality = event.target.value;
+                          setSelectedMuni(municipality);
+                          if (!MARINDUQUE_MUNICIPALITIES[municipality].includes(barangayLgu)) {
+                            setBarangayLgu(MARINDUQUE_MUNICIPALITIES[municipality][0]);
+                          }
+                        }}
+                        className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-800 disabled:bg-slate-100"
+                      >
+                        {municipalities.map(municipality => <option key={municipality} value={municipality}>{municipality}, Marinduque</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Barangay</label>
+                      <select
+                        id="select-assigned-barangay"
+                        value={barangayLgu}
+                        disabled={isCurrentlyActive}
+                        onChange={(event) => setBarangayLgu(event.target.value)}
+                        className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-800 disabled:bg-slate-100"
+                      >
+                        {MARINDUQUE_MUNICIPALITIES[selectedMuni].map(barangay => <option key={barangay} value={barangay}>{barangay}</option>)}
+                      </select>
+                    </div>
+                    {isWfhMode && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label className="space-y-1.5">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Street / House (Optional)</span>
+                          <input value={wfhStreet} onChange={event => setWfhStreet(event.target.value)} disabled={isCurrentlyActive} placeholder="Street or house number" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs" />
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Landmark (Optional)</span>
+                          <input value={wfhLandmark} onChange={event => setWfhLandmark(event.target.value)} disabled={isCurrentlyActive} placeholder="Nearby landmark" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs" />
+                        </label>
+                      </div>
+                    )}
+                  </>
+                )}
+                <p className="text-[10px] text-slate-500">{isWfhMode ? 'Philippines address format: ' : 'Selected GPS site: '}{effectiveLocation}</p>
+                {siteLocationLoading && <p className="text-[10px] font-semibold text-blue-700">Locating selected assignment on the map...</p>}
+                {siteLocationError && <p role="alert" className="text-[10px] font-semibold text-rose-700">{siteLocationError}</p>}
+                {siteLocation && <p className="text-[10px] font-semibold text-emerald-700">Map target verified: {siteLocation.displayName}</p>}
               </div>
 
               {/* Assigned Duty Description */}
@@ -1492,7 +1590,7 @@ export default function AttendanceView({
               <div className="w-2.5 h-2.5 rounded-full bg-rose-500 flex-shrink-0" />
               <div className="text-[11px] font-bold text-rose-900 leading-tight">
                 <div>Assigned Site: <span className="text-rose-700 font-black">{effectiveLocation}</span></div>
-                <div className="text-[10px] text-rose-700 font-semibold">Geofence Radius: 150 meters</div>
+                <div className="text-[10px] text-rose-700 font-semibold">{geofenceDescription}</div>
               </div>
             </div>
 
@@ -1524,16 +1622,18 @@ export default function AttendanceView({
                   -
                 </button>
               </div>
-              <div
-                className="pointer-events-none absolute z-10"
-                style={{
-                  left: `${offsetPositions.assigned.left}%`,
-                  top: `${offsetPositions.assigned.top}%`,
-                  transform: 'translate(-50%, -50%)'
-                }}
-              >
-                <span className="block h-4 w-4 rounded-full border-2 border-white bg-rose-600 shadow-lg" />
-              </div>
+              {assignedCoords && (
+                <div
+                  className="pointer-events-none absolute z-10"
+                  style={{
+                    left: `${offsetPositions.assigned.left}%`,
+                    top: `${offsetPositions.assigned.top}%`,
+                    transform: 'translate(-50%, -50%)'
+                  }}
+                >
+                  <span className="block h-4 w-4 rounded-full border-2 border-white bg-rose-600 shadow-lg" />
+                </div>
+              )}
               {hasGpsPosition && (
                 <div
                   className="pointer-events-none absolute z-20"
@@ -1546,9 +1646,10 @@ export default function AttendanceView({
                   <span className="block h-5 w-5 rounded-full border-2 border-white bg-blue-700 shadow-lg animate-pulse" />
                 </div>
               )}
-              <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-md">
+              <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-md">
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />Assigned Site</span>
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-blue-700" />Current Location</span>
+                <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="text-slate-500 underline">© OpenStreetMap</a>
               </div>
             </div>
 
@@ -1704,7 +1805,7 @@ export default function AttendanceView({
                 <div className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                   <span>Distance: <span className={`font-bold ${isWithinAssignment ? 'text-emerald-600' : 'text-rose-600'}`}>{mockProximity}m</span></span>
                   <span className="text-slate-300">|</span>
-                  <span>Max Radius: <span className="font-bold text-slate-800">150m</span></span>
+                  <span>Rule: <span className="font-bold text-slate-800">{geofenceDescription}</span></span>
                 </div>
               </div>
             </div>
@@ -1757,7 +1858,7 @@ export default function AttendanceView({
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 md:col-span-2">
                     <p className="text-xs font-semibold text-slate-600 uppercase">Geofence Status</p>
                     <p className={`text-base font-bold mt-1 ${isWithinAssignment ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {isWithinAssignment ? '✓ Within Assigned Area (150m radius)' : '✗ Outside Assigned Area (150m radius)'}
+                      {isWithinAssignment ? `✓ Within ${geofenceDescription}` : `✗ Outside ${geofenceDescription}`}
                     </p>
                   </div>
                 </div>
@@ -1805,7 +1906,7 @@ export default function AttendanceView({
           <div className="text-xs text-[#991b1b] space-y-1">
             <p className="font-extrabold text-slate-900">Outside the Assigned Geofence Area (Outside Geofence Boundaries)</p>
             <p className="font-semibold text-slate-700">
-              You cannot <b>Time In</b> or <b>Time Out</b> because you are currently outside the 150-meter limit from your assigned location.
+              You cannot <b>Time In</b> or <b>Time Out</b> because your GPS is outside the assigned geofence: <b>{geofenceDescription}</b>.
               You are currently <b>{mockProximity} meters</b> away. Please return within the assigned area to verify your location and continue.
             </p>
           </div>

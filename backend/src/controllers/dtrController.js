@@ -2,6 +2,7 @@ import { DtrLog } from '../models/dtrLogModel.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { verifyVerificationProof } from '../utils/verificationProof.js';
+import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 
 const GEO_THRESHOLD_METERS = 150;
 
@@ -94,7 +95,7 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'Invalid attendance payload.' });
       }
 
-      const requiredFields = ['latitude', 'longitude', 'gpsStatus', 'selfieUrl', 'fingerprintVerified'];
+      const requiredFields = ['latitude', 'longitude', 'gpsStatus', 'selfieUrl', 'fingerprintVerified', 'assignmentSite'];
       for (const field of requiredFields) {
         if (record[field] === undefined || record[field] === null) {
           return res.status(400).json({ success: false, error: `Missing required field: ${field}.` });
@@ -119,7 +120,12 @@ export const clockInOut = async (req, res) => {
         };
       }
 
-      const assignedCoords = resolveAssignedCoords(record);
+      const resolvedAssignment = record.assignmentSite
+        ? await resolveAssignedLocation(record.assignmentSite)
+        : null;
+      const assignedCoords = resolvedAssignment
+        ? { lat: resolvedAssignment.latitude, lon: resolvedAssignment.longitude }
+        : resolveAssignedCoords(record);
       if (!assignedCoords) {
         return res.status(400).json({ success: false, error: 'Unable to resolve assigned location for this record.' });
       }
@@ -134,12 +140,17 @@ export const clockInOut = async (req, res) => {
       record.assignedLatitude = assignedCoords.lat;
       record.assignedLongitude = assignedCoords.lon;
       record.distanceToAssignmentMeters = distance;
-      record.assignmentMatch = distance <= GEO_THRESHOLD_METERS;
+      record.assignmentSite = resolvedAssignment || record.assignmentSite;
+      record.assignmentMatch = resolvedAssignment
+        ? isWithinAssignedLocation(record.latitude, record.longitude, resolvedAssignment)
+        : distance <= GEO_THRESHOLD_METERS;
 
       if (!record.assignmentMatch) {
         return res.status(400).json({
           success: false,
-          error: `Assigned location mismatch. Distance to assigned area is ${distance} meters, which exceeds the ${GEO_THRESHOLD_METERS}m limit.`
+          error: resolvedAssignment
+            ? `GPS is outside the selected assignment area: ${resolvedAssignment.label}. Move to the assigned location and retry.`
+            : `Assigned location mismatch. Distance is ${distance} meters, which exceeds the ${GEO_THRESHOLD_METERS}m limit.`
         });
       }
 
@@ -302,7 +313,7 @@ export const getLocationTracking = async (req, res) => {
 
 export const checkGeofenceStatus = async (req, res) => {
   try {
-    const { latitude, longitude, assignedLatitude, assignedLongitude } = req.body;
+    const { latitude, longitude, assignedLatitude, assignedLongitude, assignmentSite } = req.body;
     const employeeId = req.user?.accessLevel === 'employee' ? req.user.employeeId : req.body.employeeId;
 
     if (!latitude || !longitude || !employeeId) {
@@ -313,10 +324,13 @@ export const checkGeofenceStatus = async (req, res) => {
       logs.find(log => log.employeeId === employeeId && !log.timeOut)
     );
 
-    const targetLat = Number(assignedLatitude ?? activeLog?.assignedLatitude ?? 13.4474);
-    const targetLon = Number(assignedLongitude ?? activeLog?.assignedLongitude ?? 121.8344);
+    const resolvedAssignment = assignmentSite ? await resolveAssignedLocation(assignmentSite) : null;
+    const targetLat = Number(resolvedAssignment?.latitude ?? assignedLatitude ?? activeLog?.assignedLatitude ?? 13.4474);
+    const targetLon = Number(resolvedAssignment?.longitude ?? assignedLongitude ?? activeLog?.assignedLongitude ?? 121.8344);
     const distance = computeDistanceMeters(Number(latitude), Number(longitude), targetLat, targetLon);
-    const inRange = distance <= GEO_THRESHOLD_METERS;
+    const inRange = resolvedAssignment
+      ? isWithinAssignedLocation(latitude, longitude, resolvedAssignment)
+      : distance <= GEO_THRESHOLD_METERS;
 
     if (!activeLog && inRange) {
       return res.status(200).json({
@@ -356,5 +370,14 @@ export const checkGeofenceStatus = async (req, res) => {
   } catch (error) {
     console.error('Geofence status check error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const resolveGeofenceAssignment = async (req, res) => {
+  try {
+    const location = await resolveAssignedLocation(req.body?.assignmentSite);
+    res.status(200).json({ success: true, location });
+  } catch (error) {
+    res.status(422).json({ success: false, error: error.message || 'Unable to resolve the selected location.' });
   }
 };

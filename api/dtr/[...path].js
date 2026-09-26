@@ -2,6 +2,7 @@ import apiHandler from '../[...path].js';
 
 const actionRoutes = {
 	'geofence-check': '/api/dtr/geofence/check',
+	'geofence-resolve': '/api/dtr/geofence/resolve',
 	'location-update': '/api/dtr/location/update'
 };
 
