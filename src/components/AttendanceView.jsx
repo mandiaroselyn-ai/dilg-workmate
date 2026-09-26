@@ -617,6 +617,11 @@ export default function AttendanceView({
     const inRange = isWithinAssignedLocation(coordinates.lat, coordinates.lon, siteLocation, GEO_THRESHOLD_METERS);
     setMockProximity(distance);
     setGpsVerdict(inRange ? 'In Range' : 'Out of Range');
+    if (!inRange) {
+      setLocationError(`Time In blocked: your current GPS is ${distance}m from the assigned map location (${siteLocation.label}). Move to the assigned area and verify GPS again.`);
+    } else {
+      setLocationError('');
+    }
     syncGeofenceStatus(coordinates.lat, coordinates.lon, siteLocation);
   }, [siteLocation, hasGpsPosition, coordinates.lat, coordinates.lon]);
 
@@ -1635,7 +1640,7 @@ export default function AttendanceView({
               </div>
               <div className="flex justify-between">
                 <span>Distance from Site:</span>
-                <span className={`text-slate-800 font-bold ${isWithinAssignment ? 'text-emerald-700' : hasGpsPosition ? 'text-rose-700' : 'text-slate-500'}`}>{hasGpsPosition ? `${mockProximity} m` : 'Waiting for GPS'}</span>
+                <span className={`text-slate-800 font-bold ${isWithinAssignment ? 'text-emerald-700' : hasGpsPosition ? 'text-rose-700' : 'text-slate-500'}`}>{hasGpsPosition ? `${mockProximity} m from map location` : 'Waiting for GPS'}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-100 font-bold">
                 <span>Status:</span>
@@ -1824,13 +1829,16 @@ export default function AttendanceView({
       )}
 
       {gpsChecked && gpsVerdict === 'Out of Range' && (
-        <div className="bg-rose-50 border-l-4 border-rose-500 p-4.5 rounded-r-2xl flex items-start gap-3.5 animate-pulse">
+        <div role="alert" className="bg-rose-50 border-l-4 border-rose-500 p-4.5 rounded-r-2xl flex items-start gap-3.5 animate-pulse">
           <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
           <div className="text-xs text-[#991b1b] space-y-1">
-            <p className="font-extrabold text-slate-900">Outside the Assigned Geofence Area (Outside Geofence Boundaries)</p>
+            <p className="font-extrabold text-slate-900">Time In blocked: outside the assigned area</p>
             <p className="font-semibold text-slate-700">
-              You cannot <b>Time In</b> or <b>Time Out</b> because your GPS is outside the assigned geofence: <b>{geofenceDescription}</b>.
-              You are currently <b>{mockProximity} meters</b> away. Please return within the assigned area to verify your location and continue.
+              Your current GPS is <b>{mockProximity} meters</b> from the assigned Google Maps location for <b>{effectiveLocation}</b>.
+              You cannot <b>Time In</b> until your device location is within the assigned area ({geofenceDescription}).
+            </p>
+            <p className="font-mono text-[10px] text-rose-800">
+              Current: {coordinates.lat}, {coordinates.lon} &middot; Assigned: {assignedCoords?.lat}, {assignedCoords?.lon}
             </p>
           </div>
         </div>

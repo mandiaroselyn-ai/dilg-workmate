@@ -77,7 +77,7 @@ const geocode = async (query, includeBoundary) => {
 
     const url = new URL('https://nominatim.openstreetmap.org/search');
     url.searchParams.set('format', 'jsonv2');
-    url.searchParams.set('limit', '1');
+    url.searchParams.set('limit', includeBoundary ? '5' : '1');
     url.searchParams.set('countrycodes', 'ph');
     url.searchParams.set('viewbox', '121.45,13.10,122.25,13.65');
     url.searchParams.set('bounded', '1');
@@ -94,8 +94,10 @@ const geocode = async (query, includeBoundary) => {
     if (!response.ok) throw new Error('Location service is temporarily unavailable. Retry in a moment.');
 
     const results = await response.json();
-    const result = results.find(item => item.lat && item.lon && (!includeBoundary
-      || ['Polygon', 'MultiPolygon'].includes(item.geojson?.type)));
+    const validResults = results.filter(item => item.lat && item.lon);
+    const result = validResults.find(item => !includeBoundary
+      || ['Polygon', 'MultiPolygon'].includes(item.geojson?.type))
+      || (includeBoundary ? validResults[0] : null);
     if (!result) throw new Error('Could not find coordinates for this address. Check the selected barangay/address and retry.');
 
     const [south, north, west, east] = (result.boundingbox || []).map(Number);
@@ -108,6 +110,7 @@ const geocode = async (query, includeBoundary) => {
       geometry: result.geojson || null,
       bounds,
       displayName: result.display_name,
+      fallbackToRadius: includeBoundary && !['Polygon', 'MultiPolygon'].includes(result.geojson?.type),
       source: 'OpenStreetMap'
     };
     cache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });

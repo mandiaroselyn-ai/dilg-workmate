@@ -53,3 +53,15 @@ test('WFH and office geofences use a 150m radius around the resolved address', (
 test('field geofence fails closed when no administrative boundary is available', () => {
   assert.equal(isWithinAssignedLocation(13, 121, { mode: 'field', latitude: 13, longitude: 121 }), false);
 });
+
+test('field geofence uses the resolved point when the map has no administrative boundary', () => {
+  const pointLocation = {
+    mode: 'field',
+    latitude: 13,
+    longitude: 121,
+    geometry: { type: 'Point', coordinates: [121, 13] },
+    fallbackToRadius: true
+  };
+  assert.equal(isWithinAssignedLocation(13.0005, 121, pointLocation), true);
+  assert.equal(isWithinAssignedLocation(13.002, 121, pointLocation), false);
+});

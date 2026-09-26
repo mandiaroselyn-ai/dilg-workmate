@@ -66,7 +66,10 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
   }
 
   const geometry = location.geometry;
-  if (!geometry || !['Polygon', 'MultiPolygon'].includes(geometry.type)) return false;
+  if (!geometry || !['Polygon', 'MultiPolygon'].includes(geometry.type)) {
+    if (!location.fallbackToRadius) return false;
+    return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
+  }
   const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
   return polygons.some(polygon => polygonContainsOrNear(lon, lat, polygon, bufferMeters));
 };
