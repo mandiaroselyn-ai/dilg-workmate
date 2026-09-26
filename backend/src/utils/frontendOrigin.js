@@ -10,7 +10,8 @@ const normalizeOrigin = value => {
 
 export const getFrontendOrigin = (req) => {
   const configuredOrigin = normalizeOrigin(process.env.FRONTEND_URL);
-  if (configuredOrigin) return configuredOrigin;
+  const isLocalConfiguredOrigin = configuredOrigin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredOrigin);
+  if (configuredOrigin && !(process.env.VERCEL && isLocalConfiguredOrigin)) return configuredOrigin;
 
   const vercelOrigin = normalizeOrigin(
     process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL
