@@ -54,6 +54,9 @@ const initials = (name = '') =>
     .slice(0, 2)
     .toUpperCase();
 
+const employeeKey = (employee = {}) =>
+  String(employee._id || employee.employeeId || employee.email || employee.id || '').trim().toLowerCase();
+
 const normalizeEmployee = (employee = {}) => {
   const name = employeeName(employee);
   const parts = name.split(' ');
@@ -117,8 +120,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   }, [employees, query, statusFilter]);
 
   const selectedEmployee = employees.find((employee) => {
-    const key = employee.id || employee._id || employee.employeeId || employee.email;
-    return key === selectedId;
+    return employeeKey(employee) === selectedId;
   });
 
   const notify = (message, isError = false) => {
@@ -169,10 +171,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     setFacePhotoPreparing(true);
     try {
       const profilePicture = await resizeFaceImage(file);
-      const selectedKey = selectedEmployee.id || selectedEmployee._id || selectedEmployee.employeeId || selectedEmployee.email;
+      const selectedKey = employeeKey(selectedEmployee);
       onEmployeesChange?.((previous) => previous.map((employee) => {
-        const employeeKey = employee.id || employee._id || employee.employeeId || employee.email;
-        return employeeKey === selectedKey ? { ...employee, profilePicture } : employee;
+        return employeeKey(employee) === selectedKey ? { ...employee, profilePicture } : employee;
       }));
       notify('Selfie ready. Select Enroll Face to register it.');
     } catch (error) {
@@ -190,7 +191,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
   const openEdit = (employee) => {
     const record = normalizeEmployee(employee);
-    setEditingId(record.id);
+    setEditingId(employeeKey(employee));
     setForm({
       ...emptyForm,
       ...record,
@@ -207,8 +208,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   };
 
   const openView = (employee) => {
-    const id = employee.id || employee._id || employee.employeeId || employee.email;
-    setSelectedId(id);
+    setSelectedId(employeeKey(employee));
     setScreen('profile');
   };
 
@@ -246,8 +246,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     if (editingId) {
       onEmployeesChange?.((previous) =>
         previous.map((employee) => {
-          const currentId = employee.id || employee._id || employee.employeeId || employee.email;
-          return currentId === editingId ? { ...employee, ...normalized } : employee;
+          return employeeKey(employee) === editingId ? { ...employee, ...normalized } : employee;
         })
       );
       onAdminNotification?.({
@@ -282,10 +281,10 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
   const handleAccountStatus = (accountStatus) => {
     if (!selectedEmployee) return;
-    const key = selectedEmployee.id || selectedEmployee._id || selectedEmployee.employeeId || selectedEmployee.email;
+    const key = employeeKey(selectedEmployee);
     onEmployeesChange?.((previous) =>
       previous.map((employee) => {
-        const currentKey = employee.id || employee._id || employee.employeeId || employee.email;
+        const currentKey = employeeKey(employee);
         return currentKey === key
           ? {
               ...employee,
@@ -592,7 +591,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                 </tr>
               ) : (
                 filteredEmployees.map((employee) => {
-                  const key = employee.id || employee._id || employee.employeeId || employee.email;
+                  const key = employeeKey(employee);
                   return (
                     <tr key={key} className="border-t border-slate-100">
                       <td className="px-3 py-3">
