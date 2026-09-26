@@ -29,6 +29,7 @@ export const createRegistrationOptions = async (req, res) => {
       userDisplayName: user.name,
       attestationType: 'none',
       authenticatorSelection: {
+        authenticatorAttachment: 'platform',
         residentKey: 'preferred',
         userVerification: 'required'
       },

@@ -395,8 +395,8 @@ export default function AttendanceView({
     }
     if (fingerprintVerified) return;
 
-    if (!window.PublicKeyCredential || !navigator.credentials) {
-      setCameraError('A WebAuthn-capable fingerprint, passkey, or Windows Hello device is required.');
+    if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials) {
+      setCameraError('Fingerprint sign-in needs a supported browser on HTTPS. Open the Vercel site in the latest Chrome or Safari browser, not an embedded preview.');
       return;
     }
 
@@ -426,6 +426,12 @@ export default function AttendanceView({
             challenge: fromBase64Url(options.challenge),
             allowCredentials: (options.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
           };
+        if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+          const hasPlatformAuthenticator = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+          if (!hasPlatformAuthenticator) {
+            throw new Error('This browser cannot access the phone fingerprint sensor. Open this site in Chrome or Safari on a phone with screen lock and biometrics enabled.');
+          }
+        }
       const credential = registration
         ? await navigator.credentials.create({ publicKey })
         : await navigator.credentials.get({ publicKey });
@@ -469,9 +475,14 @@ export default function AttendanceView({
       console.error('WebAuthn biometric verification failed:', error);
       setFingerprintScanning(false);
       setFingerprintProgress(0);
-      setCameraError(error?.name === 'NotAllowedError'
-        ? 'Biometric verification was cancelled or not allowed.'
-        : 'Unable to verify the device biometric. Use a supported fingerprint or Windows Hello device.');
+      const message = error?.name === 'NotAllowedError'
+        ? 'Fingerprint/passkey prompt was cancelled or blocked. Retry and approve the phone biometric prompt.'
+        : error?.name === 'SecurityError'
+          ? 'Fingerprint verification origin mismatch. Open the official Vercel domain directly.'
+          : error?.name === 'InvalidStateError'
+            ? 'A fingerprint passkey is already registered. Retry the fingerprint check.'
+            : error?.message || 'Fingerprint verification failed. Check browser biometric support and retry.';
+      setCameraError(message);
     }
   };
 
