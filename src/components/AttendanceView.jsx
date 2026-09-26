@@ -43,6 +43,7 @@ export default function AttendanceView({
   const [barangayLgu, setBarangayLgu] = useState('Tanza');
   const [assignedTask, setAssignedTask] = useState('Barangay Monitoring and LGU Coordination');
   const [assignmentMode, setAssignmentMode] = useState('field');
+  const [selectedAssignmentSiteId, setSelectedAssignmentSiteId] = useState('field:Boac:Tanza');
   
   // Custom personnel fillable states
   const [fillName, setFillName] = useState(user?.name || 'Shen Mandia');
@@ -498,6 +499,32 @@ export default function AttendanceView({
 
   // Municipalities list of Marinduque
   const municipalities = ['Boac', 'Mogpog', 'Gasan', 'Buenavista', 'Torrijos', 'Santa Cruz'];
+  const assignmentSiteOptions = [
+    { id: 'field:Boac:Tanza', mode: 'field', municipality: 'Boac', site: 'Tanza', label: 'Tanza Barangay, Boac' },
+    ...municipalities.map(municipality => ({
+      id: `field:${municipality}`,
+      mode: 'field',
+      municipality,
+      site: municipality,
+      label: `${municipality} field assignment`
+    })),
+    ...municipalities.map(municipality => ({
+      id: `office:${municipality}`,
+      mode: 'office',
+      municipality,
+      site: fillOffice || `${municipality} Municipal Office`,
+      label: `${fillOffice || `${municipality} Municipal Office`} - ${municipality}`
+    })),
+    ...municipalities.map(municipality => ({
+      id: `wfh:${municipality}`,
+      mode: 'wfh',
+      municipality,
+      site: 'Work From Home',
+      label: `Work From Home - ${municipality}`
+    }))
+  ];
+  const selectedAssignmentSite = assignmentSiteOptions.find(site => site.id === selectedAssignmentSiteId)
+    || assignmentSiteOptions[0];
 
   const resolveAssignedCoordinates = () => {
     const targetName = barangayLgu.trim().toLowerCase();
@@ -671,10 +698,10 @@ export default function AttendanceView({
   const isOfficeMode = assignmentMode === 'office';
   const isWfhMode = assignmentMode === 'wfh';
   const requiresGps = true;
-  const effectiveMuni = isOfficeMode ? (fillOffice || 'Office Station') : selectedMuni;
-  const effectiveBarangay = isOfficeMode ? `${fillOffice || 'Office Station'} - Office Only` : isWfhMode ? 'Work From Home' : barangayLgu;
+  const effectiveMuni = selectedMuni;
+  const effectiveBarangay = isOfficeMode ? `${fillOffice || selectedAssignmentSite.site} - Office Only` : isWfhMode ? 'Work From Home' : barangayLgu;
   const effectiveTask = isOfficeMode ? 'Office-based administrative work' : isWfhMode ? 'Work From Home' : assignedTask;
-  const effectiveLocation = isOfficeMode ? effectiveMuni : isWfhMode ? `WFH, ${effectiveMuni}` : `${effectiveBarangay}, ${effectiveMuni}`;
+  const effectiveLocation = isOfficeMode ? `${fillOffice || selectedAssignmentSite.site}, ${effectiveMuni}` : isWfhMode ? `WFH, ${effectiveMuni}` : `${effectiveBarangay}, ${effectiveMuni}`;
 
   const assignedCoords = resolveAssignedCoordinates();
   const distanceToAssignment = assignedCoords
@@ -1130,53 +1157,43 @@ export default function AttendanceView({
               II. Mission & Assignment Specifications
             </span>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 auto-rows-max">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Assignment Role</label>
-                <select
-                  id="select-assignment-mode"
-                  value={assignmentMode}
-                  onChange={(e) => setAssignmentMode(e.target.value)}
-                  disabled={isCurrentlyActive}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="field">Field</option>
-                  <option value="office">Office</option>
-                  <option value="wfh">WFH</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Assigned Location</label>
-                <select
-                  id="select-muni"
-                  value={isOfficeMode ? (fillOffice || 'Office Station') : selectedMuni}
-                  onChange={(e) => setSelectedMuni(e.target.value)}
-                  disabled={isCurrentlyActive || isOfficeMode}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  {isOfficeMode ? (
-                    <option value={fillOffice || 'Office Station'}>{fillOffice || 'Office Station'}</option>
-                  ) : municipalities.map(m => (
-                    <option key={m} value={m} className="bg-white text-slate-800 font-semibold">{m}, Marinduque</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Barangay Unit Target */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Target Barangay / Office</label>
-                <input
-                  id="input-barangay"
-                  type="text"
-                  value={effectiveBarangay}
-                  onChange={(e) => setBarangayLgu(e.target.value)}
-                  disabled={isCurrentlyActive || isOfficeMode}
-                  placeholder={isOfficeMode ? 'Office Only' : 'e.g. Barangay Hall Session Room'}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all disabled:bg-slate-100 disabled:text-slate-400"
-                />
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">Assigned Location / Barangay / Office</label>
+                <select
+                  id="select-assigned-site"
+                  value={selectedAssignmentSiteId}
+                  disabled={isCurrentlyActive}
+                  onChange={(event) => {
+                    const site = assignmentSiteOptions.find(option => option.id === event.target.value);
+                    if (!site) return;
+                    setSelectedAssignmentSiteId(site.id);
+                    setAssignmentMode(site.mode);
+                    setSelectedMuni(site.municipality);
+                    setBarangayLgu(site.site);
+                    setGpsChecked(false);
+                    setHasGpsPosition(false);
+                    setGpsVerdict('Out of Range');
+                    setGeofenceStatus({ inRange: false, canAutoClockIn: false, eventType: null, message: '' });
+                  }}
+                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <optgroup label="Field / Barangay">
+                    {assignmentSiteOptions.filter(site => site.mode === 'field').map(site => (
+                      <option key={site.id} value={site.id}>{site.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Office">
+                    {assignmentSiteOptions.filter(site => site.mode === 'office').map(site => (
+                      <option key={site.id} value={site.id}>{site.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Work From Home">
+                    {assignmentSiteOptions.filter(site => site.mode === 'wfh').map(site => (
+                      <option key={site.id} value={site.id}>{site.label}</option>
+                    ))}
+                  </optgroup>
+                </select>
               </div>
 
               {/* Assigned Duty Description */}
