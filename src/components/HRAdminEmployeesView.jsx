@@ -2,6 +2,7 @@
 import {
   ArrowLeft,
   Building2,
+  Camera,
   CalendarDays,
   CheckCircle2,
   FileText,
@@ -80,6 +81,31 @@ const normalizeEmployee = (employee = {}) => {
   };
 };
 
+const resizeFaceImage = (file) => new Promise((resolve, reject) => {
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  image.onload = () => {
+    URL.revokeObjectURL(objectUrl);
+    try {
+      const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Unable to process this image.');
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+    } catch (error) {
+      reject(error);
+    }
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    reject(new Error('Unable to read this image. Choose another photo.'));
+  };
+  image.src = objectUrl;
+});
+
 const statusStyle = (status = '') => {
   if (/active/i.test(status)) return 'bg-emerald-50 text-emerald-700';
   if (/pending/i.test(status)) return 'bg-amber-50 text-amber-700';
@@ -95,6 +121,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [toast, setToast] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyForm);
+  const [facePhotoPreparing, setFacePhotoPreparing] = useState(false);
 
   const totalCount = employees.length;
   const activeCount = employees.filter((emp) => /active|present/i.test(emp.employmentStatus || emp.status || '')).length;
@@ -128,6 +155,36 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       notify('Employee face enrolled successfully.');
     } catch (error) {
       notify(error.message || 'Face enrollment failed.');
+    }
+  };
+
+  const handleFacePhotoUpload = async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || !selectedEmployee) return;
+    if (!file.type.startsWith('image/')) {
+      notify('Choose an image file for the face selfie.');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      notify('Choose an image smaller than 20 MB.');
+      return;
+    }
+
+    setFacePhotoPreparing(true);
+    try {
+      const profilePicture = await resizeFaceImage(file);
+      const selectedKey = selectedEmployee.id || selectedEmployee._id || selectedEmployee.employeeId || selectedEmployee.email;
+      onEmployeesChange?.((previous) => previous.map((employee) => {
+        const employeeKey = employee.id || employee._id || employee.employeeId || employee.email;
+        return employeeKey === selectedKey ? { ...employee, profilePicture } : employee;
+      }));
+      notify('Selfie ready. Select Enroll Face to register it.');
+    } catch (error) {
+      notify(error.message || 'Unable to prepare this selfie.');
+    } finally {
+      setFacePhotoPreparing(false);
     }
   };
 
@@ -402,7 +459,30 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             </button>
             <button type="button" onClick={() => handleAccountStatus('Active')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Activate</button>
             <button type="button" onClick={() => handleAccountStatus('Inactive')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Deactivate</button>
-            <button type="button" onClick={handleFaceEnrollment} className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700">Enroll Face</button>
+            <label htmlFor="employee-face-selfie" className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black ${facePhotoPreparing ? 'border-slate-200 bg-slate-100 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
+              <Camera className="h-4 w-4" />
+              {facePhotoPreparing ? 'Preparing photo...' : selectedEmployee.profilePicture?.startsWith('data:image/') ? 'Change Face Selfie' : 'Upload Face Selfie'}
+            </label>
+            <input
+              id="employee-face-selfie"
+              type="file"
+              accept="image/*"
+              capture="user"
+              className="sr-only"
+              disabled={facePhotoPreparing}
+              onChange={handleFacePhotoUpload}
+            />
+            <button
+              type="button"
+              onClick={handleFaceEnrollment}
+              disabled={facePhotoPreparing || !selectedEmployee.profilePicture?.startsWith('data:image/')}
+              className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Enroll Face
+            </button>
+            <span className="self-center text-[10px] font-semibold text-slate-500">
+              {selectedEmployee.profilePicture?.startsWith('data:image/') ? 'Selfie ready for enrollment' : 'Upload a selfie first'}
+            </span>
           </div>
         </section>
 
