@@ -1,0 +1,13 @@
+{
+  "name": "dilg-workmate-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "cd .. && npx vite --host --config vite.config.ts --port 5173",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "ngrok": "^5.0.0-beta.2",
+    "vite": "^6.2.3"
+  }
+}

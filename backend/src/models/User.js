@@ -1,0 +1,282 @@
+import mongoose from 'mongoose';
+import crypto from 'crypto';
+import { isConnected } from '../config/db.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { hashPassword, isPasswordHash, verifyPassword as checkPassword } from '../utils/passwordSecurity.js';
+
+const UserSchema = new mongoose.Schema({
+  name: { type: String, default: 'Lara Montiano' },
+  email: { type: String, default: 'laramontiano@dilg.gov.ph' },
+  password: { type: String, default: '' },
+  role: { type: String, default: 'Local Government Operations Officer II' },
+  office: { type: String, default: 'Marinduque Provincial Office' },
+  region: { type: String, default: 'DILG Region IV-B - MIMAROPA' },
+  phoneNumber: { type: String, default: '0939 374 9823' },
+  employeeId: { type: String, default: 'DILG-2026-7689' },
+  accessLevel: { type: String, default: 'employee' },
+  accountStatus: { type: String, default: 'Active' },
+  googleId: { type: String, default: '' },
+  profilePicture: { type: String, default: '' },
+  fingerprintHash: { type: String, default: '' },
+  faceProvider: { type: String, default: '' },
+  faceId: { type: String, default: '' },
+  faceEnrolledAt: { type: Date, default: null },
+  webauthnCredentialId: { type: String, default: '' },
+  webauthnPublicKey: { type: String, default: '' },
+  webauthnCounter: { type: Number, default: 0 },
+  webauthnChallenge: { type: String, default: '' },
+  webauthnChallengeExpiry: { type: Date, default: null },
+  resetToken: { type: String, default: '' },
+  resetTokenExpiry: { type: Date, default: null }
+}, { timestamps: true });
+
+UserSchema.pre('save', async function () {
+  if (!this.isModified('password') || !this.password || isPasswordHash(this.password)) return;
+  this.password = await hashPassword(this.password);
+});
+
+const MongoUser = mongoose.models.User || mongoose.model('User', UserSchema);
+
+function ensureConnected() {
+  if (!isConnected()) {
+    throw new Error('MongoDB is not connected.');
+  }
+}
+
+export const User = {
+  get: async (profileData = {}) => {
+    ensureConnected();
+
+    const lookup = profileData.email
+      ? { email: profileData.email.toString().trim().toLowerCase() }
+      : profileData.employeeId
+        ? { employeeId: profileData.employeeId.toString().trim() }
+        : {};
+    let user = await MongoUser.findOne(lookup);
+    if (!user && Object.keys(lookup).length > 0) {
+      user = await MongoUser.findOne();
+    }
+    if (!user) {
+      user = await MongoUser.create({
+        name: 'Lara Montiano',
+        email: 'laramontiano@dilg.gov.ph',
+        role: 'Local Government Operations Officer II',
+        office: 'Marinduque Provincial Office',
+        region: 'DILG Region IV-B - MIMAROPA',
+        phoneNumber: '0939 374 9823',
+        employeeId: 'DILG-2026-7689'
+      });
+    }
+    return user.toObject();
+  },
+
+  create: async (profileData) => {
+    ensureConnected();
+    const normalized = {
+      ...profileData,
+      email: profileData.email?.toLowerCase?.() || profileData.email,
+    };
+    const user = await MongoUser.create(normalized);
+    return user.toObject();
+  },
+
+  findByEmail: async (email) => {
+    ensureConnected();
+    if (!email) return null;
+    const normalized = email.toLowerCase().trim();
+    return MongoUser.findOne({ email: { $regex: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+  },
+
+  findByAccessLevel: async (accessLevel) => {
+    ensureConnected();
+    const query = accessLevel === 'employee'
+      ? { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      : { accessLevel };
+    return MongoUser.find(query).sort({ name: 1 });
+  },
+
+  findByEmployeeId: async (employeeId) => {
+    ensureConnected();
+    if (!employeeId) return null;
+    return MongoUser.findOne({ employeeId: employeeId.toString().trim() });
+  },
+
+  saveFaceEnrollment: async (employeeId, enrollment) => {
+    ensureConnected();
+    const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
+    if (!user) return null;
+    user.faceProvider = enrollment.provider || 'aws-rekognition';
+    user.faceId = enrollment.faceId || '';
+    user.faceEnrolledAt = new Date();
+    await user.save();
+    return user.toObject();
+  },
+
+  saveWebAuthnChallenge: async (employeeId, challenge, expiry) => {
+    ensureConnected();
+    const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
+    if (!user) return null;
+    user.webauthnChallenge = challenge;
+    user.webauthnChallengeExpiry = expiry;
+    await user.save();
+    return user;
+  },
+
+  saveWebAuthnCredential: async (employeeId, credential) => {
+    ensureConnected();
+    const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
+    if (!user) return null;
+    user.webauthnCredentialId = credential.id;
+    user.webauthnPublicKey = credential.publicKey;
+    user.webauthnCounter = credential.counter;
+    user.webauthnChallenge = '';
+    user.webauthnChallengeExpiry = null;
+    await user.save();
+    return user;
+  },
+
+  updateWebAuthnCounter: async (employeeId, counter) => {
+    ensureConnected();
+    return MongoUser.findOneAndUpdate(
+      { employeeId: employeeId?.toString().trim() },
+      { webauthnCounter: counter },
+      { new: true }
+    );
+  },
+
+  findByPhoneNumber: async (phoneNumber) => {
+    ensureConnected();
+    const normalized = phoneNumber?.toString().replace(/[\s()-]/g, '').replace(/^\+63/, '0');
+    if (!normalized) return null;
+    const users = await MongoUser.find({ phoneNumber: { $exists: true, $ne: '' } });
+    return users.find(user => user.phoneNumber.toString().replace(/[\s()-]/g, '').replace(/^\+63/, '0') === normalized) || null;
+  },
+
+  verifyPassword: async (user, password) => {
+    if (!user || !(await checkPassword(password, user.password || ''))) return false;
+    if (!isPasswordHash(user.password)) {
+      user.password = await hashPassword(password);
+      await user.save();
+    }
+    return true;
+  },
+
+  hashLegacyPasswords: async () => {
+    ensureConnected();
+    const users = await MongoUser.find({ password: { $exists: true, $type: 'string', $ne: '' } });
+    let migratedCount = 0;
+    for (const user of users) {
+      if (isPasswordHash(user.password)) continue;
+      user.password = await hashPassword(user.password);
+      await user.save();
+      migratedCount += 1;
+    }
+    return migratedCount;
+  },
+
+  updateAccountStatus: async (identifier, accountStatus) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const user = await MongoUser.findOne({ $or: [{ email: value.toLowerCase() }, { employeeId: value }] });
+    if (!user) return null;
+    user.accountStatus = accountStatus;
+    await user.save();
+    return user.toObject();
+  },
+
+  setPasswordResetToken: async (email, token, expiry) => {
+    ensureConnected();
+    const normalized = email?.toLowerCase?.().trim();
+    if (!normalized) return null;
+    const user = await MongoUser.findOne({ email: { $regex: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+    if (!user) return null;
+    user.resetToken = token;
+    user.resetTokenExpiry = expiry;
+    await user.save();
+    return user.toObject();
+  },
+
+  resetPasswordByToken: async (token, password) => {
+    ensureConnected();
+    if (!token || !password) return null;
+    const user = await MongoUser.findOne({ resetToken: token, resetTokenExpiry: { $gt: new Date() } });
+    if (!user) return null;
+    user.password = password;
+    user.resetToken = '';
+    user.resetTokenExpiry = null;
+    await user.save();
+    return user.toObject();
+  },
+
+  update: async (profileData) => {
+    ensureConnected();
+
+    const lookup = profileData?.lookupEmail || profileData?.email
+      ? { email: (profileData.lookupEmail || profileData.email).toString().trim().toLowerCase() }
+      : profileData?.employeeId
+        ? { employeeId: profileData.employeeId.toString().trim() }
+        : {};
+
+    let user = Object.keys(lookup).length > 0
+      ? await MongoUser.findOne(lookup)
+      : await MongoUser.findOne();
+
+    if (!user) {
+      user = new MongoUser({
+        name: 'Juan Dela Cruz',
+        email: 'juan.delacruz@dilg.gov.ph',
+        role: 'Local Government Operations Officer II',
+        office: 'Marinduque Provincial Office',
+        region: 'DILG Region IV-B - MIMAROPA',
+        phoneNumber: '+63 917 123 4567',
+        employeeId: 'DILG-2024-8842'
+      });
+    }
+
+    Object.assign(user, profileData);
+    await user.save();
+    return user.toObject();
+  },
+
+  seedDefaultAccounts: async () => {
+    ensureConnected();
+
+    const defaultAccounts = [
+      {
+        name: 'German F. Yap, CESO V',
+        email: 'german.yap@dilg.gov.ph',
+        password: process.env.DEFAULT_SUPERVISOR_PASSWORD || '',
+        role: 'Provincial Director',
+        office: 'Marinduque Provincial Office',
+        region: 'DILG Region IV-B - MIMAROPA',
+        phoneNumber: '+63 918 842 1290',
+        employeeId: 'DILG-1998-0241',
+        accessLevel: 'supervisor'
+      },
+      {
+        name: 'Patricia Anne Ortiz',
+        email: 'patricia.ortiz@dilg.gov.ph',
+        password: process.env.DEFAULT_HR_ADMIN_PASSWORD || '',
+        role: 'HR Administrative Officer V',
+        office: 'Provincial Administrative Section',
+        region: 'DILG Region IV-B - MIMAROPA',
+        phoneNumber: '+63 920 334 5512',
+        employeeId: 'DILG-2015-4421',
+        accessLevel: 'hr_admin'
+      }
+    ];
+
+    const configuredAccounts = defaultAccounts.filter(account => account.password.length >= 12);
+    return Promise.all(configuredAccounts.map(async account => {
+      const existingUser = await MongoUser.findOne({ email: account.email });
+      if (!existingUser) return MongoUser.create(account);
+      if (existingUser.password && !isPasswordHash(existingUser.password)) {
+        existingUser.password = await hashPassword(existingUser.password);
+        await existingUser.save();
+      }
+      return existingUser;
+    }));
+  }
+};

@@ -1,0 +1,6 @@
+{
+  "name": "DILG WorkMate",
+  "description": "Interactive personnel management dashboard with Attendance tracking, Requests, Announcements, Calendar, Profile, and Settings.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
