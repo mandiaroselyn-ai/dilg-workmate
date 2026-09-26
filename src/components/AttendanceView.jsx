@@ -130,6 +130,7 @@ export default function AttendanceView({
   const streamRef = useRef(null);
   const selfieFileInputRef = useRef(null);
   const gpsRequestRef = useRef(null);
+  const gpsTimeoutRef = useRef(null);
 
   // Check if camera permission is active on mount / teardown
   useEffect(() => {
@@ -214,6 +215,8 @@ export default function AttendanceView({
       const result = event.detail || {};
       if (!gpsRequestRef.current || result.requestId !== gpsRequestRef.current) return;
       gpsRequestRef.current = null;
+      window.clearTimeout(gpsTimeoutRef.current);
+      gpsTimeoutRef.current = null;
       if (!result.success || !result.coords) {
         setGpsChecked(true);
         setLocationError(result.error || 'Location permission is required before continuing.');
@@ -502,9 +505,21 @@ export default function AttendanceView({
   };
 
   const updateGpsPosition = (latitude, longitude) => {
+    const parsedLatitude = Number(latitude);
+    const parsedLongitude = Number(longitude);
+    if (!Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)
+      || parsedLatitude < -90 || parsedLatitude > 90
+      || parsedLongitude < -180 || parsedLongitude > 180) {
+      setGpsChecked(true);
+      setLocationError('The device returned invalid GPS coordinates. Turn on Location Services and retry.');
+      setGpsLoading(false);
+      return;
+    }
+
     setGpsChecked(true);
-    const lat = Number(Number(latitude).toFixed(4));
-    const lon = Number(Number(longitude).toFixed(4));
+    setLocationError('');
+    const lat = Number(parsedLatitude.toFixed(4));
+    const lon = Number(parsedLongitude.toFixed(4));
     const assignedCoords = resolveAssignedCoordinates();
     setCoordinates({ lat, lon });
 
@@ -559,10 +574,18 @@ export default function AttendanceView({
       const requestId = `gps-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       gpsRequestRef.current = requestId;
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-location-auth', requestId }));
+      gpsTimeoutRef.current = window.setTimeout(() => {
+        if (gpsRequestRef.current !== requestId) return;
+        gpsRequestRef.current = null;
+        setGpsChecked(true);
+        setGpsLoading(false);
+        setLocationError('Location request timed out. Turn on phone Location Services, allow WorkMate location access, then retry.');
+      }, 20000);
       return;
     }
 
     if (!navigator.geolocation) {
+      setGpsChecked(true);
       setLocationError('Browser GPS is not available on this device.');
       return;
     }
@@ -574,12 +597,17 @@ export default function AttendanceView({
       (position) => {
         updateGpsPosition(position.coords.latitude, position.coords.longitude);
       },
-      () => {
+      (error) => {
         setGpsChecked(true);
-        setLocationError('GPS permission denied. Allow location access for WorkMate in your phone settings, then retry.');
+        const message = error.code === 1
+          ? 'Location permission denied. Allow location access for this site in your browser settings, then retry.'
+          : error.code === 2
+            ? 'Phone location is unavailable. Turn on Location Services and enable high-accuracy location, then retry.'
+            : 'GPS request timed out. Move near a window or outdoors, check Location Services, and retry.';
+        setLocationError(message);
         setGpsLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
     );
   };
 
@@ -1404,8 +1432,8 @@ export default function AttendanceView({
             {/* Validation helper label */}
             {!isCurrentlyActive && (
               <div className="text-[10px] font-bold text-slate-500 flex flex-wrap gap-2 items-center justify-end">
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${gpsVerdict === 'In Range' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
-                  {gpsVerdict === 'In Range' ? '✓' : '✗'} GPS Verified
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${gpsChecked ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
+                  {gpsChecked ? '✓ GPS Located' : '✗ GPS Not Checked'}
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${isWithinAssignment ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
                   {isWithinAssignment ? '✓' : '✗'} Assigned Location Match
@@ -1559,7 +1587,7 @@ export default function AttendanceView({
                 className="text-[11px] font-bold text-white bg-[#1e40af] hover:bg-blue-800 disabled:bg-slate-150 disabled:text-slate-400 py-2 px-3 rounded-md flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed transition-all"
               >
                 <RotateCw className={`w-3 h-3 ${gpsLoading ? 'animate-spin' : ''}`} />
-                <span>{gpsLoading ? 'Verifying...' : 'Verify GPS'}</span>
+                <span>{gpsLoading ? 'Locating...' : gpsChecked ? 'Refresh GPS' : 'Verify GPS'}</span>
               </button>
             </div>
           </div>

@@ -221,8 +221,12 @@ export const updateLocationTracking = async (req, res) => {
     const { latitude, longitude, accuracy } = req.body;
     const employeeId = req.user?.accessLevel === 'employee' ? req.user.employeeId : req.body.employeeId;
 
-    if (!latitude || !longitude || !employeeId) {
+    if (latitude === undefined || latitude === null || longitude === undefined || longitude === null || !employeeId) {
       return res.status(400).json({ success: false, error: 'Missing required fields: latitude, longitude, employeeId' });
+    }
+
+    if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
+      return res.status(400).json({ success: false, error: 'Latitude and longitude must be valid numbers.' });
     }
 
     const activeLog = await DtrLog.find().then(logs =>
