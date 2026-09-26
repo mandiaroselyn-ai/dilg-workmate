@@ -425,7 +425,8 @@ export default function App() {
     faceVerificationProvider = '',
     faceVerifiedAt = null,
     faceVerificationProof = '',
-    assignmentSite = null
+    assignmentSite = null,
+    gpsAccuracy = null
   ) => {
     const today = new Date().toISOString().split('T')[0];
     const timeString = new Date().toLocaleTimeString('en-US', {
@@ -442,6 +443,7 @@ export default function App() {
       gpsStatus,
       latitude: lat,
       longitude: lon,
+      gpsAccuracy: Number(gpsAccuracy),
       assignedLatitude: assignedLatitude || null,
       assignedLongitude: assignedLongitude || null,
       distanceToAssignmentMeters: distanceToAssignment,

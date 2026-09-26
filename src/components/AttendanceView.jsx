@@ -90,6 +90,7 @@ export default function AttendanceView({
   const [hasGpsPosition, setHasGpsPosition] = useState(false);
   const [gpsVerdict, setGpsVerdict] = useState('Out of Range');
   const [coordinates, setCoordinates] = useState({ lat: 13.4474, lon: 121.8344 });
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
   const [siteLocation, setSiteLocation] = useState(null);
   const [siteLocationLoading, setSiteLocationLoading] = useState(false);
   const [siteLocationError, setSiteLocationError] = useState('');
@@ -97,7 +98,6 @@ export default function AttendanceView({
   const [locationError, setLocationError] = useState('');
   const [showFullMap, setShowFullMap] = useState(false);
   const [showSatelliteView, setShowSatelliteView] = useState(false);
-  const [mapZoom, setMapZoom] = useState(1);
   const [geofenceStatus, setGeofenceStatus] = useState({
     inRange: false,
     canAutoClockIn: false,
@@ -271,7 +271,7 @@ export default function AttendanceView({
         setGpsLoading(false);
         return;
       }
-      gpsPositionHandlerRef.current?.(result.coords.latitude, result.coords.longitude);
+      gpsPositionHandlerRef.current?.(result.coords.latitude, result.coords.longitude, result.coords.accuracy);
     };
 
     window.addEventListener('dilg-location-result', handleMobileLocationResult);
@@ -543,7 +543,7 @@ export default function AttendanceView({
     setFingerprintProgress(0);
   };
 
-  const updateGpsPosition = (latitude, longitude) => {
+  const updateGpsPosition = (latitude, longitude, accuracy) => {
     const parsedLatitude = Number(latitude);
     const parsedLongitude = Number(longitude);
     if (!Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)
@@ -559,8 +559,10 @@ export default function AttendanceView({
     setGpsChecked(true);
     setHasGpsPosition(true);
     setLocationError('');
-    const lat = Number(parsedLatitude.toFixed(4));
-    const lon = Number(parsedLongitude.toFixed(4));
+    const lat = Number(parsedLatitude.toFixed(6));
+    const lon = Number(parsedLongitude.toFixed(6));
+    const parsedAccuracy = Number(accuracy);
+    setGpsAccuracy(Number.isFinite(parsedAccuracy) && parsedAccuracy >= 0 ? parsedAccuracy : null);
     setCoordinates({ lat, lon });
 
     const assignedLocation = siteLocationRef.current;
@@ -619,6 +621,7 @@ export default function AttendanceView({
   }, [siteLocation, hasGpsPosition, coordinates.lat, coordinates.lon]);
 
   const handleGetLiveGPS = () => {
+    setGpsAccuracy(null);
     if (hasNativeBridge) {
       setGpsLoading(true);
       setGpsChecked(false);
@@ -650,7 +653,7 @@ export default function AttendanceView({
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        updateGpsPosition(position.coords.latitude, position.coords.longitude);
+        updateGpsPosition(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
       },
       (error) => {
         setGpsChecked(true);
@@ -745,41 +748,14 @@ export default function AttendanceView({
     ? 'Barangay boundary + 150m GPS tolerance'
     : '150m from assigned address';
 
-  const getMapPosition = (lat, lon, centerLat, centerLon, spanLat, spanLon) => {
-    // Match OpenStreetMap's Web Mercator projection for the overlay markers.
-    const minLon = centerLon - spanLon / 2;
-    const percentLon = ((lon - minLon) / spanLon) * 100;
-    const projectLat = value => {
-      const safeLat = Math.max(-85.05112878, Math.min(85.05112878, value));
-      const radians = safeLat * Math.PI / 180;
-      return Math.log(Math.tan(Math.PI / 4 + radians / 2));
-    };
-    const minProjectedLat = projectLat(centerLat - spanLat / 2);
-    const maxProjectedLat = projectLat(centerLat + spanLat / 2);
-    const projectedLat = projectLat(lat);
-    const percentLat = ((maxProjectedLat - projectedLat) / (maxProjectedLat - minProjectedLat)) * 100;
-    
-    return {
-      left: percentLon,
-      top: percentLat
-    };
-  };
-
-  const mapSpanLat = Math.max(0.03, Math.abs((assignedCoords?.lat ?? coordinates.lat) - coordinates.lat) * 2 + 0.03);
-  const mapSpanLon = Math.max(0.03, Math.abs((assignedCoords?.lon ?? coordinates.lon) - coordinates.lon) * 2 + 0.03);
-  const visibleMapSpanLat = mapSpanLat / mapZoom;
-  const visibleMapSpanLon = mapSpanLon / mapZoom;
-  const mapCenterLat = (coordinates.lat + (assignedCoords?.lat ?? coordinates.lat)) / 2;
-  const mapCenterLon = (coordinates.lon + (assignedCoords?.lon ?? coordinates.lon)) / 2;
-
-  const currentMapPosition = getMapPosition(coordinates.lat, coordinates.lon, mapCenterLat, mapCenterLon, visibleMapSpanLat, visibleMapSpanLon);
-  const assignedMapPosition = getMapPosition(assignedCoords?.lat ?? 13.4474, assignedCoords?.lon ?? 121.8344, mapCenterLat, mapCenterLon, visibleMapSpanLat, visibleMapSpanLon);
-  
-  const offsetPositions = {
-    current: currentMapPosition,
-    assigned: assignedMapPosition
-  };
-  const mapEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${(mapCenterLon - visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat - visibleMapSpanLat / 2).toFixed(5)}%2C${(mapCenterLon + visibleMapSpanLon / 2).toFixed(5)}%2C${(mapCenterLat + visibleMapSpanLat / 2).toFixed(5)}&layer=mapnik${assignedCoords ? `&marker=${assignedCoords.lat}%2C${assignedCoords.lon}` : ''}`;
+  const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
+  const embedZoom = 17;
+  const mapEmbedUrl = hasGpsPosition && assignedCoords
+    ? `https://maps.google.com/maps?saddr=${coordinates.lat},${coordinates.lon}&daddr=${assignedCoords.lat},${assignedCoords.lon}&z=${embedZoom}&output=embed`
+    : `https://maps.google.com/maps?q=${mapFocus.lat},${mapFocus.lon}&z=${embedZoom}&output=embed`;
+  const googleMapsUrl = hasGpsPosition && assignedCoords
+    ? `https://www.google.com/maps/dir/?api=1&origin=${coordinates.lat},${coordinates.lon}&destination=${assignedCoords.lat},${assignedCoords.lon}`
+    : `https://www.google.com/maps/search/?api=1&query=${mapFocus.lat},${mapFocus.lon}`;
 
   const autoClockInRef = useRef(false);
   const autoClockOutRef = useRef(false);
@@ -797,14 +773,22 @@ export default function AttendanceView({
         setGpsChecked(true);
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
+        const accuracy = Number(position.coords.accuracy);
         const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
         const verdict = isWithinAssignedLocation(lat, lon, siteLocation, GEO_THRESHOLD_METERS) ? 'In Range' : 'Out of Range';
 
         setCoordinates({ lat, lon });
+        setGpsAccuracy(Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : null);
         setMockProximity(distance);
         setGpsVerdict(verdict);
         syncGeofenceStatus(lat, lon, siteLocation);
         setGpsLoading(false);
+
+        if (!Number.isFinite(accuracy) || accuracy > 50) {
+          setLocationError(`GPS accuracy is ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'}. Move outdoors or near a window and retry until accuracy is 50m or better.`);
+          autoClockInRef.current = false;
+          return;
+        }
 
         if (verdict !== 'In Range') {
           setLocationError(`Time In blocked: your GPS location is outside ${siteLocation.label}. Move to the assigned address and verify GPS again.`);
@@ -842,7 +826,8 @@ export default function AttendanceView({
           faceVerification.provider,
           faceVerification.verifiedAt,
           faceVerification.verificationProof,
-          assignmentSite
+          assignmentSite,
+          accuracy
         );
         setCapturedSelfie(null);
         setFingerprintVerified(false);
@@ -871,14 +856,21 @@ export default function AttendanceView({
       position => {
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
+        const accuracy = Number(position.coords.accuracy);
         const distance = computeDistanceMeters(lat, lon, assignedCoords.lat, assignedCoords.lon);
         const verdict = isWithinAssignedLocation(lat, lon, siteLocation, GEO_THRESHOLD_METERS) ? 'In Range' : 'Out of Range';
 
         setCoordinates({ lat, lon });
+        setGpsAccuracy(Number.isFinite(accuracy) && accuracy >= 0 ? accuracy : null);
         setMockProximity(distance);
         setGpsVerdict(verdict);
         setGpsLoading(false);
         syncGeofenceStatus(lat, lon, siteLocation);
+
+        if (!Number.isFinite(accuracy) || accuracy > 50) {
+          setLocationError(`GPS accuracy is ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'}. Improve the GPS fix before Time Out.`);
+          return;
+        }
 
         if (verdict !== 'In Range') {
           setLocationError(`Time Out blocked: your GPS location is outside ${siteLocation.label}.`);
@@ -1598,59 +1590,14 @@ export default function AttendanceView({
               <iframe
                 title="Employee current GPS map"
                 src={mapEmbedUrl}
-                className="pointer-events-none h-full w-full border-0"
+                className="h-full w-full border-0"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
               />
-              <div className="absolute right-2 top-2 z-30 flex flex-col overflow-hidden rounded-md border border-slate-300 bg-white shadow-md">
-                <button
-                  type="button"
-                  onClick={() => setMapZoom(value => Math.min(value * 2, 16))}
-                  className="flex h-8 w-8 items-center justify-center border-b border-slate-200 text-lg font-bold leading-none text-slate-700 active:bg-blue-100"
-                  aria-label="Zoom in map"
-                  title="Zoom in"
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMapZoom(value => Math.max(value / 2, 0.5))}
-                  className="flex h-8 w-8 items-center justify-center text-lg font-bold leading-none text-slate-700 active:bg-blue-100"
-                  aria-label="Zoom out map"
-                  title="Zoom out"
-                >
-                  -
-                </button>
-              </div>
-              {assignedCoords && (
-                <div
-                  className="pointer-events-none absolute z-10"
-                  style={{
-                    left: `${offsetPositions.assigned.left}%`,
-                    top: `${offsetPositions.assigned.top}%`,
-                    transform: 'translate(-50%, -50%)'
-                  }}
-                >
-                  <span className="block h-4 w-4 rounded-full border-2 border-white bg-rose-600 shadow-lg" />
-                </div>
-              )}
-              {hasGpsPosition && (
-                <div
-                  className="pointer-events-none absolute z-20"
-                  style={{
-                    left: `${offsetPositions.current.left}%`,
-                    top: `${offsetPositions.current.top}%`,
-                    transform: 'translate(-50%, -50%)'
-                  }}
-                >
-                  <span className="block h-5 w-5 rounded-full border-2 border-white bg-blue-700 shadow-lg animate-pulse" />
-                </div>
-              )}
-              <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[10px] font-bold text-slate-700 shadow-md">
-                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-rose-600" />Assigned Site</span>
-                <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-blue-700" />Current Location</span>
-                <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="text-slate-500 underline">© OpenStreetMap</a>
-              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-semibold text-slate-600">
+              <span>{hasGpsPosition ? `Google Maps route: current GPS to ${effectiveLocation}` : `Google Maps target: ${effectiveLocation}`}</span>
+              <a href={googleMapsUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-blue-700 underline">Open in Google Maps</a>
             </div>
 
             {locationError && (
@@ -1679,6 +1626,12 @@ export default function AttendanceView({
               <div className="flex justify-between">
                 <span>Your Current Position:</span>
                 <span className="text-slate-800 font-bold">{hasGpsPosition ? `${coordinates.lat}° / ${coordinates.lon}°` : 'Waiting for GPS fix'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>GPS Accuracy:</span>
+                <span className={`font-bold ${gpsAccuracy !== null && gpsAccuracy <= 50 ? 'text-emerald-700' : hasGpsPosition ? 'text-rose-700' : 'text-slate-500'}`}>
+                  {hasGpsPosition ? gpsAccuracy === null ? 'Unavailable' : `±${Math.round(gpsAccuracy)} m${gpsAccuracy <= 50 ? ' (good)' : ' (weak)'}` : 'Waiting for GPS'}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Distance from Site:</span>
@@ -1757,36 +1710,6 @@ export default function AttendanceView({
                 referrerPolicy="no-referrer-when-downgrade"
               />
               
-              {/* Assigned Site - Red Dot */}
-              <div
-                className="pointer-events-none absolute z-10"
-                style={{
-                  left: `${offsetPositions.assigned.left}%`,
-                  top: `${offsetPositions.assigned.top}%`,
-                  transform: 'translate(-50%, -50%)'
-                }}
-              >
-                <div className="relative flex items-center justify-center">
-                  <div className="absolute w-6 h-6 rounded-full" style={{ backgroundColor: '#dc2626', opacity: 0.15 }}></div>
-                  <div className="w-4 h-4 rounded-full border-2 border-white shadow-lg" style={{ backgroundColor: '#dc2626' }} />
-                </div>
-              </div>
-
-              {/* Current Location - Blue Dot */}
-              <div
-                className="pointer-events-none absolute z-20"
-                style={{
-                  left: `${offsetPositions.current.left}%`,
-                  top: `${offsetPositions.current.top}%`,
-                  transform: 'translate(-50%, -50%)'
-                }}
-              >
-                <div className="relative flex items-center justify-center">
-                  <div className="absolute w-6 h-6 rounded-full" style={{ backgroundColor: '#1e40af', opacity: 0.15 }}></div>
-                  <div className="w-4 h-4 rounded-full border-2 border-white shadow-lg animate-pulse" style={{ backgroundColor: '#1e40af' }} />
-                </div>
-              </div>
-              
               {/* Geofence Status Overlay */}
               <div className="pointer-events-none absolute bottom-4 left-4 right-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/97 border border-slate-300 rounded-lg px-4 py-3 shadow-lg backdrop-blur-sm">
                 <div className="flex items-center gap-3">
@@ -1834,7 +1757,7 @@ export default function AttendanceView({
               <div className="h-96 w-full bg-slate-100">
                 <iframe
                   title="Satellite view"
-                  src={`https://www.openstreetmap.org/export/embed.html?bbox=${(coordinates.lon - 0.005).toFixed(5)}%2C${(coordinates.lat - 0.005).toFixed(5)}%2C${(coordinates.lon + 0.005).toFixed(5)}%2C${(coordinates.lat + 0.005).toFixed(5)}&layer=mapnik&marker=${coordinates.lat}%2C${coordinates.lon}`}
+                    src={`https://maps.google.com/maps?q=${coordinates.lat},${coordinates.lon}&t=k&z=18&output=embed`}
                   className="h-full w-full border-0"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
@@ -1873,7 +1796,7 @@ export default function AttendanceView({
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                   <p className="text-xs font-semibold text-slate-600 uppercase">Google Maps Link</p>
                   <a
-                    href={`https://www.google.com/maps/@${coordinates.lat},${coordinates.lon},16z`}
+                    href={googleMapsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm font-bold text-blue-600 hover:text-blue-800 mt-2 inline-block hover:underline"

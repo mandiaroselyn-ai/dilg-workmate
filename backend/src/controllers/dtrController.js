@@ -106,6 +106,11 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'GPS must be in-range before clock-in.' });
       }
 
+      const gpsAccuracy = Number(record.gpsAccuracy);
+      if (!Number.isFinite(gpsAccuracy) || gpsAccuracy < 0 || gpsAccuracy > 50) {
+        return res.status(400).json({ success: false, error: 'GPS accuracy must be 50 meters or better. Move outdoors or near a window and retry.' });
+      }
+
       const user = await User.findByEmployeeId(record.employeeId);
       if (!user) {
         return res.status(400).json({ success: false, error: 'Employee record not found for fingerprint verification.' });
