@@ -66,6 +66,10 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
   const handleGoogleLogin = () => {
     setGoogleError('');
+    if (mobileOnly && window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-google-auth' }));
+      return;
+    }
     const width = 500;
     const height = 650;
     const left = window.screenX + (window.innerWidth - width) / 2;

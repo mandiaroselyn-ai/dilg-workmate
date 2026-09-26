@@ -6,11 +6,15 @@ import * as Camera from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
+import * as WebBrowser from 'expo-web-browser';
 import { WebView } from 'react-native-webview';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const configuredWebAppUrl = process.env.EXPO_PUBLIC_WEB_URL || (
 	Platform.OS === 'android' ? 'http://10.0.2.2:5173' : 'http://localhost:5173'
 );
+const MOBILE_REDIRECT_URI = 'com.dilg.workmate.employee://oauth';
 const WEB_APP_URL = `${configuredWebAppUrl}${configuredWebAppUrl.includes('?') ? '&' : '?'}platform=mobile&role=employee`;
 
 export default function App() {
@@ -63,6 +67,29 @@ export default function App() {
 			webViewRef.current?.injectJavaScript(
 				`window.dispatchEvent(new CustomEvent('dilg-camera-result',{detail:${JSON.stringify(payload)}})); true;`
 			);
+			return;
+		}
+		if (message?.type === 'dilg-google-auth') {
+			try {
+				const authUrl = `${configuredWebAppUrl}/api/auth/google/url?mobile=1`;
+				const result = await WebBrowser.openAuthSessionAsync(authUrl, MOBILE_REDIRECT_URI);
+				if (result.type === 'success' && result.url) {
+					const callbackUrl = new URL(result.url);
+					const user = callbackUrl.searchParams.get('user');
+					const token = callbackUrl.searchParams.get('token');
+					const error = callbackUrl.searchParams.get('error');
+					const payload = error
+						? { type: 'google-login-failure', error: decodeURIComponent(error) }
+						: { type: 'google-login-success', user: user ? JSON.parse(user) : null, token };
+					webViewRef.current?.injectJavaScript(
+						`window.postMessage(${JSON.stringify(payload)}, '*'); true;`
+					);
+				}
+			} catch (error) {
+				webViewRef.current?.injectJavaScript(
+					`window.postMessage(${JSON.stringify({ type: 'google-login-failure', error: error.message })}, '*'); true;`
+				);
+			}
 			return;
 		}
 		if (message?.type === 'dilg-location-auth') {

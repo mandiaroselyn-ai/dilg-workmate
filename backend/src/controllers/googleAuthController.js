@@ -126,7 +126,7 @@ export const googleAuthCallback = async (req, res) => {
     }
 
     if (isMobileState(state)) {
-      const mobileRedirect = process.env.MOBILE_AUTH_REDIRECT_URI || 'dilgworkmate://oauth';
+      const mobileRedirect = process.env.MOBILE_AUTH_REDIRECT_URI || 'com.dilg.workmate.employee://oauth';
       const redirect = new URL(mobileRedirect);
       redirect.searchParams.set('user', JSON.stringify(toSafeUser(user)));
       redirect.searchParams.set('token', createAuthToken(user));
@@ -149,7 +149,7 @@ export const googleAuthCallback = async (req, res) => {
   } catch (error) {
     console.error('Google auth callback error', error);
     if (mobile) {
-      const mobileRedirect = process.env.MOBILE_AUTH_REDIRECT_URI || 'dilgworkmate://oauth';
+      const mobileRedirect = process.env.MOBILE_AUTH_REDIRECT_URI || 'com.dilg.workmate.employee://oauth';
       const redirect = new URL(mobileRedirect);
       redirect.searchParams.set('error', error.message || 'Google sign-in failed.');
       return res.redirect(redirect.toString());
