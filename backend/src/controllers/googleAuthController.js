@@ -11,6 +11,19 @@ const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI;
 
+const getRequestOrigin = req => {
+  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host;
+  const forwardedProto = req.headers['x-forwarded-proto'] || (process.env.NODE_ENV === 'production' ? 'https' : 'http');
+  return forwardedHost ? `${forwardedProto}://${forwardedHost}` : null;
+};
+
+const getRedirectUri = (req, mobile) => {
+  const configured = mobile ? process.env.GOOGLE_MOBILE_REDIRECT_URI : process.env.GOOGLE_REDIRECT_URI;
+  if (configured && !configured.includes('localhost')) return configured;
+  const origin = getRequestOrigin(req);
+  return origin ? `${origin}/api/auth/google/callback` : configured || REDIRECT_URI;
+};
+
 function getStateSecret() {
   if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET must be configured for Google OAuth.');
   return process.env.JWT_SECRET;
@@ -40,7 +53,7 @@ function isValidState(state) {
 
 export const googleAuthUrl = (req, res) => {
   const mobile = req.query.mobile === '1';
-  const redirectUri = mobile ? (process.env.GOOGLE_MOBILE_REDIRECT_URI || REDIRECT_URI) : REDIRECT_URI;
+  const redirectUri = getRedirectUri(req, mobile);
   if (!CLIENT_ID || !redirectUri) {
     return res.status(500).json({ success: false, error: 'Google OAuth is not configured.' });
   }
@@ -61,7 +74,7 @@ export const googleAuthCallback = async (req, res) => {
   const code = req.query.code;
   const state = req.query.state;
   const mobile = isMobileState(state);
-  const redirectUri = mobile ? (process.env.GOOGLE_MOBILE_REDIRECT_URI || REDIRECT_URI) : REDIRECT_URI;
+  const redirectUri = getRedirectUri(req, mobile);
 
   if (!code || !isValidState(state)) {
     return res.status(400).send('Missing Google authorization code.');

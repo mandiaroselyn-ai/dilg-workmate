@@ -24,8 +24,8 @@ export async function connectDB() {
 
   console.log('Connecting to MongoDB...');
   await mongoose.connect(mongoURI, {
-    serverSelectionTimeoutMS: 30000,
-    connectTimeoutMS: 30000,
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
     socketTimeoutMS: 45000,
     heartbeatFrequencyMS: 10000,
     family: 4

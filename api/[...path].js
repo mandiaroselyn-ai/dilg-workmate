@@ -21,6 +21,6 @@ export default async function handler(req, res) {
   } catch (error) {
     initializationPromise = undefined;
     console.error('Vercel API initialization failed:', error);
-    return res.status(500).json({ success: false, error: 'API initialization failed.' });
+    return res.status(503).json({ success: false, error: 'API initialization failed. Check MongoDB Atlas network access and MONGODB_URI.' });
   }
 }
