@@ -302,7 +302,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                 <div className="grid grid-cols-2 gap-3"><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Account Role<input readOnly value="Employee" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Region<input readOnly value={regRegion} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label></div>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Enter your email<input type="email" required value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Enter your email" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="text" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<input type={showRegPassword ? 'text' : 'password'} required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" />{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" />{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>
               </div>
               {errorText && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">{errorText}</div>}
               <button type="submit" disabled={submitting} className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-xs font-extrabold text-white shadow-lg disabled:opacity-60">{submitting ? 'Registering...' : 'Sign Up'}</button>
@@ -314,8 +314,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                 <h2 className="flex items-center gap-2 whitespace-nowrap text-lg font-black text-slate-900"><Lock className="h-5 w-5 shrink-0 text-indigo-600" /> Official DILG Employee Log In</h2>
                 <p className="mt-1 text-xs text-slate-500">Log in using your official DILG Government Email credentials.</p>
               </div>
-              <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">DILG Email Address</span><span className="relative block"><User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="email" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></span></label>
-              <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">Password</span><span className="relative block"><Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type={showPassword ? 'text' : 'password'} required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 pr-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+              <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">DILG Email Address</span><span className="relative block"><User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input name="email" type="email" autoComplete="username" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></span></label>
+              <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">Password</span><span className="relative block"><Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 pr-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
               <div className="flex items-center justify-between pt-1">
                 <label className="flex items-center gap-2 text-[10px] font-bold text-slate-600">
                   <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-3 w-3 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
@@ -428,7 +428,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
+                          name="email"
                           type="email"
+                          autoComplete="username"
                           required
                           value={emailInput}
                           onChange={(e) => setEmailInput(e.target.value)}
@@ -444,7 +446,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
+                          name="password"
                           type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
                           required
                           value={passwordInput}
                           onChange={(e) => setPasswordInput(e.target.value)}
@@ -717,7 +721,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
+                          name="new-password"
                           type={showRegPassword ? 'text' : 'password'}
+                          autoComplete="new-password"
                           required
                           value={regPassword}
                           onChange={(e) => {
