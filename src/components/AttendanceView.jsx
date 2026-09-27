@@ -117,6 +117,30 @@ export default function AttendanceView({
     return Math.round(R * c);
   };
 
+  const getCurrentPosition = (options) => new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+
+  const getPositionWithFallback = async () => {
+    try {
+      return await getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 45000,
+        maximumAge: 15000
+      });
+    } catch (error) {
+      if (error.code === 1) throw error;
+      return getCurrentPosition({
+        enableHighAccuracy: false,
+        timeout: 20000,
+        maximumAge: 60000
+      });
+    }
+  };
+
+  const isMessengerBrowser = typeof navigator !== 'undefined'
+    && /FBAN|FBAV|FB_IAB|Messenger/i.test(navigator.userAgent);
+
   useEffect(() => {
     let active = true;
     setSiteLocation(null);
@@ -557,22 +581,22 @@ export default function AttendanceView({
     setHasGpsPosition(false);
     setLocationError('');
 
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
+    getPositionWithFallback()
+      .then(position => {
         updateGpsPosition(position.coords.latitude, position.coords.longitude, position.coords.accuracy);
-      },
-      (error) => {
+      })
+      .catch(error => {
         setGpsChecked(true);
         const message = error.code === 1
           ? 'Location permission denied. Allow location access for this site in your browser settings, then retry.'
           : error.code === 2
             ? 'Phone location is unavailable. Turn on Location Services and enable high-accuracy location, then retry.'
-            : 'GPS request timed out. Move near a window or outdoors, check Location Services, and retry.';
+            : isMessengerBrowser
+              ? 'GPS timed out in Messenger. Open this page in Chrome, allow location access, turn on Location Services, and retry.'
+              : 'GPS request timed out. Turn on Location Services, move near a window or outdoors, and retry.';
         setLocationError(message);
         setGpsLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
-    );
+      });
   };
 
   // Send location tracking update to backend
@@ -677,8 +701,8 @@ export default function AttendanceView({
     }
 
     setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async position => {
+    getPositionWithFallback()
+      .then(position => {
         setGpsChecked(true);
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
@@ -738,15 +762,15 @@ export default function AttendanceView({
         setFingerprintProgress(0);
         autoClockInRef.current = false;
         autoClockOutRef.current = false;
-      },
-      error => {
+      })
+      .catch(error => {
         setGpsChecked(true);
         setGpsLoading(false);
-        setLocationError(error.code === 1 ? 'GPS permission is required before Time In.' : 'Unable to capture GPS before Time In. Please retry.');
+        setLocationError(error.code === 1
+          ? 'GPS permission is required before Time In. Allow location access in your browser settings.'
+          : 'GPS could not get a fix. Turn on Location Services, then retry. If this page is open inside Messenger, open it in Chrome.');
         autoClockInRef.current = false;
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+      });
   };
 
   const executeClockOut = () => {
@@ -756,8 +780,8 @@ export default function AttendanceView({
     }
 
     setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      position => {
+    getPositionWithFallback()
+      .then(position => {
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
         const accuracy = Number(position.coords.accuracy);
@@ -782,13 +806,13 @@ export default function AttendanceView({
         }
 
         onTimeOut({ latitude: lat, longitude: lon, gpsAccuracy: Number(position.coords.accuracy || 0) });
-      },
-      error => {
+      })
+      .catch(error => {
         setGpsLoading(false);
-        setLocationError(error.code === 1 ? 'GPS permission is required before Time Out.' : 'Unable to capture GPS before Time Out. Please retry.');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+        setLocationError(error.code === 1
+          ? 'GPS permission is required before Time Out. Allow location access in your browser settings.'
+          : 'GPS could not get a fix. Turn on Location Services, then retry. If this page is open inside Messenger, open it in Chrome.');
+      });
   };
 
   useEffect(() => {
@@ -1537,6 +1561,14 @@ export default function AttendanceView({
             {locationError && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] font-semibold text-amber-700">
                 {locationError}
+                {isMessengerBrowser && /GPS|location/i.test(locationError) && (
+                  <a
+                    href={`intent://dilg-workmate.vercel.app${window.location.pathname}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(window.location.href)};end`}
+                    className="mt-2 inline-flex rounded-lg bg-blue-700 px-3 py-2 text-[11px] font-extrabold text-white no-underline"
+                  >
+                    Open WorkMate in Chrome
+                  </a>
+                )}
               </div>
             )}
 
