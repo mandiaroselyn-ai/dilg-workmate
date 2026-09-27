@@ -305,7 +305,7 @@ export const User = {
     return { conflict: true };
   },
 
-  reviewBiometricEnrollment: async (employeeId, decision, note, reviewedBy) => {
+  reviewBiometricEnrollment: async (employeeId, decision, note, reviewedBy, isDemoEnrollment = false) => {
     ensureConnected();
     const update = {
       $set: {
@@ -319,7 +319,9 @@ export const User = {
         faceVerificationAudit: {
           $each: [{
             outcome: decision === 'approve'
-              ? 'hr-approved-liveness-not-configured'
+              ? isDemoEnrollment
+                ? 'hr-demo-approved-attendance-test-only'
+                : 'hr-approved-liveness-not-configured'
               : 'hr-rejected-enrollment',
             reviewedBy: reviewedBy || '',
             provider: 'manual-hr-review'
@@ -333,8 +335,7 @@ export const User = {
       {
         employeeId: employeeId?.toString().trim(),
         accessLevel: 'employee',
-        biometricEnrollmentStatus: 'pending',
-        ...(decision === 'approve' ? { biometricEnrollmentIsDemo: { $ne: true } } : {})
+        biometricEnrollmentStatus: 'pending'
       },
       update,
       { new: true, runValidators: true }

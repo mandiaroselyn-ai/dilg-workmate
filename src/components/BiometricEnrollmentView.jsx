@@ -210,7 +210,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setSelfieImage('');
       setSampleIdSides({ front: false, back: false });
       setSuccess(result.notificationWarning || (isDemoEnrollment
-        ? 'DEMO submission saved for HR preview. HR approval and attendance matching are disabled for sample ID images.'
+        ? 'DEMO submission saved for HR review. HR may approve it for attendance matching tests only; this is not identity verification.'
         : 'Enrollment submitted. HR/Admin has been notified to review your documents.'));
       setSuccessIsWarning(Boolean(result.notificationWarning));
     } catch (submitError) {
@@ -284,7 +284,9 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           </div>
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-3 py-1.5 text-xs font-black ${badgeClass}`}>
-              {statusCopy[status] || 'Pending review'}
+              {status === 'hr-approved' && user.biometricEnrollmentIsDemo
+                ? 'DEMO approved · attendance matching for testing'
+                : statusCopy[status] || 'Pending review'}
             </span>
             <button type="button" onClick={refreshStatus} disabled={refreshingStatus} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-black text-slate-700 disabled:opacity-50">
               <RefreshCw className={`h-3 w-3 ${refreshingStatus ? 'animate-spin' : ''}`} /> Refresh
@@ -299,7 +301,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               <Clock3 className="h-5 w-5 shrink-0" />
               <p>
                 {user.biometricEnrollmentIsDemo
-                  ? 'DEMO ONLY: your sample ID images are saved for HR preview but cannot be approved or used for attendance. Replace them with your actual government ID.'
+                  ? 'DEMO ONLY: your sample ID images are waiting for HR review. HR may approve attendance selfie matching for testing, but the sample ID does not verify identity.'
                   : 'Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again; this replaces your pending submission.'}
               </p>
             </div>
@@ -315,7 +317,9 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         {status === 'hr-approved' && (
           <div className="mt-4 flex gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <p>HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie; liveness is not checked.</p>
+            <p>{user.biometricEnrollmentIsDemo
+              ? 'DEMO ONLY: HR approved the sample ID submission for testing. Attendance selfies will be compared with this enrollment selfie, but the sample ID does not verify identity.'
+              : 'HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie; liveness is not checked.'}</p>
           </div>
         )}
         {status === 'rejected' && (
@@ -355,7 +359,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               >
                 {loadingSampleId ? 'Loading demo ID...' : 'Use Sample ID (DEMO ONLY)'}
               </button>
-              <p className="mt-1 text-[10px] font-semibold text-amber-800">Fictional test images only. HR cannot approve a sample ID or enable attendance matching from it.</p>
+              <p className="mt-1 text-[10px] font-semibold text-amber-800">Fictional test images only. HR may approve for attendance matching tests, but this does not verify employee identity.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               {renderIdSide('Front of ID', 'id-front', dilgIdImage, idInputRef)}
