@@ -54,7 +54,7 @@ dilg-workmate/
    ```bash
    npm run dev
    ```
-   Open the `Local` URL printed by Vite. If port `5173` is already in use, Vite chooses another port (for example, `5174`). Google sign-in returns to the active local frontend automatically; the Google OAuth client's authorized redirect URI must include `http://localhost:5000/api/auth/google/callback`.
+   This starts the backend (default port `5000`) and Vite frontend. Open the `Local` URL printed by Vite. If port `5173` is already in use, Vite chooses another one (for example, `5174`). The Vite proxy sends `/api` requests to `http://localhost:5000` by default; set `BACKEND_URL` if the backend uses another address. If the browser or terminal reports `ECONNREFUSED` for `/api` requests, make sure the backend is running and that `BACKEND_URL` points to it. Google sign-in returns to the active local frontend automatically; the Google OAuth client's authorized redirect URI must include `http://localhost:5000/api/auth/google/callback`.
 
 3. **Build & Execute Standalone Production Bundle:**
    ```bash
@@ -86,7 +86,21 @@ Do not commit `.env` files or put secrets in frontend variables. Default supervi
 
 Time In requires a captured selfie, an HR-approved biometric enrollment, an in-range GPS check, and a valid server-verified passkey assertion. The backend locally compares a single face in the attendance selfie against the descriptor created from the approved enrollment selfie; it blocks clock-in when no face is detected, multiple faces are present, the template is unavailable, or the similarity threshold is not met. The initial Euclidean-distance threshold is `0.6` and is not calibrated on agency employees; evaluate false-accept and false-reject rates with consented representative samples before relying on it for employment decisions. This image comparison is **not** a liveness or anti-spoof check: printed photos, screen replays, and other presentation attacks may pass. The passkey verifies possession of the registered device credential, not the employee's face.
 
-HR/Admin employee records, account status, biometric enrollment images, and HR review decisions are loaded from and saved to MongoDB. HR-created employee accounts require an initial password, which is hashed before storage; pending accounts must be activated before employees can sign in. Employees submit the front and back of a government ID and a camera selfie from **Profile → Biometric Enrollment**. Once all three images are ready, the app uploads them and the server-computed face descriptor to the employee's MongoDB record, then notifies HR/Admin. HR/Admin can view the restricted images and approve or reject them; approval enables attendance matching, rejection requires a reason, and the employee is notified to correct and resubmit. Attendance face descriptors remain server-side and are excluded from ordinary user responses. Live camera preview requires HTTPS or localhost; on mobile browsers, use the device-camera option if preview is unavailable. Enrollment images are returned only through authenticated HR review. Existing HR-approved records without a face descriptor are upgraded from their approved enrollment selfie on their next attendance attempt.
+HR/Admin employee records, account status, biometric enrollment images, and HR review decisions are loaded from and saved to MongoDB. HR-created employee accounts require an initial password, which is hashed before storage; pending accounts must be activated before employees can sign in.
+
+#### Employee biometric enrollment
+
+From **Profile → Biometric Enrollment**, an employee uploads the front and back of their government ID and captures a face selfie. Once all three images are ready, the app automatically uploads them for HR review; the backend saves the enrollment images and server-computed face descriptor to that employee's MongoDB record and notifies HR/Admin. If an upload fails, use the retry action shown in the enrollment view. Live camera preview requires HTTPS or `localhost`; if preview is unavailable on a mobile browser (for example, when using a LAN address), use **Use Device Camera / Choose Selfie** to capture or select the selfie instead.
+
+#### HR/Admin review
+
+HR/Admin can view enrollment images through the authenticated HR review screen and approve or reject the selected employee's pending submission. Approval requires a server-processed face descriptor; a normal enrollment must also have its required ID and selfie images on file. Rejection requires a reason, and the employee is notified to correct and resubmit. Approval enables the enrollment for attendance face matching. Enrollment images are restricted to authenticated HR review, and face descriptors remain server-side and are excluded from ordinary user responses.
+
+#### Demo sample ID (testing only)
+
+The enrollment screen provides **Use Sample ID (DEMO ONLY)** for workflow testing. It fills the ID image fields with fictional sample cards; the employee must still provide a real enrollment selfie so the server can process a face descriptor. Once the sample ID and selfie fields are complete, the submission is automatically uploaded and clearly marked as a demo enrollment in MongoDB and in the HR review screen. HR/Admin may approve a demo enrollment only to test attendance selfie matching. A demo approval **does not verify identity and must not be treated as approval of a real employee's government ID**. Use genuine employee documents for real identity review. Demo and normal attendance matching use the same face-comparison flow and limitations described above.
+
+Existing HR-approved records without a face descriptor are upgraded from their approved enrollment selfie on their next attendance attempt.
 
 Treat government ID images, enrollment selfies, and attendance selfie records as sensitive personal data; restrict access, use encrypted MongoDB storage and transport, establish an approved retention/deletion schedule and employee notice/consent process, and verify agency privacy/legal requirements before production use.
 

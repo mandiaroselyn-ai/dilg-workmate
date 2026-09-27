@@ -353,35 +353,41 @@ export const User = {
     );
   },
 
-  saveWebAuthnChallenge: async (employeeId, challenge, expiry) => {
+  saveWebAuthnChallenge: async (userId, challenge, expiry) => {
     ensureConnected();
-    const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
-    if (!user) return null;
-    user.webauthnChallenge = challenge;
-    user.webauthnChallengeExpiry = expiry;
-    await user.save();
-    return user;
-  },
-
-  saveWebAuthnCredential: async (employeeId, credential) => {
-    ensureConnected();
-    const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
-    if (!user) return null;
-    user.webauthnCredentialId = credential.id;
-    user.webauthnPublicKey = credential.publicKey;
-    user.webauthnCounter = credential.counter;
-    user.webauthnChallenge = '';
-    user.webauthnChallengeExpiry = null;
-    await user.save();
-    return user;
-  },
-
-  updateWebAuthnCounter: async (employeeId, counter) => {
-    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findOneAndUpdate(
-      { employeeId: employeeId?.toString().trim() },
-      { webauthnCounter: counter },
-      { new: true }
+      { _id: userId },
+      { $set: { webauthnChallenge: challenge, webauthnChallengeExpiry: expiry } },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  saveWebAuthnCredential: async (userId, credential) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          webauthnCredentialId: credential.id,
+          webauthnPublicKey: credential.publicKey,
+          webauthnCounter: credential.counter,
+          webauthnChallenge: '',
+          webauthnChallengeExpiry: null
+        }
+      },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  updateWebAuthnCounter: async (userId, counter) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId },
+      { $set: { webauthnCounter: counter } },
+      { new: true, writeConcern: { w: 'majority' } }
     );
   },
 

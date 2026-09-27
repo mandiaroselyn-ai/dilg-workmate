@@ -6,24 +6,27 @@ import {
 } from '@simplewebauthn/server';
 import { User } from '../models/User.js';
 import { createVerificationProof } from '../utils/verificationProof.js';
-import { getFrontendOrigin } from '../utils/frontendOrigin.js';
+import { getFrontendOrigin, getRequestOrigin } from '../utils/frontendOrigin.js';
 
-const getRpId = () => {
+const getOrigin = req => getRequestOrigin(req) || getFrontendOrigin(req);
+const getRpId = req => {
   const configuredRpId = process.env.WEBAUTHN_RP_ID;
   const isLocalRpId = configuredRpId === 'localhost' || configuredRpId === '127.0.0.1';
-  if (configuredRpId && !(process.env.VERCEL && isLocalRpId)) return configuredRpId;
-  return new URL(getFrontendOrigin()).hostname;
+  const requestHostname = new URL(getOrigin(req)).hostname;
+  const configuredMatchesRequest = configuredRpId
+    && (requestHostname === configuredRpId || requestHostname.endsWith(`.${configuredRpId}`));
+  if (configuredMatchesRequest && !(process.env.VERCEL && isLocalRpId)) return configuredRpId;
+  return requestHostname;
 };
-const getOrigin = () => getFrontendOrigin();
 const toBase64Url = value => Buffer.from(value).toString('base64url');
-const challengeExpiry = () => new Date(Date.now() + 5 * 60 * 1000);
+const challengeExpiry = () => new Date(Date.now() + 10 * 60 * 1000);
 
 export const createRegistrationOptions = async (req, res) => {
   try {
     const user = req.user;
     const options = await generateRegistrationOptions({
       rpName: 'DILG WorkMate',
-      rpID: getRpId(),
+      rpID: getRpId(req),
       userName: user.email,
       userID: Buffer.from(user.employeeId || user.email),
       userDisplayName: user.name,
@@ -36,7 +39,8 @@ export const createRegistrationOptions = async (req, res) => {
       excludeCredentials: user.webauthnCredentialId ? [{ id: user.webauthnCredentialId }] : []
     });
 
-    await User.saveWebAuthnChallenge(user.employeeId, options.challenge, challengeExpiry());
+    const savedChallenge = await User.saveWebAuthnChallenge(user._id, options.challenge, challengeExpiry());
+    if (!savedChallenge) throw new Error('Could not save the passkey registration challenge.');
     res.status(200).json(options);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -53,18 +57,19 @@ export const verifyRegistration = async (req, res) => {
     const verification = await verifyRegistrationResponse({
       response: req.body,
       expectedChallenge: user.webauthnChallenge,
-      expectedOrigin: getOrigin(),
-      expectedRPID: getRpId(),
+      expectedOrigin: getOrigin(req),
+      expectedRPID: getRpId(req),
       requireUserVerification: true
     });
     if (!verification.verified) return res.status(400).json({ success: false, error: 'WebAuthn registration was not verified.' });
 
     const credential = verification.registrationInfo.credential;
-    await User.saveWebAuthnCredential(user.employeeId, {
+    const savedCredential = await User.saveWebAuthnCredential(user._id, {
       id: credential.id,
       publicKey: toBase64Url(credential.publicKey),
       counter: credential.counter
     });
+    if (!savedCredential) throw new Error('Could not save the passkey credential.');
     res.status(201).json({ success: true, credentialId: credential.id });
   } catch (error) {
     res.status(400).json({ success: false, error: 'WebAuthn registration failed.' });
@@ -79,11 +84,12 @@ export const createAuthenticationOptions = async (req, res) => {
     }
 
     const options = await generateAuthenticationOptions({
-      rpID: getRpId(),
+      rpID: getRpId(req),
       allowCredentials: [{ id: user.webauthnCredentialId }],
       userVerification: 'required'
     });
-    await User.saveWebAuthnChallenge(user.employeeId, options.challenge, challengeExpiry());
+    const savedChallenge = await User.saveWebAuthnChallenge(user._id, options.challenge, challengeExpiry());
+    if (!savedChallenge) throw new Error('Could not save the passkey authentication challenge.');
     res.status(200).json(options);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -100,8 +106,8 @@ export const verifyAuthentication = async (req, res) => {
     const verification = await verifyAuthenticationResponse({
       response: req.body,
       expectedChallenge: user.webauthnChallenge,
-      expectedOrigin: getOrigin(),
-      expectedRPID: getRpId(),
+      expectedOrigin: getOrigin(req),
+      expectedRPID: getRpId(req),
       credential: {
         id: user.webauthnCredentialId,
         publicKey: Buffer.from(user.webauthnPublicKey, 'base64url'),
@@ -111,8 +117,9 @@ export const verifyAuthentication = async (req, res) => {
     });
     if (!verification.verified) return res.status(401).json({ success: false, error: 'WebAuthn biometric assertion was not verified.' });
 
-    await User.updateWebAuthnCounter(user.employeeId, verification.authenticationInfo.newCounter);
-    await User.saveWebAuthnChallenge(user.employeeId, '', new Date(0));
+    const updatedUser = await User.updateWebAuthnCounter(user._id, verification.authenticationInfo.newCounter);
+    if (!updatedUser) throw new Error('Could not update the passkey counter.');
+    await User.saveWebAuthnChallenge(user._id, '', new Date(0));
     const proof = createVerificationProof({ employeeId: user.employeeId, type: 'fingerprint' });
     res.status(200).json({ success: true, verificationProof: proof });
   } catch (error) {

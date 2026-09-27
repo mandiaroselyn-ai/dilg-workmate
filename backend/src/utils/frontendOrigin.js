@@ -8,6 +8,11 @@ const normalizeOrigin = value => {
   }
 };
 
+export const getRequestOrigin = req => {
+  const requestOrigin = req?.headers?.origin;
+  return normalizeOrigin(requestOrigin);
+};
+
 export const getFrontendOrigin = (req) => {
   const configuredOrigin = normalizeOrigin(process.env.FRONTEND_URL);
   const isLocalConfiguredOrigin = configuredOrigin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredOrigin);

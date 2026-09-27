@@ -189,6 +189,7 @@ export default function AttendanceView({
   const [fingerprintProgress, setFingerprintProgress] = useState(0);
   const [fingerprintVerified, setFingerprintVerified] = useState(false);
   const [fingerprintProof, setFingerprintProof] = useState('');
+  const fingerprintScanInFlightRef = useRef(false);
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView);
 
@@ -369,13 +370,14 @@ export default function AttendanceView({
       setCameraError('Please complete selfie capture before fingerprint verification.');
       return;
     }
-    if (fingerprintVerified) return;
+    if (fingerprintVerified || fingerprintScanInFlightRef.current) return;
 
     if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials) {
       setCameraError('Fingerprint sign-in needs a supported browser on HTTPS. Open the Vercel site in the latest Chrome or Safari browser, not an embedded preview.');
       return;
     }
 
+    fingerprintScanInFlightRef.current = true;
     setFingerprintScanning(true);
     setCameraError(null);
 
@@ -447,22 +449,27 @@ export default function AttendanceView({
       setFingerprintScanning(false);
       setFingerprintVerified(true);
       setFingerprintProgress(100);
+      fingerprintScanInFlightRef.current = false;
     } catch (error) {
       console.error('WebAuthn biometric verification failed:', error);
       setFingerprintScanning(false);
       setFingerprintProgress(0);
+      fingerprintScanInFlightRef.current = false;
       const message = error?.name === 'NotAllowedError'
         ? 'Fingerprint/passkey prompt was cancelled or blocked. Retry and approve the phone biometric prompt.'
         : error?.name === 'SecurityError'
           ? 'Fingerprint verification origin mismatch. Open the official Vercel domain directly.'
           : error?.name === 'InvalidStateError'
             ? 'A fingerprint passkey is already registered. Retry the fingerprint check.'
-            : error?.message || 'Fingerprint verification failed. Check browser biometric support and retry.';
+            : error?.message?.includes('challenge expired')
+              ? 'The passkey request expired before it finished. Tap the fingerprint button again and complete the phone prompt right away.'
+              : error?.message || 'Fingerprint verification failed. Check browser biometric support and retry.';
       setCameraError(message);
     }
   };
 
   const handleResetFingerprint = () => {
+    fingerprintScanInFlightRef.current = false;
     setFingerprintVerified(false);
     setFingerprintProof('');
     setFingerprintProgress(0);
