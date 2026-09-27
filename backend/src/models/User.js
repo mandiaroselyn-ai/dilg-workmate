@@ -30,6 +30,7 @@ const UserSchema = new mongoose.Schema({
   faceId: { type: String, default: '' },
   faceEnrolledAt: { type: Date, default: null },
   faceEnrollmentImage: { type: String, default: '' },
+  faceEnrollmentDescriptor: { type: [Number], default: undefined, select: false },
   dilgIdPhoto: { type: String, default: '' },
   dilgIdBackPhoto: { type: String, default: '' },
   biometricEnrollmentStatus: {
@@ -138,6 +139,50 @@ export const User = {
     return MongoUser.findOne({ employeeId: employeeId.toString().trim() });
   },
 
+  getApprovedFaceEnrollment: async (employeeId) => {
+    ensureConnected();
+    if (!employeeId) return null;
+    const user = await MongoUser.findOne({
+      employeeId: employeeId.toString().trim(),
+      accessLevel: 'employee',
+      biometricEnrollmentStatus: 'hr-approved'
+    }).select('+faceEnrollmentDescriptor faceEnrollmentImage').lean();
+    return user ? {
+      descriptor: user.faceEnrollmentDescriptor || null,
+      image: user.faceEnrollmentImage || ''
+    } : null;
+  },
+
+  hasPendingFaceEnrollmentDescriptor: async (employeeId) => {
+    ensureConnected();
+    if (!employeeId) return false;
+    const user = await MongoUser.findOne({
+      employeeId: employeeId.toString().trim(),
+      accessLevel: 'employee',
+      biometricEnrollmentStatus: 'pending'
+    }).select('+faceEnrollmentDescriptor').lean();
+    return Array.isArray(user?.faceEnrollmentDescriptor)
+      && user.faceEnrollmentDescriptor.length === 128
+      && user.faceEnrollmentDescriptor.every(Number.isFinite);
+  },
+
+  saveApprovedFaceEnrollmentDescriptor: async (employeeId, descriptor) => {
+    ensureConnected();
+    if (!employeeId) return false;
+    const result = await MongoUser.updateOne({
+      employeeId: employeeId.toString().trim(),
+      accessLevel: 'employee',
+      biometricEnrollmentStatus: 'hr-approved',
+      $or: [
+        { faceEnrollmentDescriptor: { $exists: false } },
+        { faceEnrollmentDescriptor: { $size: 0 } }
+      ]
+    }, {
+      $set: { faceEnrollmentDescriptor: descriptor }
+    });
+    return result.modifiedCount === 1;
+  },
+
   createEmployee: async employeeData => {
     ensureConnected();
     const email = employeeData.email.toString().trim().toLowerCase();
@@ -213,10 +258,11 @@ export const User = {
           faceId: '',
           faceEnrolledAt: null,
           faceEnrollmentImage: enrollment.selfieImage,
+          faceEnrollmentDescriptor: enrollment.faceDescriptor,
           dilgIdPhoto: enrollment.dilgIdImage,
           dilgIdBackPhoto: enrollment.dilgIdBackImage,
           biometricEnrollmentStatus: 'pending',
-          biometricEnrollmentVersion: 2,
+          biometricEnrollmentVersion: 3,
           biometricEnrollmentSubmittedAt: now,
           biometricEnrollmentReviewedAt: null,
           biometricEnrollmentReviewedBy: '',
@@ -243,33 +289,35 @@ export const User = {
 
   reviewBiometricEnrollment: async (employeeId, decision, note, reviewedBy) => {
     ensureConnected();
+    const update = {
+      $set: {
+        biometricEnrollmentStatus: decision === 'approve' ? 'hr-approved' : 'rejected',
+        biometricEnrollmentReviewedAt: new Date(),
+        biometricEnrollmentReviewedBy: reviewedBy || '',
+        biometricEnrollmentReviewNote: note || '',
+        faceLivenessStatus: 'not-configured'
+      },
+      $push: {
+        faceVerificationAudit: {
+          $each: [{
+            outcome: decision === 'approve'
+              ? 'hr-approved-liveness-not-configured'
+              : 'hr-rejected-enrollment',
+            reviewedBy: reviewedBy || '',
+            provider: 'manual-hr-review'
+          }],
+          $slice: -50
+        }
+      }
+    };
+    if (decision === 'reject') update.$unset = { faceEnrollmentDescriptor: 1 };
     const user = await MongoUser.findOneAndUpdate(
       {
         employeeId: employeeId?.toString().trim(),
         accessLevel: 'employee',
         biometricEnrollmentStatus: 'pending'
       },
-      {
-        $set: {
-          biometricEnrollmentStatus: decision === 'approve' ? 'hr-approved' : 'rejected',
-          biometricEnrollmentReviewedAt: new Date(),
-          biometricEnrollmentReviewedBy: reviewedBy || '',
-          biometricEnrollmentReviewNote: note || '',
-          faceLivenessStatus: 'not-configured'
-        },
-        $push: {
-          faceVerificationAudit: {
-            $each: [{
-              outcome: decision === 'approve'
-                ? 'hr-approved-liveness-not-configured'
-                : 'hr-rejected-enrollment',
-              reviewedBy: reviewedBy || '',
-              provider: 'manual-hr-review'
-            }],
-            $slice: -50
-          }
-        }
-      },
+      update,
       { new: true, runValidators: true }
     );
     return user ? user.toObject() : { conflict: true };

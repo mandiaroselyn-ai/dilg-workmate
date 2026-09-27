@@ -117,6 +117,12 @@ export default function App() {
 
   // Load persistent database dataset from Real Express Server on launch
   useEffect(() => {
+    if (!authToken || !activeRole) {
+      setLoading(false);
+      return undefined;
+    }
+
+    let isCurrentSession = true;
     const urlToken = new URLSearchParams(window.location.search).get('resetToken');
     if (urlToken) {
       setShowResetPage(true);
@@ -128,7 +134,7 @@ export default function App() {
         return res.json();
       })
       .then(data => {
-        if (data) {
+        if (isCurrentSession && data) {
           if (data.user) setUser(data.user);
           if (data.attendanceHistory) setAttendanceHistory(data.attendanceHistory);
           if (data.requests) setRequests(data.requests);
@@ -140,11 +146,13 @@ export default function App() {
           if (data.adminSmsAlerts) setAdminSmsAlerts(data.adminSmsAlerts);
           if (data.acknowledged) setAcknowledgedAnnouncements(data.acknowledged);
         }
-        setLoading(false);
+        if (isCurrentSession) setLoading(false);
       })
       .catch(err => {
-        console.error("Failed to load backend state:", err);
-        setLoading(false);
+        if (isCurrentSession) {
+          console.error('Failed to load backend state:', err);
+          setLoading(false);
+        }
       });
 
     apiFetch('/api/requests')
@@ -153,22 +161,40 @@ export default function App() {
         return res.json();
       })
       .then(data => {
+        if (!isCurrentSession) return;
         if (Array.isArray(data)) {
           setRequests(data);
         } else if (Array.isArray(data?.requests)) {
           setRequests(data.requests);
         }
       })
-      .catch(err => console.error('Failed to load request history:', err));
+      .catch(err => {
+        if (isCurrentSession) console.error('Failed to load request history:', err);
+      });
 
-    apiFetch('/api/employees')
-      .then(res => {
-        if (!res.ok) throw new Error('Employee records API unavailable');
-        return res.json();
-      })
-      .then(data => setEmployees(Array.isArray(data?.users) ? data.users : []))
-      .catch(err => console.error('Failed to load registered employees:', err));
-  }, [authToken]);
+    if (activeRole === 'hr_admin') {
+      apiFetch('/api/employees')
+        .then(async response => {
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data?.error || `Employee records request failed (HTTP ${response.status}).`);
+          }
+          return data;
+        })
+        .then(data => {
+          if (isCurrentSession) setEmployees(Array.isArray(data?.users) ? data.users : []);
+        })
+        .catch(err => {
+          if (isCurrentSession) console.error('Failed to load registered employees:', err);
+        });
+    } else {
+      setEmployees([]);
+    }
+
+    return () => {
+      isCurrentSession = false;
+    };
+  }, [authToken, activeRole]);
 
   const normalizeRole = (role) => role?.toString().trim().toLowerCase() || 'employee';
 
@@ -233,6 +259,18 @@ export default function App() {
     setSidebarOpen(false);
   };
 
+  useEffect(() => {
+    const handleExpiredSession = () => {
+      setAuthToken('');
+      setActiveRole(null);
+      setUser(null);
+      setCurrentView('dashboard');
+      setSidebarOpen(false);
+    };
+    window.addEventListener('dilg:auth-expired', handleExpiredSession);
+    return () => window.removeEventListener('dilg:auth-expired', handleExpiredSession);
+  }, []);
+
   const pushSystemNotification = (notification, { admin = false, employee = false } = {}) => {
     const payload = {
       title: notification.title || 'System Update',
@@ -281,7 +319,7 @@ export default function App() {
       || !enrollment?.dilgIdBackImage?.startsWith('data:image/')) {
       throw new Error('Upload the front and back of your government ID and capture an enrollment selfie before submitting.');
     }
-    const response = await fetch('/api/face-enrollment', {
+    const response = await apiFetch('/api/face-enrollment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(enrollment)
@@ -294,7 +332,7 @@ export default function App() {
   };
 
   const handleRefreshBiometricStatus = useCallback(async () => {
-    const response = await fetch('/api/face-enrollment?action=status');
+    const response = await apiFetch('/api/face-enrollment?action=status');
     const data = await parseApiResponse(response, 'Biometric enrollment status');
     if (!response.ok || !data.success) {
       throw new Error(data?.error || 'Unable to refresh biometric enrollment status.');

@@ -27,6 +27,13 @@ test('requires authentication before employee biometric enrollment submission', 
   assert.equal(response.body.error, 'Authentication required.');
 });
 
+test('requires authentication on the local flat biometric enrollment API', async () => {
+  const statusResponse = await request(app).get('/api/face-enrollment?action=status');
+  const submissionResponse = await request(app).post('/api/face-enrollment').send({});
+  assert.equal(statusResponse.status, 401);
+  assert.equal(submissionResponse.status, 401);
+});
+
 test('requires authentication for HR employee account management', async () => {
   const createResponse = await request(app).post('/api/employees').send({});
   const updateResponse = await request(app).patch('/api/employees/DILG-TEST-001').send({});
@@ -45,8 +52,8 @@ test('requires authentication before HR biometric enrollment review', async () =
   assert.equal(response.body.error, 'Authentication required.');
 });
 
-test('requires authentication before loading an employee face-test reference', async () => {
-  const response = await request(app).get('/api/face/enrollment/reference');
+test('requires authentication before loading restricted biometric enrollment images', async () => {
+  const response = await request(app).get('/api/face/enrollment/DILG-TEST-001');
   assert.equal(response.status, 401);
   assert.equal(response.body.error, 'Authentication required.');
 });

@@ -16,7 +16,6 @@ import {
 } from '../controllers/userController.js';
 import {
   getBiometricEnrollmentStatus,
-  getOwnEnrollmentReference,
   submitBiometricEnrollment,
   reviewBiometricEnrollment,
   getEmployeeEnrollmentImages
@@ -31,11 +30,29 @@ import {
 
 const router = express.Router();
 
+router.get('/face-enrollment', (req, res) => {
+  const { action, employeeId } = req.query;
+  if (action === 'status') return getBiometricEnrollmentStatus(req, res);
+  if (!action && typeof employeeId === 'string' && employeeId) {
+    req.params.employeeId = employeeId;
+    return requireAdmin(req, res, () => getEmployeeEnrollmentImages(req, res));
+  }
+  return res.status(400).json({ success: false, error: 'Invalid biometric enrollment API request.' });
+});
+router.post('/face-enrollment', (req, res) => {
+  const { action, employeeId } = req.query;
+  if (!action) return submitBiometricEnrollment(req, res);
+  if (action === 'review' && typeof employeeId === 'string' && employeeId) {
+    req.params.employeeId = employeeId;
+    return requireAdmin(req, res, () => reviewBiometricEnrollment(req, res));
+  }
+  return res.status(400).json({ success: false, error: 'Invalid biometric enrollment API request.' });
+});
+
 router.get('/profile', getUserProfile);
 router.post('/profile', updateUserProfile);
 router.post('/user', updateUserProfile);
 router.get('/face/enrollment/status', getBiometricEnrollmentStatus);
-router.get('/face/enrollment/reference', getOwnEnrollmentReference);
 router.post('/face/enrollment', submitBiometricEnrollment);
 router.post('/face/enrollment/:employeeId/review', requireAdmin, reviewBiometricEnrollment);
 router.get('/face/enrollment/:employeeId', requireAdmin, getEmployeeEnrollmentImages);

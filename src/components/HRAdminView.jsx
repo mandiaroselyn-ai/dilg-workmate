@@ -45,6 +45,7 @@ import HRAdminEmployeesView from './HRAdminEmployeesView';
 import HRAdminProfileView from './HRAdminProfileView';
 import HRAdminRecordsView from './HRAdminRecordsView';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import HRFaceComparison from './HRFaceComparison';
 
 export default function HRAdminView({
   section = 'hr_dashboard',
@@ -955,12 +956,17 @@ export default function HRAdminView({
 
       {selectedVerificationPhoto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onClick={() => setSelectedVerificationPhoto(null)}>
-          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="w-full max-w-3xl rounded-3xl bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between gap-4">
               <div><h3 className="font-black text-slate-900">Selfie Verification</h3><p className="text-xs text-slate-500">Employee ID: {selectedVerificationPhoto.record.employeeId || getEmployeeForRecord(selectedVerificationPhoto.record)?.employeeId || 'Not assigned'}</p></div>
               <button type="button" onClick={() => setSelectedVerificationPhoto(null)} className="text-slate-400 hover:text-slate-700" aria-label="Close selfie verification"><XCircle className="h-5 w-5" /></button>
             </div>
-            <img src={selectedVerificationPhoto.url} alt="Employee selfie verification" className="mx-auto mt-5 max-h-[55vh] w-full rounded-2xl object-contain" referrerPolicy="no-referrer" />
+            <HRFaceComparison
+              employeeId={getEmployeeForRecord(selectedVerificationPhoto.record)?.employeeId || selectedVerificationPhoto.record.employeeId}
+              attendanceSelfie={selectedVerificationPhoto.url}
+              faceVerified={selectedVerificationPhoto.record.faceVerified}
+              faceMatchDistance={selectedVerificationPhoto.record.faceMatchDistance}
+            />
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">Fingerprint</p><p className="mt-1 font-black text-emerald-700">{selectedVerificationPhoto.record.fingerprintVerified ? 'Verified' : selectedVerificationPhoto.record.fingerprintHash ? 'Recorded' : 'Not verified'}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">DTR Audit</p><p className="mt-1 font-black text-slate-800">{selectedVerificationPhoto.record.verificationAudit?.verifiedAt ? 'Verified' : 'Pending'}</p></div></div>
           </div>
         </div>

@@ -44,3 +44,14 @@ test('allows compressed front, back, and selfie images within the payload budget
   assert.equal(result.statusCode, 200);
   assert.equal(result.nextCalled, true);
 });
+
+test('includes the nested attendance selfie in biometric payload limits', () => {
+  const result = invokeValidator({
+    action: 'clock-in',
+    record: { selfieUrl: 'x'.repeat(8 * 1024 * 1024 + 1) }
+  });
+
+  assert.equal(result.statusCode, 413);
+  assert.equal(result.responseBody.error, 'Biometric image is too large.');
+  assert.equal(result.nextCalled, false);
+});

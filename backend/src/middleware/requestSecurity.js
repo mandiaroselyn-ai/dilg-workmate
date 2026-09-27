@@ -17,13 +17,20 @@ export const validateApiBody = (req, res, next) => {
     }
   }
 
-  const imageFields = ['image', 'dilgIdImage', 'dilgIdBackImage', 'selfieImage'];
+  const imageFields = [
+    'image',
+    'dilgIdImage',
+    'dilgIdBackImage',
+    'selfieImage',
+    ...(typeof body.record?.selfieUrl === 'string' ? ['record.selfieUrl'] : [])
+  ];
   let biometricImageBytes = 0;
   for (const field of imageFields) {
-    if (typeof body[field] === 'string' && body[field].length > 8 * 1024 * 1024) {
+    const value = field === 'record.selfieUrl' ? body.record.selfieUrl : body[field];
+    if (typeof value === 'string' && value.length > 8 * 1024 * 1024) {
       return res.status(413).json({ success: false, error: 'Biometric image is too large.' });
     }
-    if (typeof body[field] === 'string') biometricImageBytes += Buffer.byteLength(body[field], 'utf8');
+    if (typeof value === 'string') biometricImageBytes += Buffer.byteLength(value, 'utf8');
   }
   if (biometricImageBytes > 8 * 1024 * 1024) {
     return res.status(413).json({ success: false, error: 'Combined biometric images are too large. Resize the images and try again.' });

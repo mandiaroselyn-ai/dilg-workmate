@@ -5,7 +5,7 @@ import { resolveFaceEnrollmentRoute } from './faceEnrollmentRoute.js';
 test('routes flat enrollment API requests to employee enrollment endpoints', () => {
   assert.equal(resolveFaceEnrollmentRoute({ method: 'POST' }), '/api/face/enrollment');
   assert.equal(resolveFaceEnrollmentRoute({ method: 'GET', action: 'status' }), '/api/face/enrollment/status');
-  assert.equal(resolveFaceEnrollmentRoute({ method: 'GET', action: 'reference' }), '/api/face/enrollment/reference');
+  assert.equal(resolveFaceEnrollmentRoute({ method: 'GET', action: 'reference' }), null);
   assert.equal(resolveFaceEnrollmentRoute({ method: 'GET', employeeId: 'DILG-001' }), '/api/face/enrollment/DILG-001');
   assert.equal(
     resolveFaceEnrollmentRoute({ method: 'POST', action: 'review', employeeId: 'DILG 001' }),

@@ -3,6 +3,12 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { verifyVerificationProof } from '../utils/verificationProof.js';
 import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
+import {
+  compareEnrollmentToAttendance,
+  createFaceDescriptor,
+  FaceImageError,
+  isValidFaceDescriptor
+} from '../services/faceMatchingService.js';
 
 const GEO_THRESHOLD_METERS = 150;
 
@@ -186,14 +192,54 @@ export const clockInOut = async (req, res) => {
         return res.status(409).json({ success: false, error: 'Employee already has an active attendance record for this date.' });
       }
 
+      if (user.biometricEnrollmentStatus !== 'hr-approved') {
+        return res.status(409).json({
+          success: false,
+          error: 'Complete Biometric Enrollment and wait for HR approval before clocking in with face verification.'
+        });
+      }
+      const enrollment = await User.getApprovedFaceEnrollment(record.employeeId);
+      if (!enrollment) {
+        return res.status(409).json({ success: false, error: 'No HR-approved biometric enrollment selfie is available. Contact HR to complete enrollment.' });
+      }
+      let enrollmentDescriptor = enrollment.descriptor;
+      if (!isValidFaceDescriptor(enrollmentDescriptor) && enrollment.image) {
+        try {
+          enrollmentDescriptor = await createFaceDescriptor(enrollment.image);
+        } catch (error) {
+          if (error instanceof FaceImageError) {
+            return res.status(409).json({
+              success: false,
+              error: 'The approved enrollment selfie cannot be processed for face matching. Contact HR to resubmit biometric enrollment.'
+            });
+          }
+          throw error;
+        }
+        await User.saveApprovedFaceEnrollmentDescriptor(record.employeeId, enrollmentDescriptor);
+      }
+      if (!isValidFaceDescriptor(enrollmentDescriptor)) {
+        return res.status(409).json({ success: false, error: 'The approved enrollment selfie cannot be used for face matching. Contact HR to resubmit biometric enrollment.' });
+      }
+      const faceMatch = await compareEnrollmentToAttendance(enrollmentDescriptor, record.selfieUrl);
+      if (!faceMatch.matched) {
+        await User.addFaceVerificationAudit(record.employeeId, {
+          outcome: 'attendance-face-mismatch',
+          provider: 'local-face-api-v1'
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'Your attendance selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.'
+        });
+      }
       const newLog = await DtrLog.create({
         ...record,
-        faceVerified: false,
-        faceMatchConfidence: 0,
-        faceVerifiedAt: null,
+        faceVerified: true,
+        faceMatchConfidence: null,
+        faceMatchDistance: faceMatch.distance,
+        faceVerifiedAt: new Date(),
         faceLivenessVerified: false,
         faceLivenessConfidence: 0,
-        faceVerificationProvider: 'ordinary-selfie-no-liveness',
+        faceVerificationProvider: 'local-face-api-v1',
         faceLivenessProvider: 'not-used',
         deviceId: ''
       });
@@ -217,7 +263,11 @@ export const clockInOut = async (req, res) => {
       res.status(400).json({ success: false, error: 'Invalid attendance action specified.' });
     }
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    if (!error.statusCode) console.error('Attendance verification failed:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.statusCode ? error.message : 'Unable to verify and save attendance. Try again later.'
+    });
   }
 };
 

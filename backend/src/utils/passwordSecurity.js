@@ -26,6 +26,7 @@ export const toSafeUser = (user) => {
     fingerprintHash,
     faceId,
     faceEnrollmentImage,
+    faceEnrollmentDescriptor,
     dilgIdPhoto,
     dilgIdBackPhoto,
     dilgIdVerifiedBy,

@@ -104,6 +104,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
   const [dilgIdPhoto, setDilgIdPhoto] = useState('');
   const [dilgIdBackPhoto, setDilgIdBackPhoto] = useState('');
+  const [enrollmentImagesLoading, setEnrollmentImagesLoading] = useState(false);
+  const [enrollmentImagesError, setEnrollmentImagesError] = useState('');
+  const [enrollmentImagesReloadKey, setEnrollmentImagesReloadKey] = useState(0);
   const [biometricReviewNote, setBiometricReviewNote] = useState('');
   const [biometricReviewLoading, setBiometricReviewLoading] = useState(false);
   const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
@@ -142,7 +145,22 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     setDilgIdBackPhoto('');
     setSavedEnrollmentImage('');
     setBiometricReviewNote('');
-    if ((!selectedEmployee?.hasDilgIdPhoto && !selectedEmployee?.hasDilgIdBackPhoto && !selectedEmployee?.hasFaceEnrollmentImage) || !selectedEmployee.employeeId) return undefined;
+    setEnrollmentImagesError('');
+    const employeeId = selectedEmployee?.employeeId;
+    const shouldLoadImages = selectedEmployee?.biometricEnrollmentStatus === 'pending'
+      || selectedEmployee?.hasDilgIdPhoto
+      || selectedEmployee?.hasDilgIdBackPhoto
+      || selectedEmployee?.hasFaceEnrollmentImage;
+    if (!shouldLoadImages) {
+      setEnrollmentImagesLoading(false);
+      return undefined;
+    }
+    if (!employeeId) {
+      setEnrollmentImagesError('Unable to load enrollment images: employee ID is missing from this record.');
+      setEnrollmentImagesLoading(false);
+      return undefined;
+    }
+    setEnrollmentImagesLoading(true);
     apiFetch(`/api/face-enrollment?employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`)
       .then(async response => {
         const result = await parseApiResponse(response, 'HR enrollment image request');
@@ -152,13 +170,17 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
           setDilgIdBackPhoto(result.dilgIdBackImage || '');
           setSavedEnrollmentImage(result.enrollmentImage || '');
           setBiometricReviewNote(result.enrollment?.biometricEnrollmentReviewNote || '');
+          setEnrollmentImagesError('');
         }
       })
       .catch(error => {
-        if (active) notify(error.message || 'Unable to load restricted HR enrollment images.', true);
+        if (active) setEnrollmentImagesError(error.message || 'Unable to load restricted HR enrollment images.');
+      })
+      .finally(() => {
+        if (active) setEnrollmentImagesLoading(false);
       });
     return () => { active = false; };
-  }, [selectedId, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasDilgIdBackPhoto, selectedEmployee?.hasFaceEnrollmentImage]);
+  }, [selectedId, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasDilgIdBackPhoto, selectedEmployee?.hasFaceEnrollmentImage, selectedEmployee?.biometricEnrollmentStatus, enrollmentImagesReloadKey]);
 
   const notify = (message, isError = false) => {
     setToast(message);
@@ -576,8 +598,34 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                   </div>
                 )}
               </div>
+            ) : enrollmentImagesLoading ? (
+              <p role="status" className="mt-3 rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">Loading the employee's submitted enrollment images...</p>
+            ) : enrollmentImagesError ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                <p role="alert" className="text-xs font-semibold text-rose-800">{enrollmentImagesError}</p>
+                <button
+                  type="button"
+                  onClick={() => setEnrollmentImagesReloadKey(previous => previous + 1)}
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-black text-rose-800"
+                >
+                  <RefreshCw className="h-3 w-3" /> Retry
+                </button>
+              </div>
             ) : (
-              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">The employee has not submitted enrollment images.</p>
+              selectedEmployee.biometricEnrollmentStatus === 'pending' ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold text-amber-800">No enrollment images were returned for this pending submission. Retry loading or ask the employee to submit again.</p>
+                  <button
+                    type="button"
+                    onClick={() => setEnrollmentImagesReloadKey(previous => previous + 1)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-800"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Retry
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">The employee has not submitted enrollment images.</p>
+              )
             )}
             {selectedEmployee.biometricEnrollmentReviewNote && (
               <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">

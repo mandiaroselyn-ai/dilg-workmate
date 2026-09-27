@@ -23,6 +23,7 @@ test('removes authentication and biometric secrets from API user objects', () =>
     fingerprintHash: 'fingerprint',
     faceId: 'face-id',
     faceEnrollmentImage: 'private-enrollment-selfie',
+    faceEnrollmentDescriptor: Array(128).fill(0.1),
     dilgIdPhoto: 'private-id-image',
     dilgIdBackPhoto: 'private-id-back-image',
     dilgIdVerifiedBy: 'hr-user',
@@ -33,6 +34,7 @@ test('removes authentication and biometric secrets from API user objects', () =>
     faceVerificationAudit: [{ outcome: 'verified' }]
   });
 
+  assert.equal('faceEnrollmentDescriptor' in safeUser, false);
   assert.deepEqual(safeUser, {
     email: 'employee@example.com',
     biometricEnrollmentStatus: 'pending',

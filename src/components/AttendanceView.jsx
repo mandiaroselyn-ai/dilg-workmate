@@ -1271,7 +1271,7 @@ export default function AttendanceView({
                           <img src={capturedSelfie} alt="Attendance selfie photo" className="mx-auto max-h-64 rounded-xl object-contain" />
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs font-bold text-slate-600">
-                              This photo is attached to your attendance record for HR review; it is not automatically face-matched.
+                              The server will compare this selfie with your HR-approved biometric enrollment selfie before saving Time In. This is not a liveness check.
                             </p>
                             <button type="button" onClick={handleResetSelfie} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
                               Take Again
@@ -1320,7 +1320,7 @@ export default function AttendanceView({
                             </button>
                           </div>
                           <p className="px-4 pb-4 text-center text-[10px] leading-relaxed text-slate-400">
-                            The guide helps position your face; the photo is not automatically face-verified.
+                            Center your face clearly; the server will compare this selfie with your HR-approved enrollment photo. Liveness is not checked.
                           </p>
                         </div>
                       ) : (

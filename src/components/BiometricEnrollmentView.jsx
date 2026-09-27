@@ -5,7 +5,7 @@ import { resizeFaceImage } from '../utils/faceImage';
 const statusCopy = {
   'not-submitted': 'Not submitted',
   pending: 'Pending HR review',
-  'hr-approved': 'HR approved · biometric verification pending',
+  'hr-approved': 'HR approved · attendance face matching enabled',
   rejected: 'Not approved · changes required'
 };
 
@@ -253,7 +253,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         {status === 'hr-approved' && (
           <div className="mt-4 flex gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <p>HR approved the submitted ID and selfie. Automatic face matching and liveness are not configured, so your biometric identity is <strong>not yet verified</strong>.</p>
+            <p>HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie; liveness is not checked.</p>
           </div>
         )}
         {status === 'rejected' && (
@@ -265,8 +265,8 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         {success && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm font-semibold ${successIsWarning ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{success}</p>}
 
         <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <p className="font-black">Liveness verification is not available yet.</p>
-          <p className="mt-1">This camera photo is not an automated liveness test or face match. Your submission will remain unverified until a liveness/face-matching provider is configured.</p>
+          <p className="font-black">Face matching starts after HR approval; liveness detection is not enabled.</p>
+          <p className="mt-1">The server checks whether your attendance selfie matches this enrollment selfie before saving Time In. It cannot tell whether a photo is live or detect a printed-photo or screen replay.</p>
         </div>
         {user.biometricEnrollmentSubmittedAt && (
           <p className="mt-3 text-xs font-semibold text-slate-500">
@@ -331,7 +331,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         </>
       )}
 
-      <p className="text-xs text-slate-500">Your ID image and enrollment selfie are stored in the restricted HR record. Do not submit images belonging to another person.</p>
+      <p className="text-xs text-slate-500">Your ID images and enrollment selfie are stored in the restricted HR record. After HR approval, the server automatically compares attendance selfies with your enrollment selfie. This does not check liveness. Do not submit images belonging to another person.</p>
     </div>
   );
 }

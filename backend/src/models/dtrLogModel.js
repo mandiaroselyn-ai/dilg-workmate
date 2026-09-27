@@ -26,7 +26,8 @@ const DtrLogSchema = new mongoose.Schema({
   fingerprintHash: { type: String, default: '' },
   fingerprintProof: { type: String, default: '' },
   faceVerified: { type: Boolean, default: false },
-  faceMatchConfidence: { type: Number, default: 0 },
+  faceMatchConfidence: { type: Number, default: null },
+  faceMatchDistance: { type: Number, default: null },
   faceVerificationProvider: { type: String, default: '' },
   faceVerifiedAt: { type: Date, default: null },
   faceLivenessVerified: { type: Boolean, default: false },
@@ -136,7 +137,12 @@ export const DtrLog = {
       fingerprintHash: logData.fingerprintHash || null,
       selfieUrl: logData.selfieUrl || null,
       faceVerified: logData.faceVerified === true,
-      faceMatchConfidence: Number(logData.faceMatchConfidence) || 0,
+      faceMatchConfidence: logData.faceMatchConfidence == null
+        ? null
+        : Number(logData.faceMatchConfidence) || 0,
+      faceMatchDistance: Number.isFinite(Number(logData.faceMatchDistance))
+        ? Number(logData.faceMatchDistance)
+        : null,
       faceVerificationProvider: logData.faceVerificationProvider || '',
       faceVerifiedAt: logData.faceVerifiedAt || null,
       faceLivenessVerified: logData.faceLivenessVerified === true,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import HRFaceComparison from './HRFaceComparison';
 
 export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], onBack }) {
   const [search, setSearch] = useState('');
@@ -132,10 +133,10 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
             <span>Attendance Status: <b>{selectedRecord.status}</b></span>
             <span>Record Status: <b>{selectedRecord.record.selfieUrl && selectedRecord.record.fingerprintVerified ? 'Passkey verified; selfie attached' : 'For Review'}</b></span>
             <span>Face liveness: <b>{selectedRecord.record.faceLivenessVerified ? `${Number(selectedRecord.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
-            <span>Face match: <b>{selectedRecord.record.faceVerified ? `${Number(selectedRecord.record.faceMatchConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
+            <span>Face match: <b>{selectedRecord.record.faceVerified ? `Matched · distance ${Number(selectedRecord.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
             <span>Passkey verification: <b>{selectedRecord.record.fingerprintVerified ? 'Verified' : 'Not verified'}</b></span>
-            <span>Verification time: <b>{selectedRecord.record.faceLivenessVerified && selectedRecord.record.faceVerifiedAt ? new Date(selectedRecord.record.faceVerifiedAt).toLocaleString() : 'No face liveness check'}</b></span>
-            <span className="col-span-2 text-amber-800">The attached selfie is an ordinary photo. It is not a liveness or anti-spoof check and does not prove that the photo was captured live.</span>
+            <span>Face-match time: <b>{selectedRecord.record.faceVerifiedAt ? new Date(selectedRecord.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
+            <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className={`rounded-full px-2 py-1 font-bold ${selectedRecord.record.assignmentMatch ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -158,6 +159,12 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
               </a>
             )}
           </div>
+          <HRFaceComparison
+            employeeId={selectedRecord.employee?.employeeId || selectedRecord.record.employeeId}
+            attendanceSelfie={selectedRecord.record.selfieUrl}
+            faceVerified={selectedRecord.record.faceVerified}
+            faceMatchDistance={selectedRecord.record.faceMatchDistance}
+          />
         </section>
       )}
     </div>
