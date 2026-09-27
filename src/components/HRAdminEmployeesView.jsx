@@ -147,6 +147,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     setBiometricReviewNote('');
     setEnrollmentImagesError('');
     const employeeId = selectedEmployee?.employeeId;
+    const userId = selectedEmployee?._id;
     const shouldLoadImages = selectedEmployee?.biometricEnrollmentStatus === 'pending'
       || selectedEmployee?.hasDilgIdPhoto
       || selectedEmployee?.hasDilgIdBackPhoto
@@ -155,16 +156,19 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       setEnrollmentImagesLoading(false);
       return undefined;
     }
-    if (!employeeId) {
-      setEnrollmentImagesError('Unable to load enrollment images: employee ID is missing from this record.');
+    if (!employeeId || !userId) {
+      setEnrollmentImagesError('Unable to load enrollment images: the MongoDB employee record ID or employee ID is missing.');
       setEnrollmentImagesLoading(false);
       return undefined;
     }
     setEnrollmentImagesLoading(true);
-    apiFetch(`/api/face-enrollment?employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`, { cache: 'no-store' })
+    apiFetch(`/api/face-enrollment?userId=${encodeURIComponent(userId)}`, { cache: 'no-store' })
       .then(async response => {
         const result = await parseApiResponse(response, 'HR enrollment image request');
         if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load restricted HR enrollment images.');
+        if (String(result.employeeId || '').trim().toLowerCase() !== String(employeeId).trim().toLowerCase()) {
+          throw new Error('The enrollment record returned for HR does not match the selected employee ID. Do not approve; contact the system administrator.');
+        }
         if (active) {
           setDilgIdPhoto(result.dilgIdImage || '');
           setDilgIdBackPhoto(result.dilgIdBackImage || '');
@@ -184,7 +188,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         if (active) setEnrollmentImagesLoading(false);
       });
     return () => { active = false; };
-  }, [selectedId, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasDilgIdBackPhoto, selectedEmployee?.hasFaceEnrollmentImage, selectedEmployee?.biometricEnrollmentStatus, enrollmentImagesReloadKey]);
+  }, [selectedId, selectedEmployee?._id, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasDilgIdBackPhoto, selectedEmployee?.hasFaceEnrollmentImage, selectedEmployee?.biometricEnrollmentStatus, enrollmentImagesReloadKey]);
 
   const notify = (message, isError = false) => {
     setToast(message);

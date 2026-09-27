@@ -31,8 +31,12 @@ import {
 const router = express.Router();
 
 router.get('/face-enrollment', (req, res) => {
-  const { action, employeeId } = req.query;
+  const { action, employeeId, userId } = req.query;
   if (action === 'status') return getBiometricEnrollmentStatus(req, res);
+  if (!action && typeof userId === 'string' && userId) {
+    req.params.userId = userId;
+    return requireAdmin(req, res, () => getEmployeeEnrollmentImages(req, res));
+  }
   if (!action && typeof employeeId === 'string' && employeeId) {
     req.params.employeeId = employeeId;
     return requireAdmin(req, res, () => getEmployeeEnrollmentImages(req, res));
@@ -55,6 +59,7 @@ router.post('/user', updateUserProfile);
 router.get('/face/enrollment/status', getBiometricEnrollmentStatus);
 router.post('/face/enrollment', submitBiometricEnrollment);
 router.post('/face/enrollment/:employeeId/review', requireAdmin, reviewBiometricEnrollment);
+router.get('/face/enrollment/id/:userId', requireAdmin, getEmployeeEnrollmentImages);
 router.get('/face/enrollment/:employeeId', requireAdmin, getEmployeeEnrollmentImages);
 router.post('/biometric/register/options', createRegistrationOptions);
 router.post('/biometric/register/verify', verifyRegistration);

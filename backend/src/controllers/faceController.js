@@ -33,7 +33,7 @@ export const submitBiometricEnrollment = async (req, res) => {
     }
 
     const faceDescriptor = await createFaceDescriptor(selfieImage);
-    const user = await User.submitBiometricEnrollment(req.user.email, {
+    const user = await User.submitBiometricEnrollment(req.user._id, {
       dilgIdImage,
       dilgIdBackImage,
       selfieImage,
@@ -160,7 +160,9 @@ export const reviewBiometricEnrollment = async (req, res) => {
 export const getEmployeeEnrollmentImages = async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, private');
-    const user = await User.findBiometricEnrollmentByEmployeeId(req.params.employeeId);
+    const user = req.params.userId
+      ? await User.findBiometricEnrollmentById(req.params.userId)
+      : await User.findBiometricEnrollmentByEmployeeId(req.params.employeeId);
     if (!user || user.accessLevel !== 'employee') {
       return res.status(404).json({ success: false, error: 'Employee account not found.' });
     }
@@ -169,6 +171,7 @@ export const getEmployeeEnrollmentImages = async (req, res) => {
     }
     res.status(200).json({
       success: true,
+      employeeId: user.employeeId,
       dilgIdImage: user.dilgIdPhoto || '',
       dilgIdBackImage: user.dilgIdBackPhoto || '',
       enrollmentImage: user.faceEnrollmentImage || '',

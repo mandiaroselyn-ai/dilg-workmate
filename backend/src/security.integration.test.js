@@ -53,9 +53,14 @@ test('requires authentication before HR biometric enrollment review', async () =
 });
 
 test('requires authentication before loading restricted biometric enrollment images', async () => {
-  const response = await request(app).get('/api/face/enrollment/DILG-TEST-001');
-  assert.equal(response.status, 401);
-  assert.equal(response.body.error, 'Authentication required.');
+  const [employeeIdResponse, userIdResponse] = await Promise.all([
+    request(app).get('/api/face/enrollment/DILG-TEST-001'),
+    request(app).get('/api/face/enrollment/id/507f1f77bcf86cd799439011')
+  ]);
+  assert.equal(employeeIdResponse.status, 401);
+  assert.equal(employeeIdResponse.body.error, 'Authentication required.');
+  assert.equal(userIdResponse.status, 401);
+  assert.equal(userIdResponse.body.error, 'Authentication required.');
 });
 
 test('rejects requests from an unapproved origin', async () => {

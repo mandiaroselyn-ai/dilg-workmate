@@ -142,7 +142,7 @@ export const User = {
 
   findBiometricEnrollmentById: async (userId) => {
     ensureConnected();
-    if (!userId) return null;
+    if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findById(userId)
       .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
       .lean();
@@ -254,15 +254,13 @@ export const User = {
     return employee.toObject();
   },
 
-  submitBiometricEnrollment: async (email, enrollment) => {
+  submitBiometricEnrollment: async (userId, enrollment) => {
     ensureConnected();
-    const normalizedEmail = email?.toString().trim().toLowerCase();
-    if (!normalizedEmail) return null;
-    const emailPattern = new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    if (!userId) return null;
     const now = new Date();
     const savedUser = await MongoUser.findOneAndUpdate(
       {
-        email: emailPattern,
+        _id: userId,
         accessLevel: 'employee',
         ...resubmittableEnrollmentFilter()
       },
@@ -300,8 +298,9 @@ export const User = {
       const persistedEnrollment = await User.findBiometricEnrollmentById(savedUser._id);
       return persistedEnrollment || { persistenceFailure: true, employeeId: savedUser.employeeId };
     }
-    const existing = await MongoUser.findOne({ email: emailPattern, accessLevel: 'employee' }).select('_id');
-    return existing ? { conflict: true } : null;
+    const existing = await MongoUser.findById(userId).select('_id accessLevel');
+    if (!existing || existing.accessLevel !== 'employee') return null;
+    return { conflict: true };
   },
 
   reviewBiometricEnrollment: async (employeeId, decision, note, reviewedBy) => {

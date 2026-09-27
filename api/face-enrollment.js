@@ -5,7 +5,8 @@ export default function handler(req, res) {
   const requestUrl = new URL(req.url || '/', 'http://localhost');
   const action = requestUrl.searchParams.get('action');
   const employeeId = requestUrl.searchParams.get('employeeId');
-  const route = resolveFaceEnrollmentRoute({ method: req.method, action, employeeId });
+  const userId = requestUrl.searchParams.get('userId');
+  const route = resolveFaceEnrollmentRoute({ method: req.method, action, employeeId, userId });
 
   if (!route) {
     return res.status(400).json({ success: false, error: 'Invalid biometric enrollment API request.' });
@@ -13,6 +14,7 @@ export default function handler(req, res) {
 
   requestUrl.searchParams.delete('action');
   requestUrl.searchParams.delete('employeeId');
+  requestUrl.searchParams.delete('userId');
   const remainingQuery = requestUrl.searchParams.toString();
   req.url = `${route}${remainingQuery ? `?${remainingQuery}` : ''}`;
   return apiHandler(req, res);
