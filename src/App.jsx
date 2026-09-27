@@ -280,7 +280,7 @@ export default function App() {
       || !enrollment?.dilgIdImage?.startsWith('data:image/')) {
       throw new Error('Upload a government ID image and capture an enrollment selfie before submitting.');
     }
-    const response = await fetch('/api/face/enrollment', {
+    const response = await fetch('/api/face-enrollment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(enrollment)
@@ -293,7 +293,7 @@ export default function App() {
   };
 
   const handleRefreshBiometricStatus = useCallback(async () => {
-    const response = await fetch('/api/face/enrollment/status');
+    const response = await fetch('/api/face-enrollment?action=status');
     const data = await parseApiResponse(response, 'Biometric enrollment status');
     if (!response.ok || !data.success) {
       throw new Error(data?.error || 'Unable to refresh biometric enrollment status.');

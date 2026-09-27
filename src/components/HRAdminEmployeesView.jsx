@@ -17,7 +17,7 @@ import {
   Users,
   X
 } from 'lucide-react';
-import { apiFetch } from '../utils/api';
+import { apiFetch, parseApiResponse } from '../utils/api';
 
 const emptyForm = {
   firstName: '',
@@ -140,9 +140,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     setSavedEnrollmentImage('');
     setBiometricReviewNote('');
     if ((!selectedEmployee?.hasDilgIdPhoto && !selectedEmployee?.hasFaceEnrollmentImage) || !selectedEmployee.employeeId) return undefined;
-    apiFetch(`/api/face/enrollment/${encodeURIComponent(selectedEmployee.employeeId)}`)
+    apiFetch(`/api/face-enrollment?employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`)
       .then(async response => {
-        const result = await response.json();
+        const result = await parseApiResponse(response, 'HR enrollment image request');
         if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load restricted HR enrollment images.');
         if (active) {
           setDilgIdPhoto(result.dilgIdImage || '');
@@ -191,12 +191,12 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     }
     setBiometricReviewLoading(true);
     try {
-      const response = await apiFetch(`/api/face/enrollment/${encodeURIComponent(selectedEmployee.employeeId)}/review`, {
+      const response = await apiFetch(`/api/face-enrollment?action=review&employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, note: biometricReviewNote.trim() })
       });
-      const data = await response.json();
+      const data = await parseApiResponse(response, 'HR biometric review');
       if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save HR review.');
       onEmployeesChange?.(previous => previous.map(employee =>
         employeeKey(employee) === employeeKey(selectedEmployee)
