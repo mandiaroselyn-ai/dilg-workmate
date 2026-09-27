@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="630" viewBox="0 0 1000 630" role="img" aria-labelledby="title description">
+  <title id="title">Sample ID back, not a real ID</title>
+  <desc id="description">A fictional software testing card back with prominent sample markings.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#dbeafe"/>
+    </linearGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="2" fill="#60a5fa" fill-opacity=".35"/>
+    </pattern>
+  </defs>
+  <rect width="1000" height="630" rx="42" fill="url(#background)"/>
+  <rect width="1000" height="630" rx="42" fill="url(#dots)"/>
+  <rect x="18" y="18" width="964" height="594" rx="30" fill="none" stroke="#1d4ed8" stroke-width="5"/>
+  <rect x="42" y="42" width="916" height="112" rx="20" fill="#1e3a8a"/>
+  <text x="72" y="91" fill="#fff" font-family="Arial, sans-serif" font-size="32" font-weight="700">SOFTWARE TEST CARD</text>
+  <text x="72" y="128" fill="#bfdbfe" font-family="Arial, sans-serif" font-size="20" font-weight="700">FICTIONAL SAMPLE · BACK</text>
+  <rect x="74" y="197" width="852" height="152" rx="18" fill="#fff" stroke="#60a5fa" stroke-width="4"/>
+  <text x="105" y="242" fill="#1e3a8a" font-family="Arial, sans-serif" font-size="20" font-weight="700">DEMO NOTES</text>
+  <text x="105" y="283" fill="#0f172a" font-family="Arial, sans-serif" font-size="23">No real identity or government information is shown.</text>
+  <text x="105" y="320" fill="#0f172a" font-family="Arial, sans-serif" font-size="21">Use only to test image upload and HR preview locally.</text>
+  <rect x="74" y="382" width="852" height="62" rx="12" fill="#bfdbfe"/>
+  <text x="500" y="422" text-anchor="middle" fill="#1e3a8a" font-family="Arial, sans-serif" font-size="23" font-weight="700">DEMO-000-000 · SAMPLE DATA ONLY</text>
+  <g transform="rotate(-13 500 337)" opacity=".2">
+    <text x="500" y="370" text-anchor="middle" fill="#b91c1c" font-family="Arial, sans-serif" font-size="82" font-weight="900">SAMPLE</text>
+  </g>
+  <rect x="42" y="510" width="916" height="76" rx="16" fill="#b91c1c"/>
+  <text x="500" y="560" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="34" font-weight="900">NOT A REAL ID · NOT FOR IDENTIFICATION</text>
+</svg>
