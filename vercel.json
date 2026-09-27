@@ -1,4 +1,5 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "framework": "vite",
   "buildCommand": "npx vite build",
@@ -6,27 +7,15 @@
   "functions": {
     "api/[...path].js": {
       "maxDuration": 30,
-      "includeFiles": [
-        "node_modules/@vladmandic/face-api/model/tiny_face_detector_model*",
-        "node_modules/@vladmandic/face-api/model/face_landmark_68_model*",
-        "node_modules/@vladmandic/face-api/model/face_recognition_model*"
-      ]
+      "includeFiles": "node_modules/@vladmandic/face-api/model/{tiny_face_detector_model*,face_landmark_68_model*,face_recognition_model*}"
     },
     "api/face-enrollment.js": {
       "maxDuration": 30,
-      "includeFiles": [
-        "node_modules/@vladmandic/face-api/model/tiny_face_detector_model*",
-        "node_modules/@vladmandic/face-api/model/face_landmark_68_model*",
-        "node_modules/@vladmandic/face-api/model/face_recognition_model*"
-      ]
+      "includeFiles": "node_modules/@vladmandic/face-api/model/{tiny_face_detector_model*,face_landmark_68_model*,face_recognition_model*}"
     },
     "api/**/*.js": {
       "maxDuration": 30,
-      "includeFiles": [
-        "node_modules/@vladmandic/face-api/model/tiny_face_detector_model*",
-        "node_modules/@vladmandic/face-api/model/face_landmark_68_model*",
-        "node_modules/@vladmandic/face-api/model/face_recognition_model*"
-      ]
+      "includeFiles": "node_modules/@vladmandic/face-api/model/{tiny_face_detector_model*,face_landmark_68_model*,face_recognition_model*}"
     }
   }
 }
