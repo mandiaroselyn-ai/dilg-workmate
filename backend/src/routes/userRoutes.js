@@ -71,6 +71,17 @@ router.post('/biometric/register/options', createRegistrationOptions);
 router.post('/biometric/register/verify', verifyRegistration);
 router.post('/biometric/authenticate/options', createAuthenticationOptions);
 router.post('/biometric/authenticate/verify', verifyAuthentication);
+router.post('/biometric/action', (req, res) => {
+  const actions = {
+    'register-options': createRegistrationOptions,
+    'register-verify': verifyRegistration,
+    'authenticate-options': createAuthenticationOptions,
+    'authenticate-verify': verifyAuthentication
+  };
+  const handler = actions[req.query.action];
+  if (!handler) return res.status(400).json({ success: false, error: 'Invalid biometric action.' });
+  return handler(req, res);
+});
 router.post('/register', registerUser);
 router.post('/employees', requireAdmin, createEmployee);
 router.patch('/employees/:identifier', requireAdmin, updateEmployee);
