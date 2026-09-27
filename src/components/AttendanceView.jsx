@@ -652,7 +652,11 @@ export default function AttendanceView({
     : false;
   const isAssignmentVerified = isWithinAssignment && gpsAccuracy !== null && gpsAccuracy <= 50;
   const geofenceDescription = assignmentMode === 'field'
-    ? 'Barangay boundary + 150m GPS tolerance'
+    ? siteLocation?.fallbackToRadius && siteLocation.bounds
+      ? 'Approximate assigned-area map extent + 150m GPS tolerance'
+      : siteLocation?.fallbackToRadius
+        ? '150m from approximate assigned-area map pin'
+        : 'Barangay boundary + 150m GPS tolerance'
     : '150m from assigned address';
 
   const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
@@ -1564,7 +1568,7 @@ export default function AttendanceView({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Distance from Site:</span>
+                <span>Distance from map pin:</span>
                 <span className={`text-slate-800 font-bold ${isWithinAssignment ? 'text-emerald-700' : hasGpsPosition ? 'text-rose-700' : 'text-slate-500'}`}>{hasGpsPosition ? `${mockProximity} m from map location` : 'Waiting for GPS'}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-100 font-bold">
@@ -1705,7 +1709,7 @@ export default function AttendanceView({
                     <p className="text-lg font-bold text-blue-900 mt-1">{coordinates.lon.toFixed(6)}°E</p>
                   </div>
                   <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
-                    <p className="text-xs font-semibold text-slate-600 uppercase">Distance from Site</p>
+                    <p className="text-xs font-semibold text-slate-600 uppercase">Distance from map pin</p>
                     <p className="text-lg font-bold text-emerald-900 mt-1">{mockProximity}m</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 md:col-span-2">

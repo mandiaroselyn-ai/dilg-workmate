@@ -56,6 +56,17 @@ const polygonContainsOrNear = (longitude, latitude, polygon, bufferMeters) => {
   return polygon.some(ring => distanceToRingMeters(longitude, latitude, ring) <= bufferMeters);
 };
 
+const getValidBounds = bounds => {
+  if (!bounds) return null;
+  const { south, north, west, east } = bounds;
+  if (![south, north, west, east].every(Number.isFinite)
+    || south > north || west > east
+    || south < -90 || north > 90 || west < -180 || east > 180) {
+    return null;
+  }
+  return bounds;
+};
+
 export const isWithinAssignedLocation = (latitude, longitude, location, bufferMeters = 150) => {
   const lat = Number(latitude);
   const lon = Number(longitude);
@@ -68,6 +79,12 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
   const geometry = location.geometry;
   if (!geometry || !['Polygon', 'MultiPolygon'].includes(geometry.type)) {
     if (!location.fallbackToRadius) return false;
+    const bounds = getValidBounds(location.bounds);
+    if (bounds) {
+      const nearestLatitude = Math.max(bounds.south, Math.min(bounds.north, lat));
+      const nearestLongitude = Math.max(bounds.west, Math.min(bounds.east, lon));
+      return distanceMeters(lat, lon, nearestLatitude, nearestLongitude) <= bufferMeters;
+    }
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
   }
   const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;

@@ -65,3 +65,37 @@ test('field geofence uses the resolved point when the map has no administrative 
   assert.equal(isWithinAssignedLocation(13.0005, 121, pointLocation), true);
   assert.equal(isWithinAssignedLocation(13.002, 121, pointLocation), false);
 });
+
+test('field geofence uses the geocoder extent when only a barangay place pin is available', () => {
+  const tanzaLocation = {
+    mode: 'field',
+    latitude: 13.4564372,
+    longitude: 121.8429609,
+    bounds: {
+      south: 13.4364372,
+      north: 13.4764372,
+      west: 121.8229609,
+      east: 121.8629609
+    },
+    geometry: { type: 'Point', coordinates: [121.8429609, 13.4564372] },
+    fallbackToRadius: true
+  };
+
+  assert.equal(isWithinAssignedLocation(13.46, 121.845, tanzaLocation), true);
+  assert.equal(isWithinAssignedLocation(13.477, 121.8429609, tanzaLocation), true);
+  assert.equal(isWithinAssignedLocation(13.479, 121.8429609, tanzaLocation), false);
+});
+
+test('field geofence ignores invalid geocoder extents and falls back to the assigned pin', () => {
+  const locationWithInvalidBounds = {
+    mode: 'field',
+    latitude: 13,
+    longitude: 121,
+    bounds: { south: 14, north: 13, west: 121, east: 122 },
+    geometry: { type: 'Point', coordinates: [121, 13] },
+    fallbackToRadius: true
+  };
+
+  assert.equal(isWithinAssignedLocation(13, 121, locationWithInvalidBounds), true);
+  assert.equal(isWithinAssignedLocation(13.002, 121, locationWithInvalidBounds), false);
+});
