@@ -9,7 +9,7 @@ import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
 import { queueAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
-import { apiFetch } from './utils/api';
+import { apiFetch, parseApiResponse } from './utils/api';
 
 const DashboardView = lazy(() => import('./components/DashboardView'));
 const AttendanceView = lazy(() => import('./components/AttendanceView'));
@@ -285,7 +285,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(enrollment)
     });
-    const data = await response.json();
+    const data = await parseApiResponse(response, 'Biometric enrollment');
     if (!response.ok || !data.success) throw new Error(data?.error || 'Biometric enrollment submission failed.');
     setUser(previous => ({ ...previous, ...data.enrollment }));
     if (data.notificationWarning) console.error(data.notificationWarning);
@@ -294,7 +294,7 @@ export default function App() {
 
   const handleRefreshBiometricStatus = useCallback(async () => {
     const response = await fetch('/api/face/enrollment/status');
-    const data = await response.json();
+    const data = await parseApiResponse(response, 'Biometric enrollment status');
     if (!response.ok || !data.success) {
       throw new Error(data?.error || 'Unable to refresh biometric enrollment status.');
     }

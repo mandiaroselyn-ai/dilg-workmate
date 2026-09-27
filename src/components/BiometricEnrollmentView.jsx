@@ -234,9 +234,6 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           <p className="font-black">Liveness verification is not available yet.</p>
           <p className="mt-1">This camera photo is not an automated liveness test or face match. Your submission will remain unverified until a liveness/face-matching provider is configured.</p>
         </div>
-        <p className="mt-3 text-xs font-semibold text-slate-600">
-          After you provide both images, they are automatically uploaded to your MongoDB employee record and sent to HR/Admin for review.
-        </p>
         {user.biometricEnrollmentSubmittedAt && (
           <p className="mt-3 text-xs font-semibold text-slate-500">
             Submitted {new Date(user.biometricEnrollmentSubmittedAt).toLocaleString()}
