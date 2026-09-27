@@ -108,8 +108,10 @@ const normalizeEmployeeInput = body => {
 const employeeResponse = employee => ({
   ...toSafeUser(employee),
   hasDilgIdPhoto: Boolean(employee.dilgIdPhoto),
+  hasDilgIdBackPhoto: Boolean(employee.dilgIdBackPhoto),
   hasFaceEnrollmentImage: Boolean(employee.faceEnrollmentImage),
   biometricEnrollmentStatus: employee.biometricEnrollmentStatus || 'not-submitted',
+  biometricEnrollmentVersion: employee.biometricEnrollmentVersion || 1,
   biometricEnrollmentSubmittedAt: employee.biometricEnrollmentSubmittedAt || null,
   biometricEnrollmentReviewedAt: employee.biometricEnrollmentReviewedAt || null,
   biometricEnrollmentReviewedBy: employee.biometricEnrollmentReviewedBy || '',
@@ -228,8 +230,10 @@ export const getEmployees = async (req, res) => {
       return {
         ...plain,
         hasDilgIdPhoto: Boolean(emp.dilgIdPhoto),
+        hasDilgIdBackPhoto: Boolean(emp.dilgIdBackPhoto),
         hasFaceEnrollmentImage: Boolean(emp.faceEnrollmentImage),
         biometricEnrollmentStatus: emp.biometricEnrollmentStatus || 'not-submitted',
+        biometricEnrollmentVersion: emp.biometricEnrollmentVersion || 1,
         biometricEnrollmentSubmittedAt: emp.biometricEnrollmentSubmittedAt || null,
         biometricEnrollmentReviewedAt: emp.biometricEnrollmentReviewedAt || null,
         biometricEnrollmentReviewedBy: emp.biometricEnrollmentReviewedBy || '',

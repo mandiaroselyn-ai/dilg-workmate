@@ -103,6 +103,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [form, setForm] = useState(emptyForm);
   const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
   const [dilgIdPhoto, setDilgIdPhoto] = useState('');
+  const [dilgIdBackPhoto, setDilgIdBackPhoto] = useState('');
   const [biometricReviewNote, setBiometricReviewNote] = useState('');
   const [biometricReviewLoading, setBiometricReviewLoading] = useState(false);
   const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
@@ -133,19 +134,22 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const selectedEmployee = employeeAccounts.find((employee) => {
     return employeeKey(employee) === selectedId;
   });
+  const requiresBackId = (selectedEmployee?.biometricEnrollmentVersion || 1) >= 2;
 
   useEffect(() => {
     let active = true;
     setDilgIdPhoto('');
+    setDilgIdBackPhoto('');
     setSavedEnrollmentImage('');
     setBiometricReviewNote('');
-    if ((!selectedEmployee?.hasDilgIdPhoto && !selectedEmployee?.hasFaceEnrollmentImage) || !selectedEmployee.employeeId) return undefined;
+    if ((!selectedEmployee?.hasDilgIdPhoto && !selectedEmployee?.hasDilgIdBackPhoto && !selectedEmployee?.hasFaceEnrollmentImage) || !selectedEmployee.employeeId) return undefined;
     apiFetch(`/api/face-enrollment?employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`)
       .then(async response => {
         const result = await parseApiResponse(response, 'HR enrollment image request');
         if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load restricted HR enrollment images.');
         if (active) {
           setDilgIdPhoto(result.dilgIdImage || '');
+          setDilgIdBackPhoto(result.dilgIdBackImage || '');
           setSavedEnrollmentImage(result.enrollmentImage || '');
           setBiometricReviewNote(result.enrollment?.biometricEnrollmentReviewNote || '');
         }
@@ -154,7 +158,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         if (active) notify(error.message || 'Unable to load restricted HR enrollment images.', true);
       });
     return () => { active = false; };
-  }, [selectedId, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasFaceEnrollmentImage]);
+  }, [selectedId, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasDilgIdBackPhoto, selectedEmployee?.hasFaceEnrollmentImage]);
 
   const notify = (message, isError = false) => {
     setToast(message);
@@ -551,12 +555,18 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                 {selectedEmployee.biometricEnrollmentReviewedAt ? ` · reviewed ${new Date(selectedEmployee.biometricEnrollmentReviewedAt).toLocaleString()}` : ''}
               </p>
             )}
-            {(dilgIdPhoto || savedEnrollmentImage) ? (
+            {(dilgIdPhoto || dilgIdBackPhoto || savedEnrollmentImage) ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {dilgIdPhoto && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
-                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Restricted government ID</p>
-                    <img src={dilgIdPhoto} alt="Employee-submitted government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Government ID · Front</p>
+                    <img src={dilgIdPhoto} alt="Employee-submitted front of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                  </div>
+                )}
+                {dilgIdBackPhoto && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Government ID · Back</p>
+                    <img src={dilgIdBackPhoto} alt="Employee-submitted back of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
                   </div>
                 )}
                 {savedEnrollmentImage && (
@@ -588,8 +598,11 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium outline-none focus:border-blue-500"
                   />
                 </label>
+                {(!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
+                  <p role="status" className="text-[10px] font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
                     {biometricReviewLoading ? 'Saving...' : 'Approve HR Review'}
                   </button>
                   <button type="button" onClick={() => handleBiometricReview('reject')} disabled={biometricReviewLoading} className="rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">

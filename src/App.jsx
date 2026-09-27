@@ -277,8 +277,9 @@ export default function App() {
 
   const handleSubmitBiometricEnrollment = async enrollment => {
     if (!enrollment?.selfieImage?.startsWith('data:image/')
-      || !enrollment?.dilgIdImage?.startsWith('data:image/')) {
-      throw new Error('Upload a government ID image and capture an enrollment selfie before submitting.');
+      || !enrollment?.dilgIdImage?.startsWith('data:image/')
+      || !enrollment?.dilgIdBackImage?.startsWith('data:image/')) {
+      throw new Error('Upload the front and back of your government ID and capture an enrollment selfie before submitting.');
     }
     const response = await fetch('/api/face-enrollment', {
       method: 'POST',

@@ -31,11 +31,13 @@ const UserSchema = new mongoose.Schema({
   faceEnrolledAt: { type: Date, default: null },
   faceEnrollmentImage: { type: String, default: '' },
   dilgIdPhoto: { type: String, default: '' },
+  dilgIdBackPhoto: { type: String, default: '' },
   biometricEnrollmentStatus: {
     type: String,
     enum: ['not-submitted', 'pending', 'hr-approved', 'rejected'],
     default: 'not-submitted'
   },
+  biometricEnrollmentVersion: { type: Number, default: 1 },
   biometricEnrollmentSubmittedAt: { type: Date, default: null },
   biometricEnrollmentReviewedAt: { type: Date, default: null },
   biometricEnrollmentReviewedBy: { type: String, default: '' },
@@ -212,7 +214,9 @@ export const User = {
           faceEnrolledAt: null,
           faceEnrollmentImage: enrollment.selfieImage,
           dilgIdPhoto: enrollment.dilgIdImage,
+          dilgIdBackPhoto: enrollment.dilgIdBackImage,
           biometricEnrollmentStatus: 'pending',
+          biometricEnrollmentVersion: 2,
           biometricEnrollmentSubmittedAt: now,
           biometricEnrollmentReviewedAt: null,
           biometricEnrollmentReviewedBy: '',

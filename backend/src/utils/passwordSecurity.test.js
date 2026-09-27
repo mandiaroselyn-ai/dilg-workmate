@@ -24,6 +24,7 @@ test('removes authentication and biometric secrets from API user objects', () =>
     faceId: 'face-id',
     faceEnrollmentImage: 'private-enrollment-selfie',
     dilgIdPhoto: 'private-id-image',
+    dilgIdBackPhoto: 'private-id-back-image',
     dilgIdVerifiedBy: 'hr-user',
     dilgIdVerifiedDetails: { name: 'Employee' },
     biometricEnrollmentStatus: 'pending',

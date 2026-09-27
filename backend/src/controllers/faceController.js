@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 
 const enrollmentStatus = user => ({
   biometricEnrollmentStatus: user.biometricEnrollmentStatus || 'not-submitted',
+  biometricEnrollmentVersion: user.biometricEnrollmentVersion || 1,
   biometricEnrollmentSubmittedAt: user.biometricEnrollmentSubmittedAt || null,
   biometricEnrollmentReviewedAt: user.biometricEnrollmentReviewedAt || null,
   biometricEnrollmentReviewedBy: user.biometricEnrollmentReviewedBy || '',
@@ -36,12 +37,12 @@ export const submitBiometricEnrollment = async (req, res) => {
     if (req.user?.accessLevel !== 'employee') {
       return res.status(403).json({ success: false, error: 'Only employee accounts can submit biometric enrollment.' });
     }
-    const { dilgIdImage, selfieImage } = req.body || {};
-    if (!isSupportedImage(dilgIdImage) || !isSupportedImage(selfieImage)) {
-      return res.status(400).json({ success: false, error: 'Upload a valid government ID image and enrollment selfie.' });
+    const { dilgIdImage, dilgIdBackImage, selfieImage } = req.body || {};
+    if (!isSupportedImage(dilgIdImage) || !isSupportedImage(dilgIdBackImage) || !isSupportedImage(selfieImage)) {
+      return res.status(400).json({ success: false, error: 'Upload valid front and back government ID images and an enrollment selfie.' });
     }
 
-    const user = await User.submitBiometricEnrollment(req.user.email, { dilgIdImage, selfieImage });
+    const user = await User.submitBiometricEnrollment(req.user.email, { dilgIdImage, dilgIdBackImage, selfieImage });
     if (user?.conflict) {
       return res.status(409).json({ success: false, error: 'An enrollment is already awaiting HR review or has already been HR-approved.' });
     }
@@ -51,7 +52,7 @@ export const submitBiometricEnrollment = async (req, res) => {
     try {
       await Announcement.createNotification({
         title: 'Biometric Enrollment Submitted',
-        message: `${user.name || 'An employee'} submitted a government ID and selfie for HR review. Liveness and automatic face matching are not configured.`,
+        message: `${user.name || 'An employee'} submitted the front and back of a government ID and a selfie for HR review. Liveness and automatic face matching are not configured.`,
         type: 'biometric_enrollment',
         recipientRole: 'hr_admin'
       });
@@ -89,8 +90,9 @@ export const reviewBiometricEnrollment = async (req, res) => {
     if (!employee || employee.accessLevel !== 'employee') {
       return res.status(404).json({ success: false, error: 'Employee account not found.' });
     }
-    if (!employee.dilgIdPhoto || !employee.faceEnrollmentImage) {
-      return res.status(409).json({ success: false, error: 'Both government ID and enrollment selfie must be on file before HR can review this enrollment.' });
+    const requiresBackId = (employee.biometricEnrollmentVersion || 1) >= 2;
+    if (!employee.dilgIdPhoto || !employee.faceEnrollmentImage || (requiresBackId && !employee.dilgIdBackPhoto)) {
+      return res.status(409).json({ success: false, error: 'Front and back government ID images and an enrollment selfie must be on file before HR can review this enrollment.' });
     }
     const reviewer = req.user?.employeeId || req.user?.email || '';
     const updated = await User.reviewBiometricEnrollment(
@@ -138,12 +140,13 @@ export const getEmployeeEnrollmentImages = async (req, res) => {
     if (!user || user.accessLevel !== 'employee') {
       return res.status(404).json({ success: false, error: 'Employee account not found.' });
     }
-    if (!user.dilgIdPhoto && !user.faceEnrollmentImage) {
+    if (!user.dilgIdPhoto && !user.dilgIdBackPhoto && !user.faceEnrollmentImage) {
       return res.status(404).json({ success: false, error: 'No enrollment images are on file.' });
     }
     res.status(200).json({
       success: true,
       dilgIdImage: user.dilgIdPhoto || '',
+      dilgIdBackImage: user.dilgIdBackPhoto || '',
       enrollmentImage: user.faceEnrollmentImage || '',
       enrollment: enrollmentStatus(user)
     });
