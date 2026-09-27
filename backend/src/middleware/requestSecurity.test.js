@@ -20,8 +20,8 @@ const invokeValidator = body => {
   return { statusCode, responseBody, nextCalled };
 };
 
-test('rejects combined biometric images that exceed the JSON payload budget', () => {
-  const payload = 'x'.repeat(3 * 1024 * 1024);
+test('rejects enrollment images that exceed the Vercel request body budget', () => {
+  const payload = 'x'.repeat(1_400_001);
   const result = invokeValidator({
     dilgIdImage: payload,
     dilgIdBackImage: payload,
@@ -29,12 +29,12 @@ test('rejects combined biometric images that exceed the JSON payload budget', ()
   });
 
   assert.equal(result.statusCode, 413);
-  assert.equal(result.responseBody.error, 'Combined biometric images are too large. Resize the images and try again.');
+  assert.equal(result.responseBody.error, 'The three enrollment images exceed the secure upload size. Retake them closer with good lighting and retry.');
   assert.equal(result.nextCalled, false);
 });
 
-test('allows compressed front, back, and selfie images within the payload budget', () => {
-  const payload = 'x'.repeat(2 * 1024 * 1024);
+test('allows compressed front, back, and selfie images within the Vercel request budget', () => {
+  const payload = 'x'.repeat(1_200_000);
   const result = invokeValidator({
     dilgIdImage: payload,
     dilgIdBackImage: payload,
@@ -43,6 +43,19 @@ test('allows compressed front, back, and selfie images within the payload budget
 
   assert.equal(result.statusCode, 200);
   assert.equal(result.nextCalled, true);
+});
+
+test('rejects combined enrollment images beyond the Vercel request budget', () => {
+  const payload = 'x'.repeat(1_350_000);
+  const result = invokeValidator({
+    dilgIdImage: payload,
+    dilgIdBackImage: payload,
+    selfieImage: payload
+  });
+
+  assert.equal(result.statusCode, 413);
+  assert.match(result.responseBody.error, /three enrollment images/i);
+  assert.equal(result.nextCalled, false);
 });
 
 test('includes the nested attendance selfie in biometric payload limits', () => {

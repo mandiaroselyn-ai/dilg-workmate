@@ -24,13 +24,22 @@ export const validateApiBody = (req, res, next) => {
     'selfieImage',
     ...(typeof body.record?.selfieUrl === 'string' ? ['record.selfieUrl'] : [])
   ];
+  const enrollmentImageFields = ['dilgIdImage', 'dilgIdBackImage', 'selfieImage'];
+  let enrollmentImageBytes = 0;
   let biometricImageBytes = 0;
   for (const field of imageFields) {
     const value = field === 'record.selfieUrl' ? body.record.selfieUrl : body[field];
     if (typeof value === 'string' && value.length > 8 * 1024 * 1024) {
       return res.status(413).json({ success: false, error: 'Biometric image is too large.' });
     }
-    if (typeof value === 'string') biometricImageBytes += Buffer.byteLength(value, 'utf8');
+    if (typeof value === 'string') {
+      const valueBytes = Buffer.byteLength(value, 'utf8');
+      biometricImageBytes += valueBytes;
+      if (enrollmentImageFields.includes(field)) enrollmentImageBytes += valueBytes;
+    }
+  }
+  if (enrollmentImageBytes > 4_000_000) {
+    return res.status(413).json({ success: false, error: 'The three enrollment images exceed the secure upload size. Retake them closer with good lighting and retry.' });
   }
   if (biometricImageBytes > 8 * 1024 * 1024) {
     return res.status(413).json({ success: false, error: 'Combined biometric images are too large. Resize the images and try again.' });

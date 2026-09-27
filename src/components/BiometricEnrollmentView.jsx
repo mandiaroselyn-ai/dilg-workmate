@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, RefreshCw, Upload, X } from 'lucide-react';
-import { resizeFaceImage } from '../utils/faceImage';
+import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
 
 const statusCopy = {
   'not-submitted': 'Not submitted',
@@ -108,15 +108,19 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       return;
     }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const image = canvas.toDataURL('image/jpeg', 0.78);
-    if (cameraTarget === 'id-front') setDilgIdImage(image);
-    else if (cameraTarget === 'id-back') setDilgIdBackImage(image);
-    else setSelfieImage(image);
-    automaticSubmissionStartedRef.current = false;
-    setCameraError('');
-    setError('');
-    setSuccess('');
-    stopCamera();
+    try {
+      const image = encodeFaceImage(canvas, 1280, 0.78);
+      if (cameraTarget === 'id-front') setDilgIdImage(image);
+      else if (cameraTarget === 'id-back') setDilgIdBackImage(image);
+      else setSelfieImage(image);
+      automaticSubmissionStartedRef.current = false;
+      setCameraError('');
+      setError('');
+      setSuccess('');
+      stopCamera();
+    } catch (imageError) {
+      setCameraError(imageError.message || 'Unable to prepare this camera image.');
+    }
   };
 
   const handleImageSelection = async (event, target) => {
