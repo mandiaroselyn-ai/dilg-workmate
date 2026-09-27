@@ -1,9 +1,11 @@
 import { Announcement } from '../models/announcementModel.js';
 import { User } from '../models/User.js';
 import { createFaceDescriptor } from '../services/faceMatchingService.js';
+import { hasRequiredEnrollmentImages } from '../utils/biometricEnrollment.js';
 
 const enrollmentStatus = user => ({
   biometricEnrollmentStatus: user.biometricEnrollmentStatus || 'not-submitted',
+  hasCompleteEnrollmentImages: hasRequiredEnrollmentImages(user),
   biometricEnrollmentVersion: user.biometricEnrollmentVersion || 1,
   biometricEnrollmentSubmittedAt: user.biometricEnrollmentSubmittedAt || null,
   biometricEnrollmentReviewedAt: user.biometricEnrollmentReviewedAt || null,
@@ -40,6 +42,21 @@ export const submitBiometricEnrollment = async (req, res) => {
       return res.status(409).json({ success: false, error: 'An enrollment is already awaiting HR review or has already been HR-approved.' });
     }
     if (!user) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    if (!hasRequiredEnrollmentImages(user)
+      || user.dilgIdPhoto !== dilgIdImage
+      || user.dilgIdBackPhoto !== dilgIdBackImage
+      || user.faceEnrollmentImage !== selfieImage) {
+      console.error('Biometric enrollment image persistence verification failed:', {
+        employeeId: user.employeeId,
+        hasDilgIdPhoto: Boolean(user.dilgIdPhoto),
+        hasDilgIdBackPhoto: Boolean(user.dilgIdBackPhoto),
+        hasFaceEnrollmentImage: Boolean(user.faceEnrollmentImage)
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'The server could not confirm that all ID and selfie images were saved. Please retry the upload.'
+      });
+    }
 
     let notificationWarning = '';
     try {
