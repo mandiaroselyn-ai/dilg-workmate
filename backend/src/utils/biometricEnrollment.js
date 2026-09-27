@@ -4,13 +4,9 @@ export const hasRequiredEnrollmentImages = (enrollment = {}) => Boolean(
   && enrollment.faceEnrollmentImage
 );
 
-export const missingEnrollmentImagesFilter = () => ({
+export const resubmittableEnrollmentFilter = () => ({
   $or: [
-    { dilgIdPhoto: { $exists: false } },
-    { dilgIdPhoto: '' },
-    { dilgIdBackPhoto: { $exists: false } },
-    { dilgIdBackPhoto: '' },
-    { faceEnrollmentImage: { $exists: false } },
-    { faceEnrollmentImage: '' }
+    { biometricEnrollmentStatus: { $in: ['not-submitted', 'rejected', 'pending'] } },
+    { biometricEnrollmentStatus: { $exists: false } }
   ]
 });

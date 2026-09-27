@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasRequiredEnrollmentImages, missingEnrollmentImagesFilter } from './biometricEnrollment.js';
+import { hasRequiredEnrollmentImages, resubmittableEnrollmentFilter } from './biometricEnrollment.js';
 
 test('requires front ID, back ID, and selfie for a complete enrollment', () => {
   const complete = {
@@ -14,15 +14,11 @@ test('requires front ID, back ID, and selfie for a complete enrollment', () => {
   assert.equal(hasRequiredEnrollmentImages(), false);
 });
 
-test('identifies any missing enrollment image when allowing a pending resubmission', () => {
-  assert.deepEqual(missingEnrollmentImagesFilter(), {
+test('allows employees to resubmit while an enrollment is pending but never after approval', () => {
+  assert.deepEqual(resubmittableEnrollmentFilter(), {
     $or: [
-      { dilgIdPhoto: { $exists: false } },
-      { dilgIdPhoto: '' },
-      { dilgIdBackPhoto: { $exists: false } },
-      { dilgIdBackPhoto: '' },
-      { faceEnrollmentImage: { $exists: false } },
-      { faceEnrollmentImage: '' }
+      { biometricEnrollmentStatus: { $in: ['not-submitted', 'rejected', 'pending'] } },
+      { biometricEnrollmentStatus: { $exists: false } }
     ]
   });
 });

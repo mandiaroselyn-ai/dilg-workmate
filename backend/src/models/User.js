@@ -4,7 +4,7 @@ import { isConnected } from '../config/db.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { hashPassword, isPasswordHash, verifyPassword as checkPassword } from '../utils/passwordSecurity.js';
-import { missingEnrollmentImagesFilter } from '../utils/biometricEnrollment.js';
+import { resubmittableEnrollmentFilter } from '../utils/biometricEnrollment.js';
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, default: 'Lara Montiano' },
@@ -248,14 +248,7 @@ export const User = {
       {
         email: emailPattern,
         accessLevel: 'employee',
-        $or: [
-          { biometricEnrollmentStatus: { $in: ['not-submitted', 'rejected'] } },
-          { biometricEnrollmentStatus: { $exists: false } },
-          {
-            biometricEnrollmentStatus: 'pending',
-            ...missingEnrollmentImagesFilter()
-          }
-        ]
+        ...resubmittableEnrollmentFilter()
       },
       {
         $set: {

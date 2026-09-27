@@ -332,7 +332,7 @@ export default function App() {
   };
 
   const handleRefreshBiometricStatus = useCallback(async () => {
-    const response = await apiFetch('/api/face-enrollment?action=status');
+    const response = await apiFetch('/api/face-enrollment?action=status', { cache: 'no-store' });
     const data = await parseApiResponse(response, 'Biometric enrollment status');
     if (!response.ok || !data.success) {
       throw new Error(data?.error || 'Unable to refresh biometric enrollment status.');

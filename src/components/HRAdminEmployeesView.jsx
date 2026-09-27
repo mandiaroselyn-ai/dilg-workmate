@@ -161,7 +161,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       return undefined;
     }
     setEnrollmentImagesLoading(true);
-    apiFetch(`/api/face-enrollment?employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`)
+    apiFetch(`/api/face-enrollment?employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`, { cache: 'no-store' })
       .then(async response => {
         const result = await parseApiResponse(response, 'HR enrollment image request');
         if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load restricted HR enrollment images.');

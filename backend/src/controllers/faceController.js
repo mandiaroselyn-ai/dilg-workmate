@@ -18,6 +18,7 @@ const isSupportedImage = value => typeof value === 'string'
   && /^data:image\/(?:jpeg|png);base64,/i.test(value);
 
 export const getBiometricEnrollmentStatus = async (req, res) => {
+  res.set('Cache-Control', 'no-store, private');
   res.status(200).json({ success: true, enrollment: enrollmentStatus(req.user) });
 };
 
@@ -155,6 +156,7 @@ export const reviewBiometricEnrollment = async (req, res) => {
 
 export const getEmployeeEnrollmentImages = async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store, private');
     const user = await User.findByEmployeeId(req.params.employeeId);
     if (!user || user.accessLevel !== 'employee') {
       return res.status(404).json({ success: false, error: 'Employee account not found.' });

@@ -30,9 +30,9 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const automaticSubmissionStartedRef = useRef(false);
   const submissionInProgressRef = useRef(false);
   const status = user?.biometricEnrollmentStatus || 'not-submitted';
-  const canRepairPendingEnrollment = status === 'pending' && user?.hasCompleteEnrollmentImages === false;
+  const canResubmitPendingEnrollment = status === 'pending';
   const canSubmit = !refreshingStatus
-    && (status === 'not-submitted' || status === 'rejected' || canRepairPendingEnrollment);
+    && (status === 'not-submitted' || status === 'rejected' || canResubmitPendingEnrollment);
 
   const refreshStatus = async () => {
     if (!onRefreshEnrollmentStatus) return;
@@ -246,16 +246,10 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         </div>
         {statusError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{statusError}</p>}
 
-        {status === 'pending' && !canRepairPendingEnrollment && (
+        {status === 'pending' && (
           <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             <Clock3 className="h-5 w-5 shrink-0" />
-            <p>Your submission is waiting for HR/Admin review. You will see the decision here.</p>
-          </div>
-        )}
-        {canRepairPendingEnrollment && (
-          <div className="mt-4 flex gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
-            <p>The pending submission is missing one or more saved images. Submit all three images again to replace the incomplete record and make them available to HR.</p>
+            <p>Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again below; this replaces your pending submission.</p>
           </div>
         )}
         {status === 'hr-approved' && (
@@ -336,7 +330,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           <button type="button" onClick={handleSubmit} disabled={submitting || !dilgIdImage || !dilgIdBackImage || !selfieImage} className="w-full rounded-xl bg-blue-700 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 md:w-auto">
             {submitting
               ? 'Uploading...'
-              : canRepairPendingEnrollment
+              : canResubmitPendingEnrollment
                 ? error ? 'Retry Resubmission' : 'Resubmit All Images for HR Review'
                 : error ? 'Retry Upload for HR Review' : 'Upload for HR Review'}
           </button>
