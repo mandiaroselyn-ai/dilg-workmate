@@ -12,6 +12,8 @@ const statusCopy = {
 export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [dilgIdImage, setDilgIdImage] = useState('');
   const [dilgIdBackImage, setDilgIdBackImage] = useState('');
+  const [sampleIdSides, setSampleIdSides] = useState({ front: false, back: false });
+  const [loadingSampleId, setLoadingSampleId] = useState(false);
   const [selfieImage, setSelfieImage] = useState('');
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraTarget, setCameraTarget] = useState('');
@@ -111,9 +113,13 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     try {
       const image = encodeFaceImage(canvas, 1280, 0.78);
-      if (cameraTarget === 'id-front') setDilgIdImage(image);
-      else if (cameraTarget === 'id-back') setDilgIdBackImage(image);
-      else setSelfieImage(image);
+      if (cameraTarget === 'id-front') {
+        setDilgIdImage(image);
+        setSampleIdSides(previous => ({ ...previous, front: false }));
+      } else if (cameraTarget === 'id-back') {
+        setDilgIdBackImage(image);
+        setSampleIdSides(previous => ({ ...previous, back: false }));
+      } else setSelfieImage(image);
       automaticSubmissionStartedRef.current = false;
       setCameraError('');
       setError('');
@@ -139,15 +145,47 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     }
     try {
       const image = await resizeFaceImage(file, 1280, 0.78);
-      if (target === 'id-front') setDilgIdImage(image);
-      else if (target === 'id-back') setDilgIdBackImage(image);
-      else setSelfieImage(image);
+      if (target === 'id-front') {
+        setDilgIdImage(image);
+        setSampleIdSides(previous => ({ ...previous, front: false }));
+      } else if (target === 'id-back') {
+        setDilgIdBackImage(image);
+        setSampleIdSides(previous => ({ ...previous, back: false }));
+      } else setSelfieImage(image);
       automaticSubmissionStartedRef.current = false;
       setError('');
       setCameraError('');
       setSuccess('');
     } catch (imageError) {
       setError(imageError.message || 'Unable to prepare the selected image.');
+    }
+  };
+
+  const handleUseSampleId = async () => {
+    setLoadingSampleId(true);
+    setError('');
+    try {
+      const [frontResponse, backResponse] = await Promise.all([
+        fetch('/sample-id-front.jpg', { cache: 'no-store' }),
+        fetch('/sample-id-back.jpg', { cache: 'no-store' })
+      ]);
+      if (!frontResponse.ok || !backResponse.ok) {
+        throw new Error('The sample ID images could not be loaded. Refresh the app and try again.');
+      }
+      const [frontBlob, backBlob] = await Promise.all([frontResponse.blob(), backResponse.blob()]);
+      const [frontImage, backImage] = await Promise.all([
+        resizeFaceImage(new File([frontBlob], 'sample-id-front.jpg', { type: frontBlob.type || 'image/jpeg' }), 1280, 0.78),
+        resizeFaceImage(new File([backBlob], 'sample-id-back.jpg', { type: backBlob.type || 'image/jpeg' }), 1280, 0.78)
+      ]);
+      setDilgIdImage(frontImage);
+      setDilgIdBackImage(backImage);
+      setSampleIdSides({ front: true, back: true });
+      automaticSubmissionStartedRef.current = false;
+      setSuccess('');
+    } catch (sampleError) {
+      setError(sampleError.message || 'Unable to load the demo ID images.');
+    } finally {
+      setLoadingSampleId(false);
     }
   };
 
@@ -165,11 +203,15 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     submissionInProgressRef.current = true;
     setSubmitting(true);
     try {
-      const result = await onSubmitEnrollment({ dilgIdImage, dilgIdBackImage, selfieImage });
+      const isDemoEnrollment = sampleIdSides.front || sampleIdSides.back;
+      const result = await onSubmitEnrollment({ dilgIdImage, dilgIdBackImage, selfieImage, isDemoEnrollment });
       setDilgIdImage('');
       setDilgIdBackImage('');
       setSelfieImage('');
-      setSuccess(result.notificationWarning || 'Enrollment submitted. HR/Admin has been notified to review your documents.');
+      setSampleIdSides({ front: false, back: false });
+      setSuccess(result.notificationWarning || (isDemoEnrollment
+        ? 'DEMO submission saved for HR preview. HR approval and attendance matching are disabled for sample ID images.'
+        : 'Enrollment submitted. HR/Admin has been notified to review your documents.'));
       setSuccessIsWarning(Boolean(result.notificationWarning));
     } catch (submitError) {
       setError(submitError.message || 'Unable to submit your enrollment.');
@@ -255,7 +297,11 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <Clock3 className="h-5 w-5 shrink-0" />
-              <p>Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again; this replaces your pending submission.</p>
+              <p>
+                {user.biometricEnrollmentIsDemo
+                  ? 'DEMO ONLY: your sample ID images are saved for HR preview but cannot be approved or used for attendance. Replace them with your actual government ID.'
+                  : 'Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again; this replaces your pending submission.'}
+              </p>
             </div>
             <button
               type="button"
@@ -301,6 +347,15 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
             <div>
               <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">01 · Scan both sides of your government ID</h3>
               <p className="mt-1 text-xs text-slate-600">Upload an existing photo or use the rear camera to capture each side separately.</p>
+              <button
+                type="button"
+                onClick={handleUseSampleId}
+                disabled={submitting || loadingSampleId}
+                className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-black text-amber-900 disabled:opacity-50"
+              >
+                {loadingSampleId ? 'Loading demo ID...' : 'Use Sample ID (DEMO ONLY)'}
+              </button>
+              <p className="mt-1 text-[10px] font-semibold text-amber-800">Fictional test images only. HR cannot approve a sample ID or enable attendance matching from it.</p>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               {renderIdSide('Front of ID', 'id-front', dilgIdImage, idInputRef)}

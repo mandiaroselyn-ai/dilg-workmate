@@ -104,6 +104,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
   const [dilgIdPhoto, setDilgIdPhoto] = useState('');
   const [dilgIdBackPhoto, setDilgIdBackPhoto] = useState('');
+  const [isDemoEnrollment, setIsDemoEnrollment] = useState(false);
   const [enrollmentImagesLoading, setEnrollmentImagesLoading] = useState(false);
   const [enrollmentImagesError, setEnrollmentImagesError] = useState('');
   const [enrollmentImagesReloadKey, setEnrollmentImagesReloadKey] = useState(0);
@@ -144,6 +145,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     setDilgIdPhoto('');
     setDilgIdBackPhoto('');
     setSavedEnrollmentImage('');
+    setIsDemoEnrollment(false);
     setBiometricReviewNote('');
     setEnrollmentImagesError('');
     const employeeId = selectedEmployee?.employeeId;
@@ -173,6 +175,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
           setDilgIdPhoto(result.dilgIdImage || '');
           setDilgIdBackPhoto(result.dilgIdBackImage || '');
           setSavedEnrollmentImage(result.enrollmentImage || '');
+          setIsDemoEnrollment(Boolean(result.enrollment?.biometricEnrollmentIsDemo));
           setBiometricReviewNote(result.enrollment?.biometricEnrollmentReviewNote || '');
           setEnrollmentImagesError('');
         }
@@ -546,6 +549,11 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
               {selectedEmployee.accountStatus || 'Pending'} account
             </span>
           </div>
+          {isDemoEnrollment && (
+            <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-900">
+              DEMO ONLY — this submission contains fictional sample ID images. Do not approve it; attendance face matching is blocked until the employee submits a real government ID.
+            </p>
+          )}
 
           <div className="mt-5 flex flex-wrap gap-3">
             <button type="button" onClick={() => openEdit(selectedEmployee)} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white">
@@ -654,11 +662,13 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium outline-none focus:border-blue-500"
                   />
                 </label>
-                {(!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
+                {isDemoEnrollment ? (
+                  <p role="status" className="text-[10px] font-semibold text-amber-800">Sample ID detected. Approval is disabled; ask the employee to replace both sample images with their actual government ID.</p>
+                ) : (!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
                   <p role="status" className="text-[10px] font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || isDemoEnrollment || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
                     {biometricReviewLoading ? 'Saving...' : 'Approve HR Review'}
                   </button>
                   <button type="button" onClick={() => handleBiometricReview('reject')} disabled={biometricReviewLoading} className="rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">

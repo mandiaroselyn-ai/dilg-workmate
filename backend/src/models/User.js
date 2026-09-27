@@ -34,6 +34,7 @@ const UserSchema = new mongoose.Schema({
   faceEnrollmentDescriptor: { type: [Number], default: undefined, select: false },
   dilgIdPhoto: { type: String, default: '' },
   dilgIdBackPhoto: { type: String, default: '' },
+  biometricEnrollmentIsDemo: { type: Boolean, default: false },
   biometricEnrollmentStatus: {
     type: String,
     enum: ['not-submitted', 'pending', 'hr-approved', 'rejected'],
@@ -144,7 +145,7 @@ export const User = {
     ensureConnected();
     if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findById(userId)
-      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
+      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
       .lean();
   },
 
@@ -152,7 +153,7 @@ export const User = {
     ensureConnected();
     if (!employeeId) return null;
     return MongoUser.findOne({ employeeId: employeeId.toString().trim() })
-      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
+      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
       .lean();
   },
 
@@ -273,6 +274,7 @@ export const User = {
           faceEnrollmentDescriptor: enrollment.faceDescriptor,
           dilgIdPhoto: enrollment.dilgIdImage,
           dilgIdBackPhoto: enrollment.dilgIdBackImage,
+          biometricEnrollmentIsDemo: Boolean(enrollment.isDemoEnrollment),
           biometricEnrollmentStatus: 'pending',
           biometricEnrollmentVersion: 3,
           biometricEnrollmentSubmittedAt: now,
@@ -331,7 +333,8 @@ export const User = {
       {
         employeeId: employeeId?.toString().trim(),
         accessLevel: 'employee',
-        biometricEnrollmentStatus: 'pending'
+        biometricEnrollmentStatus: 'pending',
+        ...(decision === 'approve' ? { biometricEnrollmentIsDemo: { $ne: true } } : {})
       },
       update,
       { new: true, runValidators: true }

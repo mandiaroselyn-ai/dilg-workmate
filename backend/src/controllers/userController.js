@@ -111,6 +111,7 @@ const employeeResponse = employee => ({
   hasDilgIdBackPhoto: Boolean(employee.dilgIdBackPhoto),
   hasFaceEnrollmentImage: Boolean(employee.faceEnrollmentImage),
   biometricEnrollmentStatus: employee.biometricEnrollmentStatus || 'not-submitted',
+  biometricEnrollmentIsDemo: Boolean(employee.biometricEnrollmentIsDemo),
   biometricEnrollmentVersion: employee.biometricEnrollmentVersion || 1,
   biometricEnrollmentSubmittedAt: employee.biometricEnrollmentSubmittedAt || null,
   biometricEnrollmentReviewedAt: employee.biometricEnrollmentReviewedAt || null,

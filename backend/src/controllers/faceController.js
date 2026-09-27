@@ -5,6 +5,7 @@ import { hasRequiredEnrollmentImages } from '../utils/biometricEnrollment.js';
 
 const enrollmentStatus = user => ({
   biometricEnrollmentStatus: user.biometricEnrollmentStatus || 'not-submitted',
+  biometricEnrollmentIsDemo: Boolean(user.biometricEnrollmentIsDemo),
   hasCompleteEnrollmentImages: hasRequiredEnrollmentImages(user),
   biometricEnrollmentVersion: user.biometricEnrollmentVersion || 1,
   biometricEnrollmentSubmittedAt: user.biometricEnrollmentSubmittedAt || null,
@@ -28,6 +29,7 @@ export const submitBiometricEnrollment = async (req, res) => {
       return res.status(403).json({ success: false, error: 'Only employee accounts can submit biometric enrollment.' });
     }
     const { dilgIdImage, dilgIdBackImage, selfieImage } = req.body || {};
+    const isDemoEnrollment = req.body?.isDemoEnrollment === true;
     if (!isSupportedImage(dilgIdImage) || !isSupportedImage(dilgIdBackImage) || !isSupportedImage(selfieImage)) {
       return res.status(400).json({ success: false, error: 'Upload valid front and back government ID images and an enrollment selfie.' });
     }
@@ -37,6 +39,7 @@ export const submitBiometricEnrollment = async (req, res) => {
       dilgIdImage,
       dilgIdBackImage,
       selfieImage,
+      isDemoEnrollment,
       faceDescriptor
     });
     if (user?.conflict) {
@@ -66,7 +69,7 @@ export const submitBiometricEnrollment = async (req, res) => {
     try {
       await Announcement.createNotification({
         title: 'Biometric Enrollment Submitted',
-        message: `${user.name || 'An employee'} submitted a government ID and biometric selfie for HR review. Attendance face matching begins after HR approval; liveness checks are not configured.`,
+        message: `${user.name || 'An employee'} submitted ${isDemoEnrollment ? 'DEMO ONLY sample ID images and ' : ''}a biometric selfie for HR review. ${isDemoEnrollment ? 'Do not approve; attendance matching is disabled for this submission.' : 'Attendance face matching begins after HR approval.'} Liveness checks are not configured.`,
         type: 'biometric_enrollment',
         recipientRole: 'hr_admin'
       });
@@ -79,7 +82,9 @@ export const submitBiometricEnrollment = async (req, res) => {
       success: true,
       enrollment: enrollmentStatus(user),
       notificationWarning,
-      notice: 'Your ID and selfie were saved for HR review. After HR approves enrollment, attendance selfies will be matched on this server. This does not check liveness.'
+      notice: isDemoEnrollment
+        ? 'DEMO ONLY: sample ID images and your selfie were saved for HR preview. HR approval and attendance face matching are disabled.'
+        : 'Your ID and selfie were saved for HR review. After HR approves enrollment, attendance selfies will be matched on this server. This does not check liveness.'
     });
   } catch (error) {
     console.error('Biometric enrollment submission failed:', error);
@@ -110,6 +115,9 @@ export const reviewBiometricEnrollment = async (req, res) => {
     const requiresBackId = (employee.biometricEnrollmentVersion || 1) >= 2;
     if (!employee.dilgIdPhoto || !employee.faceEnrollmentImage || (requiresBackId && !employee.dilgIdBackPhoto)) {
       return res.status(409).json({ success: false, error: 'Front and back government ID images and an enrollment selfie must be on file before HR can review this enrollment.' });
+    }
+    if (decision === 'approve' && employee.biometricEnrollmentIsDemo) {
+      return res.status(409).json({ success: false, error: 'This enrollment uses fictional demo ID images. HR approval and attendance matching are disabled; ask the employee to submit their actual government ID.' });
     }
     if (decision === 'approve') {
       const hasDescriptor = await User.hasPendingFaceEnrollmentDescriptor(req.params.employeeId);
