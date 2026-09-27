@@ -124,7 +124,7 @@ export const reviewBiometricEnrollment = async (req, res) => {
       requiresBackId && !employee.dilgIdBackPhoto && 'back ID',
       !employee.faceEnrollmentImage && 'enrollment selfie'
     ].filter(Boolean);
-    if (missingImages.length) {
+    if (missingImages.length && !employee.biometricEnrollmentIsDemo) {
       return res.status(409).json({
         success: false,
         error: `This employee record is missing ${missingImages.join(', ')}. Reload the HR record; if the image is still missing, ask the employee to resubmit the enrollment.`
@@ -133,7 +133,12 @@ export const reviewBiometricEnrollment = async (req, res) => {
     if (decision === 'approve') {
       const hasDescriptor = await User.hasPendingFaceEnrollmentDescriptor(employee._id);
       if (!hasDescriptor) {
-        return res.status(409).json({ success: false, error: 'This enrollment has no server-processed face template. Ask the employee to resubmit their ID and selfie before approval.' });
+        return res.status(409).json({
+          success: false,
+          error: employee.biometricEnrollmentIsDemo
+            ? 'This demo enrollment has no server-processed face template. Ask the employee to resubmit the selfie before approval.'
+            : 'This enrollment has no server-processed face template. Ask the employee to resubmit their ID and selfie before approval.'
+        });
       }
     }
     const reviewer = req.user?.employeeId || req.user?.email || '';
