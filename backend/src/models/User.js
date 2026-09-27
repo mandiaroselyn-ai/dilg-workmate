@@ -140,6 +140,22 @@ export const User = {
     return MongoUser.findOne({ employeeId: employeeId.toString().trim() });
   },
 
+  findBiometricEnrollmentById: async (userId) => {
+    ensureConnected();
+    if (!userId) return null;
+    return MongoUser.findById(userId)
+      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
+      .lean();
+  },
+
+  findBiometricEnrollmentByEmployeeId: async (employeeId) => {
+    ensureConnected();
+    if (!employeeId) return null;
+    return MongoUser.findOne({ employeeId: employeeId.toString().trim() })
+      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
+      .lean();
+  },
+
   getApprovedFaceEnrollment: async (employeeId) => {
     ensureConnected();
     if (!employeeId) return null;
@@ -244,7 +260,7 @@ export const User = {
     if (!normalizedEmail) return null;
     const emailPattern = new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
     const now = new Date();
-    const user = await MongoUser.findOneAndUpdate(
+    const savedUser = await MongoUser.findOneAndUpdate(
       {
         email: emailPattern,
         accessLevel: 'employee',
@@ -278,9 +294,12 @@ export const User = {
           }
         }
       },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true, writeConcern: { w: 'majority' } }
     );
-    if (user) return user.toObject();
+    if (savedUser) {
+      const persistedEnrollment = await User.findBiometricEnrollmentById(savedUser._id);
+      return persistedEnrollment || { persistenceFailure: true, employeeId: savedUser.employeeId };
+    }
     const existing = await MongoUser.findOne({ email: emailPattern, accessLevel: 'employee' }).select('_id');
     return existing ? { conflict: true } : null;
   },

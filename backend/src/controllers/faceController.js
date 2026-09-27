@@ -42,6 +42,9 @@ export const submitBiometricEnrollment = async (req, res) => {
     if (user?.conflict) {
       return res.status(409).json({ success: false, error: 'An enrollment is already awaiting HR review or has already been HR-approved.' });
     }
+    if (user?.persistenceFailure) {
+      return res.status(500).json({ success: false, error: 'The enrollment update completed, but the server could not confirm the saved record. Contact HR before submitting again.' });
+    }
     if (!user) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     if (!hasRequiredEnrollmentImages(user)
       || user.dilgIdPhoto !== dilgIdImage
@@ -157,7 +160,7 @@ export const reviewBiometricEnrollment = async (req, res) => {
 export const getEmployeeEnrollmentImages = async (req, res) => {
   try {
     res.set('Cache-Control', 'no-store, private');
-    const user = await User.findByEmployeeId(req.params.employeeId);
+    const user = await User.findBiometricEnrollmentByEmployeeId(req.params.employeeId);
     if (!user || user.accessLevel !== 'employee') {
       return res.status(404).json({ success: false, error: 'Employee account not found.' });
     }
