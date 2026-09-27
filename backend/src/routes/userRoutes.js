@@ -44,8 +44,13 @@ router.get('/face-enrollment', (req, res) => {
   return res.status(400).json({ success: false, error: 'Invalid biometric enrollment API request.' });
 });
 router.post('/face-enrollment', (req, res) => {
-  const { action, employeeId } = req.query;
+  const { action, employeeId, userId } = req.query;
   if (!action) return submitBiometricEnrollment(req, res);
+  if (action === 'review' && typeof userId === 'string' && userId) {
+    req.params.userId = userId;
+    req.params.employeeId = typeof employeeId === 'string' ? employeeId : '';
+    return requireAdmin(req, res, () => reviewBiometricEnrollment(req, res));
+  }
   if (action === 'review' && typeof employeeId === 'string' && employeeId) {
     req.params.employeeId = employeeId;
     return requireAdmin(req, res, () => reviewBiometricEnrollment(req, res));
@@ -58,6 +63,7 @@ router.post('/profile', updateUserProfile);
 router.post('/user', updateUserProfile);
 router.get('/face/enrollment/status', getBiometricEnrollmentStatus);
 router.post('/face/enrollment', submitBiometricEnrollment);
+router.post('/face/enrollment/id/:userId/review', requireAdmin, reviewBiometricEnrollment);
 router.post('/face/enrollment/:employeeId/review', requireAdmin, reviewBiometricEnrollment);
 router.get('/face/enrollment/id/:userId', requireAdmin, getEmployeeEnrollmentImages);
 router.get('/face/enrollment/:employeeId', requireAdmin, getEmployeeEnrollmentImages);

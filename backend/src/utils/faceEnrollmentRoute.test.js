@@ -12,6 +12,10 @@ test('routes flat enrollment API requests to employee enrollment endpoints', () 
     resolveFaceEnrollmentRoute({ method: 'POST', action: 'review', employeeId: 'DILG 001' }),
     '/api/face/enrollment/DILG%20001/review'
   );
+  assert.equal(
+    resolveFaceEnrollmentRoute({ method: 'POST', action: 'review', employeeId: 'DILG 001', userId: '507f1f77bcf86cd799439011' }),
+    '/api/face/enrollment/id/507f1f77bcf86cd799439011/review'
+  );
 });
 
 test('rejects unsupported enrollment API method and route combinations', () => {

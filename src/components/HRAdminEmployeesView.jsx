@@ -228,7 +228,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     }
     setBiometricReviewLoading(true);
     try {
-      const response = await apiFetch(`/api/face-enrollment?action=review&employeeId=${encodeURIComponent(selectedEmployee.employeeId)}`, {
+      const response = await apiFetch(`/api/face-enrollment?action=review&employeeId=${encodeURIComponent(selectedEmployee.employeeId)}&userId=${encodeURIComponent(selectedEmployee._id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision, note: biometricReviewNote.trim() })

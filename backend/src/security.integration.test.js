@@ -47,9 +47,17 @@ test('requires authentication for HR employee account management', async () => {
 });
 
 test('requires authentication before HR biometric enrollment review', async () => {
-  const response = await request(app).post('/api/face/enrollment/DILG-TEST-001/review').send({});
-  assert.equal(response.status, 401);
-  assert.equal(response.body.error, 'Authentication required.');
+  const responses = await Promise.all([
+    request(app).post('/api/face/enrollment/DILG-TEST-001/review').send({}),
+    request(app).post('/api/face/enrollment/id/507f1f77bcf86cd799439011/review').send({}),
+    request(app)
+      .post('/api/face-enrollment?action=review&employeeId=DILG-TEST-001&userId=507f1f77bcf86cd799439011')
+      .send({})
+  ]);
+  for (const response of responses) {
+    assert.equal(response.status, 401);
+    assert.equal(response.body.error, 'Authentication required.');
+  }
 });
 
 test('requires authentication before loading restricted biometric enrollment images', async () => {

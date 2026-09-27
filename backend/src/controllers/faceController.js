@@ -108,23 +108,37 @@ export const reviewBiometricEnrollment = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Provide a reason so the employee knows what to correct.' });
     }
 
-    const employee = await User.findByEmployeeId(req.params.employeeId);
+    const employee = req.params.userId
+      ? await User.findBiometricEnrollmentById(req.params.userId)
+      : await User.findByEmployeeId(req.params.employeeId);
     if (!employee || employee.accessLevel !== 'employee') {
       return res.status(404).json({ success: false, error: 'Employee account not found.' });
     }
+    if (req.params.employeeId
+      && String(employee.employeeId || '').trim().toLowerCase() !== String(req.params.employeeId).trim().toLowerCase()) {
+      return res.status(409).json({ success: false, error: 'The selected HR employee does not match the biometric record. Refresh employee records before reviewing.' });
+    }
     const requiresBackId = (employee.biometricEnrollmentVersion || 1) >= 2;
-    if (!employee.dilgIdPhoto || !employee.faceEnrollmentImage || (requiresBackId && !employee.dilgIdBackPhoto)) {
-      return res.status(409).json({ success: false, error: 'Front and back government ID images and an enrollment selfie must be on file before HR can review this enrollment.' });
+    const missingImages = [
+      !employee.dilgIdPhoto && 'front ID',
+      requiresBackId && !employee.dilgIdBackPhoto && 'back ID',
+      !employee.faceEnrollmentImage && 'enrollment selfie'
+    ].filter(Boolean);
+    if (missingImages.length) {
+      return res.status(409).json({
+        success: false,
+        error: `This employee record is missing ${missingImages.join(', ')}. Reload the HR record; if the image is still missing, ask the employee to resubmit the enrollment.`
+      });
     }
     if (decision === 'approve') {
-      const hasDescriptor = await User.hasPendingFaceEnrollmentDescriptor(req.params.employeeId);
+      const hasDescriptor = await User.hasPendingFaceEnrollmentDescriptor(employee._id);
       if (!hasDescriptor) {
         return res.status(409).json({ success: false, error: 'This enrollment has no server-processed face template. Ask the employee to resubmit their ID and selfie before approval.' });
       }
     }
     const reviewer = req.user?.employeeId || req.user?.email || '';
     const updated = await User.reviewBiometricEnrollment(
-      req.params.employeeId,
+      employee._id,
       decision,
       note.trim(),
       reviewer,

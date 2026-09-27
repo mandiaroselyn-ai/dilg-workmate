@@ -171,11 +171,11 @@ export const User = {
     } : null;
   },
 
-  hasPendingFaceEnrollmentDescriptor: async (employeeId) => {
+  hasPendingFaceEnrollmentDescriptor: async (userId) => {
     ensureConnected();
-    if (!employeeId) return false;
+    if (!mongoose.isValidObjectId(userId)) return false;
     const user = await MongoUser.findOne({
-      employeeId: employeeId.toString().trim(),
+      _id: userId,
       accessLevel: 'employee',
       biometricEnrollmentStatus: 'pending'
     }).select('+faceEnrollmentDescriptor').lean();
@@ -305,8 +305,9 @@ export const User = {
     return { conflict: true };
   },
 
-  reviewBiometricEnrollment: async (employeeId, decision, note, reviewedBy, isDemoEnrollment = false) => {
+  reviewBiometricEnrollment: async (userId, decision, note, reviewedBy, isDemoEnrollment = false) => {
     ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
     const update = {
       $set: {
         biometricEnrollmentStatus: decision === 'approve' ? 'hr-approved' : 'rejected',
@@ -333,7 +334,7 @@ export const User = {
     if (decision === 'reject') update.$unset = { faceEnrollmentDescriptor: 1 };
     const user = await MongoUser.findOneAndUpdate(
       {
-        employeeId: employeeId?.toString().trim(),
+        _id: userId,
         accessLevel: 'employee',
         biometricEnrollmentStatus: 'pending'
       },

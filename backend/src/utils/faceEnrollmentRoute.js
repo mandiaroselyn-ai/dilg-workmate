@@ -1,5 +1,8 @@
 export const resolveFaceEnrollmentRoute = ({ method, action, employeeId, userId }) => {
   if (action === 'status' && method === 'GET') return '/api/face/enrollment/status';
+  if (action === 'review' && method === 'POST' && userId) {
+    return `/api/face/enrollment/id/${encodeURIComponent(userId)}/review`;
+  }
   if (action === 'review' && method === 'POST' && employeeId) {
     return `/api/face/enrollment/${encodeURIComponent(employeeId)}/review`;
   }
