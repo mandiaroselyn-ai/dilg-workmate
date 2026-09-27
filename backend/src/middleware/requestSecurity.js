@@ -17,8 +17,10 @@ export const validateApiBody = (req, res, next) => {
     }
   }
 
-  if (typeof body.image === 'string' && body.image.length > 8 * 1024 * 1024) {
-    return res.status(413).json({ success: false, error: 'Biometric image is too large.' });
+  for (const field of ['image', 'dilgIdImage']) {
+    if (typeof body[field] === 'string' && body[field].length > 8 * 1024 * 1024) {
+      return res.status(413).json({ success: false, error: 'Biometric image is too large.' });
+    }
   }
   next();
 };

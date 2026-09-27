@@ -120,6 +120,17 @@ export const getEmployees = async (req, res) => {
       const plain = toSafeUser(emp);
       return {
         ...plain,
+        hasDilgIdPhoto: Boolean(emp.dilgIdPhoto),
+        hasFaceEnrollmentImage: Boolean(emp.faceEnrollmentImage),
+        dilgIdVerifiedAt: emp.dilgIdVerifiedAt || null,
+        dilgIdVerifiedBy: emp.dilgIdVerifiedBy || '',
+        dilgIdVerifiedDetails: emp.dilgIdVerifiedDetails || null,
+        faceVerificationAudit: (emp.faceVerificationAudit || []).map(event => ({
+          timestamp: event.timestamp,
+          outcome: event.outcome,
+          reviewedBy: event.reviewedBy,
+          provider: event.provider
+        })),
         id: plain.employeeId || String(plain._id),
         vacationLeaveCredits: plain.vacationLeaveCredits ?? 15.0,
         sickLeaveCredits: plain.sickLeaveCredits ?? 15.0,

@@ -76,10 +76,16 @@ The root Vercel configuration builds the Vite frontend into `dist`; requests und
    WEBAUTHN_RP_ID=dilg-workmate.vercel.app
    ```
    Add the exact `GOOGLE_REDIRECT_URI` above to **Authorized redirect URIs** for the same Google Web OAuth client whose ID is in `GOOGLE_CLIENT_ID`. Also set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Vercel; do not expose the secret as a frontend variable. If the production domain changes, update these values and the Google OAuth client together.
-4. Add OAuth, email, SMS, or AWS Rekognition variables only when enabling those integrations. The backend reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, `FRONTEND_URL`, `UNISMS_API_KEY`, `UNISMS_API_URL`, `UNISMS_SENDER_ID`, and the `AWS_*` face-verification settings.
+4. Add OAuth, email, or SMS variables only when enabling those integrations. The backend reads `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, `FRONTEND_URL`, `UNISMS_API_KEY`, `UNISMS_API_URL`, and `UNISMS_SENDER_ID`. This attendance verification flow does not require AWS.
 5. Deploy from the Vercel dashboard or run `vercel --prod` from the repository root.
 
 Do not commit `.env` files or put secrets in frontend variables. Default supervisor and HR accounts are only seeded when `SEED_DEFAULT_ACCOUNTS=true` and both `DEFAULT_SUPERVISOR_PASSWORD` and `DEFAULT_HR_ADMIN_PASSWORD` are set to unique passwords of at least 12 characters. Remove these seed variables after initial provisioning and rotate any existing credentials before exposing the deployment publicly.
+
+### Attendance Selfie and Passkey
+
+Time In requires a selfie photo and a valid server-verified passkey assertion. The selfie is attached to the attendance record for HR review; it is **not** automatically compared with the enrolled HR photo and is **not** a liveness/anti-spoof check. A gallery image or replayed photo may be accepted. The passkey verifies possession of the registered device credential, not the employee's face. Use this lower-assurance flow only if it meets agency requirements; do not describe it as automatic face recognition or live-person verification.
+
+HR can record that the employee's physical DILG ID was checked against the HR record, and retain the ID image and enrollment selfie in a restricted HR-only record. The system does not verify the card's authenticity or compare its face automatically. Treat ID images, enrollment selfies, and attendance selfie records as sensitive personal data; restrict access, use encrypted MongoDB storage and transport, establish an approved retention/deletion schedule and employee notice/consent process, and verify agency privacy/legal requirements before production use.
 
 ### Password Security Maintenance
 

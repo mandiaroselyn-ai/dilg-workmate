@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -19,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { resizeFaceImage } from '../utils/faceImage';
+import { apiFetch } from '../utils/api';
 
 const emptyForm = {
   firstName: '',
@@ -103,6 +104,14 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [form, setForm] = useState(emptyForm);
   const [facePhotoPreparing, setFacePhotoPreparing] = useState(false);
   const [faceEnrollmentLoading, setFaceEnrollmentLoading] = useState(false);
+  const [enrollmentSelfie, setEnrollmentSelfie] = useState('');
+  const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
+  const [dilgIdPhoto, setDilgIdPhoto] = useState('');
+  const [hrIdentityConfirmed, setHrIdentityConfirmed] = useState(false);
+  const [enrollmentCameraActive, setEnrollmentCameraActive] = useState(false);
+  const [enrollmentCameraError, setEnrollmentCameraError] = useState('');
+  const enrollmentVideoRef = useRef(null);
+  const enrollmentStreamRef = useRef(null);
 
   const totalCount = employees.length;
   const activeCount = employees.filter((emp) => /active|present/i.test(emp.employmentStatus || emp.status || '')).length;
@@ -123,6 +132,26 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     return employeeKey(employee) === selectedId;
   });
 
+  useEffect(() => {
+    let active = true;
+    setDilgIdPhoto('');
+    setSavedEnrollmentImage('');
+    if ((!selectedEmployee?.hasDilgIdPhoto && !selectedEmployee?.hasFaceEnrollmentImage) || !selectedEmployee.employeeId) return undefined;
+    apiFetch(`/api/face/enrollment/${encodeURIComponent(selectedEmployee.employeeId)}`)
+      .then(async response => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load restricted HR enrollment images.');
+        if (active) {
+          setDilgIdPhoto(result.dilgIdImage || '');
+          setSavedEnrollmentImage(result.enrollmentImage || '');
+        }
+      })
+      .catch(error => {
+        if (active) notify(error.message || 'Unable to load restricted HR enrollment images.', true);
+      });
+    return () => { active = false; };
+  }, [selectedId, selectedEmployee?.employeeId, selectedEmployee?.hasDilgIdPhoto, selectedEmployee?.hasFaceEnrollmentImage]);
+
   const notify = (message, isError = false) => {
     setToast(message);
     setToastIsError(isError);
@@ -134,8 +163,16 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       notify('This employee has no employee ID. Add a valid employee ID before enrolling a face.', true);
       return;
     }
-    if (!selectedEmployee.profilePicture?.startsWith('data:image/')) {
-      notify('Upload a face selfie first, then select Enroll Face.', true);
+    if (!enrollmentSelfie.startsWith('data:image/')) {
+      notify('Capture a fresh enrollment selfie while the employee is present.', true);
+      return;
+    }
+    if (!dilgIdPhoto.startsWith('data:image/')) {
+      notify('Upload the employee’s DILG ID photo before enrollment.', true);
+      return;
+    }
+    if (!hrIdentityConfirmed) {
+      notify('Confirm that you physically checked the DILG ID and matched it to the HR record.', true);
       return;
     }
     if (!onEnrollEmployeeFace) {
@@ -145,8 +182,26 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
     setFaceEnrollmentLoading(true);
     try {
-      await onEnrollEmployeeFace(selectedEmployee);
-      notify('Employee face enrolled successfully.');
+      const result = await onEnrollEmployeeFace(selectedEmployee, {
+        dilgIdImage: dilgIdPhoto,
+        selfieImage: enrollmentSelfie,
+        hrConfirmed: hrIdentityConfirmed
+      });
+      onEmployeesChange?.(previous => previous.map(employee =>
+        employeeKey(employee) === employeeKey(selectedEmployee)
+          ? {
+              ...employee,
+              hasDilgIdPhoto: true,
+              hasFaceEnrollmentImage: true,
+              dilgIdVerifiedAt: result.dilgIdVerifiedAt,
+              faceEnrolledAt: result.faceEnrolledAt
+            }
+          : employee
+      ));
+      setSavedEnrollmentImage(enrollmentSelfie);
+      setEnrollmentSelfie('');
+      setHrIdentityConfirmed(false);
+      notify('HR ID check and enrollment selfie recorded. There is no automatic face match or liveness check.');
     } catch (error) {
       notify(error.message || 'Face enrollment failed. Check the server configuration and try again.', true);
     } finally {
@@ -154,30 +209,93 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     }
   };
 
-  const handleFacePhotoUpload = async (event) => {
+  const stopEnrollmentCamera = () => {
+    enrollmentStreamRef.current?.getTracks().forEach(track => track.stop());
+    enrollmentStreamRef.current = null;
+    setEnrollmentCameraActive(false);
+  };
+
+  const startEnrollmentCamera = async () => {
+    setEnrollmentCameraError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setEnrollmentCameraError('A secure live camera is not available in this browser. Open HR enrollment on a camera-enabled HTTPS browser.');
+      return;
+    }
+    try {
+      stopEnrollmentCamera();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } }
+      });
+      enrollmentStreamRef.current = stream;
+      setEnrollmentSelfie('');
+      setEnrollmentCameraActive(true);
+    } catch (error) {
+      setEnrollmentCameraError(error.name === 'NotAllowedError'
+        ? 'Camera permission was denied. Allow camera access to take a live enrollment selfie.'
+        : `Unable to start the live enrollment camera: ${error.message || 'camera unavailable'}`);
+    }
+  };
+
+  useEffect(() => {
+    if (enrollmentCameraActive && enrollmentVideoRef.current && enrollmentStreamRef.current) {
+      enrollmentVideoRef.current.srcObject = enrollmentStreamRef.current;
+    }
+  }, [enrollmentCameraActive]);
+
+  useEffect(() => () => {
+    enrollmentStreamRef.current?.getTracks().forEach(track => track.stop());
+  }, []);
+
+  const captureEnrollmentSelfie = () => {
+    const video = enrollmentVideoRef.current;
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setEnrollmentCameraError('Wait for the live camera preview before capturing the employee selfie.');
+      return;
+    }
+    const longestSide = Math.max(video.videoWidth, video.videoHeight);
+    if (!longestSide) {
+      setEnrollmentCameraError('Live camera image is not ready. Retry the capture.');
+      return;
+    }
+    const scale = Math.min(1, 1280 / longestSide);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setEnrollmentCameraError('Unable to process the live selfie image.');
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setEnrollmentSelfie(canvas.toDataURL('image/jpeg', 0.85));
+    setHrIdentityConfirmed(false);
+    setEnrollmentCameraError('');
+    stopEnrollmentCamera();
+    notify('Fresh live enrollment selfie captured. Compare it with the employee’s DILG ID.');
+  };
+
+  const handleDilgIdPhotoUpload = async (event) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
     input.value = '';
-    if (!file || !selectedEmployee) return;
+    if (!file) return;
     if (!file.type.startsWith('image/')) {
-      notify('Choose an image file for the face selfie.', true);
+      notify('Choose an image file of the DILG ID.', true);
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
-      notify('Choose an image smaller than 20 MB.', true);
+      notify('Choose an ID image smaller than 20 MB.', true);
       return;
     }
-
     setFacePhotoPreparing(true);
     try {
-      const profilePicture = await resizeFaceImage(file);
-      const selectedKey = employeeKey(selectedEmployee);
-      onEmployeesChange?.((previous) => previous.map((employee) => {
-        return employeeKey(employee) === selectedKey ? { ...employee, profilePicture } : employee;
-      }));
-      notify('Selfie ready. Select Enroll Face to register it.');
+      const image = await resizeFaceImage(file);
+      setDilgIdPhoto(image);
+      setHrIdentityConfirmed(false);
+      notify('DILG ID photo prepared. It is retained in the restricted HR record after enrollment.');
     } catch (error) {
-      notify(error.message || 'Unable to prepare this selfie.', true);
+      notify(error.message || 'Unable to prepare this ID photo.', true);
     } finally {
       setFacePhotoPreparing(false);
     }
@@ -208,7 +326,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   };
 
   const openView = (employee) => {
+    stopEnrollmentCamera();
     setSelectedId(employeeKey(employee));
+    setEnrollmentSelfie('');
     setScreen('profile');
   };
 
@@ -307,7 +427,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   if (screen === 'editor') {
     return (
       <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
-        <button type="button" onClick={() => setScreen('list')} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
+        <button type="button" onClick={() => { stopEnrollmentCamera(); setScreen('list'); }} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
           <ArrowLeft className="h-4 w-4" /> Employee Management
         </button>
 
@@ -452,35 +572,85 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             </button>
             <button type="button" onClick={() => handleAccountStatus('Active')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Activate</button>
             <button type="button" onClick={() => handleAccountStatus('Inactive')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Deactivate</button>
-            <label htmlFor="employee-face-selfie" className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black ${facePhotoPreparing ? 'border-slate-200 bg-slate-100 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>
-              <Camera className="h-4 w-4" />
-              {facePhotoPreparing ? 'Preparing photo...' : selectedEmployee.profilePicture?.startsWith('data:image/') ? 'Change Face Selfie' : 'Upload Face Selfie'}
+            <label htmlFor="employee-dilg-id-photo" className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black ${facePhotoPreparing ? 'border-slate-200 bg-slate-100 text-slate-400' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+              <ShieldCheck className="h-4 w-4" />
+              {dilgIdPhoto ? 'Change DILG ID Photo' : selectedEmployee.hasDilgIdPhoto ? 'Loading DILG ID Photo...' : 'Upload DILG ID Photo'}
             </label>
             <input
-              id="employee-face-selfie"
+              id="employee-dilg-id-photo"
               type="file"
               accept="image/*"
-              capture="user"
+              capture="environment"
               className="sr-only"
               disabled={facePhotoPreparing}
-              onChange={handleFacePhotoUpload}
+              onChange={handleDilgIdPhotoUpload}
             />
+            {!enrollmentCameraActive && (
+              <button type="button" onClick={startEnrollmentCamera} disabled={faceEnrollmentLoading} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-50">
+                <Camera className="h-4 w-4" />
+                {enrollmentSelfie ? 'Retake Enrollment Selfie' : 'Capture Enrollment Selfie'}
+              </button>
+            )}
+            {enrollmentCameraActive && (
+              <div className="w-full space-y-2 rounded-xl border border-blue-200 bg-slate-950 p-3">
+                <video ref={enrollmentVideoRef} autoPlay playsInline muted className="mx-auto max-h-64 w-full rounded-lg object-contain" />
+                <div className="flex gap-2">
+                  <button type="button" onClick={captureEnrollmentSelfie} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white">Capture Selfie Photo</button>
+                  <button type="button" onClick={stopEnrollmentCamera} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white">Cancel Camera</button>
+                </div>
+              </div>
+            )}
+            <label className="flex w-full items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold text-amber-900">
+              <input
+                type="checkbox"
+                checked={hrIdentityConfirmed}
+                onChange={event => setHrIdentityConfirmed(event.target.checked)}
+                disabled={!dilgIdPhoto || faceEnrollmentLoading}
+                className="mt-0.5"
+              />
+              I physically checked the DILG ID card and confirmed the name, employee number, and office against the HR record.
+            </label>
             <button
               type="button"
               onClick={handleFaceEnrollment}
-              disabled={facePhotoPreparing || faceEnrollmentLoading || !selectedEmployee.profilePicture?.startsWith('data:image/')}
+              disabled={facePhotoPreparing || faceEnrollmentLoading || !enrollmentSelfie || !dilgIdPhoto || !hrIdentityConfirmed}
               className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {faceEnrollmentLoading ? 'Enrolling Face...' : selectedEmployee.faceEnrolledAt ? 'Re-enroll Face' : 'Enroll Face'}
+              {faceEnrollmentLoading ? 'Saving HR Enrollment...' : selectedEmployee.faceEnrolledAt ? 'Update HR Enrollment' : 'Record HR ID Check & Selfie'}
             </button>
             <span className="self-center text-[10px] font-semibold text-slate-500">
               {selectedEmployee.faceEnrolledAt
-                ? `Face enrolled ${new Date(selectedEmployee.faceEnrolledAt).toLocaleDateString()}`
-                : selectedEmployee.profilePicture?.startsWith('data:image/')
-                  ? 'Selfie ready for enrollment'
-                  : 'Upload a selfie first'}
+                ? `HR recorded ID check and selfie ${new Date(selectedEmployee.faceEnrolledAt).toLocaleDateString()} · no automated face match`
+                : !dilgIdPhoto
+                  ? 'Upload the DILG ID card photo first'
+                  : !enrollmentSelfie
+                    ? 'Capture a fresh selfie while the employee is present'
+                    : 'Confirm the physical ID check to enroll'}
             </span>
           </div>
+          {dilgIdPhoto && (
+            <div className="mt-4 max-w-xs rounded-xl border border-amber-200 bg-amber-50 p-2">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Restricted HR DILG ID photo</p>
+              <img src={dilgIdPhoto} alt="Employee DILG ID for HR review" className="max-h-48 w-full rounded-lg object-contain" />
+            </div>
+          )}
+          {enrollmentSelfie && (
+            <div className="mt-4 max-w-xs rounded-xl border border-blue-200 bg-blue-50 p-2">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Fresh enrollment selfie</p>
+              <img src={enrollmentSelfie} alt="Fresh employee enrollment selfie" className="max-h-48 w-full rounded-lg object-contain" />
+            </div>
+          )}
+          {savedEnrollmentImage && (
+            <div className="mt-4 max-w-xs rounded-xl border border-blue-200 bg-blue-50 p-2">
+              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Restricted HR enrollment selfie</p>
+              <img src={savedEnrollmentImage} alt="HR enrollment selfie reference" className="max-h-48 w-full rounded-lg object-contain" />
+            </div>
+          )}
+          {enrollmentCameraError && (
+            <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+              {enrollmentCameraError}
+            </p>
+          )}
           {toast && (
             <div role={toastIsError ? 'alert' : 'status'} className={`mt-3 rounded-xl border px-3 py-2 text-xs font-bold ${
               toastIsError
@@ -489,6 +659,38 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             }`}>
               {toast}
             </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">HR Enrollment Audit</h3>
+          <p className="mt-1 text-[10px] font-semibold text-slate-500">Manual ID review and enrollment records. These images are not automatically face-matched or liveness-checked.</p>
+          {selectedEmployee.faceVerificationAudit?.length ? (
+            <div className="mt-3 space-y-2">
+              {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
+                <div key={`${event.timestamp}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-[10px]">
+                  <div>
+                    <p className="font-black text-blue-700">
+                      {String(event.outcome || 'unknown').replaceAll('-', ' ').toUpperCase()}
+                    </p>
+                    <p className="mt-1 font-semibold text-slate-500">
+                      {event.timestamp ? new Date(event.timestamp).toLocaleString() : 'Unknown time'}
+                      {event.deviceId ? ` · Device ${event.deviceId}` : ''}
+                      {event.reviewedBy ? ` · HR ${event.reviewedBy}` : ''}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-[10px] font-semibold text-slate-500">No face verification events recorded yet.</p>
+          )}
+          {selectedEmployee.dilgIdVerifiedAt && (
+            <p className="mt-3 text-[10px] font-semibold text-slate-500">
+              HR manually recorded ID review {new Date(selectedEmployee.dilgIdVerifiedAt).toLocaleString()}
+              {selectedEmployee.dilgIdVerifiedBy ? ` by ${selectedEmployee.dilgIdVerifiedBy}` : ''}
+              {' · no automated face match'}
+            </p>
           )}
         </section>
 

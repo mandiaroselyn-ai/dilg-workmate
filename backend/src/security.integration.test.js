@@ -18,6 +18,12 @@ test('rejects protected API requests without a bearer token', async () => {
   assert.equal(response.body.error, 'Authentication required.');
 });
 
+test('requires authentication before HR face enrollment', async () => {
+  const response = await request(app).post('/api/face/enroll').send({});
+  assert.equal(response.status, 401);
+  assert.equal(response.body.error, 'Authentication required.');
+});
+
 test('rejects requests from an unapproved origin', async () => {
   const response = await request(app)
     .get('/api/state')

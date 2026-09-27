@@ -275,19 +275,34 @@ export default function App() {
     return pushSystemNotification(notification, { admin: true, employee: false });
   };
 
-  const handleEnrollEmployeeFace = async (employee) => {
-    if (!employee?.employeeId || !employee.profilePicture?.startsWith('data:image/')) {
-      throw new Error('Upload a profile selfie first before enrolling the face.');
+  const handleEnrollEmployeeFace = async (employee, enrollment) => {
+    if (!employee?.employeeId || !enrollment?.selfieImage?.startsWith('data:image/')) {
+      throw new Error('Capture a fresh enrollment selfie while the employee is present.');
+    }
+    if (!enrollment?.dilgIdImage || enrollment.hrConfirmed !== true) {
+      throw new Error('HR must provide the DILG ID photo and confirm the physical ID check.');
     }
     const response = await fetch('/api/face/enroll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeId: employee.employeeId, image: employee.profilePicture })
+      body: JSON.stringify({
+        employeeId: employee.employeeId,
+        image: enrollment.selfieImage,
+        dilgIdImage: enrollment.dilgIdImage,
+        hrConfirmed: enrollment.hrConfirmed
+      })
     });
     const data = await response.json();
     if (!response.ok || !data.success) throw new Error(data?.error || 'Face enrollment failed.');
     setEmployees(previous => previous.map(item => item.employeeId === employee.employeeId
-      ? { ...item, faceEnrolledAt: data.faceEnrolledAt, faceProvider: 'aws-rekognition' }
+      ? {
+          ...item,
+          faceEnrolledAt: data.faceEnrolledAt,
+          faceProvider: 'hr-verified-manual',
+          hasDilgIdPhoto: true,
+          hasFaceEnrollmentImage: true,
+          dilgIdVerifiedAt: data.dilgIdVerifiedAt
+        }
       : item));
     return data;
   };
@@ -315,6 +330,9 @@ export default function App() {
 
   const submitAttendance = async (payload, optimisticRecord) => {
     if (!navigator.onLine) {
+      if (payload.action === 'clock-in') {
+        throw new Error('An internet connection is required to verify your passkey and submit Time In. Reconnect and try again.');
+      }
       await queueAttendance({ payload });
       if (optimisticRecord) {
         setAttendanceHistory(previous => payload.action === 'clock-out'
@@ -341,6 +359,7 @@ export default function App() {
       if (error?.isAttendanceValidationError) {
         throw error;
       }
+      if (payload.action === 'clock-in') throw error;
       await queueAttendance({ payload });
       if (optimisticRecord) {
         setAttendanceHistory(previous => payload.action === 'clock-out'
@@ -420,11 +439,6 @@ export default function App() {
     distanceToAssignment,
     assignmentMatch,
     employeeEmail,
-    faceVerified = false,
-    faceMatchConfidence = 0,
-    faceVerificationProvider = '',
-    faceVerifiedAt = null,
-    faceVerificationProof = '',
     assignmentSite = null,
     gpsAccuracy = null
   ) => {
@@ -461,11 +475,14 @@ export default function App() {
       fingerprintVerified,
       fingerprintProof,
       fingerprintHash: user?.fingerprintHash || '',
-      faceVerified,
-      faceMatchConfidence,
-      faceVerificationProvider,
-      faceVerifiedAt,
-      faceVerificationProof,
+      faceVerified: false,
+      faceMatchConfidence: 0,
+      faceVerificationProvider: 'ordinary-selfie-no-liveness',
+      faceVerifiedAt: null,
+      faceLivenessVerified: false,
+      faceLivenessConfidence: 0,
+      faceLivenessProvider: 'not-used',
+      deviceId: '',
       employeeName: user?.name || employeeName || 'Employee',
       employeeRole: user?.role || employeeRole || 'Employee',
       employeeOffice: user?.office || employeeOffice || 'Office',

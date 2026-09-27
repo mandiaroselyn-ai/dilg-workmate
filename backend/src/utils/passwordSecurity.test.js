@@ -21,7 +21,12 @@ test('removes authentication and biometric secrets from API user objects', () =>
     resetToken: 'token',
     resetTokenExpiry: new Date(),
     fingerprintHash: 'fingerprint',
-    faceId: 'face-id'
+    faceId: 'face-id',
+    faceEnrollmentImage: 'private-enrollment-selfie',
+    dilgIdPhoto: 'private-id-image',
+    dilgIdVerifiedBy: 'hr-user',
+    dilgIdVerifiedDetails: { name: 'Employee' },
+    faceVerificationAudit: [{ outcome: 'verified' }]
   });
 
   assert.deepEqual(safeUser, { email: 'employee@example.com' });

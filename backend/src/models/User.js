@@ -22,6 +22,23 @@ const UserSchema = new mongoose.Schema({
   faceProvider: { type: String, default: '' },
   faceId: { type: String, default: '' },
   faceEnrolledAt: { type: Date, default: null },
+  faceEnrollmentImage: { type: String, default: '' },
+  dilgIdPhoto: { type: String, default: '' },
+  dilgIdMatchConfidence: { type: Number, default: null },
+  dilgIdVerifiedAt: { type: Date, default: null },
+  dilgIdVerifiedBy: { type: String, default: '' },
+  dilgIdVerifiedDetails: {
+    name: { type: String, default: '' },
+    employeeId: { type: String, default: '' },
+    office: { type: String, default: '' }
+  },
+  faceVerificationAudit: [{
+    timestamp: { type: Date, default: Date.now },
+    outcome: { type: String, default: '' },
+    deviceId: { type: String, default: '' },
+    reviewedBy: { type: String, default: '' },
+    provider: { type: String, default: 'manual-hr-review' }
+  }],
   webauthnCredentialId: { type: String, default: '' },
   webauthnPublicKey: { type: String, default: '' },
   webauthnCounter: { type: Number, default: 0 },
@@ -106,11 +123,26 @@ export const User = {
     ensureConnected();
     const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
     if (!user) return null;
-    user.faceProvider = enrollment.provider || 'aws-rekognition';
-    user.faceId = enrollment.faceId || '';
+    user.faceProvider = enrollment.provider || 'hr-verified-manual';
+    user.faceId = '';
     user.faceEnrolledAt = new Date();
+    user.faceEnrollmentImage = enrollment.enrollmentImage || '';
+    user.dilgIdPhoto = enrollment.dilgIdPhoto;
+    user.dilgIdMatchConfidence = null;
+    user.dilgIdVerifiedAt = new Date();
+    user.dilgIdVerifiedBy = enrollment.verifiedBy || '';
+    user.dilgIdVerifiedDetails = enrollment.verifiedDetails || {};
     await user.save();
     return user.toObject();
+  },
+
+  addFaceVerificationAudit: async (employeeId, event) => {
+    ensureConnected();
+    return MongoUser.findOneAndUpdate(
+      { employeeId: employeeId?.toString().trim() },
+      { $push: { faceVerificationAudit: { $each: [event], $slice: -50 } } },
+      { new: true }
+    );
   },
 
   saveWebAuthnChallenge: async (employeeId, challenge, expiry) => {

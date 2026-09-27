@@ -170,17 +170,6 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'A valid server biometric assertion is required for clock-in.' });
       }
 
-      if (process.env.REQUIRE_FACE_VERIFICATION === 'true' && !record.faceVerified) {
-        return res.status(400).json({ success: false, error: 'Face-to-account verification is required for clock-in.' });
-      }
-
-      if (record.faceVerified && !verifyVerificationProof(record.faceVerificationProof, {
-        employeeId: record.employeeId,
-        type: 'face'
-      })) {
-        return res.status(400).json({ success: false, error: 'A valid server face-verification proof is required.' });
-      }
-
       const storedHash = user.fingerprintHash || '';
       const providedHash = record.fingerprintHash || '';
 
@@ -197,7 +186,17 @@ export const clockInOut = async (req, res) => {
         return res.status(409).json({ success: false, error: 'Employee already has an active attendance record for this date.' });
       }
 
-      const newLog = await DtrLog.create(record);
+      const newLog = await DtrLog.create({
+        ...record,
+        faceVerified: false,
+        faceMatchConfidence: 0,
+        faceVerifiedAt: null,
+        faceLivenessVerified: false,
+        faceLivenessConfidence: 0,
+        faceVerificationProvider: 'ordinary-selfie-no-liveness',
+        faceLivenessProvider: 'not-used',
+        deviceId: ''
+      });
       res.status(201).json({ success: true, record: newLog });
     } else if (action === 'clock-out') {
       if (!record?.employeeId) {
