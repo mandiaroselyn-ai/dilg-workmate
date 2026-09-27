@@ -174,7 +174,11 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         }
       })
       .catch(error => {
-        if (active) setEnrollmentImagesError(error.message || 'Unable to load restricted HR enrollment images.');
+        if (active) {
+          setEnrollmentImagesError(error.message === 'No enrollment images are on file.'
+            ? 'This employee has a pending review record, but the server has no ID or selfie images saved for it. Do not approve; ask the employee to resubmit all required images.'
+            : error.message || 'Unable to load restricted HR enrollment images.');
+        }
       })
       .finally(() => {
         if (active) setEnrollmentImagesLoading(false);
@@ -230,7 +234,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
           : employee
       ));
       const reviewMessage = data.notificationWarning || (decision === 'approve'
-        ? 'HR review approved. The biometric enrollment is still not verified because liveness is unavailable.'
+        ? 'HR review approved. Attendance selfies will now be compared with the approved enrollment selfie. Liveness is not checked.'
         : 'Enrollment rejected. The employee was notified to correct and resubmit.');
       notify(reviewMessage, Boolean(data.notificationWarning));
     } catch (error) {
@@ -551,7 +555,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
-                <p className="mt-1 text-[10px] font-semibold text-slate-500">Employee-submitted ID and selfie. HR review does not perform automated face matching or liveness detection.</p>
+                <p className="mt-1 text-[10px] font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
                 selectedEmployee.biometricEnrollmentStatus === 'rejected'
@@ -565,7 +569,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                 {selectedEmployee.biometricEnrollmentStatus === 'pending'
                   ? 'Pending HR review'
                   : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
-                    ? 'HR approved · not biometrically verified'
+                    ? 'HR approved · attendance face matching enabled'
                     : selectedEmployee.biometricEnrollmentStatus === 'rejected'
                       ? 'Not approved'
                       : 'Not submitted'}
@@ -657,7 +661,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                     {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
                   </button>
                 </div>
-                <p className="text-[10px] font-semibold text-amber-800">Approval confirms HR document review only. This enrollment remains unverified until automatic face match and liveness are configured.</p>
+                <p className="text-[10px] font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
               </div>
             )}
           </section>
@@ -674,7 +678,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
-          <p className="mt-1 text-[10px] font-semibold text-slate-500">Submission and HR review events. No automated face match or liveness check is currently performed.</p>
+          <p className="mt-1 text-[10px] font-semibold text-slate-500">Enrollment and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
           {selectedEmployee.faceVerificationAudit?.length ? (
             <div className="mt-3 space-y-2">
               {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
@@ -699,7 +703,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             <p className="mt-3 text-[10px] font-semibold text-slate-500">
               HR manually recorded ID review {new Date(selectedEmployee.dilgIdVerifiedAt).toLocaleString()}
               {selectedEmployee.dilgIdVerifiedBy ? ` by ${selectedEmployee.dilgIdVerifiedBy}` : ''}
-              {' · no automated face match'}
+              {' · attendance face matching runs after HR approval'}
             </p>
           )}
         </section>
