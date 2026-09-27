@@ -82,24 +82,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-google-auth' }));
       return;
     }
-    const width = 500;
-    const height = 650;
-    const left = window.screenX + (window.innerWidth - width) / 2;
-    const top = window.screenY + (window.innerHeight - height) / 2;
-    const googleUrl = `/api/auth/google/url${mobileOnly ? '?mobile=1' : ''}`;
-    if (window.matchMedia('(max-width: 767px)').matches) {
-      window.location.assign(googleUrl);
-      return;
-    }
-    const popup = window.open(
-      googleUrl,
-      'GoogleSignIn',
-      `width=${width},height=${height},left=${left},top=${top}`
-    );
-
-    if (!popup) {
-      setGoogleError('Popup blocked. Allow popups to continue with Google.');
-    }
+    const params = new URLSearchParams({ frontendOrigin: window.location.origin });
+    if (mobileOnly) params.set('mobile', '1');
+    window.location.assign(`/api/auth/google/url?${params.toString()}`);
   };
 
   // Registration Form State

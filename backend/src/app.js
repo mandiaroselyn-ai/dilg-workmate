@@ -57,8 +57,9 @@ export function createApiApp() {
   app.use('/api', apiRateLimit);
   app.use('/api', (req, res, next) => {
     const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
-    const limitedPaths = ['/login', '/password-reset-request', '/password-reset', '/face/enroll', '/sms'];
-    if (!limitedPaths.includes(apiPath)) return next();
+    const limitedPaths = ['/login', '/password-reset-request', '/password-reset', '/face/enrollment', '/sms'];
+    const isEnrollmentReview = /^\/face\/enrollment\/[^/]+\/review$/.test(apiPath);
+    if (!limitedPaths.includes(apiPath) && !isEnrollmentReview) return next();
     return strictRateLimit(req, res, next);
   });
   app.use('/api', validateApiBody);

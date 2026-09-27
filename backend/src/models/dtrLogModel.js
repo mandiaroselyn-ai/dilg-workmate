@@ -34,6 +34,8 @@ const DtrLogSchema = new mongoose.Schema({
   faceLivenessProvider: { type: String, default: '' },
   deviceId: { type: String, default: '' },
   selfieUrl: { type: String, default: '' },
+  verificationAudit: { type: mongoose.Schema.Types.Mixed, default: null },
+  late: { type: Boolean, default: false },
   employeeName: { type: String },
   employeeRole: { type: String },
   employeeOffice: { type: String },
@@ -202,33 +204,30 @@ export const DtrLog = {
       throw new Error('Invalid DTR bulk dataset');
     }
 
-    await MongoDtrLog.deleteMany({});
-    const items = updatedHistory.map(h => ({
-      customId: h.id || `att-${Date.now()}-${Math.random().toString().slice(-3)}`,
-      date: h.date,
-      timeIn: h.timeIn,
-      timeOut: h.timeOut || null,
-      location: h.location,
-      gpsStatus: h.gpsStatus || 'In Range',
-      latitude: h.latitude,
-      longitude: h.longitude,
-      assignedLatitude: h.assignedLatitude,
-      assignedLongitude: h.assignedLongitude,
-      distanceToAssignmentMeters: h.distanceToAssignmentMeters,
-      assignmentMatch: h.assignmentMatch || false,
-      selfieLatitude: h.selfieLatitude,
-      selfieLongitude: h.selfieLongitude,
-      status: h.status || 'Present',
-      workAssignment: h.workAssignment || null,
-      fingerprintVerified: h.fingerprintVerified || false,
-      fingerprintHash: h.fingerprintHash || null,
-      selfieUrl: h.selfieUrl || null,
-      employeeName: h.employeeName || null,
-      employeeRole: h.employeeRole || null,
-      employeeOffice: h.employeeOffice || null,
-      employeeId: h.employeeId || null
-    }));
-    await MongoDtrLog.insertMany(items);
+    const items = updatedHistory.map(h => {
+      const customId = h.id || `att-${Date.now()}-${Math.random().toString().slice(-3)}`;
+      const record = { ...h };
+      delete record.id;
+      delete record._id;
+      delete record.__v;
+      delete record.createdAt;
+      delete record.updatedAt;
+      return {
+        updateOne: {
+          filter: { customId },
+          update: {
+            $set: {
+              ...record,
+              customId,
+              timeOut: record.timeOut || null,
+              verificationAudit: record.verificationAudit || null
+            }
+          },
+          upsert: true
+        }
+      };
+    });
+    if (items.length) await MongoDtrLog.bulkWrite(items);
     const freshLogs = await MongoDtrLog.find().sort({ createdAt: -1 });
     return freshLogs.map(item => {
       const obj = item.toObject();

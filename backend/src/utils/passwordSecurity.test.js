@@ -26,8 +26,16 @@ test('removes authentication and biometric secrets from API user objects', () =>
     dilgIdPhoto: 'private-id-image',
     dilgIdVerifiedBy: 'hr-user',
     dilgIdVerifiedDetails: { name: 'Employee' },
+    biometricEnrollmentStatus: 'pending',
+    biometricEnrollmentReviewNote: 'private HR note',
+    faceLivenessStatus: 'not-configured',
     faceVerificationAudit: [{ outcome: 'verified' }]
   });
 
-  assert.deepEqual(safeUser, { email: 'employee@example.com' });
+  assert.deepEqual(safeUser, {
+    email: 'employee@example.com',
+    biometricEnrollmentStatus: 'pending',
+    biometricEnrollmentReviewNote: 'private HR note',
+    faceLivenessStatus: 'not-configured'
+  });
 });

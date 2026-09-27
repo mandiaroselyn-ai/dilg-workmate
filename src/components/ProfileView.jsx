@@ -24,8 +24,9 @@ import {
   X,
   RefreshCw
 } from 'lucide-react';
+import BiometricEnrollmentView from './BiometricEnrollmentView';
 
-export default function ProfileView({ user, onUpdateUser }) {
+export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [name, setName] = useState(user.name);
   const [role, setRole] = useState(user.role);
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber);
@@ -34,6 +35,7 @@ export default function ProfileView({ user, onUpdateUser }) {
   const [region, setRegion] = useState(user.region);
   const [employeeId, setEmployeeId] = useState(user.employeeId);
   const [profileSuccess, setProfileSuccess] = useState(false);
+  const [activeProfileTab, setActiveProfileTab] = useState('profile');
 
   // Avatar and Camera Upload States
   const [profilePicture, setProfilePicture] = useState(user.profilePicture || '');
@@ -223,6 +225,28 @@ export default function ProfileView({ user, onUpdateUser }) {
         onChange={handleFileChange}
         className="hidden"
       />
+      <div role="tablist" aria-label="Profile sections" className="flex gap-2 border-b border-slate-200 bg-white px-4 pt-3 md:px-8">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeProfileTab === 'profile'}
+          onClick={() => setActiveProfileTab('profile')}
+          className={`rounded-t-xl px-4 py-3 text-xs font-black ${activeProfileTab === 'profile' ? 'border-b-2 border-blue-700 text-blue-800' : 'text-slate-500'}`}
+        >
+          Profile
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeProfileTab === 'biometric'}
+          onClick={() => setActiveProfileTab('biometric')}
+          className={`rounded-t-xl px-4 py-3 text-xs font-black ${activeProfileTab === 'biometric' ? 'border-b-2 border-blue-700 text-blue-800' : 'text-slate-500'}`}
+        >
+          Biometric Enrollment
+        </button>
+      </div>
+      {activeProfileTab === 'profile' && (
+        <>
       <div className="md:hidden flex-1 w-full min-h-0 overflow-y-auto bg-slate-50 px-3 pt-3 pb-24 id-profile-view-mobile font-sans">
         <section className="relative overflow-visible rounded-[22px] bg-gradient-to-br from-[#1551b5] via-[#245fc6] to-[#0d4299] px-5 pb-5 pt-6 text-white shadow-lg">
           <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-white/10" />
@@ -533,6 +557,15 @@ export default function ProfileView({ user, onUpdateUser }) {
       </div>
 
       </div>
+        </>
+      )}
+      {activeProfileTab === 'biometric' && (
+        <BiometricEnrollmentView
+          user={user}
+          onSubmitEnrollment={onSubmitEnrollment}
+          onRefreshEnrollmentStatus={onRefreshEnrollmentStatus}
+        />
+      )}
 
       {/* Profile Photo Settings Modal */}
       {showPhotoModal && (

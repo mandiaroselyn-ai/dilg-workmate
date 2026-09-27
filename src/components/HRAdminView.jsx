@@ -58,8 +58,7 @@ export default function HRAdminView({
   onViewChange,
   onEmployeesChange,
   onUpdateUser,
-  onAdminNotification,
-  onEnrollEmployeeFace
+  onAdminNotification
 }) {
   const sectionTabs = {
     hr_dashboard: 'dashboard',
@@ -119,7 +118,20 @@ export default function HRAdminView({
     setSelectedDtrRecord(null);
   };
 
-  const handleSaveDTRCorrection = () => {
+  const saveAttendanceUpdate = async (updatedHistory, notification, successMessage) => {
+    try {
+      if (!onUpdateAttendance) throw new Error('Attendance saving is unavailable. Please refresh and try again.');
+      await onUpdateAttendance(updatedHistory);
+      onAdminNotification?.(notification);
+      triggerToast(successMessage);
+      return true;
+    } catch (error) {
+      triggerToast(error.message || 'Unable to save attendance changes. Please try again.');
+      return false;
+    }
+  };
+
+  const handleSaveDTRCorrection = async () => {
     if (!selectedDtrRecord) return;
 
     const updatedHistory = attendanceHistory.map((rec) => {
@@ -147,18 +159,16 @@ export default function HRAdminView({
       return rec;
     });
 
-    onUpdateAttendance?.(updatedHistory);
-    onAdminNotification?.({
+    const saved = await saveAttendanceUpdate(updatedHistory, {
       title: 'DTR Correction Verified',
       message: `Attendance record ${selectedDtrRecord.id} was corrected and verified by HR/Admin.`,
       time: 'Just now',
       type: 'attendance'
-    });
-    setSelectedDtrRecord(null);
-    triggerToast(`Successfully corrected record ID: ${selectedDtrRecord.id}. Marked as Verified.`);
+    }, `Successfully corrected record ID: ${selectedDtrRecord.id}. Marked as Verified.`);
+    if (saved) setSelectedDtrRecord(null);
   };
 
-  const handleQuickVerifyDTR = (id) => {
+  const handleQuickVerifyDTR = async (id) => {
     const updatedHistory = attendanceHistory.map((rec) => {
       if (rec.id === id) {
         return {
@@ -172,17 +182,15 @@ export default function HRAdminView({
       return rec;
     });
 
-    onUpdateAttendance?.(updatedHistory);
-    onAdminNotification?.({
+    await saveAttendanceUpdate(updatedHistory, {
       title: 'DTR Verification Applied',
       message: `Attendance record ${id} was verified by HR/Admin.`,
       time: 'Just now',
       type: 'attendance'
-    });
-    triggerToast('DTR row verified successfully. Certification status stamp applied.');
+    }, 'DTR row verified successfully. Certification status stamp applied.');
   };
 
-  const handleValidateDTR = () => {
+  const handleValidateDTR = async () => {
     const updatedHistory = attendanceHistory.map((record) => {
       if (record.verificationAudit?.verifiedAt) return record;
       return {
@@ -194,15 +202,14 @@ export default function HRAdminView({
         }
       };
     });
-    onUpdateAttendance?.(updatedHistory);
-    onAdminNotification?.({
+    const saved = await saveAttendanceUpdate(updatedHistory, {
       title: 'DTR Batch Verification',
       message: 'All visible attendance records were validated and marked as verified by HR/Admin.',
       time: 'Just now',
       type: 'attendance'
-    });
+    }, 'DTR validation completed. All visible records are marked verified.');
+    if (!saved) return;
     setDtrMode('verified');
-    triggerToast('DTR validation completed. All visible records are marked verified.');
   };
 
   const handleUpdateRequestStatusByAdmin = (requestId, newStatus, updatePayload = {}) => {
@@ -414,7 +421,6 @@ export default function HRAdminView({
           employees={employees}
           onEmployeesChange={onEmployeesChange}
           onAdminNotification={onAdminNotification}
-          onEnrollEmployeeFace={onEnrollEmployeeFace}
         />
       )}
 

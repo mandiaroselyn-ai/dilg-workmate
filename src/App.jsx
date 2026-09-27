@@ -3,29 +3,29 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useCallback, useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
-import DashboardView from './components/DashboardView';
-import AttendanceView from './components/AttendanceView';
-import RequestsView from './components/RequestsView';
-import AnnouncementsView from './components/AnnouncementsView';
-import CalendarView from './components/CalendarView';
-import ProfileView from './components/ProfileView';
-import SettingsView from './components/SettingsView';
-import HelpView from './components/HelpView';
-import DocumentsView from './components/DocumentsView';
-import ServiceRecordsView from './components/ServiceRecordsView';
-import OfficeDirectoryView from './components/OfficeDirectoryView';
-import SupervisorView from './components/SupervisorView';
-import HRAdminProfileView from './components/HRAdminProfileView';
-import HRAdminView from './components/HRAdminView';
-import LoginView from './components/LoginView';
-import PasswordResetView from './components/PasswordResetView';
 import MobileBottomNav from './components/MobileBottomNav';
 import { queueAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch } from './utils/api';
+
+const DashboardView = lazy(() => import('./components/DashboardView'));
+const AttendanceView = lazy(() => import('./components/AttendanceView'));
+const RequestsView = lazy(() => import('./components/RequestsView'));
+const AnnouncementsView = lazy(() => import('./components/AnnouncementsView'));
+const CalendarView = lazy(() => import('./components/CalendarView'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+const SettingsView = lazy(() => import('./components/SettingsView'));
+const HelpView = lazy(() => import('./components/HelpView'));
+const DocumentsView = lazy(() => import('./components/DocumentsView'));
+const OfficeDirectoryView = lazy(() => import('./components/OfficeDirectoryView'));
+const SupervisorView = lazy(() => import('./components/SupervisorView'));
+const HRAdminProfileView = lazy(() => import('./components/HRAdminProfileView'));
+const HRAdminView = lazy(() => import('./components/HRAdminView'));
+const LoginView = lazy(() => import('./components/LoginView'));
+const PasswordResetView = lazy(() => import('./components/PasswordResetView'));
 
 const fetch = apiFetch;
 
@@ -275,37 +275,32 @@ export default function App() {
     return pushSystemNotification(notification, { admin: true, employee: false });
   };
 
-  const handleEnrollEmployeeFace = async (employee, enrollment) => {
-    if (!employee?.employeeId || !enrollment?.selfieImage?.startsWith('data:image/')) {
-      throw new Error('Capture a fresh enrollment selfie while the employee is present.');
+  const handleSubmitBiometricEnrollment = async enrollment => {
+    if (!enrollment?.selfieImage?.startsWith('data:image/')
+      || !enrollment?.dilgIdImage?.startsWith('data:image/')) {
+      throw new Error('Upload a government ID image and capture an enrollment selfie before submitting.');
     }
-    if (!enrollment?.dilgIdImage || enrollment.hrConfirmed !== true) {
-      throw new Error('HR must provide the DILG ID photo and confirm the physical ID check.');
-    }
-    const response = await fetch('/api/face/enroll', {
+    const response = await fetch('/api/face/enrollment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        employeeId: employee.employeeId,
-        image: enrollment.selfieImage,
-        dilgIdImage: enrollment.dilgIdImage,
-        hrConfirmed: enrollment.hrConfirmed
-      })
+      body: JSON.stringify(enrollment)
     });
     const data = await response.json();
-    if (!response.ok || !data.success) throw new Error(data?.error || 'Face enrollment failed.');
-    setEmployees(previous => previous.map(item => item.employeeId === employee.employeeId
-      ? {
-          ...item,
-          faceEnrolledAt: data.faceEnrolledAt,
-          faceProvider: 'hr-verified-manual',
-          hasDilgIdPhoto: true,
-          hasFaceEnrollmentImage: true,
-          dilgIdVerifiedAt: data.dilgIdVerifiedAt
-        }
-      : item));
+    if (!response.ok || !data.success) throw new Error(data?.error || 'Biometric enrollment submission failed.');
+    setUser(previous => ({ ...previous, ...data.enrollment }));
+    if (data.notificationWarning) console.error(data.notificationWarning);
     return data;
   };
+
+  const handleRefreshBiometricStatus = useCallback(async () => {
+    const response = await fetch('/api/face/enrollment/status');
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data?.error || 'Unable to refresh biometric enrollment status.');
+    }
+    setUser(previous => ({ ...previous, ...data.enrollment }));
+    return data.enrollment;
+  }, []);
 
   const handleSendSms = async ({ recipient, message, employeeId = '', employeeEmail = '' }) => {
     const response = await fetch('/api/sms', {
@@ -759,7 +754,7 @@ export default function App() {
   };
 
   // Simulated Admin reviewer
-  const handleUpdateRequestStatus = (
+  const handleUpdateRequestStatus = async (
     id,
     statusOrPayload,
     approverParam,
@@ -794,72 +789,72 @@ export default function App() {
       statusHistory: nextHistory
     };
 
-    return fetch(`/api/requests/${id}`, {
+    const response = await apiFetch(`/api/requests/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(bodyPayload)
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success || !data.request) {
+      throw new Error(data.error || 'Unable to save request status.');
+    }
+
+    setRequests(prev => prev.map(req => req.id === id ? data.request : req));
+
+    const label = data.request.type;
+
+    const newNotif = {
+      title: `${label} ${status}`,
+      message: `Ref ${id} is marked as ${status} by ${approver}. Remarks: ${remarks}`,
+      time: 'Just now',
+      type: 'request',
+      employeeId: data.request.employeeId || '',
+      employeeEmail: data.request.employeeEmail || ''
+    };
+    if (status === 'For Supervisor') {
+      pushSystemNotification({
+        title: 'Request Ready for Review',
+        message: `${label} ${id} was validated by HR/Admin and is ready for your review.`,
+        time: 'Just now',
+        type: 'request',
+        recipientRole: 'supervisor'
+      });
+    } else {
+      pushSystemNotification(newNotif, { admin: false, employee: true });
+    }
+
+    const timeString = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    const formatSmsTime = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }) + ' ' + timeString;
+    const requestEmployee = employees.find(employee => matchesAttendanceEmployee(data.request, employee));
+
+    const newSms = {
+      recipient: data.request.employeePhoneNumber || data.request.phoneNumber || requestEmployee?.phoneNumber || '',
+      employeeId: data.request.employeeId || '',
+      employeeEmail: data.request.employeeEmail || '',
+      message: `[DILG WorkMate] ALERT: Your ${label} (${id}) has been ${status.toUpperCase()} by ${approver}. Notes: ${remarks}`,
+      timestamp: formatSmsTime
+    };
+
+    apiFetch('/api/sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newSms)
     })
       .then(res => res.json())
-      .then(data => {
-        if (data.success && data.request) {
-          setRequests(prev => prev.map(req => req.id === id ? data.request : req));
+      .then(smsData => {
+        if (smsData.success) setSmsAlerts(prev => [smsData.sms, ...prev]);
+      })
+      .catch(error => console.error('Failed to send request status SMS:', error));
 
-          const label = data.request.type;
-
-          const newNotif = {
-            title: `${label} ${status}`,
-            message: `Ref ${id} is marked as ${status} by ${approver}. Remarks: ${remarks}`,
-            time: 'Just now',
-            type: 'request',
-            employeeId: data.request.employeeId || '',
-            employeeEmail: data.request.employeeEmail || ''
-          };
-          if (status === 'For Supervisor') {
-            pushSystemNotification({
-              title: 'Request Ready for Review',
-              message: `${label} ${id} was validated by HR/Admin and is ready for your review.`,
-              time: 'Just now',
-              type: 'request',
-              recipientRole: 'supervisor'
-            });
-          } else {
-            pushSystemNotification(newNotif, { admin: false, employee: true });
-          }
-
-          // Create dynamic SMS alert
-          const timeString = new Date().toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-          });
-          const formatSmsTime = new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          }) + ' ' + timeString;
-          const requestEmployee = employees.find(employee => matchesAttendanceEmployee(data.request, employee));
-
-          const newSms = {
-            recipient: data.request.employeePhoneNumber || data.request.phoneNumber || requestEmployee?.phoneNumber || '',
-            employeeId: data.request.employeeId || '',
-            employeeEmail: data.request.employeeEmail || '',
-            message: `[DILG WorkMate] ALERT: Your ${label} (${id}) has been ${status.toUpperCase()} by ${approver}. Notes: ${remarks}`,
-            timestamp: formatSmsTime
-          };
-
-          fetch('/api/sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSms)
-          })
-            .then(res => res.json())
-            .then(smsData => {
-              if (smsData.success) {
-                setSmsAlerts(prev => [smsData.sms, ...prev]);
-              }
-            });
-        }
-      });
+    return data.request;
   };
 
   // Add Calendar event
@@ -965,28 +960,38 @@ export default function App() {
   };
 
   // Administration Updates
-  const handleUpdateAllAttendance = (updatedHistory) => {
-    setAttendanceHistory(updatedHistory);
+  const handleUpdateAllAttendance = async (updatedHistory) => {
+    const response = await apiFetch('/api/attendance/history', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedHistory)
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success || !Array.isArray(data.attendanceHistory)) {
+      throw new Error(data.error || 'Unable to save attendance changes.');
+    }
+    setAttendanceHistory(data.attendanceHistory);
     pushSystemNotification({
       title: 'DTR Records Updated',
       message: 'Attendance records were reviewed and corrected in the HR/Admin desk.',
       time: 'Just now',
       type: 'attendance'
     }, { admin: true, employee: false });
-    fetch('/api/attendance/history', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedHistory)
-    });
+    return data.attendanceHistory;
   };
 
-  const handleUpdateAllRequests = (updatedRequests) => {
-    setRequests(updatedRequests);
-    fetch('/api/requests', {
+  const handleUpdateAllRequests = async (updatedRequests) => {
+    const response = await apiFetch('/api/requests', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedRequests)
     });
+    const data = await response.json();
+    if (!response.ok || !data.success || !Array.isArray(data.requests)) {
+      throw new Error(data.error || 'Unable to save request changes.');
+    }
+    setRequests(data.requests);
+    return data.requests;
   };
 
   // Clear system history with hard reset
@@ -1004,11 +1009,19 @@ export default function App() {
   };
 
   if (showResetPage && !activeRole) {
-    return <PasswordResetView mode={resetToken ? 'apply' : 'request'} token={resetToken} onBackToLogin={() => { setShowResetPage(false); setResetToken(null); window.history.replaceState({}, '', window.location.pathname); }} />;
+    return (
+      <Suspense fallback={<div className="p-6 text-center text-sm text-slate-600">Loading…</div>}>
+        <PasswordResetView mode={resetToken ? 'apply' : 'request'} token={resetToken} onBackToLogin={() => { setShowResetPage(false); setResetToken(null); window.history.replaceState({}, '', window.location.pathname); }} />
+      </Suspense>
+    );
   }
 
   if (!activeRole) {
-    return <LoginView mobileOnly={isEmployeeMobileApp} onLogin={handleLogin} onRequestPasswordReset={() => setShowResetPage(true)} />;
+    return (
+      <Suspense fallback={<div className="p-6 text-center text-sm text-slate-600">Loading…</div>}>
+        <LoginView mobileOnly={isEmployeeMobileApp} onLogin={handleLogin} onRequestPasswordReset={() => setShowResetPage(true)} />
+      </Suspense>
+    );
   }
 
   const headerNotifications = activeRole === 'hr_admin'
@@ -1081,6 +1094,7 @@ export default function App() {
 
         {/* Selected Panels Layout rendering */}
         <main className="flex-1 overflow-y-auto flex flex-col relative w-full">
+          <Suspense fallback={<div className="p-6 text-center text-sm text-slate-600">Loading page…</div>}>
           {currentView === 'dashboard' && (
             <DashboardView
               user={user}
@@ -1137,7 +1151,6 @@ export default function App() {
               onEmployeesChange={setEmployees}
               onUpdateUser={handleUpdateUser}
               onAdminNotification={handleAdminNotification}
-              onEnrollEmployeeFace={handleEnrollEmployeeFace}
             />
           )}
 
@@ -1174,6 +1187,8 @@ export default function App() {
             <ProfileView
               user={user}
               onUpdateUser={handleUpdateUser}
+              onSubmitEnrollment={handleSubmitBiometricEnrollment}
+              onRefreshEnrollmentStatus={handleRefreshBiometricStatus}
             />
           )}
 
@@ -1188,6 +1203,7 @@ export default function App() {
           {currentView === 'help' && (
             <HelpView />
           )}
+          </Suspense>
         </main>
         <MobileBottomNav currentView={currentView} onViewChange={handleViewChange} activeRole={activeRole} />
       </div>

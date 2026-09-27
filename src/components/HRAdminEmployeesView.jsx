@@ -1,10 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
-  Camera,
   CalendarDays,
-  CheckCircle2,
   FileText,
   Filter,
   Mail,
@@ -12,13 +10,13 @@ import {
   Pencil,
   Phone,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   UserRound,
   Users,
   X
 } from 'lucide-react';
-import { resizeFaceImage } from '../utils/faceImage';
 import { apiFetch } from '../utils/api';
 
 const emptyForm = {
@@ -38,7 +36,7 @@ const emptyForm = {
   dateHired: '',
   assignedStation: '',
   assignedLGU: '',
-  accessLevel: 'employee'
+  password: ''
 };
 
 const employeeName = (employee = {}) =>
@@ -82,7 +80,7 @@ const normalizeEmployee = (employee = {}) => {
     assignedStation: employee.assignedStation || '',
     assignedLGU: employee.assignedLGU || '',
     profilePicture: employee.profilePicture || '',
-    accessLevel: employee.accessLevel || 'employee'
+    accessLevel: 'employee'
   };
 };
 
@@ -93,42 +91,46 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
-export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification, onEnrollEmployeeFace }) {
+export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification }) {
   const [screen, setScreen] = useState('list');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [showBiometricPending, setShowBiometricPending] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [toast, setToast] = useState('');
   const [toastIsError, setToastIsError] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [form, setForm] = useState(emptyForm);
-  const [facePhotoPreparing, setFacePhotoPreparing] = useState(false);
-  const [faceEnrollmentLoading, setFaceEnrollmentLoading] = useState(false);
-  const [enrollmentSelfie, setEnrollmentSelfie] = useState('');
   const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
   const [dilgIdPhoto, setDilgIdPhoto] = useState('');
-  const [hrIdentityConfirmed, setHrIdentityConfirmed] = useState(false);
-  const [enrollmentCameraActive, setEnrollmentCameraActive] = useState(false);
-  const [enrollmentCameraError, setEnrollmentCameraError] = useState('');
-  const enrollmentVideoRef = useRef(null);
-  const enrollmentStreamRef = useRef(null);
+  const [biometricReviewNote, setBiometricReviewNote] = useState('');
+  const [biometricReviewLoading, setBiometricReviewLoading] = useState(false);
+  const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
+  const [employeeSaving, setEmployeeSaving] = useState(false);
+  const [accountStatusUpdating, setAccountStatusUpdating] = useState(false);
 
-  const totalCount = employees.length;
-  const activeCount = employees.filter((emp) => /active|present/i.test(emp.employmentStatus || emp.status || '')).length;
-  const pendingCount = employees.filter((emp) => /pending/i.test(emp.accountStatus || '')).length;
+  const employeeAccounts = useMemo(
+    () => employees.filter(employee => !employee.accessLevel || employee.accessLevel === 'employee'),
+    [employees]
+  );
+  const totalCount = employeeAccounts.length;
+  const activeCount = employeeAccounts.filter((emp) => /active|present/i.test(emp.employmentStatus || emp.status || '')).length;
+  const pendingCount = employeeAccounts.filter((emp) => /pending/i.test(emp.accountStatus || '')).length;
+  const pendingBiometricCount = employeeAccounts.filter(emp => emp.biometricEnrollmentStatus === 'pending').length;
 
   const filteredEmployees = useMemo(() => {
     const q = query.toLowerCase();
-    return employees.filter((employee) => {
+    return employeeAccounts.filter((employee) => {
       const name = employeeName(employee).toLowerCase();
       const status = (employee.employmentStatus || employee.status || 'ACTIVE').toLowerCase();
       const matchesStatus = statusFilter === 'All' || status === statusFilter.toLowerCase();
       const matchesText = !q || `${name} ${employee.email || ''} ${employee.role || ''} ${employee.employeeId || ''}`.toLowerCase().includes(q);
-      return matchesStatus && matchesText;
+      const matchesBiometricReview = !showBiometricPending || employee.biometricEnrollmentStatus === 'pending';
+      return matchesStatus && matchesText && matchesBiometricReview;
     });
-  }, [employees, query, statusFilter]);
+  }, [employeeAccounts, query, statusFilter, showBiometricPending]);
 
-  const selectedEmployee = employees.find((employee) => {
+  const selectedEmployee = employeeAccounts.find((employee) => {
     return employeeKey(employee) === selectedId;
   });
 
@@ -136,6 +138,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     let active = true;
     setDilgIdPhoto('');
     setSavedEnrollmentImage('');
+    setBiometricReviewNote('');
     if ((!selectedEmployee?.hasDilgIdPhoto && !selectedEmployee?.hasFaceEnrollmentImage) || !selectedEmployee.employeeId) return undefined;
     apiFetch(`/api/face/enrollment/${encodeURIComponent(selectedEmployee.employeeId)}`)
       .then(async response => {
@@ -144,6 +147,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         if (active) {
           setDilgIdPhoto(result.dilgIdImage || '');
           setSavedEnrollmentImage(result.enrollmentImage || '');
+          setBiometricReviewNote(result.enrollment?.biometricEnrollmentReviewNote || '');
         }
       })
       .catch(error => {
@@ -158,146 +162,55 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     window.setTimeout(() => setToast(''), 6000);
   };
 
-  const handleFaceEnrollment = async () => {
-    if (!selectedEmployee?.employeeId) {
-      notify('This employee has no employee ID. Add a valid employee ID before enrolling a face.', true);
-      return;
-    }
-    if (!enrollmentSelfie.startsWith('data:image/')) {
-      notify('Capture a fresh enrollment selfie while the employee is present.', true);
-      return;
-    }
-    if (!dilgIdPhoto.startsWith('data:image/')) {
-      notify('Upload the employee’s DILG ID photo before enrollment.', true);
-      return;
-    }
-    if (!hrIdentityConfirmed) {
-      notify('Confirm that you physically checked the DILG ID and matched it to the HR record.', true);
-      return;
-    }
-    if (!onEnrollEmployeeFace) {
-      notify('Face enrollment is unavailable. Refresh the HR portal and try again.', true);
-      return;
-    }
-
-    setFaceEnrollmentLoading(true);
+  const refreshEmployees = async () => {
+    setEmployeesRefreshing(true);
     try {
-      const result = await onEnrollEmployeeFace(selectedEmployee, {
-        dilgIdImage: dilgIdPhoto,
-        selfieImage: enrollmentSelfie,
-        hrConfirmed: hrIdentityConfirmed
-      });
-      onEmployeesChange?.(previous => previous.map(employee =>
-        employeeKey(employee) === employeeKey(selectedEmployee)
-          ? {
-              ...employee,
-              hasDilgIdPhoto: true,
-              hasFaceEnrollmentImage: true,
-              dilgIdVerifiedAt: result.dilgIdVerifiedAt,
-              faceEnrolledAt: result.faceEnrolledAt
-            }
-          : employee
-      ));
-      setSavedEnrollmentImage(enrollmentSelfie);
-      setEnrollmentSelfie('');
-      setHrIdentityConfirmed(false);
-      notify('HR ID check and enrollment selfie recorded. There is no automatic face match or liveness check.');
+      const response = await apiFetch('/api/employees');
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data?.users)) {
+        throw new Error(data?.error || 'Unable to refresh employee records.');
+      }
+      onEmployeesChange?.(data.users);
+      notify('Employee records refreshed.');
     } catch (error) {
-      notify(error.message || 'Face enrollment failed. Check the server configuration and try again.', true);
+      notify(error.message || 'Unable to refresh employee records.', true);
     } finally {
-      setFaceEnrollmentLoading(false);
-    }
-  };
-
-  const stopEnrollmentCamera = () => {
-    enrollmentStreamRef.current?.getTracks().forEach(track => track.stop());
-    enrollmentStreamRef.current = null;
-    setEnrollmentCameraActive(false);
-  };
-
-  const startEnrollmentCamera = async () => {
-    setEnrollmentCameraError('');
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setEnrollmentCameraError('A secure live camera is not available in this browser. Open HR enrollment on a camera-enabled HTTPS browser.');
-      return;
-    }
-    try {
-      stopEnrollmentCamera();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } }
-      });
-      enrollmentStreamRef.current = stream;
-      setEnrollmentSelfie('');
-      setEnrollmentCameraActive(true);
-    } catch (error) {
-      setEnrollmentCameraError(error.name === 'NotAllowedError'
-        ? 'Camera permission was denied. Allow camera access to take a live enrollment selfie.'
-        : `Unable to start the live enrollment camera: ${error.message || 'camera unavailable'}`);
+      setEmployeesRefreshing(false);
     }
   };
 
   useEffect(() => {
-    if (enrollmentCameraActive && enrollmentVideoRef.current && enrollmentStreamRef.current) {
-      enrollmentVideoRef.current.srcObject = enrollmentStreamRef.current;
-    }
-  }, [enrollmentCameraActive]);
-
-  useEffect(() => () => {
-    enrollmentStreamRef.current?.getTracks().forEach(track => track.stop());
+    refreshEmployees();
   }, []);
 
-  const captureEnrollmentSelfie = () => {
-    const video = enrollmentVideoRef.current;
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      setEnrollmentCameraError('Wait for the live camera preview before capturing the employee selfie.');
+  const handleBiometricReview = async decision => {
+    if (!selectedEmployee?.employeeId) return;
+    if (decision === 'reject' && !biometricReviewNote.trim()) {
+      notify('Add a rejection reason so the employee knows what to resubmit.', true);
       return;
     }
-    const longestSide = Math.max(video.videoWidth, video.videoHeight);
-    if (!longestSide) {
-      setEnrollmentCameraError('Live camera image is not ready. Retry the capture.');
-      return;
-    }
-    const scale = Math.min(1, 1280 / longestSide);
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
-    const context = canvas.getContext('2d');
-    if (!context) {
-      setEnrollmentCameraError('Unable to process the live selfie image.');
-      return;
-    }
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    setEnrollmentSelfie(canvas.toDataURL('image/jpeg', 0.85));
-    setHrIdentityConfirmed(false);
-    setEnrollmentCameraError('');
-    stopEnrollmentCamera();
-    notify('Fresh live enrollment selfie captured. Compare it with the employee’s DILG ID.');
-  };
-
-  const handleDilgIdPhotoUpload = async (event) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      notify('Choose an image file of the DILG ID.', true);
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      notify('Choose an ID image smaller than 20 MB.', true);
-      return;
-    }
-    setFacePhotoPreparing(true);
+    setBiometricReviewLoading(true);
     try {
-      const image = await resizeFaceImage(file);
-      setDilgIdPhoto(image);
-      setHrIdentityConfirmed(false);
-      notify('DILG ID photo prepared. It is retained in the restricted HR record after enrollment.');
+      const response = await apiFetch(`/api/face/enrollment/${encodeURIComponent(selectedEmployee.employeeId)}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, note: biometricReviewNote.trim() })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save HR review.');
+      onEmployeesChange?.(previous => previous.map(employee =>
+        employeeKey(employee) === employeeKey(selectedEmployee)
+          ? { ...employee, ...data.enrollment }
+          : employee
+      ));
+      const reviewMessage = data.notificationWarning || (decision === 'approve'
+        ? 'HR review approved. The biometric enrollment is still not verified because liveness is unavailable.'
+        : 'Enrollment rejected. The employee was notified to correct and resubmit.');
+      notify(reviewMessage, Boolean(data.notificationWarning));
     } catch (error) {
-      notify(error.message || 'Unable to prepare this ID photo.', true);
+      notify(error.message || 'Unable to save HR review.', true);
     } finally {
-      setFacePhotoPreparing(false);
+      setBiometricReviewLoading(false);
     }
   };
 
@@ -326,9 +239,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   };
 
   const openView = (employee) => {
-    stopEnrollmentCamera();
     setSelectedId(employeeKey(employee));
-    setEnrollmentSelfie('');
     setScreen('profile');
   };
 
@@ -337,15 +248,17 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     setForm((previous) => ({ ...previous, [name]: value }));
   };
 
-  const handleSaveEmployee = (event) => {
+  const handleSaveEmployee = async event => {
     event.preventDefault();
+    setEmployeeSaving(true);
 
     const fullName = [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ');
+    const employeeId = form.employeeId.trim() || `DILG-${Date.now().toString().slice(-6)}`;
     const normalized = {
       ...normalizeEmployee({
         ...form,
         name: fullName,
-        employeeId: form.employeeId || `DILG-${Date.now().toString().slice(-6)}`,
+        employeeId,
         role: form.role || 'Employee',
         office: form.office || 'Administrative Office',
         employmentStatus: form.employmentStatus || 'ACTIVE',
@@ -355,86 +268,129 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       }),
       name: fullName,
       email: (form.email || '').trim().toLowerCase(),
-      employeeId: form.employeeId || `DILG-${Date.now().toString().slice(-6)}`,
+      employeeId,
       role: form.role || 'Employee',
       office: form.office || 'Administrative Office',
       employmentStatus: form.employmentStatus || 'ACTIVE',
       accountStatus: form.accountStatus || 'Pending',
-      accessLevel: form.accessLevel || 'employee'
+      accessLevel: 'employee'
     };
 
-    if (editingId) {
-      onEmployeesChange?.((previous) =>
-        previous.map((employee) => {
-          return employeeKey(employee) === editingId ? { ...employee, ...normalized } : employee;
-        })
-      );
-      onAdminNotification?.({
-        title: 'Employee Account Updated',
-        message: `${fullName || 'Employee'} profile and assigned role were updated by HR/Admin.`,
-        time: 'Just now',
-        type: 'employee_management'
-      });
-      notify('Employee account updated successfully.');
-    } else {
-      const newEmployee = {
-        ...normalized,
-        id: normalized.id || `emp-${Date.now()}`,
-        status: normalized.employmentStatus,
-        role: normalized.role,
-        office: normalized.office,
-        accountStatus: normalized.accountStatus
-      };
-      onEmployeesChange?.((previous) => [newEmployee, ...previous]);
-      onAdminNotification?.({
-        title: 'New Employee Account Created',
-        message: `${fullName || 'A new employee'} was added to the HR/Admin employee roster.`,
-        time: 'Just now',
-        type: 'employee_management'
-      });
-      notify('Employee account created successfully.');
-    }
+    try {
+      const existingEmployee = editingId
+        ? employeeAccounts.find(employee => employeeKey(employee) === editingId)
+        : null;
+      if (editingId && !existingEmployee) {
+        throw new Error('Employee record is no longer available. Refresh the employee list and try again.');
+      }
 
-    setScreen('list');
-    setSelectedId(null);
+      const endpoint = editingId
+        ? `/api/employees/${encodeURIComponent(existingEmployee.employeeId || existingEmployee.email)}`
+        : '/api/employees';
+      const response = await apiFetch(endpoint, {
+        method: editingId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingId ? normalized : { ...normalized, password: form.password })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.employee) {
+        throw new Error(data.error || 'Unable to save employee record.');
+      }
+
+      const savedEmployee = data.employee;
+      if (editingId) {
+        onEmployeesChange?.(previous => previous.map(employee =>
+          employeeKey(employee) === editingId ? { ...employee, ...savedEmployee } : employee
+        ));
+      } else {
+        onEmployeesChange?.(previous => [savedEmployee, ...previous]);
+      }
+
+      const notification = {
+        title: editingId ? 'Employee Account Updated' : 'New Employee Account Created',
+        message: editingId
+          ? `${fullName} employee record was updated by HR/Admin.`
+          : `${fullName} employee account was created by HR/Admin.`,
+        time: 'Just now',
+        type: 'employee_management'
+      };
+      let notificationFailed = false;
+      try {
+        await onAdminNotification?.(notification);
+      } catch (notificationError) {
+        console.error('Employee account saved, but the HR notification failed:', notificationError);
+        notificationFailed = true;
+        notify('Employee record saved, but its notification could not be delivered.', true);
+      }
+      if (!notificationFailed) notify(editingId ? 'Employee account updated.' : 'Employee account created.');
+      setScreen('list');
+      setSelectedId(null);
+      setForm(emptyForm);
+    } catch (error) {
+      notify(error.message || 'Unable to save employee record.', true);
+    } finally {
+      setEmployeeSaving(false);
+    }
   };
 
-  const handleAccountStatus = (accountStatus) => {
+  const handleAccountStatus = async accountStatus => {
     if (!selectedEmployee) return;
     const key = employeeKey(selectedEmployee);
-    onEmployeesChange?.((previous) =>
-      previous.map((employee) => {
-        const currentKey = employeeKey(employee);
-        return currentKey === key
+    setAccountStatusUpdating(true);
+    try {
+      const identifier = selectedEmployee.employeeId || selectedEmployee.email;
+      const response = await apiFetch(`/api/employees/${encodeURIComponent(identifier)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountStatus })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.user) {
+        throw new Error(data.error || 'Unable to update employee account status.');
+      }
+      onEmployeesChange?.(previous => previous.map(employee =>
+        employeeKey(employee) === key
           ? {
               ...employee,
-              accountStatus,
+              ...data.user,
+              id: employee.employeeId || employee.id,
               employmentStatus: accountStatus === 'Active' ? 'ACTIVE' : employee.employmentStatus || 'ACTIVE'
             }
-          : employee;
-      })
-    );
-    onAdminNotification?.({
-      title: 'Employee Account Status Changed',
-      message: `${employeeName(selectedEmployee)} account status was updated to ${accountStatus} by HR/Admin.`,
-      time: 'Just now',
-      type: 'employee_management'
-    });
-    notify(`Account status updated to ${accountStatus}.`);
-    setScreen('profile');
+          : employee
+      ));
+      let notificationFailed = false;
+      try {
+        await onAdminNotification?.({
+          title: 'Employee Account Status Changed',
+          message: `${employeeName(selectedEmployee)} account status was updated to ${accountStatus} by HR/Admin.`,
+          time: 'Just now',
+          type: 'employee_management'
+        });
+      } catch (notificationError) {
+        console.error('Employee status saved, but the HR notification failed:', notificationError);
+        notificationFailed = true;
+        notify('Employee status saved, but its notification could not be delivered.', true);
+      }
+      if (!notificationFailed) notify(`Account status updated to ${accountStatus}.`);
+      setScreen('profile');
+    } catch (error) {
+      notify(error.message || 'Unable to update employee account status.', true);
+    } finally {
+      setAccountStatusUpdating(false);
+    }
   };
 
   if (screen === 'editor') {
     return (
       <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
-        <button type="button" onClick={() => { stopEnrollmentCamera(); setScreen('list'); }} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
+        <button type="button" onClick={() => setScreen('list')} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
           <ArrowLeft className="h-4 w-4" /> Employee Management
         </button>
 
         <form onSubmit={handleSaveEmployee} className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-xl font-black text-slate-900">{editingId ? 'Update Employee Account' : 'Create Employee Account'}</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">Create and manage the employee profile, assigned role, and account access.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Employee account details are saved to the shared database and used across HR and employee views.</p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <label className="text-[11px] font-black text-slate-600">First Name
@@ -467,28 +423,19 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
               <label className="text-[11px] font-black text-slate-600">Email
                 <input name="email" type="email" value={form.email} onChange={handleChange} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
+              {!editingId && (
+                <label className="text-[11px] font-black text-slate-600">Initial Employee Password
+                  <input name="password" type="password" value={form.password} onChange={handleChange} minLength={10} maxLength={256} autoComplete="new-password" required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                  <span className="mt-1 block text-[10px] font-medium text-slate-500">At least 10 characters. Share it securely with the employee.</span>
+                </label>
+              )}
 
               <label className="text-[11px] font-black text-slate-600 sm:col-span-2 xl:col-span-2">Address
                 <input name="address" value={form.address} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
 
-              <label className="text-[11px] font-black text-slate-600">Role / Designation
-                <select name="role" value={form.role} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
-                  <option value="">Select role</option>
-                  <option value="Employee">Employee</option>
-                  <option value="Supervisor">Supervisor</option>
-                  <option value="HR Admin">HR Admin</option>
-                  <option value="Administrative Officer">Administrative Officer</option>
-                  <option value="Field Officer">Field Officer</option>
-                </select>
-              </label>
-
-              <label className="text-[11px] font-black text-slate-600">Access Level
-                <select name="accessLevel" value={form.accessLevel} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
-                  <option value="employee">Employee</option>
-                  <option value="supervisor">Supervisor</option>
-                  <option value="hr_admin">HR Admin</option>
-                </select>
+              <label className="text-[11px] font-black text-slate-600">Employee Job Designation
+                <input name="role" value={form.role} onChange={handleChange} placeholder="e.g. Administrative Officer" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Office / Department
@@ -526,8 +473,8 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
           </section>
 
           <div className="flex flex-wrap gap-3">
-            <button type="submit" className="rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white">{editingId ? 'Save Changes' : 'Create Account'}</button>
-            <button type="button" onClick={() => setScreen('list')} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-700">Cancel</button>
+            <button type="submit" disabled={employeeSaving} className="rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">{employeeSaving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Employee Account'}</button>
+            <button type="button" onClick={() => setScreen('list')} disabled={employeeSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-black text-slate-700 disabled:opacity-50">Cancel</button>
           </div>
         </form>
       </div>
@@ -570,87 +517,89 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             <button type="button" onClick={() => openEdit(selectedEmployee)} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white">
               <Pencil className="h-4 w-4" /> Edit
             </button>
-            <button type="button" onClick={() => handleAccountStatus('Active')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Activate</button>
-            <button type="button" onClick={() => handleAccountStatus('Inactive')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Deactivate</button>
-            <label htmlFor="employee-dilg-id-photo" className={`inline-flex cursor-pointer items-center gap-2 rounded-xl border px-4 py-2 text-xs font-black ${facePhotoPreparing ? 'border-slate-200 bg-slate-100 text-slate-400' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
-              <ShieldCheck className="h-4 w-4" />
-              {dilgIdPhoto ? 'Change DILG ID Photo' : selectedEmployee.hasDilgIdPhoto ? 'Loading DILG ID Photo...' : 'Upload DILG ID Photo'}
-            </label>
-            <input
-              id="employee-dilg-id-photo"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="sr-only"
-              disabled={facePhotoPreparing}
-              onChange={handleDilgIdPhotoUpload}
-            />
-            {!enrollmentCameraActive && (
-              <button type="button" onClick={startEnrollmentCamera} disabled={faceEnrollmentLoading} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-50">
-                <Camera className="h-4 w-4" />
-                {enrollmentSelfie ? 'Retake Enrollment Selfie' : 'Capture Enrollment Selfie'}
-              </button>
+            <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Activate'}</button>
+            <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Deactivate'}</button>
+          </div>
+
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
+                <p className="mt-1 text-[10px] font-semibold text-slate-500">Employee-submitted ID and selfie. HR review does not perform automated face matching or liveness detection.</p>
+              </div>
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+                selectedEmployee.biometricEnrollmentStatus === 'rejected'
+                  ? 'bg-rose-100 text-rose-800'
+                  : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
+                    ? 'bg-blue-100 text-blue-800'
+                    : selectedEmployee.biometricEnrollmentStatus === 'pending'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 text-slate-600'
+              }`}>
+                {selectedEmployee.biometricEnrollmentStatus === 'pending'
+                  ? 'Pending HR review'
+                  : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
+                    ? 'HR approved · not biometrically verified'
+                    : selectedEmployee.biometricEnrollmentStatus === 'rejected'
+                      ? 'Not approved'
+                      : 'Not submitted'}
+              </span>
+            </div>
+            {selectedEmployee.biometricEnrollmentSubmittedAt && (
+              <p className="mt-2 text-[10px] font-semibold text-slate-500">
+                Submitted {new Date(selectedEmployee.biometricEnrollmentSubmittedAt).toLocaleString()}
+                {selectedEmployee.biometricEnrollmentReviewedAt ? ` · reviewed ${new Date(selectedEmployee.biometricEnrollmentReviewedAt).toLocaleString()}` : ''}
+              </p>
             )}
-            {enrollmentCameraActive && (
-              <div className="w-full space-y-2 rounded-xl border border-blue-200 bg-slate-950 p-3">
-                <video ref={enrollmentVideoRef} autoPlay playsInline muted className="mx-auto max-h-64 w-full rounded-lg object-contain" />
-                <div className="flex gap-2">
-                  <button type="button" onClick={captureEnrollmentSelfie} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white">Capture Selfie Photo</button>
-                  <button type="button" onClick={stopEnrollmentCamera} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white">Cancel Camera</button>
+            {(dilgIdPhoto || savedEnrollmentImage) ? (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {dilgIdPhoto && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Restricted government ID</p>
+                    <img src={dilgIdPhoto} alt="Employee-submitted government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                  </div>
+                )}
+                {savedEnrollmentImage && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-2">
+                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Employee enrollment selfie</p>
+                    <img src={savedEnrollmentImage} alt="Employee-submitted enrollment selfie for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">The employee has not submitted enrollment images.</p>
+            )}
+            {selectedEmployee.biometricEnrollmentReviewNote && (
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
+                Previous HR note: {selectedEmployee.biometricEnrollmentReviewNote}
+                {selectedEmployee.biometricEnrollmentReviewedBy ? ` · ${selectedEmployee.biometricEnrollmentReviewedBy}` : ''}
+              </p>
+            )}
+            {selectedEmployee.biometricEnrollmentStatus === 'pending' && (
+              <div className="mt-4 space-y-3">
+                <label className="block text-[11px] font-black text-slate-600">
+                  HR review note
+                  <textarea
+                    value={biometricReviewNote}
+                    onChange={event => setBiometricReviewNote(event.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="Required if rejecting. Add correction instructions for the employee."
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium outline-none focus:border-blue-500"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                    {biometricReviewLoading ? 'Saving...' : 'Approve HR Review'}
+                  </button>
+                  <button type="button" onClick={() => handleBiometricReview('reject')} disabled={biometricReviewLoading} className="rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                    {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
+                  </button>
                 </div>
+                <p className="text-[10px] font-semibold text-amber-800">Approval confirms HR document review only. This enrollment remains unverified until automatic face match and liveness are configured.</p>
               </div>
             )}
-            <label className="flex w-full items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold text-amber-900">
-              <input
-                type="checkbox"
-                checked={hrIdentityConfirmed}
-                onChange={event => setHrIdentityConfirmed(event.target.checked)}
-                disabled={!dilgIdPhoto || faceEnrollmentLoading}
-                className="mt-0.5"
-              />
-              I physically checked the DILG ID card and confirmed the name, employee number, and office against the HR record.
-            </label>
-            <button
-              type="button"
-              onClick={handleFaceEnrollment}
-              disabled={facePhotoPreparing || faceEnrollmentLoading || !enrollmentSelfie || !dilgIdPhoto || !hrIdentityConfirmed}
-              className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-black text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {faceEnrollmentLoading ? 'Saving HR Enrollment...' : selectedEmployee.faceEnrolledAt ? 'Update HR Enrollment' : 'Record HR ID Check & Selfie'}
-            </button>
-            <span className="self-center text-[10px] font-semibold text-slate-500">
-              {selectedEmployee.faceEnrolledAt
-                ? `HR recorded ID check and selfie ${new Date(selectedEmployee.faceEnrolledAt).toLocaleDateString()} · no automated face match`
-                : !dilgIdPhoto
-                  ? 'Upload the DILG ID card photo first'
-                  : !enrollmentSelfie
-                    ? 'Capture a fresh selfie while the employee is present'
-                    : 'Confirm the physical ID check to enroll'}
-            </span>
-          </div>
-          {dilgIdPhoto && (
-            <div className="mt-4 max-w-xs rounded-xl border border-amber-200 bg-amber-50 p-2">
-              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Restricted HR DILG ID photo</p>
-              <img src={dilgIdPhoto} alt="Employee DILG ID for HR review" className="max-h-48 w-full rounded-lg object-contain" />
-            </div>
-          )}
-          {enrollmentSelfie && (
-            <div className="mt-4 max-w-xs rounded-xl border border-blue-200 bg-blue-50 p-2">
-              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Fresh enrollment selfie</p>
-              <img src={enrollmentSelfie} alt="Fresh employee enrollment selfie" className="max-h-48 w-full rounded-lg object-contain" />
-            </div>
-          )}
-          {savedEnrollmentImage && (
-            <div className="mt-4 max-w-xs rounded-xl border border-blue-200 bg-blue-50 p-2">
-              <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Restricted HR enrollment selfie</p>
-              <img src={savedEnrollmentImage} alt="HR enrollment selfie reference" className="max-h-48 w-full rounded-lg object-contain" />
-            </div>
-          )}
-          {enrollmentCameraError && (
-            <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
-              {enrollmentCameraError}
-            </p>
-          )}
+          </section>
           {toast && (
             <div role={toastIsError ? 'alert' : 'status'} className={`mt-3 rounded-xl border px-3 py-2 text-xs font-bold ${
               toastIsError
@@ -663,8 +612,8 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">HR Enrollment Audit</h3>
-          <p className="mt-1 text-[10px] font-semibold text-slate-500">Manual ID review and enrollment records. These images are not automatically face-matched or liveness-checked.</p>
+          <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
+          <p className="mt-1 text-[10px] font-semibold text-slate-500">Submission and HR review events. No automated face match or liveness check is currently performed.</p>
           {selectedEmployee.faceVerificationAudit?.length ? (
             <div className="mt-3 space-y-2">
               {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
@@ -722,12 +671,17 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       <header className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-slate-900 sm:text-2xl">User Management</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">Create, update, and manage user accounts and assigned roles.</p>
+            <h2 className="text-xl font-black text-slate-900 sm:text-2xl">Employee Management</h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Create and manage employee accounts, job designations, and access status.</p>
           </div>
-          <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white">
-            <Plus className="h-4 w-4" /> Add User
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={refreshEmployees} disabled={employeesRefreshing} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
+              <RefreshCw className={`h-4 w-4 ${employeesRefreshing ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+            <button type="button" onClick={openCreate} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white">
+              <Plus className="h-4 w-4" /> Add Employee
+            </button>
+          </div>
         </div>
 
         {toast && (
@@ -756,7 +710,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-500">Total Users</p>
+          <p className="text-[10px] font-black uppercase text-slate-500">Total Employees</p>
           <strong className="mt-1 block text-2xl text-slate-900">{totalCount}</strong>
         </div>
         <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
@@ -767,10 +721,16 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
           <p className="text-[10px] font-black uppercase text-amber-700">Pending</p>
           <strong className="mt-1 block text-2xl text-amber-700">{pendingCount}</strong>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <p className="text-[10px] font-black uppercase text-slate-500">Supervisors</p>
-          <strong className="mt-1 block text-2xl text-slate-900">{employees.filter((emp) => /supervisor/i.test(emp.role || '')).length}</strong>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowBiometricPending(current => !current)}
+          aria-pressed={showBiometricPending}
+          className={`rounded-2xl border p-3 text-left shadow-sm ${showBiometricPending ? 'border-amber-300 bg-amber-100' : 'border-amber-100 bg-amber-50'}`}
+        >
+          <p className="text-[10px] font-black uppercase text-amber-800">Biometric Reviews</p>
+          <strong className="mt-1 block text-2xl text-amber-800">{pendingBiometricCount}</strong>
+          <span className="text-[10px] font-semibold text-amber-800">{showBiometricPending ? 'Showing pending' : 'Show pending'}</span>
+        </button>
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -789,7 +749,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">No users found.</td>
+                  <td colSpan="6" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">No employees found.</td>
                 </tr>
               ) : (
                 filteredEmployees.map((employee) => {
@@ -817,6 +777,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                         <span className={`rounded-full px-2 py-1 text-[10px] font-black ${statusStyle(employee.employmentStatus || employee.status || 'ACTIVE')}`}>
                           {employee.employmentStatus || employee.status || 'ACTIVE'}
                         </span>
+                        {employee.biometricEnrollmentStatus === 'pending' && (
+                          <span className="mt-1 block rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800">Biometric review</span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-slate-700">{employee.assignedStation || '—'}</td>
                       <td className="px-3 py-3 text-right">

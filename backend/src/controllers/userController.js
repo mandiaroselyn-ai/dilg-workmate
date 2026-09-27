@@ -53,6 +53,113 @@ export const registerUser = async (req, res) => {
   }
 };
 
+const normalizeEmployeeInput = body => {
+  const stringFields = [
+    'name',
+    'email',
+    'employeeId',
+    'role',
+    'office',
+    'region',
+    'phoneNumber',
+    'address',
+    'dateOfBirth',
+    'gender',
+    'employmentStatus',
+    'dateHired',
+    'assignedStation',
+    'assignedLGU'
+  ];
+  const employee = {};
+  for (const field of stringFields) {
+    const value = body[field] ?? '';
+    if (typeof value !== 'string') {
+      return { error: `${field} must be text.` };
+    }
+    employee[field] = value.trim();
+  }
+  employee.email = employee.email.toLowerCase();
+  employee.accessLevel = 'employee';
+  employee.accountStatus = body.accountStatus || 'Pending';
+
+  if (!employee.name || !employee.email || !employee.employeeId || !employee.role || !employee.office) {
+    return { error: 'Name, email, employee ID, job designation, and office are required.' };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employee.email)) {
+    return { error: 'Enter a valid employee email address.' };
+  }
+  if (employee.employeeId.length > 64 || employee.name.length > 160 || employee.role.length > 120 || employee.office.length > 160) {
+    return { error: 'One or more employee fields exceed the maximum length.' };
+  }
+  if (!['Active', 'Inactive', 'Pending', 'Suspended'].includes(employee.accountStatus)) {
+    return { error: 'Invalid employee account status.' };
+  }
+  if (!['ACTIVE', 'INACTIVE', 'ON LEAVE'].includes(employee.employmentStatus)) {
+    return { error: 'Invalid employment status.' };
+  }
+  for (const field of ['region', 'phoneNumber', 'address', 'dateOfBirth', 'gender', 'dateHired', 'assignedStation', 'assignedLGU']) {
+    if (employee[field].length > 250) {
+      return { error: `${field} exceeds the maximum length.` };
+    }
+  }
+  return { employee };
+};
+
+const employeeResponse = employee => ({
+  ...toSafeUser(employee),
+  hasDilgIdPhoto: Boolean(employee.dilgIdPhoto),
+  hasFaceEnrollmentImage: Boolean(employee.faceEnrollmentImage),
+  biometricEnrollmentStatus: employee.biometricEnrollmentStatus || 'not-submitted',
+  biometricEnrollmentSubmittedAt: employee.biometricEnrollmentSubmittedAt || null,
+  biometricEnrollmentReviewedAt: employee.biometricEnrollmentReviewedAt || null,
+  biometricEnrollmentReviewedBy: employee.biometricEnrollmentReviewedBy || '',
+  biometricEnrollmentReviewNote: employee.biometricEnrollmentReviewNote || '',
+  faceLivenessStatus: 'not-configured',
+  faceVerificationAudit: (employee.faceVerificationAudit || []).map(event => ({
+    timestamp: event.timestamp,
+    outcome: event.outcome,
+    reviewedBy: event.reviewedBy,
+    provider: event.provider
+  })),
+  id: employee.employeeId || String(employee._id)
+});
+
+export const createEmployee = async (req, res) => {
+  try {
+    const { employee, error } = normalizeEmployeeInput(req.body || {});
+    if (error) return res.status(400).json({ success: false, error });
+    const password = req.body.password;
+    if (typeof password !== 'string' || password.trim().length < 10 || password.length > 256) {
+      return res.status(400).json({ success: false, error: 'Set an initial employee password of 10 to 256 characters.' });
+    }
+
+    const created = await User.createEmployee({ ...employee, password: password.trim() });
+    if (created?.conflict) {
+      return res.status(409).json({ success: false, error: 'An employee already uses this email address or employee ID.' });
+    }
+    res.status(201).json({ success: true, employee: employeeResponse(created) });
+  } catch (error) {
+    console.error('Unable to create employee account:', error);
+    res.status(500).json({ success: false, error: 'Unable to create employee account.' });
+  }
+};
+
+export const updateEmployee = async (req, res) => {
+  try {
+    const { employee, error } = normalizeEmployeeInput(req.body || {});
+    if (error) return res.status(400).json({ success: false, error });
+    const updated = await User.updateEmployee(req.params.identifier, employee);
+    if (updated?.conflict) {
+      return res.status(409).json({ success: false, error: 'An employee already uses this email address or employee ID.' });
+    }
+    if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    res.status(200).json({ success: true, employee: employeeResponse(updated) });
+  } catch (error) {
+    console.error('Unable to update employee account:', error);
+    res.status(500).json({ success: false, error: 'Unable to update employee account.' });
+  }
+};
+
 export const updateEmployeeAccountStatus = async (req, res) => {
   try {
     const { identifier } = req.params;
@@ -122,6 +229,12 @@ export const getEmployees = async (req, res) => {
         ...plain,
         hasDilgIdPhoto: Boolean(emp.dilgIdPhoto),
         hasFaceEnrollmentImage: Boolean(emp.faceEnrollmentImage),
+        biometricEnrollmentStatus: emp.biometricEnrollmentStatus || 'not-submitted',
+        biometricEnrollmentSubmittedAt: emp.biometricEnrollmentSubmittedAt || null,
+        biometricEnrollmentReviewedAt: emp.biometricEnrollmentReviewedAt || null,
+        biometricEnrollmentReviewedBy: emp.biometricEnrollmentReviewedBy || '',
+        biometricEnrollmentReviewNote: emp.biometricEnrollmentReviewNote || '',
+        faceLivenessStatus: 'not-configured',
         dilgIdVerifiedAt: emp.dilgIdVerifiedAt || null,
         dilgIdVerifiedBy: emp.dilgIdVerifiedBy || '',
         dilgIdVerifiedDetails: emp.dilgIdVerifiedDetails || null,

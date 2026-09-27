@@ -54,6 +54,7 @@ dilg-workmate/
    ```bash
    npm run dev
    ```
+   Open the `Local` URL printed by Vite. If port `5173` is already in use, Vite chooses another port (for example, `5174`). Google sign-in returns to the active local frontend automatically; the Google OAuth client's authorized redirect URI must include `http://localhost:5000/api/auth/google/callback`.
 
 3. **Build & Execute Standalone Production Bundle:**
    ```bash
@@ -83,9 +84,11 @@ Do not commit `.env` files or put secrets in frontend variables. Default supervi
 
 ### Attendance Selfie and Passkey
 
-Time In requires a selfie photo and a valid server-verified passkey assertion. The selfie is attached to the attendance record for HR review; it is **not** automatically compared with the enrolled HR photo and is **not** a liveness/anti-spoof check. A gallery image or replayed photo may be accepted. The passkey verifies possession of the registered device credential, not the employee's face. Use this lower-assurance flow only if it meets agency requirements; do not describe it as automatic face recognition or live-person verification.
+Time In requires a live selfie captured with the device camera and a valid server-verified passkey assertion. Camera permission and a secure browser context (HTTPS or localhost) are required. The selfie is attached to the attendance record for HR review; it is **not** automatically compared with the enrolled HR photo and is **not** a production liveness/anti-spoof check. The passkey verifies possession of the registered device credential, not the employee's face. Use this lower-assurance flow only if it meets agency requirements; do not describe it as production automatic face recognition or live-person verification.
 
-HR can record that the employee's physical DILG ID was checked against the HR record, and retain the ID image and enrollment selfie in a restricted HR-only record. The system does not verify the card's authenticity or compare its face automatically. Treat ID images, enrollment selfies, and attendance selfie records as sensitive personal data; restrict access, use encrypted MongoDB storage and transport, establish an approved retention/deletion schedule and employee notice/consent process, and verify agency privacy/legal requirements before production use.
+HR/Admin employee records, account status, biometric enrollment images, and HR review decisions are loaded from and saved to MongoDB. HR-created employee accounts require an initial password, which is hashed before storage; pending accounts must be activated before employees can sign in. Employees submit a government ID image and a camera selfie from **Profile → Biometric Enrollment**. Once both images are ready, the app automatically uploads them to the employee's MongoDB record and notifies HR/Admin. HR/Admin can view the restricted images from the employee record, then approve or reject them; rejection requires a reason, and the employee is notified to correct and resubmit. Live camera preview requires HTTPS or localhost; on mobile browsers, use the device-camera option if preview is unavailable. Images are returned only through authenticated HR review or the employee's own approved-enrollment reference endpoint. The HR decision means document review only.
+
+Treat government ID images, enrollment selfies, and attendance selfie records as sensitive personal data; restrict access, use encrypted MongoDB storage and transport, establish an approved retention/deletion schedule and employee notice/consent process, and verify agency privacy/legal requirements before production use.
 
 ### Password Security Maintenance
 

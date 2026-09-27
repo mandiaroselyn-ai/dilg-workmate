@@ -58,6 +58,7 @@ export default function SupervisorView({
   // Success indicator
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSavingDecision, setIsSavingDecision] = useState(false);
 
   const getRequester = (request) => request.employee || employees.find(employee => matchesAttendanceEmployee(request, employee));
   const requesterName = (request) => getRequester(request)?.name || request.employeeName || 'Employee name unavailable';
@@ -138,8 +139,8 @@ export default function SupervisorView({
   };
 
   // Submit decision
-  const handleDecision = (decision) => {
-    if (!selectedRequest) return;
+  const handleDecision = async (decision) => {
+    if (!selectedRequest || isSavingDecision) return;
     setErrorMsg('');
     if (decision === 'Rejected' && !remarks.trim()) {
       setErrorMsg('Please ensure you provide the reason (remarks) for disapproving the request.');
@@ -178,17 +179,19 @@ export default function SupervisorView({
       };
     }
 
-    onUpdateRequestStatus(selectedRequest.id, updatePayload);
-
-    setSuccessMsg(`Application ID ${selectedRequest.id} was successfully ${decision === 'Rejected' ? 'Disapproved' : 'Approved'}.`);
-    setSelectedRequest(null);
-    setRemarks('');
-    clearCanvas();
-
-    // Clear alert banner after few seconds
-    setTimeout(() => {
-      setSuccessMsg('');
-    }, 4500);
+    setIsSavingDecision(true);
+    try {
+      await onUpdateRequestStatus(selectedRequest.id, updatePayload);
+      setSuccessMsg(`Application ID ${selectedRequest.id} was successfully ${decision === 'Rejected' ? 'Disapproved' : 'Approved'}.`);
+      setSelectedRequest(null);
+      setRemarks('');
+      clearCanvas();
+      window.setTimeout(() => setSuccessMsg(''), 4500);
+    } catch (error) {
+      setErrorMsg(error.message || 'Unable to save the supervisor decision. Please try again.');
+    } finally {
+      setIsSavingDecision(false);
+    }
   };
 
   // Stats summaries
@@ -629,18 +632,20 @@ export default function SupervisorView({
                   <button
                     type="button"
                     onClick={() => handleDecision('Rejected')}
-                    className="py-3 px-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold hover:bg-rose-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 font-semibold"
+                    disabled={isSavingDecision}
+                    className="py-3 px-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold hover:bg-rose-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 font-semibold disabled:cursor-wait disabled:opacity-60"
                   >
                     <XCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                    <span>Disapprove Request</span>
+                    <span>{isSavingDecision ? 'Saving…' : 'Disapprove Request'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDecision('Approved')}
-                    className="py-3 px-3 rounded-xl bg-emerald-600 text-white font-extrabold hover:bg-emerald-500 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-sm font-semibold border-0"
+                    disabled={isSavingDecision}
+                    className="py-3 px-3 rounded-xl bg-emerald-600 text-white font-extrabold hover:bg-emerald-500 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-sm font-semibold border-0 disabled:cursor-wait disabled:opacity-60"
                   >
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
-                    <span>Sign & Approve Request</span>
+                    <span>{isSavingDecision ? 'Saving…' : 'Sign & Approve Request'}</span>
                   </button>
                 </div>
 
@@ -659,6 +664,35 @@ export default function SupervisorView({
 
         </div>
       </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-wide text-blue-800">Employee Attendance Records</h2>
+            <p className="mt-1 text-xs text-slate-500">Attendance submitted by employees and saved for HR/Admin and supervisor review.</p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{attendanceHistory.length} records</span>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left text-xs">
+            <thead className="text-[10px] uppercase tracking-wide text-slate-400">
+              <tr><th className="py-2">Employee</th><th>Employee ID</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Status</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {attendanceHistory.slice(0, 50).map((record, index) => (
+                <tr key={record.id || `${record.employeeId}-${record.date}-${index}`}>
+                  <td className="py-3 font-bold text-slate-800">{getRequester(record)?.name || record.employeeName || 'Employee name unavailable'}</td>
+                  <td className="font-semibold text-slate-600">{getRequester(record)?.employeeId || record.employeeId || 'Not assigned'}</td>
+                  <td>{record.date || '-'}</td><td>{record.timeIn || '-'}</td><td>{record.timeOut || '-'}</td>
+                  <td><span className="rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-700">{record.status || 'Recorded'}</span></td>
+                </tr>
+              ))}
+              {attendanceHistory.length === 0 && <tr><td colSpan="6" className="py-8 text-center text-slate-400">No employee attendance records have been saved yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        {attendanceHistory.length > 50 && <p className="mt-3 text-[11px] text-slate-500">Showing the 50 most recent records.</p>}
+      </section>
 
       {/* Renders CSC Form No. 6 Modal Preview / Travel Order Preview */}
       {showForm6Request && showForm6Request.type === 'Leave Request' && (

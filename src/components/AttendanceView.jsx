@@ -29,7 +29,6 @@ import {
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { resizeFaceImage } from '../utils/faceImage';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import { isWithinAssignedLocation } from '../../shared/assignmentGeofence';
 
@@ -156,8 +155,10 @@ export default function AttendanceView({
 
   // Selfie Camera States
   const [capturedSelfie, setCapturedSelfie] = useState(null);
+  const [selfieCameraActive, setSelfieCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-  const selfieFileInputRef = useRef(null);
+  const selfieVideoRef = useRef(null);
+  const selfieStreamRef = useRef(null);
 
   // Fingerprint States
   const [fingerprintScanning, setFingerprintScanning] = useState(false);
@@ -188,27 +189,75 @@ export default function AttendanceView({
     return () => window.removeEventListener('dilg-biometric-result', handleMobileBiometricResult);
   }, []);
 
-  const handleDeviceSelfieSelected = async (event) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      setCameraError('Choose an image file for the selfie.');
+  const stopSelfieCamera = () => {
+    selfieStreamRef.current?.getTracks().forEach(track => track.stop());
+    selfieStreamRef.current = null;
+    setSelfieCameraActive(false);
+  };
+
+  useEffect(() => () => {
+    selfieStreamRef.current?.getTracks().forEach(track => track.stop());
+  }, []);
+
+  useEffect(() => {
+    if (selfieCameraActive && selfieVideoRef.current && selfieStreamRef.current) {
+      selfieVideoRef.current.srcObject = selfieStreamRef.current;
+      selfieVideoRef.current.play().catch(error => {
+        console.error('Unable to start attendance selfie preview:', error);
+        setCameraError('Camera preview could not start. Check browser camera permission and try again.');
+      });
+    }
+  }, [selfieCameraActive]);
+
+  const startSelfieCamera = async () => {
+    setCameraError(null);
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera access requires HTTPS or localhost. Open this app using a secure connection and allow camera permission.');
       return;
     }
-
     try {
-      const selfie = await resizeFaceImage(file);
-      setCapturedSelfie(selfie);
-      setCameraError(null);
+      stopSelfieCamera();
+      selfieStreamRef.current = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 960 } }
+      });
+      setSelfieCameraActive(true);
     } catch (error) {
-      setCameraError(error.message || 'Unable to read the selfie. Please try again.');
+      console.error('Unable to access the attendance selfie camera:', error);
+      setCameraError(error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError'
+        ? 'Allow camera access in your browser settings, then try again.'
+        : error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError'
+          ? 'No camera was found on this device.'
+          : `Unable to start camera: ${error.message || 'camera unavailable'}`);
     }
+  };
+
+  const captureAttendanceSelfie = () => {
+    const video = selfieVideoRef.current;
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
+      setCameraError('Wait for the live camera preview, then capture your selfie.');
+      return;
+    }
+    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setCameraError('Unable to process the camera photo. Please try again.');
+      return;
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setCapturedSelfie(canvas.toDataURL('image/jpeg', 0.85));
+    setCameraError(null);
+    handleResetFingerprint();
+    stopSelfieCamera();
   };
 
   const handleResetSelfie = () => {
     setCapturedSelfie(null);
+    stopSelfieCamera();
+    handleResetFingerprint();
     setCameraError(null);
   };
 
@@ -1161,14 +1210,17 @@ export default function AttendanceView({
                     Identity Verification
                   </span>
                 </div>
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-900">
+                  Capture a selfie for your attendance record. Time In still requires the registered passkey and GPS location checks.
+                </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Column 1: ordinary selfie photo, not a liveness test */}
-                  <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4 relative overflow-hidden shadow-xs">
+                  {/* Column 1: attendance selfie photo */}
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col space-y-4 relative overflow-hidden shadow-sm">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                         <Camera className="w-4 h-4 text-[#1e40af]" />
-                        I. Selfie Photo
+                        I. Attendance Selfie Photo
                       </span>
                       {capturedSelfie ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">SELFIE ATTACHED</span>
@@ -1179,41 +1231,93 @@ export default function AttendanceView({
                       )}
                     </div>
 
-                    <div className="min-h-56 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className={`rounded-2xl border p-3 sm:p-4 ${
+                      selfieCameraActive
+                        ? 'border-slate-800 bg-slate-950'
+                        : capturedSelfie
+                          ? 'border-emerald-200 bg-emerald-50/50'
+                          : 'border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50'
+                    }`}>
                       {capturedSelfie ? (
                         <div className="space-y-3">
                           <img src={capturedSelfie} alt="Attendance selfie photo" className="mx-auto max-h-64 rounded-xl object-contain" />
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-bold text-amber-800">
-                              Ordinary selfie only. No face-match or liveness/anti-spoof check is performed.
+                            <p className="text-xs font-bold text-slate-600">
+                              This photo is attached to your attendance record for HR review; it is not automatically face-matched.
                             </p>
                             <button type="button" onClick={handleResetSelfie} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
-                              Retake Selfie
+                              Take Again
                             </button>
                           </div>
                         </div>
+                      ) : selfieCameraActive ? (
+                        <div className="mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
+                          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                            <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white">
+                              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                              Camera preview
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400">Live selfie</span>
+                          </div>
+                          <div className="relative mx-auto aspect-[3/4] w-full overflow-hidden bg-slate-900">
+                            <video
+                              ref={selfieVideoRef}
+                              autoPlay
+                              playsInline
+                              muted
+                              className="h-full w-full scale-x-[-1] object-cover"
+                            />
+                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                              <div className="h-[62%] w-[58%] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_999px_rgba(2,6,23,0.48)]" />
+                              <span className="absolute bottom-5 rounded-full bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-sm">
+                                Center your face in the frame
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-center gap-7 px-4 py-4">
+                            <button
+                              type="button"
+                              onClick={captureAttendanceSelfie}
+                              aria-label="Capture selfie"
+                              className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg transition hover:scale-105 hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300"
+                            >
+                              <Camera className="h-6 w-6" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={stopSelfieCamera}
+                              className="rounded-xl border border-white/20 px-4 py-3 text-xs font-bold text-white transition hover:bg-white/10"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          <p className="px-4 pb-4 text-center text-[10px] leading-relaxed text-slate-400">
+                            The guide helps position your face; the photo is not automatically face-verified.
+                          </p>
+                        </div>
                       ) : (
-                        <div className="space-y-3">
-                          <input
-                            ref={selfieFileInputRef}
-                            type="file"
-                            accept="image/*"
-                            capture="user"
-                            className="sr-only"
-                            onChange={handleDeviceSelfieSelected}
-                          />
-                          <p className="text-xs font-semibold text-slate-600">
-                            Take or choose a selfie photo. This is not a live face scan and can’t prevent photo replay or spoofing.
+                        <div className="flex min-h-[210px] flex-col items-center justify-center px-2 py-5 text-center">
+                          <div className="relative mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-200">
+                            <Camera className="h-6 w-6" />
+                            <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-[3px] border-white bg-emerald-500" />
+                          </div>
+                          <p className="text-sm font-black text-slate-800">Ready for your selfie</p>
+                          <p className="mt-1.5 max-w-[230px] text-[11px] leading-relaxed text-slate-500">
+                            Use your front camera. Center your face when the live preview opens.
                           </p>
                           <button
                             type="button"
-                            onClick={() => selfieFileInputRef.current?.click()}
-                            className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white"
+                            onClick={startSelfieCamera}
+                            className="mt-4 inline-flex w-full max-w-[220px] items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white shadow-md shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-800 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200"
                           >
-                            <Camera className="h-4 w-4" /> Take / Choose Selfie
+                            <Camera className="h-4 w-4" /> Open Front Camera
                           </button>
+                          <p className="mt-3 text-[9px] font-semibold uppercase tracking-wider text-slate-400">
+                            Camera access required · Passkey + GPS checked separately
+                          </p>
                         </div>
                       )}
+                      {cameraError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
                     </div>
                   </div>
 

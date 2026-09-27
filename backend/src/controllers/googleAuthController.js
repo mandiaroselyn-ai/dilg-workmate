@@ -18,6 +18,38 @@ const getRequestOrigin = req => {
   return forwardedHost ? `${forwardedProto}://${forwardedHost}` : null;
 };
 
+const normalizeOrigin = value => {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+};
+
+const isAllowedLocalFrontendOrigin = origin => {
+  if (process.env.NODE_ENV === 'production') return false;
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'http:') return false;
+    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return host === 'localhost'
+      || host === '127.0.0.1'
+      || host === '::1'
+      || /^10\./.test(host)
+      || /^192\.168\./.test(host)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  } catch {
+    return false;
+  }
+};
+
+const getDevelopmentFrontendOrigin = req => {
+  const requestedOrigin = normalizeOrigin(req.query.frontendOrigin);
+  return requestedOrigin && isAllowedLocalFrontendOrigin(requestedOrigin)
+    ? requestedOrigin
+    : null;
+};
+
 const getRedirectUri = (req, mobile) => {
   const configured = mobile ? process.env.GOOGLE_MOBILE_REDIRECT_URI : process.env.GOOGLE_REDIRECT_URI;
   if (configured && !configured.includes('localhost')) return configured;
@@ -30,8 +62,12 @@ function getStateSecret() {
   return process.env.JWT_SECRET;
 }
 
-function createState(mobile) {
-  const payload = `${Date.now()}.${crypto.randomBytes(16).toString('hex')}`;
+function createState(mobile, frontendOrigin) {
+  const payload = Buffer.from(JSON.stringify({
+    createdAt: Date.now(),
+    nonce: crypto.randomBytes(16).toString('hex'),
+    frontendOrigin: mobile ? null : frontendOrigin
+  })).toString('base64url');
   const signature = crypto.createHmac('sha256', getStateSecret()).update(payload).digest('base64url');
   return `${mobile ? 'mobile:' : ''}${payload}.${signature}`;
 }
@@ -40,16 +76,23 @@ function isMobileState(state) {
   return typeof state === 'string' && state.startsWith('mobile:');
 }
 
-function isValidState(state) {
+function readState(state) {
   if (typeof state !== 'string') return false;
   const value = state.replace(/^mobile:/, '');
   const parts = value.split('.');
-  if (parts.length !== 3) return false;
-  const payload = `${parts[0]}.${parts[1]}`;
+  if (parts.length !== 2) return null;
+  const [payload, signature] = parts;
   const expected = Buffer.from(crypto.createHmac('sha256', getStateSecret()).update(payload).digest('base64url'));
-  const received = Buffer.from(parts[2]);
-  if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) return false;
-  return Date.now() - Number(parts[0]) <= 10 * 60 * 1000;
+  const received = Buffer.from(signature);
+  if (expected.length !== received.length || !crypto.timingSafeEqual(expected, received)) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    const age = Date.now() - Number(decoded.createdAt);
+    if (!Number.isFinite(age) || age < -60000 || age > 10 * 60 * 1000) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
 }
 
 export const googleAuthUrl = (req, res) => {
@@ -59,7 +102,8 @@ export const googleAuthUrl = (req, res) => {
     return res.status(500).json({ success: false, error: 'Google OAuth is not configured.' });
   }
 
-  const state = createState(mobile);
+  const frontendOrigin = getDevelopmentFrontendOrigin(req);
+  const state = createState(mobile, frontendOrigin);
   const url = new URL(GOOGLE_AUTH_BASE);
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -75,10 +119,11 @@ export const googleAuthCallback = async (req, res) => {
   const code = req.query.code;
   const state = req.query.state;
   const mobile = isMobileState(state);
+  const stateData = readState(state);
   const redirectUri = getRedirectUri(req, mobile);
 
-  if (!code || !isValidState(state)) {
-    return res.status(400).send('Missing Google authorization code.');
+  if (!code || !stateData) {
+    return res.status(400).send('Google sign-in could not be validated. Please try again.');
   }
 
   try {
@@ -135,7 +180,7 @@ export const googleAuthCallback = async (req, res) => {
     }
 
     const token = createAuthToken(user);
-    const frontendOrigin = getFrontendOrigin(req);
+    const frontendOrigin = stateData.frontendOrigin || getFrontendOrigin(req);
     const successMessage = {
       type: 'google-login-success',
       token,
@@ -165,7 +210,7 @@ export const googleAuthCallback = async (req, res) => {
       redirect.searchParams.set('error', error.message || 'Google sign-in failed.');
       return res.redirect(redirect.toString());
     }
-    const frontendOrigin = getFrontendOrigin(req);
+    const frontendOrigin = stateData?.frontendOrigin || getFrontendOrigin(req);
     const failureMessage = { type: 'google-login-failure', error: error.message || 'Google sign-in failed.' };
     const html = `
       <html>

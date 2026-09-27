@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 import request from 'supertest';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'integration-test-secret';
 process.env.FRONTEND_URL = 'http://localhost:5173';
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'integration-google-client-id';
+process.env.GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/auth/google/callback';
 process.env.UNISMS_WEBHOOK_SECRET = 'integration-webhook-secret';
 
 const { createApiApp } = await import('./app.js');
@@ -18,8 +21,32 @@ test('rejects protected API requests without a bearer token', async () => {
   assert.equal(response.body.error, 'Authentication required.');
 });
 
-test('requires authentication before HR face enrollment', async () => {
-  const response = await request(app).post('/api/face/enroll').send({});
+test('requires authentication before employee biometric enrollment submission', async () => {
+  const response = await request(app).post('/api/face/enrollment').send({});
+  assert.equal(response.status, 401);
+  assert.equal(response.body.error, 'Authentication required.');
+});
+
+test('requires authentication for HR employee account management', async () => {
+  const createResponse = await request(app).post('/api/employees').send({});
+  const updateResponse = await request(app).patch('/api/employees/DILG-TEST-001').send({});
+  const statusResponse = await request(app)
+    .patch('/api/employees/DILG-TEST-001/status')
+    .send({ accountStatus: 'Inactive' });
+
+  assert.equal(createResponse.status, 401);
+  assert.equal(updateResponse.status, 401);
+  assert.equal(statusResponse.status, 401);
+});
+
+test('requires authentication before HR biometric enrollment review', async () => {
+  const response = await request(app).post('/api/face/enrollment/DILG-TEST-001/review').send({});
+  assert.equal(response.status, 401);
+  assert.equal(response.body.error, 'Authentication required.');
+});
+
+test('requires authentication before loading an employee face-test reference', async () => {
+  const response = await request(app).get('/api/face/enrollment/reference');
   assert.equal(response.status, 401);
   assert.equal(response.body.error, 'Authentication required.');
 });
@@ -29,6 +56,22 @@ test('rejects requests from an unapproved origin', async () => {
     .get('/api/state')
     .set('Origin', 'https://untrusted.example');
   assert.equal(response.status, 403);
+});
+
+test('binds local Google OAuth state to the active frontend origin', async () => {
+  const response = await request(app)
+    .get('/api/auth/google/url')
+    .query({ frontendOrigin: 'http://localhost:5174' });
+
+  assert.equal(response.status, 302);
+  const state = new URL(response.headers.location).searchParams.get('state');
+  const [payload, signature] = state.split('.');
+  const expectedSignature = crypto
+    .createHmac('sha256', process.env.JWT_SECRET)
+    .update(payload)
+    .digest('base64url');
+  assert.equal(signature, expectedSignature);
+  assert.equal(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).frontendOrigin, 'http://localhost:5174');
 });
 
 test('keeps the SMS webhook public but validates its payload', async () => {

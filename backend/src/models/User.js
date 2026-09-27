@@ -18,12 +18,29 @@ const UserSchema = new mongoose.Schema({
   accountStatus: { type: String, default: 'Active' },
   googleId: { type: String, default: '' },
   profilePicture: { type: String, default: '' },
+  address: { type: String, default: '' },
+  dateOfBirth: { type: String, default: '' },
+  gender: { type: String, default: '' },
+  employmentStatus: { type: String, default: 'ACTIVE' },
+  dateHired: { type: String, default: '' },
+  assignedStation: { type: String, default: '' },
+  assignedLGU: { type: String, default: '' },
   fingerprintHash: { type: String, default: '' },
   faceProvider: { type: String, default: '' },
   faceId: { type: String, default: '' },
   faceEnrolledAt: { type: Date, default: null },
   faceEnrollmentImage: { type: String, default: '' },
   dilgIdPhoto: { type: String, default: '' },
+  biometricEnrollmentStatus: {
+    type: String,
+    enum: ['not-submitted', 'pending', 'hr-approved', 'rejected'],
+    default: 'not-submitted'
+  },
+  biometricEnrollmentSubmittedAt: { type: Date, default: null },
+  biometricEnrollmentReviewedAt: { type: Date, default: null },
+  biometricEnrollmentReviewedBy: { type: String, default: '' },
+  biometricEnrollmentReviewNote: { type: String, default: '' },
+  faceLivenessStatus: { type: String, default: 'not-configured' },
   dilgIdMatchConfidence: { type: Number, default: null },
   dilgIdVerifiedAt: { type: Date, default: null },
   dilgIdVerifiedBy: { type: String, default: '' },
@@ -119,21 +136,139 @@ export const User = {
     return MongoUser.findOne({ employeeId: employeeId.toString().trim() });
   },
 
-  saveFaceEnrollment: async (employeeId, enrollment) => {
+  createEmployee: async employeeData => {
     ensureConnected();
-    const user = await MongoUser.findOne({ employeeId: employeeId?.toString().trim() });
-    if (!user) return null;
-    user.faceProvider = enrollment.provider || 'hr-verified-manual';
-    user.faceId = '';
-    user.faceEnrolledAt = new Date();
-    user.faceEnrollmentImage = enrollment.enrollmentImage || '';
-    user.dilgIdPhoto = enrollment.dilgIdPhoto;
-    user.dilgIdMatchConfidence = null;
-    user.dilgIdVerifiedAt = new Date();
-    user.dilgIdVerifiedBy = enrollment.verifiedBy || '';
-    user.dilgIdVerifiedDetails = enrollment.verifiedDetails || {};
-    await user.save();
-    return user.toObject();
+    const email = employeeData.email.toString().trim().toLowerCase();
+    const employeeId = employeeData.employeeId.toString().trim();
+    const emailPattern = new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const existing = await MongoUser.findOne({
+      $or: [{ email: emailPattern }, { employeeId }]
+    }).select('_id');
+    if (existing) return { conflict: true };
+
+    const employee = await MongoUser.create({
+      ...employeeData,
+      email,
+      employeeId,
+      accessLevel: 'employee'
+    });
+    return employee.toObject();
+  },
+
+  updateEmployee: async (identifier, employeeData) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const employee = await MongoUser.findOne({
+      $and: [
+        { $or: [{ employeeId: value }, { email: emailPattern }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    });
+    if (!employee) return null;
+
+    const nextEmail = employeeData.email?.toString().trim().toLowerCase();
+    const nextEmployeeId = employeeData.employeeId?.toString().trim();
+    if (nextEmail || nextEmployeeId) {
+      const duplicateConditions = [];
+      if (nextEmail) {
+        duplicateConditions.push({
+          email: new RegExp(`^${nextEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+        });
+      }
+      if (nextEmployeeId) duplicateConditions.push({ employeeId: nextEmployeeId });
+      const duplicate = await MongoUser.findOne({
+        _id: { $ne: employee._id },
+        $or: duplicateConditions
+      }).select('_id');
+      if (duplicate) return { conflict: true };
+    }
+
+    employee.set({ ...employeeData, accessLevel: 'employee' });
+    await employee.save();
+    return employee.toObject();
+  },
+
+  submitBiometricEnrollment: async (email, enrollment) => {
+    ensureConnected();
+    const normalizedEmail = email?.toString().trim().toLowerCase();
+    if (!normalizedEmail) return null;
+    const emailPattern = new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const now = new Date();
+    const user = await MongoUser.findOneAndUpdate(
+      {
+        email: emailPattern,
+        accessLevel: 'employee',
+        $or: [
+          { biometricEnrollmentStatus: { $in: ['not-submitted', 'rejected'] } },
+          { biometricEnrollmentStatus: { $exists: false } }
+        ]
+      },
+      {
+        $set: {
+          faceProvider: '',
+          faceId: '',
+          faceEnrolledAt: null,
+          faceEnrollmentImage: enrollment.selfieImage,
+          dilgIdPhoto: enrollment.dilgIdImage,
+          biometricEnrollmentStatus: 'pending',
+          biometricEnrollmentSubmittedAt: now,
+          biometricEnrollmentReviewedAt: null,
+          biometricEnrollmentReviewedBy: '',
+          biometricEnrollmentReviewNote: '',
+          faceLivenessStatus: 'not-configured',
+          dilgIdMatchConfidence: null,
+          dilgIdVerifiedAt: null,
+          dilgIdVerifiedBy: '',
+          dilgIdVerifiedDetails: {}
+        },
+        $push: {
+          faceVerificationAudit: {
+            $each: [{ outcome: 'employee-submission-pending-liveness-not-configured', provider: 'none' }],
+            $slice: -50
+          }
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    if (user) return user.toObject();
+    const existing = await MongoUser.findOne({ email: emailPattern, accessLevel: 'employee' }).select('_id');
+    return existing ? { conflict: true } : null;
+  },
+
+  reviewBiometricEnrollment: async (employeeId, decision, note, reviewedBy) => {
+    ensureConnected();
+    const user = await MongoUser.findOneAndUpdate(
+      {
+        employeeId: employeeId?.toString().trim(),
+        accessLevel: 'employee',
+        biometricEnrollmentStatus: 'pending'
+      },
+      {
+        $set: {
+          biometricEnrollmentStatus: decision === 'approve' ? 'hr-approved' : 'rejected',
+          biometricEnrollmentReviewedAt: new Date(),
+          biometricEnrollmentReviewedBy: reviewedBy || '',
+          biometricEnrollmentReviewNote: note || '',
+          faceLivenessStatus: 'not-configured'
+        },
+        $push: {
+          faceVerificationAudit: {
+            $each: [{
+              outcome: decision === 'approve'
+                ? 'hr-approved-liveness-not-configured'
+                : 'hr-rejected-enrollment',
+              reviewedBy: reviewedBy || '',
+              provider: 'manual-hr-review'
+            }],
+            $slice: -50
+          }
+        }
+      },
+      { new: true, runValidators: true }
+    );
+    return user ? user.toObject() : { conflict: true };
   },
 
   addFaceVerificationAudit: async (employeeId, event) => {
@@ -211,7 +346,13 @@ export const User = {
     ensureConnected();
     const value = identifier?.toString().trim();
     if (!value) return null;
-    const user = await MongoUser.findOne({ $or: [{ email: value.toLowerCase() }, { employeeId: value }] });
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const user = await MongoUser.findOne({
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    });
     if (!user) return null;
     user.accountStatus = accountStatus;
     await user.save();

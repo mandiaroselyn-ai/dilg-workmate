@@ -15,7 +15,7 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'autoUpdate',
         workbox: {
-          navigateFallbackDenylist: [/^\/api\//]
+          navigateFallbackDenylist: [/^\/api\//],
         },
         manifest: {
           name: 'DILG WorkMate',
@@ -67,11 +67,13 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     build: {
+      chunkSizeWarningLimit: 1400,
       rollupOptions: {
         output: {
           manualChunks(id) {
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('jspdf')) return 'vendor-pdf';
+            if (id.includes('pdf-lib')) return 'vendor-pdf-lib';
             if (id.includes('tesseract.js')) return 'vendor-ocr';
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('motion')) return 'vendor-motion';
