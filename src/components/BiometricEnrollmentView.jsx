@@ -27,6 +27,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const idInputRef = useRef(null);
   const idBackInputRef = useRef(null);
   const selfieInputRef = useRef(null);
+  const enrollmentFormRef = useRef(null);
   const automaticSubmissionStartedRef = useRef(false);
   const submissionInProgressRef = useRef(false);
   const status = user?.biometricEnrollmentStatus || 'not-submitted';
@@ -251,9 +252,18 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         {statusError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{statusError}</p>}
 
         {status === 'pending' && (
-          <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <Clock3 className="h-5 w-5 shrink-0" />
-            <p>Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again below; this replaces your pending submission.</p>
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <Clock3 className="h-5 w-5 shrink-0" />
+              <p>Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again; this replaces your pending submission.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => enrollmentFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="shrink-0 rounded-lg bg-amber-800 px-3 py-2 text-xs font-black text-white"
+            >
+              Resubmit ID + Selfie
+            </button>
           </div>
         )}
         {status === 'hr-approved' && (
@@ -287,7 +297,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
       {canSubmit && (
         <>
-          <section className="space-y-4">
+          <section ref={enrollmentFormRef} className="scroll-mt-24 space-y-4">
             <div>
               <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">01 · Scan both sides of your government ID</h3>
               <p className="mt-1 text-xs text-slate-600">Upload an existing photo or use the rear camera to capture each side separately.</p>
