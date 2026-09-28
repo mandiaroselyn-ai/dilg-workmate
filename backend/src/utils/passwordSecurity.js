@@ -36,6 +36,10 @@ export const toSafeUser = (user) => {
     webauthnPublicKey,
     webauthnChallenge,
     webauthnChallengeExpiry,
+    webauthnChallenges,
+    nativeBiometricPublicKey,
+    nativeBiometricChallenge,
+    nativeBiometricChallengeExpiry,
     ...safeUser
   } = plainUser;
   return safeUser;

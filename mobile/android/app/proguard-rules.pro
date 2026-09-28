@@ -11,4 +11,9 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# Keep Android biometric classes available in release builds
+-keep class androidx.biometric.** { *; }
+-keep class com.dilg.workmate.employee.NativeBiometricModule { *; }
+-keep class com.dilg.workmate.employee.NativeBiometricPackage { *; }
+
 # Add any project specific keep options here:

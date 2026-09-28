@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, NativeModules, Platform, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
 import * as WebBrowser from 'expo-web-browser';
 import { WebView } from 'react-native-webview';
@@ -114,17 +113,35 @@ export default function App() {
 			}
 			return;
 		}
-		if (message?.type !== 'dilg-biometric-auth') return;
+		if (message?.type !== 'dilg-native-biometric-auth') return;
 
-		const result = await LocalAuthentication.authenticateAsync({
-			promptMessage: 'Verify your identity to clock in',
-			cancelLabel: 'Cancel',
-			disableDeviceFallback: false
-		});
-		const success = Boolean(result.success);
-		webViewRef.current?.injectJavaScript(
-			`window.dispatchEvent(new CustomEvent('dilg-biometric-result',{detail:{success:${success}}})); true;`
-		);
+		try {
+			if (typeof message.challenge !== 'string' || typeof message.keyId !== 'string' || !message.requestId) {
+				throw new Error('Invalid fingerprint verification request.');
+			}
+			if (!NativeModules.NativeBiometric?.signChallenge) {
+				throw new Error('Update and reinstall the WorkMate app to enable secure fingerprint verification.');
+			}
+			const assertion = await NativeModules.NativeBiometric.signChallenge(message.challenge, message.keyId);
+			const payload = {
+				success: true,
+				requestId: message.requestId,
+				signature: assertion.signature,
+				publicKey: assertion.publicKey
+			};
+			webViewRef.current?.injectJavaScript(
+				`window.dispatchEvent(new CustomEvent('dilg-biometric-result',{detail:${JSON.stringify(payload)}})); true;`
+			);
+		} catch (error) {
+			const payload = {
+				success: false,
+				requestId: message.requestId,
+				error: error?.message || 'Phone fingerprint verification failed.'
+			};
+			webViewRef.current?.injectJavaScript(
+				`window.dispatchEvent(new CustomEvent('dilg-biometric-result',{detail:${JSON.stringify(payload)}})); true;`
+			);
+		}
 	};
 
 	if (hasError) {
@@ -152,7 +169,8 @@ export default function App() {
 				originWhitelist={['http://*', 'https://*']}
 				javaScriptEnabled
 				geolocationEnabled
-				injectedJavaScriptBeforeContentLoaded={`(function(){
+				injectedJavaScriptBeforeContentLoaded={`window.dilgNativeBiometricSupported = ${Platform.OS === 'android'};
+				(function(){
 					var callbacks = {};
 					var nextId = 0;
 					window.addEventListener('dilg-location-result', function(event){

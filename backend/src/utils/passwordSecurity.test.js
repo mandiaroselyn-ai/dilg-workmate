@@ -31,10 +31,17 @@ test('removes authentication and biometric secrets from API user objects', () =>
     biometricEnrollmentStatus: 'pending',
     biometricEnrollmentReviewNote: 'private HR note',
     faceLivenessStatus: 'not-configured',
-    faceVerificationAudit: [{ outcome: 'verified' }]
+    faceVerificationAudit: [{ outcome: 'verified' }],
+    webauthnChallenges: [{ challenge: 'private-pending-challenge' }],
+    nativeBiometricPublicKey: 'native-public-key',
+    nativeBiometricChallenge: 'active-native-challenge',
+    nativeBiometricChallengeExpiry: new Date()
   });
 
   assert.equal('faceEnrollmentDescriptor' in safeUser, false);
+  assert.equal('webauthnChallenges' in safeUser, false);
+  assert.equal('nativeBiometricPublicKey' in safeUser, false);
+  assert.equal('nativeBiometricChallenge' in safeUser, false);
   assert.deepEqual(safeUser, {
     email: 'employee@example.com',
     biometricEnrollmentStatus: 'pending',

@@ -1,6 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, RefreshCw, Upload, X } from 'lucide-react';
+import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, RefreshCw, Upload, X } from 'lucide-react';
 import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
+import { apiFetch, parseApiResponse } from '../utils/api';
+
+const fromBase64Url = value => {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, character => character.charCodeAt(0)).buffer;
+};
+
+const toBase64Url = buffer => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+const credentialToJson = credential => ({
+  id: credential.id,
+  rawId: toBase64Url(credential.rawId),
+  type: credential.type,
+  clientExtensionResults: credential.getClientExtensionResults(),
+  response: {
+    attestationObject: toBase64Url(credential.response.attestationObject),
+    clientDataJSON: toBase64Url(credential.response.clientDataJSON),
+    transports: credential.response.getTransports?.() || []
+  }
+});
 
 const statusCopy = {
   'not-submitted': 'Not submitted',
@@ -24,6 +50,9 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const [successIsWarning, setSuccessIsWarning] = useState(false);
   const [statusError, setStatusError] = useState('');
   const [refreshingStatus, setRefreshingStatus] = useState(Boolean(onRefreshEnrollmentStatus));
+  const [registeringFingerprint, setRegisteringFingerprint] = useState(false);
+  const [fingerprintRegistered, setFingerprintRegistered] = useState(false);
+  const [fingerprintRegistrationError, setFingerprintRegistrationError] = useState('');
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const idInputRef = useRef(null);
@@ -47,6 +76,58 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setStatusError(refreshError.message || 'Unable to refresh enrollment status.');
     } finally {
       setRefreshingStatus(false);
+    }
+  };
+
+  const handleRegisterFingerprint = async () => {
+    setFingerprintRegistrationError('');
+    if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials?.create) {
+      setFingerprintRegistrationError('Fingerprint registration requires a supported browser on HTTPS or localhost.');
+      return;
+    }
+
+    setRegisteringFingerprint(true);
+    try {
+      if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+        const isAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!isAvailable) throw new Error('This device does not have an available fingerprint or other platform biometric authenticator.');
+      }
+
+      const optionsResponse = await apiFetch('/api/biometric/action?action=register-options', { method: 'POST' });
+      const options = await parseApiResponse(optionsResponse, 'Fingerprint registration options');
+      if (!optionsResponse.ok || !options.challenge || !options.user?.id) {
+        throw new Error(options?.error || 'Unable to start fingerprint registration.');
+      }
+
+      const publicKey = {
+        ...options,
+        challenge: fromBase64Url(options.challenge),
+        user: { ...options.user, id: fromBase64Url(options.user.id) },
+        excludeCredentials: (options.excludeCredentials || []).map(credential => ({
+          ...credential,
+          id: fromBase64Url(credential.id)
+        }))
+      };
+      const credential = await navigator.credentials.create({ publicKey });
+      if (!credential) throw new Error('Fingerprint registration was cancelled.');
+
+      const verifyResponse = await apiFetch('/api/biometric/action?action=register-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...credentialToJson(credential), challenge: options.challenge })
+      });
+      const verification = await parseApiResponse(verifyResponse, 'Fingerprint registration');
+      if (!verifyResponse.ok || !verification.success) {
+        throw new Error(verification?.error || 'Fingerprint registration could not be verified.');
+      }
+
+      setFingerprintRegistered(true);
+    } catch (registrationError) {
+      setFingerprintRegistrationError(registrationError.name === 'NotAllowedError'
+        ? 'Fingerprint registration was cancelled or not approved. Try again and complete the device prompt.'
+        : registrationError.message || 'Unable to register this device fingerprint.');
+    } finally {
+      setRegisteringFingerprint(false);
     }
   };
 
@@ -294,6 +375,27 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           </div>
         </div>
         {statusError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{statusError}</p>}
+
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 text-blue-950">
+            {fingerprintRegistered ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
+            <div>
+              <p className="text-sm font-black">{fingerprintRegistered ? 'Fingerprint Registered' : 'Fingerprint Registration'}</p>
+              <p className="mt-1 text-xs text-blue-900">Register this browser or device using its built-in fingerprint authenticator. Your fingerprint stays on your device.</p>
+            </div>
+          </div>
+          {!fingerprintRegistered && (
+            <button
+              type="button"
+              onClick={handleRegisterFingerprint}
+              disabled={registeringFingerprint}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60"
+            >
+              <Fingerprint className="h-4 w-4" /> {registeringFingerprint ? 'Waiting for device...' : 'Register this device'}
+            </button>
+          )}
+        </div>
+        {fingerprintRegistrationError && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{fingerprintRegistrationError}</p>}
 
         {status === 'pending' && (
           <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">

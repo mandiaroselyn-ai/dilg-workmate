@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { verifyVerificationProof } from '../utils/verificationProof.js';
 import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
+import { normalizeAttendanceAssignment } from '../utils/attendanceAssignment.js';
 import {
   compareEnrollmentToAttendance,
   createFaceDescriptor,
@@ -101,7 +102,7 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'Invalid attendance payload.' });
       }
 
-      const requiredFields = ['latitude', 'longitude', 'gpsStatus', 'selfieUrl', 'fingerprintVerified', 'assignmentSite'];
+      const requiredFields = ['latitude', 'longitude', 'gpsStatus', 'selfieUrl', 'fingerprintVerified', 'dutyType', 'assignmentSite'];
       for (const field of requiredFields) {
         if (record[field] === undefined || record[field] === null) {
           return res.status(400).json({ success: false, error: `Missing required field: ${field}.` });
@@ -122,21 +123,20 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'Employee record not found for fingerprint verification.' });
       }
 
-      const fallbackLocation = user.assignedStation || user.office || user.region;
-      if (!resolveAssignedCoords(record) && fallbackLocation) {
-        record.workAssignment = {
-          ...(record.workAssignment || {}),
-          location: fallbackLocation,
-          barangayLgu: record.workAssignment?.barangayLgu || fallbackLocation
-        };
+      const normalizedAssignment = normalizeAttendanceAssignment({
+        dutyType: record.dutyType,
+        assignmentSite: record.assignmentSite,
+        user
+      });
+      const task = record.workAssignment?.task;
+      if (typeof task !== 'string' || !task.trim() || task.trim().length > 500) {
+        return res.status(400).json({ success: false, error: 'Provide an assignment task of 500 characters or fewer.' });
       }
 
-      const resolvedAssignment = record.assignmentSite
-        ? await resolveAssignedLocation(record.assignmentSite)
-        : null;
+      const resolvedAssignment = await resolveAssignedLocation(normalizedAssignment.assignmentSite);
       const assignedCoords = resolvedAssignment
         ? { lat: resolvedAssignment.latitude, lon: resolvedAssignment.longitude }
-        : resolveAssignedCoords(record);
+        : null;
       if (!assignedCoords) {
         return res.status(400).json({ success: false, error: 'Unable to resolve assigned location for this record.' });
       }
@@ -151,7 +151,19 @@ export const clockInOut = async (req, res) => {
       record.assignedLatitude = assignedCoords.lat;
       record.assignedLongitude = assignedCoords.lon;
       record.distanceToAssignmentMeters = distance;
-      record.assignmentSite = resolvedAssignment || record.assignmentSite;
+      record.dutyType = normalizedAssignment.dutyType;
+      record.assignmentSite = resolvedAssignment;
+      record.location = resolvedAssignment.label;
+      record.workAssignment = {
+        assignmentRole: normalizedAssignment.dutyType,
+        location: resolvedAssignment.label,
+        municipality: resolvedAssignment.municipality,
+        barangayLgu: resolvedAssignment.barangay,
+        officeId: resolvedAssignment.officeId || '',
+        street: resolvedAssignment.street || '',
+        landmark: resolvedAssignment.landmark || '',
+        task: task.trim()
+      };
       record.assignmentMatch = resolvedAssignment
         ? isWithinAssignedLocation(record.latitude, record.longitude, resolvedAssignment)
         : distance <= GEO_THRESHOLD_METERS;

@@ -39,7 +39,12 @@ export const createRegistrationOptions = async (req, res) => {
       excludeCredentials: user.webauthnCredentialId ? [{ id: user.webauthnCredentialId }] : []
     });
 
-    const savedChallenge = await User.saveWebAuthnChallenge(user._id, options.challenge, challengeExpiry());
+    const savedChallenge = await User.saveWebAuthnChallenge(
+      user._id,
+      options.challenge,
+      challengeExpiry(),
+      'registration'
+    );
     if (!savedChallenge) throw new Error('Could not save the passkey registration challenge.');
     res.status(200).json(options);
   } catch (error) {
@@ -50,13 +55,17 @@ export const createRegistrationOptions = async (req, res) => {
 export const verifyRegistration = async (req, res) => {
   try {
     const user = req.user;
-    if (!user.webauthnChallenge || !user.webauthnChallengeExpiry || user.webauthnChallengeExpiry <= new Date()) {
+    const { challenge, ...credentialResponse } = req.body || {};
+    const challengeOwner = typeof challenge === 'string'
+      ? await User.consumeWebAuthnChallenge(user._id, challenge, 'registration')
+      : null;
+    if (!challengeOwner) {
       return res.status(400).json({ success: false, error: 'WebAuthn registration challenge expired.' });
     }
 
     const verification = await verifyRegistrationResponse({
-      response: req.body,
-      expectedChallenge: user.webauthnChallenge,
+      response: credentialResponse,
+      expectedChallenge: challenge,
       expectedOrigin: getOrigin(req),
       expectedRPID: getRpId(req),
       requireUserVerification: true
@@ -88,7 +97,12 @@ export const createAuthenticationOptions = async (req, res) => {
       allowCredentials: [{ id: user.webauthnCredentialId }],
       userVerification: 'required'
     });
-    const savedChallenge = await User.saveWebAuthnChallenge(user._id, options.challenge, challengeExpiry());
+    const savedChallenge = await User.saveWebAuthnChallenge(
+      user._id,
+      options.challenge,
+      challengeExpiry(),
+      'authentication'
+    );
     if (!savedChallenge) throw new Error('Could not save the passkey authentication challenge.');
     res.status(200).json(options);
   } catch (error) {
@@ -99,13 +113,17 @@ export const createAuthenticationOptions = async (req, res) => {
 export const verifyAuthentication = async (req, res) => {
   try {
     const user = req.user;
-    if (!user.webauthnCredentialId || !user.webauthnPublicKey || !user.webauthnChallenge || !user.webauthnChallengeExpiry || user.webauthnChallengeExpiry <= new Date()) {
+    const { challenge, ...credentialResponse } = req.body || {};
+    const challengeOwner = typeof challenge === 'string'
+      ? await User.consumeWebAuthnChallenge(user._id, challenge, 'authentication')
+      : null;
+    if (!user.webauthnCredentialId || !user.webauthnPublicKey || !challengeOwner) {
       return res.status(400).json({ success: false, error: 'WebAuthn authentication challenge expired or credential is missing.' });
     }
 
     const verification = await verifyAuthenticationResponse({
-      response: req.body,
-      expectedChallenge: user.webauthnChallenge,
+      response: credentialResponse,
+      expectedChallenge: challenge,
       expectedOrigin: getOrigin(req),
       expectedRPID: getRpId(req),
       credential: {
@@ -119,7 +137,6 @@ export const verifyAuthentication = async (req, res) => {
 
     const updatedUser = await User.updateWebAuthnCounter(user._id, verification.authenticationInfo.newCounter);
     if (!updatedUser) throw new Error('Could not update the passkey counter.');
-    await User.saveWebAuthnChallenge(user._id, '', new Date(0));
     const proof = createVerificationProof({ employeeId: user.employeeId, type: 'fingerprint' });
     res.status(200).json({ success: true, verificationProof: proof });
   } catch (error) {

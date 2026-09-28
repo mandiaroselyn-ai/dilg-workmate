@@ -9,6 +9,7 @@ import { isConnected } from '../config/db.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
+import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 
 function ensureConnected() {
   if (!isConnected()) {
@@ -53,7 +54,7 @@ export const registerUser = async (req, res) => {
   }
 };
 
-const normalizeEmployeeInput = body => {
+const normalizeEmployeeInput = (body, reviewer) => {
   const stringFields = [
     'name',
     'email',
@@ -102,6 +103,13 @@ const normalizeEmployeeInput = body => {
       return { error: `${field} exceeds the maximum length.` };
     }
   }
+  if (body.approvedWfhLocation !== undefined) {
+    try {
+      employee.approvedWfhLocation = normalizeApprovedWfhLocation(body.approvedWfhLocation, reviewer);
+    } catch (error) {
+      return { error: error.message };
+    }
+  }
   return { employee };
 };
 
@@ -129,7 +137,8 @@ const employeeResponse = employee => ({
 
 export const createEmployee = async (req, res) => {
   try {
-    const { employee, error } = normalizeEmployeeInput(req.body || {});
+    const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
+    const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
     if (error) return res.status(400).json({ success: false, error });
     const password = req.body.password;
     if (typeof password !== 'string' || password.trim().length < 10 || password.length > 256) {
@@ -149,7 +158,8 @@ export const createEmployee = async (req, res) => {
 
 export const updateEmployee = async (req, res) => {
   try {
-    const { employee, error } = normalizeEmployeeInput(req.body || {});
+    const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
+    const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
     if (error) return res.status(400).json({ success: false, error });
     const updated = await User.updateEmployee(req.params.identifier, employee);
     if (updated?.conflict) {

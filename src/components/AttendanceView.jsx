@@ -61,6 +61,12 @@ export default function AttendanceView({
       if (user.role) setFillRole(user.role);
       if (user.office) setFillOffice(user.office);
       if (user.employeeId) setFillId(user.employeeId);
+      if (user.approvedWfhLocation?.approvedAt) {
+        setSelectedMuni(user.approvedWfhLocation.municipality);
+        setBarangayLgu(user.approvedWfhLocation.barangay);
+        setWfhStreet(user.approvedWfhLocation.street || '');
+        setWfhLandmark(user.approvedWfhLocation.landmark || '');
+      }
     }
   }, [user]);
 
@@ -72,12 +78,15 @@ export default function AttendanceView({
       return { mode: 'office', municipality: selectedMuni, officeId: selectedOfficeId };
     }
     if (assignmentMode === 'wfh') {
+      const approvedLocation = user?.approvedWfhLocation?.approvedAt
+        ? user.approvedWfhLocation
+        : null;
       return {
         mode: 'wfh',
-        municipality: selectedMuni,
-        barangay: barangayLgu,
-        street: wfhStreet,
-        landmark: wfhLandmark
+        municipality: approvedLocation?.municipality || selectedMuni,
+        barangay: approvedLocation?.barangay || barangayLgu,
+        street: approvedLocation?.street || wfhStreet,
+        landmark: approvedLocation?.landmark || wfhLandmark
       };
     }
     return { mode: 'field', municipality: selectedMuni, barangay: barangayLgu };
@@ -190,8 +199,11 @@ export default function AttendanceView({
   const [fingerprintVerified, setFingerprintVerified] = useState(false);
   const [fingerprintProof, setFingerprintProof] = useState('');
   const fingerprintScanInFlightRef = useRef(false);
+  const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
-    && Boolean(window.ReactNativeWebView);
+    && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
+  const hasSecureWebAuthn = typeof window !== 'undefined'
+    && Boolean(window.isSecureContext && window.PublicKeyCredential && navigator.credentials);
 
   const gpsRequestRef = useRef(null);
   const gpsTimeoutRef = useRef(null);
@@ -201,18 +213,42 @@ export default function AttendanceView({
 
   useEffect(() => {
     const handleMobileBiometricResult = (event) => {
-      setFingerprintScanning(false);
-      setFingerprintProgress(0);
-      setFingerprintVerified(false);
-      setFingerprintProof('');
-      setCameraError(event.detail?.success
-        ? 'Phone unlock alone cannot verify attendance. Use a registered passkey so the server can validate your biometric.'
-        : 'Biometric verification was cancelled or not completed.');
+      const detail = event.detail || {};
+      const pending = nativeBiometricResolversRef.current.get(detail.requestId);
+      if (!pending) return;
+      window.clearTimeout(pending.timeoutId);
+      nativeBiometricResolversRef.current.delete(detail.requestId);
+      if (detail.success && detail.signature && detail.publicKey) {
+        pending.resolve({ signature: detail.signature, publicKey: detail.publicKey });
+      } else {
+        pending.reject(new Error(detail.error || 'Phone fingerprint verification was cancelled.'));
+      }
     };
 
     window.addEventListener('dilg-biometric-result', handleMobileBiometricResult);
     return () => window.removeEventListener('dilg-biometric-result', handleMobileBiometricResult);
   }, []);
+
+  const requestNativeBiometricSignature = (challenge, keyId) => new Promise((resolve, reject) => {
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const timeoutId = window.setTimeout(() => {
+      nativeBiometricResolversRef.current.delete(requestId);
+      reject(new Error('Fingerprint verification timed out. Please retry.'));
+    }, 90000);
+    nativeBiometricResolversRef.current.set(requestId, { resolve, reject, timeoutId });
+    try {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'dilg-native-biometric-auth',
+        requestId,
+        challenge,
+        keyId
+      }));
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      nativeBiometricResolversRef.current.delete(requestId);
+      reject(error);
+    }
+  });
 
   const stopSelfieCamera = () => {
     selfieStreamRef.current?.getTracks().forEach(track => track.stop());
@@ -372,8 +408,8 @@ export default function AttendanceView({
     }
     if (fingerprintVerified || fingerprintScanInFlightRef.current) return;
 
-    if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials) {
-      setCameraError('Fingerprint sign-in needs a supported browser on HTTPS. Open the Vercel site in the latest Chrome or Safari browser, not an embedded preview.');
+    if (!hasNativeBridge && !hasSecureWebAuthn) {
+      setCameraError('Fingerprint sign-in needs a supported browser on HTTPS. Open the official Vercel site in Chrome or Safari, not an embedded preview, and make sure your phone lock and biometrics are enabled.');
       return;
     }
 
@@ -382,70 +418,75 @@ export default function AttendanceView({
     setCameraError(null);
 
     try {
-      let optionsResponse = await fetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
-      let options;
-      let registration = false;
-      if (optionsResponse.status === 404) {
-        optionsResponse = await fetch('/api/biometric/action?action=register-options', { method: 'POST' });
-        registration = true;
-      }
-      options = await optionsResponse.json();
-      if (!optionsResponse.ok) throw new Error(options.error || 'Unable to create biometric challenge.');
-
-      const publicKey = registration
-        ? {
-            ...options,
-            challenge: fromBase64Url(options.challenge),
-            user: { ...options.user, id: fromBase64Url(options.user.id) },
-            excludeCredentials: (options.excludeCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
-          }
-        : {
-            ...options,
-            challenge: fromBase64Url(options.challenge),
-            allowCredentials: (options.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
-          };
-        if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-          const hasPlatformAuthenticator = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-          if (!hasPlatformAuthenticator) {
-            throw new Error('This browser cannot access the phone fingerprint sensor. Open this site in Chrome or Safari on a phone with screen lock and biometrics enabled.');
-          }
+      if (hasNativeBridge) {
+        const optionsResponse = await fetch('/api/biometric/native/options', { method: 'POST' });
+        const options = await optionsResponse.json();
+        if (!optionsResponse.ok || !options.challenge) {
+          throw new Error(options.error || 'Unable to start phone fingerprint verification.');
         }
-      const credential = registration
-        ? await navigator.credentials.create({ publicKey })
-        : await navigator.credentials.get({ publicKey });
-      if (!credential) throw new Error('Biometric verification was cancelled.');
 
-      const verifyAction = registration ? 'register-verify' : 'authenticate-verify';
-      const verifyPath = `/api/biometric/action?action=${verifyAction}`;
-      const verifyResponse = await fetch(verifyPath, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentialToJson(credential))
-      });
-      const verification = await verifyResponse.json();
-      if (!verifyResponse.ok || !verification.success) throw new Error(verification.error || 'Server biometric verification failed.');
-
-      if (registration) {
-        const authOptionsResponse = await fetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
-        const authOptions = await authOptionsResponse.json();
-        const authCredential = await navigator.credentials.get({
-          publicKey: {
-            ...authOptions,
-            challenge: fromBase64Url(authOptions.challenge),
-            allowCredentials: (authOptions.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
-          }
-        });
-        const authVerificationResponse = await fetch('/api/biometric/action?action=authenticate-verify', {
+        const assertion = await requestNativeBiometricSignature(options.challenge, options.keyId);
+        const verifyResponse = await fetch('/api/biometric/native/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(credentialToJson(authCredential))
+          body: JSON.stringify({
+            challenge: options.challenge,
+            signature: assertion.signature,
+            publicKey: assertion.publicKey
+          })
         });
-        const authVerification = await authVerificationResponse.json();
-        if (!authVerificationResponse.ok || !authVerification.success) throw new Error(authVerification.error || 'Server biometric verification failed.');
-        setFingerprintProof(authVerification.verificationProof);
-      } else {
+        const verification = await verifyResponse.json();
+        if (!verifyResponse.ok || !verification.success) {
+          throw new Error(verification.error || 'Phone fingerprint verification failed.');
+        }
+
         setFingerprintProof(verification.verificationProof);
+        setFingerprintScanning(false);
+        setFingerprintVerified(true);
+        setFingerprintProgress(100);
+        fingerprintScanInFlightRef.current = false;
+        return;
       }
+
+      const optionsResponse = await apiFetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
+      if (optionsResponse.status === 404) {
+        throw new Error('Fingerprint verification is not set up on this device. Use the mobile app for phone fingerprint or complete biometric enrollment in your browser first.');
+      }
+      if (optionsResponse.status === 401) {
+        throw new Error('Your session has expired or is no longer valid. Sign in again before verifying your fingerprint.');
+      }
+      if (!optionsResponse.ok) throw new Error('Unable to start fingerprint verification. Please try again.');
+      const options = await optionsResponse.json();
+      if (!options.challenge) {
+        throw new Error('Unable to start fingerprint verification. Please try again.');
+      }
+
+      const publicKey = {
+        ...options,
+        challenge: fromBase64Url(options.challenge),
+        allowCredentials: (options.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
+      };
+      if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+        const hasPlatformAuthenticator = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        if (!hasPlatformAuthenticator) {
+          throw new Error('This browser cannot access the phone fingerprint sensor. Open this site in Chrome or Safari on a phone with screen lock and biometrics enabled.');
+        }
+      }
+      const credential = await navigator.credentials.get({ publicKey });
+      if (!credential) throw new Error('Biometric verification was cancelled.');
+
+      const verifyResponse = await apiFetch('/api/biometric/action?action=authenticate-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...credentialToJson(credential), challenge: options.challenge })
+      });
+      if (verifyResponse.status === 401 && verifyResponse.headers.get('X-Authentication-Error') === 'true') {
+        throw new Error('Your session has expired or is no longer valid. Sign in again before verifying your fingerprint.');
+      }
+      if (!verifyResponse.ok) throw new Error('Fingerprint verification failed. Please try again.');
+      const verification = await verifyResponse.json();
+      if (!verification.success) throw new Error('Fingerprint verification failed. Please try again.');
+      setFingerprintProof(verification.verificationProof);
       setFingerprintScanning(false);
       setFingerprintVerified(true);
       setFingerprintProgress(100);
@@ -456,14 +497,16 @@ export default function AttendanceView({
       setFingerprintProgress(0);
       fingerprintScanInFlightRef.current = false;
       const message = error?.name === 'NotAllowedError'
-        ? 'Fingerprint/passkey prompt was cancelled or blocked. Retry and approve the phone biometric prompt.'
+        ? 'Fingerprint verification was cancelled or blocked. Retry and approve the biometric prompt.'
         : error?.name === 'SecurityError'
           ? 'Fingerprint verification origin mismatch. Open the official Vercel domain directly.'
           : error?.name === 'InvalidStateError'
-            ? 'A fingerprint passkey is already registered. Retry the fingerprint check.'
+            ? 'Fingerprint verification is already registered. Retry the fingerprint check.'
             : error?.message?.includes('challenge expired')
-              ? 'The passkey request expired before it finished. Tap the fingerprint button again and complete the phone prompt right away.'
-              : error?.message || 'Fingerprint verification failed. Check browser biometric support and retry.';
+              ? 'The fingerprint verification request expired before it finished. Tap the fingerprint button again and complete the biometric prompt right away.'
+              : error?.name === 'TypeError'
+                ? 'Fingerprint verification failed. Check your connection and retry.'
+                : error?.message || 'Fingerprint verification failed. Check browser biometric support and retry.';
       setCameraError(message);
     }
   };
@@ -701,6 +744,11 @@ export default function AttendanceView({
   const autoClockOutRef = useRef(false);
 
   const executeClockIn = async () => {
+    if (assignmentMode === 'wfh' && !user?.approvedWfhLocation?.approvedAt) {
+      setLocationError('HR/Admin must set an approved WFH location before Time In.');
+      autoClockInRef.current = false;
+      return;
+    }
     if (!navigator.geolocation || !siteLocation) {
       setLocationError(siteLocationError || 'Wait for the selected assignment site to finish locating before Time In.');
       autoClockInRef.current = false;
@@ -1176,7 +1224,7 @@ export default function AttendanceView({
                       <select
                         id="select-municipality"
                         value={selectedMuni}
-                        disabled={isCurrentlyActive}
+                        disabled={isCurrentlyActive || (isWfhMode && Boolean(user?.approvedWfhLocation?.approvedAt))}
                         onChange={(event) => {
                           const municipality = event.target.value;
                           setSelectedMuni(municipality);
@@ -1194,7 +1242,7 @@ export default function AttendanceView({
                       <select
                         id="select-assigned-barangay"
                         value={barangayLgu}
-                        disabled={isCurrentlyActive}
+                        disabled={isCurrentlyActive || (isWfhMode && Boolean(user?.approvedWfhLocation?.approvedAt))}
                         onChange={(event) => setBarangayLgu(event.target.value)}
                         className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-800 disabled:bg-slate-100"
                       >
@@ -1205,17 +1253,18 @@ export default function AttendanceView({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <label className="space-y-1.5">
                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Street / House (Optional)</span>
-                          <input value={wfhStreet} onChange={event => setWfhStreet(event.target.value)} disabled={isCurrentlyActive} placeholder="Street or house number" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs" />
+                          <input value={wfhStreet} onChange={event => setWfhStreet(event.target.value)} disabled={isCurrentlyActive || Boolean(user?.approvedWfhLocation?.approvedAt)} placeholder="Street or house number" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs" />
                         </label>
                         <label className="space-y-1.5">
                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider">Landmark (Optional)</span>
-                          <input value={wfhLandmark} onChange={event => setWfhLandmark(event.target.value)} disabled={isCurrentlyActive} placeholder="Nearby landmark" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs" />
+                          <input value={wfhLandmark} onChange={event => setWfhLandmark(event.target.value)} disabled={isCurrentlyActive || Boolean(user?.approvedWfhLocation?.approvedAt)} placeholder="Nearby landmark" className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs" />
                         </label>
                       </div>
                     )}
                   </>
                 )}
                 <p className="text-[10px] text-slate-500">{isWfhMode ? 'Philippines address format: ' : 'Selected GPS site: '}{effectiveLocation}</p>
+                {isWfhMode && !user?.approvedWfhLocation?.approvedAt && <p role="alert" className="text-[10px] font-semibold text-amber-800">HR/Admin approval is required for a WFH location before Time In.</p>}
                 {siteLocationLoading && <p className="text-[10px] font-semibold text-blue-700">Locating selected assignment on the map...</p>}
                 {siteLocationError && <p role="alert" className="text-[10px] font-semibold text-rose-700">{siteLocationError}</p>}
                 {siteLocation && <p className="text-[10px] font-semibold text-emerald-700">Map target verified: {siteLocation.displayName}</p>}
@@ -1246,7 +1295,7 @@ export default function AttendanceView({
                   </span>
                 </div>
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-900">
-                  Capture a selfie for your attendance record. Time In still requires the registered passkey and GPS location checks.
+                  Capture a selfie for your attendance record. Time In still requires fingerprint verification and GPS location checks.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1348,7 +1397,7 @@ export default function AttendanceView({
                             <Camera className="h-4 w-4" /> Open Front Camera
                           </button>
                           <p className="mt-3 text-[9px] font-semibold uppercase tracking-wider text-slate-400">
-                            Camera access required · Passkey + GPS checked separately
+                            Camera access required · Fingerprint + GPS checked separately
                           </p>
                         </div>
                       )}
@@ -1361,7 +1410,7 @@ export default function AttendanceView({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                         <Fingerprint className="w-4 h-4 text-[#1e40af]" />
-                        II. Passkey Verification
+                        {hasNativeBridge ? 'II. Phone Fingerprint Verification' : 'II. Fingerprint Verification'}
                       </span>
                       {fingerprintVerified ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">
@@ -1383,12 +1432,14 @@ export default function AttendanceView({
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs font-black text-emerald-400 uppercase tracking-widest leading-none">BIOMETRIC TOUCH CONFIRMED</p>
-                            <p className="text-[10px] text-slate-400">Device biometric credential accepted</p>
+                            <p className="text-[10px] text-slate-400">
+                              {hasNativeBridge ? 'Fingerprint challenge verified by the server' : 'Device biometric credential accepted'}
+                            </p>
                             <button
                               onClick={handleResetFingerprint}
                               className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline font-black mt-2 cursor-pointer block mx-auto"
                             >
-                              Reset Device Biometric
+                              {hasNativeBridge ? 'Verify Again' : 'Reset Device Biometric'}
                             </button>
                           </div>
                         </div>
@@ -1408,14 +1459,20 @@ export default function AttendanceView({
                           <button
                             onClick={handleStartFingerprintScan}
                             className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 hover:border-blue-500 flex items-center justify-center text-blue-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shadow-lg group relative"
-                            title="Use device biometric"
+                            title={hasNativeBridge ? 'Use phone fingerprint' : 'Use fingerprint'}
                           >
                             <div className="absolute inset-0 bg-blue-500/5 rounded-full animate-ping group-hover:block"></div>
                             <Fingerprint className="w-8 h-8 text-blue-500 group-hover:text-cyan-400 group-hover:animate-pulse" />
                           </button>
                           <div className="space-y-1">
-                            <p className="text-xs font-black text-slate-300 uppercase tracking-wider">USE DEVICE BIOMETRIC</p>
-                            <p className="text-[10px] text-slate-500 leading-relaxed">Use a registered passkey with device fingerprint or screen lock.</p>
+                            <p className="text-xs font-black text-slate-300 uppercase tracking-wider">
+                              {hasNativeBridge ? 'USE PHONE FINGERPRINT' : 'USE FINGERPRINT'}
+                            </p>
+                            <p className="text-[10px] text-slate-500 leading-relaxed">
+                              {hasNativeBridge
+                                ? 'Confirm with your phone fingerprint. Your fingerprint stays on this device.'
+                                : 'Verify your identity using your registered fingerprint.'}
+                            </p>
                           </div>
                         </div>
                       )}

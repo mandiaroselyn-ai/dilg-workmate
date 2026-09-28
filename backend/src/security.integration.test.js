@@ -12,12 +12,14 @@ process.env.UNISMS_WEBHOOK_SECRET = 'integration-webhook-secret';
 const { createApiApp } = await import('./app.js');
 const { authorizeRoles } = await import('./middleware/auth.js');
 const { createVerificationProof, verifyVerificationProof } = await import('./utils/verificationProof.js');
+const { verifyNativeBiometricSignature } = await import('./utils/nativeBiometric.js');
 
 const app = createApiApp();
 
 test('rejects protected API requests without a bearer token', async () => {
   const response = await request(app).get('/api/state');
   assert.equal(response.status, 401);
+  assert.equal(response.headers['x-authentication-error'], 'true');
   assert.equal(response.body.error, 'Authentication required.');
 });
 
@@ -32,6 +34,15 @@ test('requires authentication on the local flat biometric enrollment API', async
   const submissionResponse = await request(app).post('/api/face-enrollment').send({});
   assert.equal(statusResponse.status, 401);
   assert.equal(submissionResponse.status, 401);
+});
+
+test('requires authentication for native biometric challenge endpoints', async () => {
+  const [options, verify] = await Promise.all([
+    request(app).post('/api/biometric/native/options'),
+    request(app).post('/api/biometric/native/verify').send({})
+  ]);
+  assert.equal(options.status, 401);
+  assert.equal(verify.status, 401);
 });
 
 test('requires authentication for HR employee account management', async () => {
@@ -128,4 +139,28 @@ test('biometric proofs are bound to employee and type', () => {
   assert.equal(verifyVerificationProof(`${proof}tampered`, { employeeId: 'DILG-TEST-001', type: 'face' }), false);
   assert.equal(verifyVerificationProof(fingerprintProof, { employeeId: 'DILG-TEST-001', type: 'fingerprint' }), true);
   assert.equal(verifyVerificationProof('malformed', { employeeId: 'DILG-TEST-001', type: 'fingerprint' }), false);
+});
+
+test('validates native biometric signatures against P-256 public keys and exact challenges', () => {
+  const challenge = 'challenge-for-native-biometric';
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const encodedPublicKey = publicKey.export({ format: 'der', type: 'spki' }).toString('base64url');
+  const signature = crypto.sign('sha256', Buffer.from(challenge), privateKey).toString('base64url');
+  assert.equal(verifyNativeBiometricSignature({
+    publicKey: encodedPublicKey,
+    challenge,
+    signature
+  }), true);
+  assert.equal(verifyNativeBiometricSignature({
+    publicKey: encodedPublicKey,
+    challenge: `${challenge}-changed`,
+    signature
+  }), false);
+
+  const otherCurve = crypto.generateKeyPairSync('ec', { namedCurve: 'secp384r1' });
+  assert.equal(verifyNativeBiometricSignature({
+    publicKey: otherCurve.publicKey.export({ format: 'der', type: 'spki' }).toString('base64url'),
+    challenge,
+    signature
+  }), false);
 });

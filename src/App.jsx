@@ -365,7 +365,7 @@ export default function App() {
   const submitAttendance = async (payload, optimisticRecord) => {
     if (!navigator.onLine) {
       if (payload.action === 'clock-in') {
-        throw new Error('An internet connection is required to verify your passkey and submit Time In. Reconnect and try again.');
+        throw new Error('An internet connection is required to verify your fingerprint and submit Time In. Reconnect and try again.');
       }
       await queueAttendance({ payload });
       if (optimisticRecord) {
@@ -488,6 +488,7 @@ export default function App() {
       timeIn: timeString,
       timeOut: null,
       location: municipality,
+      dutyType: assignmentSite?.mode || 'field',
       gpsStatus,
       latitude: lat,
       longitude: lon,
@@ -501,8 +502,17 @@ export default function App() {
       selfieLongitude: lon,
       status: 'Present',
       workAssignment: {
-        location: municipality,
-        barangayLgu: barangay,
+        assignmentRole: assignmentSite?.mode || 'field',
+        location: assignmentSite?.mode === 'office'
+          ? assignmentSite?.officeId || municipality
+          : assignmentSite?.mode === 'wfh'
+            ? [assignmentSite?.street, assignmentSite?.landmark, assignmentSite?.barangay, assignmentSite?.municipality].filter(Boolean).join(', ')
+            : municipality,
+        municipality: assignmentSite?.municipality || municipality || '',
+        barangayLgu: assignmentSite?.barangay || barangay || '',
+        officeId: assignmentSite?.officeId || '',
+        street: assignmentSite?.street || '',
+        landmark: assignmentSite?.landmark || '',
         task
       },
       selfieUrl,

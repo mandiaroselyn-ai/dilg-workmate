@@ -27,6 +27,10 @@ import {
   createAuthenticationOptions,
   verifyAuthentication
 } from '../controllers/webauthnController.js';
+import {
+  createNativeBiometricOptions,
+  verifyNativeBiometric
+} from '../controllers/nativeBiometricController.js';
 
 const router = express.Router();
 
@@ -71,6 +75,8 @@ router.post('/biometric/register/options', createRegistrationOptions);
 router.post('/biometric/register/verify', verifyRegistration);
 router.post('/biometric/authenticate/options', createAuthenticationOptions);
 router.post('/biometric/authenticate/verify', verifyAuthentication);
+router.post('/biometric/native/options', createNativeBiometricOptions);
+router.post('/biometric/native/verify', verifyNativeBiometric);
 router.post('/biometric/action', (req, res) => {
   const actions = {
     'register-options': createRegistrationOptions,

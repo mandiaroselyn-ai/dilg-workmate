@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { apiFetch, parseApiResponse } from '../utils/api';
+import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
 
 const emptyForm = {
   firstName: '',
@@ -36,6 +37,10 @@ const emptyForm = {
   dateHired: '',
   assignedStation: '',
   assignedLGU: '',
+  approvedWfhMunicipality: '',
+  approvedWfhBarangay: '',
+  approvedWfhStreet: '',
+  approvedWfhLandmark: '',
   password: ''
 };
 
@@ -79,6 +84,10 @@ const normalizeEmployee = (employee = {}) => {
     dateHired: employee.dateHired || '',
     assignedStation: employee.assignedStation || '',
     assignedLGU: employee.assignedLGU || '',
+    approvedWfhMunicipality: employee.approvedWfhLocation?.municipality || '',
+    approvedWfhBarangay: employee.approvedWfhLocation?.barangay || '',
+    approvedWfhStreet: employee.approvedWfhLocation?.street || '',
+    approvedWfhLandmark: employee.approvedWfhLocation?.landmark || '',
     profilePicture: employee.profilePicture || '',
     accessLevel: 'employee'
   };
@@ -282,6 +291,10 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    if (name === 'approvedWfhMunicipality') {
+      setForm(previous => ({ ...previous, [name]: value, approvedWfhBarangay: '' }));
+      return;
+    }
     setForm((previous) => ({ ...previous, [name]: value }));
   };
 
@@ -310,7 +323,13 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       office: form.office || 'Administrative Office',
       employmentStatus: form.employmentStatus || 'ACTIVE',
       accountStatus: form.accountStatus || 'Pending',
-      accessLevel: 'employee'
+      accessLevel: 'employee',
+      approvedWfhLocation: {
+        municipality: form.approvedWfhMunicipality,
+        barangay: form.approvedWfhBarangay,
+        street: form.approvedWfhStreet,
+        landmark: form.approvedWfhLandmark
+      }
     };
 
     try {
@@ -506,6 +525,31 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
               <label className="text-[11px] font-black text-slate-600">Assigned LGU
                 <input name="assignedLGU" value={form.assignedLGU} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
+
+              <div className="sm:col-span-2 xl:col-span-4">
+                <p className="text-[11px] font-black text-slate-700">Approved Work-From-Home Location</p>
+                <p className="mt-1 text-[10px] font-medium text-slate-500">Saving a valid municipality and barangay approves this WFH geofence for the employee.</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <label className="text-[11px] font-black text-slate-600">Municipality
+                    <select name="approvedWfhMunicipality" value={form.approvedWfhMunicipality} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
+                      <option value="">Not approved</option>
+                      {Object.keys(MARINDUQUE_MUNICIPALITIES).map(municipality => <option key={municipality} value={municipality}>{municipality}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[11px] font-black text-slate-600">Barangay
+                    <select name="approvedWfhBarangay" value={form.approvedWfhBarangay} onChange={handleChange} disabled={!form.approvedWfhMunicipality} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500 disabled:opacity-60">
+                      <option value="">Select barangay</option>
+                      {(MARINDUQUE_MUNICIPALITIES[form.approvedWfhMunicipality] || []).map(barangay => <option key={barangay} value={barangay}>{barangay}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[11px] font-black text-slate-600">Street / House
+                    <input name="approvedWfhStreet" value={form.approvedWfhStreet} onChange={handleChange} maxLength={120} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                  </label>
+                  <label className="text-[11px] font-black text-slate-600">Landmark
+                    <input name="approvedWfhLandmark" value={form.approvedWfhLandmark} onChange={handleChange} maxLength={120} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                  </label>
+                </div>
+              </div>
             </div>
           </section>
 

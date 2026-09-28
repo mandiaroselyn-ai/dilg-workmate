@@ -3,7 +3,7 @@ export const apiFetch = async (input, init = {}) => {
   const headers = new Headers(init.headers || {});
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await window.fetch(input, { ...init, headers });
-  if (response.status === 401) {
+  if (response.status === 401 && response.headers.get('X-Authentication-Error') === 'true') {
     window.localStorage.removeItem('dilg_auth_token');
     window.dispatchEvent(new Event('dilg:auth-expired'));
   }

@@ -26,6 +26,14 @@ const UserSchema = new mongoose.Schema({
   dateHired: { type: String, default: '' },
   assignedStation: { type: String, default: '' },
   assignedLGU: { type: String, default: '' },
+  approvedWfhLocation: {
+    municipality: { type: String, default: '' },
+    barangay: { type: String, default: '' },
+    street: { type: String, default: '' },
+    landmark: { type: String, default: '' },
+    approvedAt: { type: Date, default: null },
+    approvedBy: { type: String, default: '' }
+  },
   fingerprintHash: { type: String, default: '' },
   faceProvider: { type: String, default: '' },
   faceId: { type: String, default: '' },
@@ -64,6 +72,17 @@ const UserSchema = new mongoose.Schema({
   webauthnCredentialId: { type: String, default: '' },
   webauthnPublicKey: { type: String, default: '' },
   webauthnCounter: { type: Number, default: 0 },
+  webauthnChallenges: {
+    type: [{
+      challenge: { type: String, required: true },
+      purpose: { type: String, enum: ['registration', 'authentication'], required: true },
+      expiresAt: { type: Date, required: true }
+    }],
+    default: []
+  },
+  nativeBiometricPublicKey: { type: String, default: '' },
+  nativeBiometricChallenge: { type: String, default: '' },
+  nativeBiometricChallengeExpiry: { type: Date, default: null },
   webauthnChallenge: { type: String, default: '' },
   webauthnChallengeExpiry: { type: Date, default: null },
   resetToken: { type: String, default: '' },
@@ -353,12 +372,70 @@ export const User = {
     );
   },
 
-  saveWebAuthnChallenge: async (userId, challenge, expiry) => {
+  saveWebAuthnChallenge: async (userId, challenge, expiry, purpose) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId) || !['registration', 'authentication'].includes(purpose)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId },
+      {
+        $push: {
+          webauthnChallenges: {
+            $each: [{ challenge, purpose, expiresAt: expiry }],
+            $slice: -10
+          }
+        }
+      },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  consumeWebAuthnChallenge: async (userId, challenge, purpose) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId) || !['registration', 'authentication'].includes(purpose)) return null;
+    const challengeFilter = {
+      challenge,
+      purpose,
+      expiresAt: { $gt: new Date() }
+    };
+    return MongoUser.findOneAndUpdate(
+      { _id: userId, webauthnChallenges: { $elemMatch: challengeFilter } },
+      { $pull: { webauthnChallenges: { challenge, purpose } } },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  completeNativeBiometricRegistration: async (userId, challenge, publicKey) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId, nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: { $gt: new Date() } },
+      {
+        $set: {
+          nativeBiometricPublicKey: publicKey,
+          nativeBiometricChallenge: '',
+          nativeBiometricChallengeExpiry: null
+        }
+      },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  saveNativeBiometricChallenge: async (userId, challenge, expiry) => {
     ensureConnected();
     if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findOneAndUpdate(
       { _id: userId },
-      { $set: { webauthnChallenge: challenge, webauthnChallengeExpiry: expiry } },
+      { $set: { nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: expiry } },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  consumeNativeBiometricChallenge: async (userId, challenge) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId, nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: { $gt: new Date() } },
+      { $set: { nativeBiometricChallenge: '', nativeBiometricChallengeExpiry: null } },
       { new: true, writeConcern: { w: 'majority' } }
     );
   },
