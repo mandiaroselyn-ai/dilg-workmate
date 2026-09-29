@@ -118,10 +118,7 @@ export const acknowledgeAnnouncement = async (req, res) => {
 
 export const getNotifications = async (req, res) => {
   try {
-    const list = req.user?.accessLevel === 'employee'
-      ? await Announcement.findNotificationsForUser(req.user)
-      : await Announcement.findNotifications();
-    res.status(200).json(list);
+    res.status(200).json(await Announcement.findNotificationsFor(req.user));
   } catch (error) {
     sendServerError(res, error);
   }
@@ -146,10 +143,19 @@ export const createNotification = async (req, res) => {
 
 export const clearNotifications = async (req, res) => {
   try {
-    const cleared = req.user?.accessLevel === 'employee'
-      ? await Announcement.clearNotificationsForUser(req.user)
-      : await Announcement.clearNotificationsForRole(req.user?.accessLevel);
-    res.status(200).json({ success: true, notifications: cleared });
+    res.status(200).json({ success: true, notifications: await Announcement.markAllNotificationsReadFor(req.user) });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+// Hides every notification this person has now; only newer ones are shown afterwards.
+// The notifications themselves are kept.
+export const dismissNotifications = async (req, res) => {
+  try {
+    const updated = await User.setNotificationsClearedAt(req.user._id, new Date());
+    if (!updated) return res.status(404).json({ success: false, error: 'Account not found.' });
+    res.status(200).json({ success: true, notifications: await Announcement.findNotificationsFor(updated) });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -158,10 +164,7 @@ export const clearNotifications = async (req, res) => {
 export const readNotification = async (req, res) => {
   try {
     const { id } = req.params;
-    const list = req.user?.accessLevel === 'employee'
-      ? await Announcement.markNotificationAsReadForUser(id, req.user)
-      : await Announcement.markNotificationAsRead(id);
-    res.status(200).json({ success: true, notifications: list });
+    res.status(200).json({ success: true, notifications: await Announcement.markNotificationReadFor(id, req.user) });
   } catch (error) {
     sendServerError(res, error);
   }

@@ -17,6 +17,7 @@ export default function Header({
   smsAlerts,
   onMarkNotificationRead,
   onClearNotifications,
+  onDismissNotifications,
   onSendSms,
   onViewChange,
   onToggleSidebar,
@@ -240,14 +241,25 @@ export default function Header({
                   <ShieldAlert className="w-4 h-4 text-indigo-200" />
                   <span className="font-semibold text-[11px]">System Alerts</span>
                 </div>
-                {unreadCount > 0 && (
-                  <button
-                    onClick={onClearNotifications}
-                    className="text-[11px] text-indigo-200 hover:text-white underline font-semibold transition-colors cursor-pointer"
-                  >
-                    Mark all read
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={onClearNotifications}
+                      className="text-[11px] text-indigo-200 hover:text-white underline font-semibold transition-colors cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  {notifications.length > 0 && onDismissNotifications && (
+                    <button
+                      onClick={onDismissNotifications}
+                      title="Hide these notifications. Only new ones will show."
+                      className="text-[11px] text-indigo-200 hover:text-white underline font-semibold transition-colors cursor-pointer"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
               </div>
               
               <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">

@@ -22,7 +22,9 @@ const NotificationSchema = new mongoose.Schema({
   type: { type: String, default: 'system' },
   recipientRole: { type: String, default: '' },
   employeeId: { type: String, default: '' },
-  employeeEmail: { type: String, default: '' }
+  employeeEmail: { type: String, default: '' },
+  // People who read a notice meant for several readers (all employees or all HR/Admins).
+  readBy: { type: [String], default: [] }
 }, { timestamps: true });
 
 const SmsAlertSchema = new mongoose.Schema({
@@ -76,26 +78,45 @@ function ensureConnected() {
   }
 }
 
-const notificationScope = user => ({
-  $or: [
-    { employeeId: user.employeeId },
-    { employeeEmail: user.email?.toLowerCase?.() },
-    { employeeId: '', employeeEmail: '', recipientRole: '' }
-  ]
-});
+// Identifies a reader in a notice's readBy list.
+export const notificationReaderKey = user => String(user?.employeeId || user?.email || '').trim().toLowerCase();
 
-const ownedNotificationScope = user => ({
-  $or: [
-    { employeeId: user.employeeId },
-    { employeeEmail: user.email?.toLowerCase?.() }
-  ]
-});
+// The notifications one person sees: their own, their role's (HR/Admin or supervisor),
+// and, for employees, notices sent to every employee. Nothing from before their account
+// existed, or before they last cleared their notifications, is shown.
+export const notificationFilter = user => {
+  const own = [
+    ...(user?.employeeId ? [{ employeeId: user.employeeId }] : []),
+    ...(user?.email ? [{ employeeEmail: String(user.email).trim().toLowerCase() }] : [])
+  ];
+  const shared = user?.accessLevel === 'employee'
+    ? [{ employeeId: '', employeeEmail: '', recipientRole: '' }]
+    : ['hr_admin', 'supervisor'].includes(user?.accessLevel) ? [{ recipientRole: user.accessLevel }] : [];
+  const audience = [...own, ...shared];
+  const since = Math.max(0, ...[user?.createdAt, user?.notificationsClearedAt]
+    .map(value => (value ? new Date(value).getTime() : 0))
+    .filter(Number.isFinite));
+  return {
+    $and: [
+      { $or: audience.length ? audience : [{ _id: null }] },
+      { createdAt: { $gte: new Date(since) } }
+    ]
+  };
+};
 
-const serializeNotifications = list => list.map(item => {
-  const obj = item.toObject();
-  obj.id = obj.customId;
-  return obj;
-});
+// A notice is read for this person when it was marked read for them.
+const serializeNotificationsFor = (list, user) => {
+  const key = notificationReaderKey(user);
+  return list.map(item => {
+    const { readBy = [], ...obj } = item.toObject();
+    return { ...obj, id: obj.customId, read: Boolean(obj.read || (key && readBy.includes(key))) };
+  });
+};
+
+const findVisibleNotifications = async user => serializeNotificationsFor(
+  await MongoNotification.find(notificationFilter(user)).sort({ createdAt: -1 }),
+  user
+);
 
 export const Announcement = {
   findEvents: async () => {
@@ -184,19 +205,9 @@ export const Announcement = {
     return result.ids;
   },
 
-  findNotifications: async () => {
+  findNotificationsFor: async (user) => {
     ensureConnected();
-    const list = await MongoNotification.find().sort({ createdAt: -1 });
-    return list.map(item => {
-      const obj = item.toObject();
-      obj.id = obj.customId;
-      return obj;
-    });
-  },
-
-  findNotificationsForUser: async (user) => {
-    ensureConnected();
-    return serializeNotifications(await MongoNotification.find(notificationScope(user)).sort({ createdAt: -1 }));
+    return findVisibleNotifications(user);
   },
 
   createNotification: async (notifData) => {
@@ -222,38 +233,21 @@ export const Announcement = {
 
   // Marks only the notifications addressed to the given role (hr_admin or supervisor)
   // as read, so clearing the HR or supervisor bell never touches employees' notifications.
-  clearNotificationsForRole: async (role) => {
+  // Marks every notification this person can see as read, for them only.
+  markAllNotificationsReadFor: async (user) => {
     ensureConnected();
-    await MongoNotification.updateMany({ recipientRole: role }, { read: true });
-    const list = await MongoNotification.find().sort({ createdAt: -1 });
-    return list.map(item => {
-      const obj = item.toObject();
-      obj.id = obj.customId;
-      return obj;
-    });
+    const key = notificationReaderKey(user);
+    if (key) await MongoNotification.updateMany(notificationFilter(user), { $addToSet: { readBy: key } });
+    return findVisibleNotifications(user);
   },
 
-  clearNotificationsForUser: async (user) => {
+  markNotificationReadFor: async (id, user) => {
     ensureConnected();
-    await MongoNotification.updateMany(ownedNotificationScope(user), { read: true });
-    return serializeNotifications(await MongoNotification.find(notificationScope(user)).sort({ createdAt: -1 }));
-  },
-
-  markNotificationAsRead: async (id) => {
-    ensureConnected();
-    await MongoNotification.updateOne({ customId: id }, { read: true });
-    const list = await MongoNotification.find().sort({ createdAt: -1 });
-    return list.map(item => {
-      const obj = item.toObject();
-      obj.id = obj.customId;
-      return obj;
-    });
-  },
-
-  markNotificationAsReadForUser: async (id, user) => {
-    ensureConnected();
-    await MongoNotification.updateOne({ $and: [{ customId: id }, ownedNotificationScope(user)] }, { read: true });
-    return serializeNotifications(await MongoNotification.find(notificationScope(user)).sort({ createdAt: -1 }));
+    const key = notificationReaderKey(user);
+    if (key && typeof id === 'string') {
+      await MongoNotification.updateOne({ $and: [{ customId: id }, notificationFilter(user)] }, { $addToSet: { readBy: key } });
+    }
+    return findVisibleNotifications(user);
   },
 
   findSmsAlerts: async () => {

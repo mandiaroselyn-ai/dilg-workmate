@@ -35,6 +35,15 @@ const belongsToEmployee = (item, account) => {
   return Boolean(hasRecipient && matchesAttendanceEmployee(item, account));
 };
 
+// Notices with no recipient and no role go to every employee (for example, a new
+// announcement). HR/Admins and supervisors see their role's notices and their own.
+const isForEveryEmployee = item => !item?.employeeId && !item?.employeeEmail && !item?.recipientRole;
+const scopeNotificationsToAccount = (items, role, account) => {
+  if (role === 'employee') return items.filter(item => isForEveryEmployee(item) || belongsToEmployee(item, account));
+  if (role === 'hr_admin' || role === 'supervisor') return items.filter(item => item.recipientRole === role || belongsToEmployee(item, account));
+  return items;
+};
+
 const scopeMessagesToAccount = (items, role, account) => {
   if (role === 'employee') return items.filter(item => belongsToEmployee(item, account));
   if (role === 'supervisor') return items.filter(item => item.recipientRole === 'supervisor');
@@ -146,7 +155,7 @@ export default function App() {
           if (data.notifications) {
             setNotifications(data.notifications);
             // HR's bell shows the saved notifications addressed to HR, not only ones from this session.
-            if (activeRole === 'hr_admin') setAdminNotifications(scopeMessagesToAccount(data.notifications, 'hr_admin'));
+            if (activeRole === 'hr_admin') setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', data.user));
           }
           if (data.smsAlerts) setSmsAlerts(data.smsAlerts);
           if (data.adminNotifications) setAdminNotifications(data.adminNotifications);
@@ -999,10 +1008,24 @@ export default function App() {
       .then(data => {
         if (data.success) {
           if (activeRole === 'hr_admin') {
-            setAdminNotifications(scopeMessagesToAccount(data.notifications, 'hr_admin'));
+            setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', user));
           } else {
-            setNotifications(scopeMessagesToAccount(data.notifications, activeRole, user));
+            setNotifications(scopeNotificationsToAccount(data.notifications, activeRole, user));
           }
+        }
+      });
+  };
+
+  // Hides every current notification; only newer ones appear afterwards.
+  const handleDismissNotifications = () => {
+    fetch('/api/notifications/dismiss', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) return;
+        if (activeRole === 'hr_admin') {
+          setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', user));
+        } else {
+          setNotifications(scopeNotificationsToAccount(data.notifications, activeRole, user));
         }
       });
   };
@@ -1015,9 +1038,9 @@ export default function App() {
       .then(data => {
         if (data.success) {
           if (activeRole === 'hr_admin') {
-            setAdminNotifications(scopeMessagesToAccount(data.notifications, 'hr_admin'));
+            setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', user));
           } else {
-            setNotifications(scopeMessagesToAccount(data.notifications, activeRole, user));
+            setNotifications(scopeNotificationsToAccount(data.notifications, activeRole, user));
           }
         }
       });
@@ -1121,7 +1144,7 @@ export default function App() {
 
   const headerNotifications = activeRole === 'hr_admin'
     ? adminNotifications
-    : scopeMessagesToAccount(notifications, activeRole, user);
+    : scopeNotificationsToAccount(notifications, activeRole, user);
   const headerSmsAlerts = ['hr_admin', 'supervisor'].includes(activeRole)
     ? smsAlerts
     : scopeMessagesToAccount(smsAlerts, activeRole, user);
@@ -1181,6 +1204,7 @@ export default function App() {
           smsAlerts={headerSmsAlerts}
           onMarkNotificationRead={handleMarkNotificationRead}
           onClearNotifications={handleClearNotifications}
+          onDismissNotifications={handleDismissNotifications}
           onSendSms={handleSendSms}
           onViewChange={handleViewChange}
           onToggleSidebar={handleToggleSidebar}

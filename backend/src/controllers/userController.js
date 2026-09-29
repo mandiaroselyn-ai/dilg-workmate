@@ -423,7 +423,7 @@ export const getFullState = async (req, res) => {
       req.user?.accessLevel === 'employee' ? DtrLog.findForEmployee(req.user) : DtrLog.find(),
       Leave.findAllRequests(),
       Announcement.findEvents(),
-      Announcement.findNotifications(),
+      Announcement.findNotificationsFor(req.user),
       Announcement.findSmsAlerts(),
       Announcement.getAcknowledged(req.user),
       Announcement.findAnnouncementPosts()
@@ -431,13 +431,7 @@ export const getFullState = async (req, res) => {
     const visibleRawRequests = req.user?.accessLevel === 'employee'
       ? rawRequests.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
       : rawRequests;
-    const visibleNotifications = req.user?.accessLevel === 'employee'
-      ? notifications.filter(item => (
-        (!item.employeeId && !item.employeeEmail && !item.recipientRole)
-        || item.employeeId === req.user.employeeId
-        || item.employeeEmail === req.user.email
-      ))
-      : notifications;
+    const visibleNotifications = notifications;
     const visibleSmsAlerts = req.user?.accessLevel === 'employee'
       ? smsAlerts.filter(item => item.employeeId === req.user.employeeId || item.employeeEmail === req.user.email)
       : smsAlerts;

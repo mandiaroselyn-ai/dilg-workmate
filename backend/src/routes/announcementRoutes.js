@@ -12,6 +12,7 @@ import {
   getNotifications, 
   createNotification, 
   clearNotifications, 
+  dismissNotifications,
   readNotification, 
   createSmsAlert,
   receiveSmsWebhook
@@ -32,6 +33,7 @@ router.post('/announcements/acknowledge', acknowledgeAnnouncement);
 router.get('/notifications', getNotifications);
 router.post('/notifications', createNotification);
 router.post('/notifications/clear', clearNotifications);
+router.post('/notifications/dismiss', dismissNotifications);
 router.post('/notifications/:id/read', readNotification);
 router.post('/sms', authorizeRoles('supervisor', 'hr_admin'), createSmsAlert);
 router.post('/sms/webhook', receiveSmsWebhook);

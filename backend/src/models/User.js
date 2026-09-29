@@ -98,6 +98,8 @@ const UserSchema = new mongoose.Schema({
   resetTokenExpiry: { type: Date, default: null },
   // Sessions issued before this time are no longer accepted.
   passwordChangedAt: { type: Date, default: null },
+  // Notifications created before this are hidden ("Clear all").
+  notificationsClearedAt: { type: Date, default: null },
   vacationLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
   sickLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
   // Record of HR's manual balance adjustments (latest 50).
@@ -213,6 +215,12 @@ export const User = {
       // Mongoose 9 only runs update pipelines (like this one) when asked to.
       { new: true, updatePipeline: true }
     );
+  },
+
+  setNotificationsClearedAt: async (userId, clearedAt) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate({ _id: userId }, { $set: { notificationsClearedAt: clearedAt } }, { new: true });
   },
 
   // Sets a new password for a signed-in user (the pre-save hook hashes it) and ends
