@@ -14,6 +14,7 @@ import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
+import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
 const MIN_PASSWORD_LENGTH = 10;
 const INVALID_LOGIN_MESSAGE = 'Invalid email or password. Please verify your credentials.';
@@ -535,6 +536,12 @@ export const requestPasswordReset = async (req, res) => {
     const email = req.body.email?.toLowerCase?.().trim();
     if (!email) {
       return res.status(400).json({ success: false, error: 'Email is required.' });
+    }
+
+    // DILG email accounts reset their password through HR, who sets a temporary one. The
+    // answer depends only on the email's domain, not on whether the account exists.
+    if (isAgencyEmailAddress(email)) {
+      return res.status(200).json({ success: true, contactHr: true, message: 'Please contact your HR Administrator to reset your password.' });
     }
 
     // Check the email service first, so the response does not differ between known and

@@ -12,6 +12,8 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [successText, setSuccessText] = useState('');
+  // DILG email accounts are reset by HR instead of by email.
+  const [contactHrText, setContactHrText] = useState('');
 
   const isApplyMode = mode === 'apply';
 
@@ -20,6 +22,7 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
     setSubmitting(true);
     setErrorText('');
     setSuccessText('');
+    setContactHrText('');
 
     try {
       if (isApplyMode) {
@@ -61,8 +64,12 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
           throw new Error(result.error || result.message || 'Unable to send reset link.');
         }
 
-        setSuccessText(result.message || 'If that email exists, a reset link has been sent.');
-        setEmail('');
+        if (result.contactHr) {
+          setContactHrText(result.message || 'Please contact your HR Administrator to reset your password.');
+        } else {
+          setSuccessText(result.message || 'If that email exists, a reset link has been sent.');
+          setEmail('');
+        }
       }
     } catch (error) {
       setErrorText(error.message || 'Something went wrong.');
@@ -98,7 +105,7 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
             <p className="text-sm text-slate-600 mb-6">
               {isApplyMode
                 ? 'Enter your new password below to complete the reset process.'
-                : 'Enter your official email and we will send a secure reset link to your inbox.'}
+                : 'Enter your email address. Gmail and other personal email accounts get a reset link in their inbox. DILG (@dilg.gov.ph) accounts are reset by your HR Administrator.'}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -147,7 +154,7 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
                 </>
               ) : (
                 <div className="space-y-1.5 text-xs">
-                  <label className="uppercase tracking-widest text-slate-500 font-bold">Official Email Address</label>
+                  <label className="uppercase tracking-widest text-slate-500 font-bold">Email Address</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
@@ -156,12 +163,17 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pl-10 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
-                      placeholder="you@dilg.gov.ph"
+                      placeholder="your email address"
                     />
                   </div>
                 </div>
               )}
 
+              {contactHrText && (
+                <div className="text-amber-900 text-xs font-bold bg-amber-50 p-3 rounded-lg border border-amber-200">
+                  {contactHrText}
+                </div>
+              )}
               {successText && (
                 <div className="text-emerald-700 text-xs font-bold bg-emerald-50 p-3 rounded-lg border border-emerald-200">
                   {successText}

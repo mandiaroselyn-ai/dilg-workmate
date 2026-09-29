@@ -168,3 +168,27 @@ export const deleteStaff = async (req, res) => {
     sendServerError(res, error);
   }
 };
+
+// HR sets a temporary password for someone who cannot reset their own by email (DILG
+// email accounts are told to contact HR). Their other sessions end, and they should change
+// it in Settings after signing in. Resetting an HR/Admin's password also needs HR's own
+// password; HR changes their own password in Settings instead.
+export const resetAccountPassword = async (req, res) => {
+  try {
+    const target = await findStaffTarget(req, res, { staffOnly: false });
+    if (!target) return;
+    if (String(target._id) === String(req.user?._id)) {
+      return res.status(400).json({ success: false, error: 'Change your own password in Settings.' });
+    }
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+    if (newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > 256) {
+      return res.status(400).json({ success: false, error: `The temporary password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
+    }
+    if (target.accessLevel === 'hr_admin' && !(await confirmAdminPassword(req, res))) return;
+    await User.changePassword(target, newPassword);
+    await recordChange(`${actorName(req)} reset the password of ${target.name || target.email}.`);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};

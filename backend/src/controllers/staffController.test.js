@@ -88,3 +88,45 @@ test('promoting an employee to supervisor saves the new access level', async () 
     assert.equal(employee.saved, true);
   });
 });
+
+test('HR can set a temporary password for an employee', async () => {
+  const employee = account({ _id: 'emp-1', name: 'Juan Dela Cruz', email: 'juan@dilg.gov.ph', employeeId: 'DILG-2026-1', accessLevel: 'employee' });
+  let changedTo = null;
+  await withFakes({
+    findAccount: async () => employee,
+    changePassword: async (_user, password) => { changedTo = password; }
+  }, async () => {
+    const short = await call(controller.resetAccountPassword, { user: hr, params: { identifier: 'DILG-2026-1' }, body: { newPassword: 'short' } });
+    assert.equal(short.statusCode, 400);
+    assert.equal(changedTo, null);
+    const ok = await call(controller.resetAccountPassword, { user: hr, params: { identifier: 'DILG-2026-1' }, body: { newPassword: 'Temporary-Pass-42' } });
+    assert.equal(ok.statusCode, 200);
+    assert.equal(changedTo, 'Temporary-Pass-42');
+  });
+});
+
+test('resetting an HR/Admin password needs HR\'s own password, and HR cannot reset their own here', async () => {
+  const otherHr = account({ _id: 'hr-2', name: 'HR Two', email: 'hr2@dilg.gov.ph', accessLevel: 'hr_admin' });
+  let changed = false;
+  await withFakes({
+    findAccount: async identifier => (identifier === 'hr1@dilg.gov.ph' ? hr : otherHr),
+    verifyPassword: async (_user, password) => password === 'correct-password',
+    changePassword: async () => { changed = true; }
+  }, async () => {
+    const own = await call(controller.resetAccountPassword, { user: hr, params: { identifier: 'hr1@dilg.gov.ph' }, body: { newPassword: 'Temporary-Pass-42' } });
+    assert.equal(own.statusCode, 400);
+    const noConfirm = await call(controller.resetAccountPassword, { user: hr, params: { identifier: 'hr2@dilg.gov.ph' }, body: { newPassword: 'Temporary-Pass-42' } });
+    assert.equal(noConfirm.statusCode, 403);
+    assert.equal(changed, false);
+    const confirmed = await call(controller.resetAccountPassword, { user: hr, params: { identifier: 'hr2@dilg.gov.ph' }, body: { newPassword: 'Temporary-Pass-42', adminPassword: 'correct-password' } });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(changed, true);
+  });
+});
+
+test('resetting the password of an unknown account is refused', async () => {
+  await withFakes({ findAccount: async () => null }, async () => {
+    const result = await call(controller.resetAccountPassword, { user: hr, params: { identifier: 'nobody' }, body: { newPassword: 'Temporary-Pass-42' } });
+    assert.equal(result.statusCode, 404);
+  });
+});

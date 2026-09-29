@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../utils/api.js';
+import HRResetPasswordCard from './HRResetPasswordCard';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
@@ -260,6 +261,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                     {account.accountStatus || 'Active'}
                   </span>
                 </div>
+                {!self && <HRResetPasswordCard account={account} />}
               </div>
               {self ? (
                 <p className="max-w-[220px] text-right text-[10px] font-semibold text-slate-400">Another HR/Admin must change your own access or status. Edit your details under Profile.</p>

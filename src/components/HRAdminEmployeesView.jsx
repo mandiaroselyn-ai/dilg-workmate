@@ -21,6 +21,7 @@ import {
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
+import HRResetPasswordCard from './HRResetPasswordCard';
 
 const emptyForm = {
   firstName: '',
@@ -760,6 +761,8 @@ This cannot be undone.`
               </div>
             )}
           </div>
+
+          <HRResetPasswordCard key={employeeKey(selectedEmployee)} account={selectedEmployee} />
 
           {accountStatusOf(selectedEmployee) === 'pending' && (
             <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
