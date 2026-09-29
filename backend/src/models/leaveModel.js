@@ -41,7 +41,9 @@ const RequestSchema = new mongoose.Schema({
   directorRemarks: { type: String, default: '' },
   directorApprovedAt: { type: String, default: '' },
   directorName: { type: String, default: '' },
-  statusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] }
+  statusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  // Set once leave credits have been deducted for this request's approval.
+  creditsDeducted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 export const MongoRequest = mongoose.models.Request || mongoose.model('Request', RequestSchema);
@@ -137,6 +139,13 @@ export const Leave = {
     const obj = mongoRequest.toObject();
     obj.id = obj.customId;
     return obj;
+  },
+
+  // Marks the request's credits as deducted. Returns false when they already were.
+  markCreditsDeducted: async (id) => {
+    ensureConnected();
+    const result = await MongoRequest.updateOne({ customId: id, creditsDeducted: { $ne: true } }, { $set: { creditsDeducted: true } });
+    return result.modifiedCount === 1;
   },
 
   findByCustomId: async (id) => {

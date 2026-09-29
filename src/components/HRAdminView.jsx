@@ -247,22 +247,20 @@ export default function HRAdminView({
     setTimeout(() => {
       setGeneratingReport(false);
       const randomID = Math.floor(100000 + Math.random() * 900000);
-      setGeneratedReportUrl(`DILG_OFFICIAL_ARCHIVE_Q2_${randomID}.zip`);
-      triggerToast('Electronic records successfully gathered and compiled into secure ZIP/PDF archives!');
+      // Report generation is not built yet; this produces a clearly labelled sample file.
+      setGeneratedReportUrl(`DILG_REPORT_SAMPLE_${randomID}.txt`);
+      triggerToast('Sample report ready. Report generation is not available yet, so this file contains no records.');
     }, 2000);
   };
 
   const handleDownloadArchive = () => {
     if (!generatedReportUrl) return;
 
-    const content = `DILG OFFICIAL COMPLIANCE BACKUP FILE\n` +
-      `Generated on: ${new Date().toLocaleString()}\n` +
-      `Coverage: Q2 FY 2026\n` +
-      `Status: VERIFIED & COMPLIANT\n\n` +
-      `========================================================================\n` +
-      `This ZIP archive contains official compiled DTR Validation lists, approved CSC Form 6 records, and active travel order clearances.`;
+    const content = `SAMPLE ONLY - NOT AN OFFICIAL DILG RECORD\n` +
+      `Generated on: ${new Date().toLocaleString()}\n\n` +
+      `Report generation is not available yet. This file does not contain any DTR, CSC Form 6, or travel order records.`;
 
-    const blob = new Blob([content], { type: 'application/octet-stream' });
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -835,7 +833,7 @@ export default function HRAdminView({
           <div className="border-b border-slate-100 pb-3 flex items-center gap-2">
             <Download className="w-5 h-5 text-indigo-700" />
             <div>
-              <h3 className="font-extrabold text-[#111827] text-sm uppercase">Generate Official Records PDF & ZIP Archives</h3>
+              <h3 className="font-extrabold text-[#111827] text-sm uppercase">Generate Records Report (Sample Only)</h3>
               <p className="text-[10px] text-slate-400">Compile DTR Validation lists and approved CSC forms into offline compliance files</p>
             </div>
           </div>
@@ -902,7 +900,7 @@ export default function HRAdminView({
                       className="inline-flex items-center gap-1.5 bg-indigo-700 hover:bg-indigo-650 text-white font-extrabold text-[10px] px-4 py-1.8 rounded shadow-sm transition-colors"
                     >
                       <Download className="w-3 h-3 text-white" />
-                      Download Official Archive File (.ZIP)
+                      Download Sample File (No Records)
                     </button>
                   </div>
                 </div>

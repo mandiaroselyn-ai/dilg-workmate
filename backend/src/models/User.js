@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { hashPassword, isPasswordHash, verifyPassword as checkPassword } from '../utils/passwordSecurity.js';
 import { resubmittableEnrollmentFilter } from '../utils/biometricEnrollment.js';
+import { DEFAULT_LEAVE_CREDITS } from '../utils/leaveCredits.js';
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, default: 'Lara Montiano' },
@@ -86,7 +87,11 @@ const UserSchema = new mongoose.Schema({
   webauthnChallenge: { type: String, default: '' },
   webauthnChallengeExpiry: { type: Date, default: null },
   resetToken: { type: String, default: '' },
-  resetTokenExpiry: { type: Date, default: null }
+  resetTokenExpiry: { type: Date, default: null },
+  vacationLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
+  sickLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
+  // IDs of fingerprint proofs already used for a Time In, so each proof works only once.
+  usedVerificationProofIds: { type: [String], default: [], select: false }
 }, { timestamps: true });
 
 UserSchema.pre('save', async function () {
@@ -161,6 +166,33 @@ export const User = {
       ? { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
       : { accessLevel };
     return MongoUser.find(query).sort({ name: 1 });
+  },
+
+  // Deducts approved leave days from one credit balance, never going below zero.
+  deductLeaveCredits: async ({ employeeId, email }, field, days) => {
+    ensureConnected();
+    if (!['vacationLeaveCredits', 'sickLeaveCredits'].includes(field) || !(days > 0)) return null;
+    const owners = [
+      ...(employeeId ? [{ employeeId }] : []),
+      ...(email ? [{ email: email.toLowerCase() }] : [])
+    ];
+    if (!owners.length) return null;
+    return MongoUser.findOneAndUpdate(
+      { $or: owners },
+      [{ $set: { [field]: { $max: [0, { $subtract: [{ $ifNull: [`$${field}`, DEFAULT_LEAVE_CREDITS] }, days] }] } } }],
+      { new: true }
+    );
+  },
+
+  // Records a fingerprint proof as used. Returns false when it was already used.
+  consumeVerificationProof: async (userId, proofId) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId) || typeof proofId !== 'string' || !proofId) return false;
+    const result = await MongoUser.updateOne(
+      { _id: userId, usedVerificationProofIds: { $ne: proofId } },
+      { $push: { usedVerificationProofIds: { $each: [proofId], $slice: -20 } } }
+    );
+    return result.modifiedCount === 1;
   },
 
   findById: async (userId) => {

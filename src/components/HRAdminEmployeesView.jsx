@@ -409,8 +409,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
           ? {
               ...employee,
               ...data.user,
-              id: employee.employeeId || employee.id,
-              employmentStatus: accountStatus === 'Active' ? 'ACTIVE' : employee.employmentStatus || 'ACTIVE'
+              id: employee.employeeId || employee.id
             }
           : employee
       ));

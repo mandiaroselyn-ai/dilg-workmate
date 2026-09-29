@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, NativeModules, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, NativeModules, Platform, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -28,6 +28,23 @@ const configuredWebAppUrl = process.env.EXPO_PUBLIC_WEB_URL || (
 );
 const MOBILE_REDIRECT_URI = 'com.dilg.workmate.employee://oauth';
 const WEB_APP_URL = `${configuredWebAppUrl}${configuredWebAppUrl.includes('?') ? '&' : '?'}platform=mobile&role=employee`;
+const WEB_APP_ORIGIN = new URL(configuredWebAppUrl).origin;
+
+// Only the WorkMate web app may load in the WebView or use the native bridge (fingerprint
+// signing, GPS, camera, Google sign-in). Other links, such as Google Maps, open in the browser.
+const isWorkMateUrl = url => {
+	try {
+		return new URL(url).origin === WEB_APP_ORIGIN;
+	} catch {
+		return false;
+	}
+};
+
+const handleNavigationRequest = request => {
+	if (request.isTopFrame === false || isWorkMateUrl(request.url) || /^(about|blob|data):/.test(request.url)) return true;
+	Linking.openURL(request.url).catch(() => {});
+	return false;
+};
 
 export default function App() {
 	const webViewRef = useRef(null);
@@ -49,6 +66,7 @@ export default function App() {
 	}, [canGoBack]);
 
 	const handleWebViewMessage = async (event) => {
+		if (!isWorkMateUrl(event.nativeEvent.url)) return;
 		let message;
 		try {
 			message = JSON.parse(event.nativeEvent.data);
@@ -198,6 +216,8 @@ export default function App() {
 				source={{ uri: WEB_APP_URL }}
 				style={styles.webView}
 				originWhitelist={['http://*', 'https://*']}
+				onShouldStartLoadWithRequest={handleNavigationRequest}
+				setSupportMultipleWindows={false}
 				javaScriptEnabled
 				geolocationEnabled
 				injectedJavaScriptBeforeContentLoaded={`window.dilgNativeBiometricSupported = ${Platform.OS === 'android'};

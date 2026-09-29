@@ -43,3 +43,12 @@ test('validates the code challenge format', () => {
   assert.equal(isValidCodeChallenge('short'), false);
   assert.equal(isValidCodeChallenge(undefined), false);
 });
+
+test('each fingerprint proof carries a unique ID so it can be used once', async () => {
+  const { createVerificationProof, readVerificationProof } = await import('./verificationProof.js');
+  const first = readVerificationProof(createVerificationProof({ employeeId: 'E1', type: 'fingerprint' }), { employeeId: 'E1', type: 'fingerprint' });
+  const second = readVerificationProof(createVerificationProof({ employeeId: 'E1', type: 'fingerprint' }), { employeeId: 'E1', type: 'fingerprint' });
+  assert.ok(first.jti && second.jti);
+  assert.notEqual(first.jti, second.jti);
+  assert.equal(readVerificationProof(createVerificationProof({ employeeId: 'E1', type: 'fingerprint' }), { employeeId: 'E2', type: 'fingerprint' }), null);
+});

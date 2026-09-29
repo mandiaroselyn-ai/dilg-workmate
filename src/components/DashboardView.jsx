@@ -178,11 +178,11 @@ export default function DashboardView({
     day: 'numeric',
     year: 'numeric'
   });
-  const scheduleEvents = events.slice(0, 3);
   const personalRequests = requests.filter((request) => matchesAttendanceEmployee(request, user));
   const pendingRequests = personalRequests.filter((req) => req.status === 'Pending');
   const approvedLeaveRequests = personalRequests.filter((request) => request.type === 'Leave Request' && request.status === 'Approved');
-  const availableVacationCredits = Number(user?.vacationLeaveCredits ?? 0);
+  // The server keeps the balance and deducts approved leave, so it is already the remaining balance.
+  const availableVacationCredits = Number(user?.vacationLeaveCredits ?? 15);
   const personalAttendanceHistory = attendanceHistory.filter((record) => matchesAttendanceEmployee(record, user));
   const leaveCredits = [
     { title: 'Vacation Leave', max: 15, available: availableVacationCredits, color: 'bg-[#0B4EA2]' }
@@ -190,7 +190,7 @@ export default function DashboardView({
     const used = approvedLeaveRequests
       .filter((request) => (request.leaveType || '').toLowerCase().includes(credit.title.toLowerCase().replace(' leave', '')))
       .reduce((total, request) => total + Number(request.workingDays || 0), 0);
-    return { ...credit, used, remaining: Math.max(0, credit.available - used) };
+    return { ...credit, used, remaining: Math.max(0, credit.available) };
   });
   const recentDocs = [
     { id: 'doc-1', title: 'Memorandum Circular 2026-015', subtitle: 'May 29, 2026 • PDF' },
@@ -204,8 +204,14 @@ export default function DashboardView({
     { id: 'evt-3', title: 'HR Policy Update Webinar', date: '2026-09-20', time: '10:00 AM', location: 'Online (Zoom)', description: 'New leave policy highlights; open to all staff.', organizer: 'HR' }
   ];
 
-  const displayEvents = (events && events.length) ? events.slice(0,3) : sampleEvents;
-  const dashboardAnnouncements = announcements.length ? announcements : starterDashboardAnnouncements;
+  // Upcoming Events lists the next three events from today on; announcements show newest first.
+  const upcomingEvents = events
+    .filter(event => (event.date || '') >= today)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''))
+    .slice(0, 3);
+  const displayEvents = events.length ? upcomingEvents : sampleEvents;
+  const newestAnnouncements = [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const dashboardAnnouncements = announcements.length ? newestAnnouncements : starterDashboardAnnouncements;
 
   const currentAssignment = todayRecord.workAssignment || {
     location: 'Boac, Marinduque',
@@ -445,6 +451,7 @@ export default function DashboardView({
 
             <DashboardSection title="Upcoming Events" actionLabel="See Calendar" onAction={() => onViewChange('calendar')}>
               <div className="space-y-3">
+                {displayEvents.length === 0 && <p className="text-sm text-slate-500">No upcoming events.</p>}
                 {displayEvents.map((event) => (
                   <div key={event.id} className="rounded-[18px] border border-slate-200 bg-slate-50 p-4">
                     <p className="text-sm font-semibold text-slate-900">{event.title}</p>

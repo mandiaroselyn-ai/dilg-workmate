@@ -4,11 +4,14 @@ export const validateApiBody = (req, res, next) => {
   }
 
   const body = req.body || {};
+  // SMS text is capped at 918 characters (6 SMS segments). Other messages, such as a
+  // notification that quotes long review remarks, may be longer.
+  const textLimit = (req.path || '').startsWith('/sms') ? 918 : 5000;
   const stringLimits = {
     email: 254,
     password: 256,
-    message: 918,
-    content: 918,
+    message: textLimit,
+    content: textLimit,
     employeeId: 64
   };
   for (const [field, limit] of Object.entries(stringLimits)) {

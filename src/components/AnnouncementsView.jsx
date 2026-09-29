@@ -65,7 +65,10 @@ export default function AnnouncementsView({
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState(null);
-  const visibleAnnouncements = announcements?.length ? announcements : starterAnnouncements;
+  // Newest first, like a notice board.
+  const visibleAnnouncements = announcements?.length
+    ? [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+    : starterAnnouncements;
 
   // Filter announcements
   const filteredAnnouncements = visibleAnnouncements.filter(ann => {

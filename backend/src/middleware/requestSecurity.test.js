@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateApiBody } from './requestSecurity.js';
 
-const invokeValidator = body => {
+const invokeValidator = (body, path = '/') => {
   let statusCode = 200;
   let responseBody;
   let nextCalled = false;
@@ -16,7 +16,7 @@ const invokeValidator = body => {
       return this;
     }
   };
-  validateApiBody({ body }, response, () => { nextCalled = true; });
+  validateApiBody({ body, path }, response, () => { nextCalled = true; });
   return { statusCode, responseBody, nextCalled };
 };
 
@@ -67,4 +67,11 @@ test('includes the nested attendance selfie in biometric payload limits', () => 
   assert.equal(result.statusCode, 413);
   assert.equal(result.responseBody.error, 'Biometric image is too large.');
   assert.equal(result.nextCalled, false);
+});
+
+test('limits SMS text to 918 characters but allows longer notification messages', () => {
+  const message = 'x'.repeat(1000);
+  assert.equal(invokeValidator({ message }, '/sms').statusCode, 400);
+  assert.equal(invokeValidator({ message }, '/notifications').nextCalled, true);
+  assert.equal(invokeValidator({ message: 'x'.repeat(5001) }, '/notifications').statusCode, 400);
 });

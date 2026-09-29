@@ -2,7 +2,7 @@ import { DtrLog } from '../models/dtrLogModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
-import { verifyVerificationProof } from '../utils/verificationProof.js';
+import { readVerificationProof } from '../utils/verificationProof.js';
 import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
@@ -185,10 +185,10 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'Selfie verification is required for clock-in.' });
       }
 
-      if (!record.fingerprintVerified || !verifyVerificationProof(record.fingerprintProof, {
-        employeeId: record.employeeId,
-        type: 'fingerprint'
-      })) {
+      const fingerprintProof = record.fingerprintVerified
+        ? readVerificationProof(record.fingerprintProof, { employeeId: record.employeeId, type: 'fingerprint' })
+        : null;
+      if (!fingerprintProof) {
         return res.status(400).json({ success: false, error: 'A valid server biometric assertion is required for clock-in.' });
       }
 
@@ -246,6 +246,10 @@ export const clockInOut = async (req, res) => {
           success: false,
           error: 'Your attendance selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.'
         });
+      }
+      // Each fingerprint verification can be used for only one Time In.
+      if (!(await User.consumeVerificationProof(user._id, fingerprintProof.jti))) {
+        return res.status(409).json({ success: false, error: 'This fingerprint verification was already used. Verify your fingerprint again.' });
       }
       const newLog = await DtrLog.create({
         ...record,

@@ -400,7 +400,8 @@ export default function RequestsView({
       .filter(request => request.type === 'Leave Request' && request.status === 'Approved')
       .filter(request => (request.leaveType || '').toLowerCase().includes(credit.label.toLowerCase().replace(' leave', '')))
       .reduce((total, request) => total + Number(request.workingDays || 0), 0);
-    return { ...credit, remaining: Math.max(0, credit.max - used) };
+    // The server deducts approved leave from the stored balance.
+    return { ...credit, used, remaining: Math.max(0, Number(user?.vacationLeaveCredits ?? credit.max)) };
   });
 
   return (
