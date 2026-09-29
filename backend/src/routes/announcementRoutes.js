@@ -2,6 +2,12 @@ import express from 'express';
 import { 
   getEvents, 
   createEvent, 
+  updateEvent,
+  deleteEvent,
+  getAnnouncementPosts,
+  createAnnouncementPost,
+  updateAnnouncementPost,
+  deleteAnnouncementPost,
   acknowledgeAnnouncement, 
   getNotifications, 
   createNotification, 
@@ -16,6 +22,12 @@ const router = express.Router();
 
 router.get('/events', getEvents);
 router.post('/events', authorizeRoles('hr_admin'), createEvent);
+router.patch('/events/:id', authorizeRoles('hr_admin'), updateEvent);
+router.delete('/events/:id', authorizeRoles('hr_admin'), deleteEvent);
+router.get('/announcements', getAnnouncementPosts);
+router.post('/announcements', authorizeRoles('hr_admin'), createAnnouncementPost);
+router.patch('/announcements/:id', authorizeRoles('hr_admin'), updateAnnouncementPost);
+router.delete('/announcements/:id', authorizeRoles('hr_admin'), deleteAnnouncementPost);
 router.post('/announcements/acknowledge', acknowledgeAnnouncement);
 router.get('/notifications', getNotifications);
 router.post('/notifications', createNotification);

@@ -3,6 +3,7 @@ import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'node:crypto';
 import { normalizePhilippineNumber, sendSms, SmsError } from '../services/smsService.js';
+import { normalizeAnnouncementInput, normalizeEventInput } from '../utils/bulletinFields.js';
 
 // Compares hashes so the check takes the same time regardless of where the secrets differ.
 const isMatchingSecret = (received, expected) => {
@@ -22,8 +23,81 @@ export const getEvents = async (req, res) => {
 
 export const createEvent = async (req, res) => {
   try {
-    const created = await Announcement.createEvent(req.body);
+    const { value, error } = normalizeEventInput(req.body);
+    if (error) return res.status(400).json({ success: false, error });
+    const created = await Announcement.createEvent(value);
     res.status(201).json({ success: true, event: created });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+export const updateEvent = async (req, res) => {
+  try {
+    const { value, error } = normalizeEventInput(req.body, { partial: true });
+    if (error) return res.status(400).json({ success: false, error });
+    const updated = await Announcement.updateEvent(req.params.id, value);
+    if (!updated) return res.status(404).json({ success: false, error: 'Event not found.' });
+    res.status(200).json({ success: true, event: updated });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+export const deleteEvent = async (req, res) => {
+  try {
+    if (!(await Announcement.deleteEvent(req.params.id))) {
+      return res.status(404).json({ success: false, error: 'Event not found.' });
+    }
+    res.status(200).json({ success: true, id: req.params.id });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+export const getAnnouncementPosts = async (req, res) => {
+  try {
+    res.status(200).json(await Announcement.findAnnouncementPosts());
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+export const createAnnouncementPost = async (req, res) => {
+  try {
+    const { value, error } = normalizeAnnouncementInput(req.body);
+    if (error) return res.status(400).json({ success: false, error });
+    const created = await Announcement.createAnnouncementPost({ ...value, author: req.user?.name || 'HR Administrator' });
+    // A notification with no recipient is shown to every employee.
+    await Announcement.createNotification({
+      title: created.important ? 'Important Announcement' : 'New Announcement',
+      message: `${created.category}: ${created.title}`,
+      type: 'announcement'
+    }).catch(notifyError => console.error('Unable to notify employees about an announcement:', notifyError));
+    res.status(201).json({ success: true, announcement: created });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+export const updateAnnouncementPost = async (req, res) => {
+  try {
+    const { value, error } = normalizeAnnouncementInput(req.body, { partial: true });
+    if (error) return res.status(400).json({ success: false, error });
+    const updated = await Announcement.updateAnnouncementPost(req.params.id, value);
+    if (!updated) return res.status(404).json({ success: false, error: 'Announcement not found.' });
+    res.status(200).json({ success: true, announcement: updated });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+export const deleteAnnouncementPost = async (req, res) => {
+  try {
+    if (!(await Announcement.deleteAnnouncementPost(req.params.id))) {
+      return res.status(404).json({ success: false, error: 'Announcement not found.' });
+    }
+    res.status(200).json({ success: true, id: req.params.id });
   } catch (error) {
     sendServerError(res, error);
   }

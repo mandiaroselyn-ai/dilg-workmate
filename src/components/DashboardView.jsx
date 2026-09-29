@@ -75,21 +75,6 @@ const ProgressRow = ({ title, value, max, color }) => {
   );
 };
 
-const starterDashboardAnnouncements = [
-  {
-    id: 'dashboard-mc-2026-015',
-    title: 'New DILG Memorandum Circular 2026-015',
-    content: 'Review the updated Disaster Preparedness and Response Protocol and coordinate concerns with your assigned office.',
-    category: 'Memorandum'
-  },
-  {
-    id: 'dashboard-attendance-guidelines',
-    title: 'Updated Field Work Attendance Guidelines',
-    content: 'Complete GPS verification and use the correct attendance mode when recording Time In and Time Out.',
-    category: 'Guidelines'
-  }
-];
-
 export default function DashboardView({
   user,
   attendanceHistory = [],
@@ -198,20 +183,14 @@ export default function DashboardView({
     { id: 'doc-3', title: 'Service Record Summary', subtitle: 'May 26, 2026 • PDF' }
   ];
 
-  const sampleEvents = [
-    { id: 'evt-1', title: 'Provincial ICT Training', date: '2026-09-10', time: '09:00 AM', location: 'Marinduque Provincial Office', description: 'Hands-on session for field officers — bring laptops.', organizer: 'ICT Unit' },
-    { id: 'evt-2', title: 'Barangay Monitoring Briefing', date: '2026-09-14', time: '01:30 PM', location: 'Boac Municipal Hall', description: 'Pre-departure briefing for monitoring teams.', organizer: 'Field Operations' },
-    { id: 'evt-3', title: 'HR Policy Update Webinar', date: '2026-09-20', time: '10:00 AM', location: 'Online (Zoom)', description: 'New leave policy highlights; open to all staff.', organizer: 'HR' }
-  ];
-
   // Upcoming Events lists the next three events from today on; announcements show newest first.
   const upcomingEvents = events
     .filter(event => (event.date || '') >= today)
     .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''))
     .slice(0, 3);
-  const displayEvents = events.length ? upcomingEvents : sampleEvents;
+  const displayEvents = upcomingEvents;
   const newestAnnouncements = [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const dashboardAnnouncements = announcements.length ? newestAnnouncements : starterDashboardAnnouncements;
+  const dashboardAnnouncements = newestAnnouncements;
 
   const currentAssignment = todayRecord.workAssignment || {
     location: 'Boac, Marinduque',

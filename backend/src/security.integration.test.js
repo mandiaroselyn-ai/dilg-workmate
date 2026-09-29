@@ -219,3 +219,14 @@ test('requires authentication before deleting an employee account', async () => 
   const response = await request(app).delete('/api/employees/DILG-2026-000001');
   assert.equal(response.status, 401);
 });
+
+test('requires authentication to manage announcements and events', async () => {
+  const responses = await Promise.all([
+    request(app).post('/api/announcements').send({ title: 'T', content: 'C' }),
+    request(app).patch('/api/announcements/ann-1').send({ title: 'T' }),
+    request(app).delete('/api/announcements/ann-1'),
+    request(app).patch('/api/events/evt-1').send({ title: 'T' }),
+    request(app).delete('/api/events/evt-1')
+  ]);
+  for (const response of responses) assert.equal(response.status, 401);
+});

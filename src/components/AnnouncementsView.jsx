@@ -18,45 +18,6 @@ import {
   Pin
 } from 'lucide-react';
 
-const starterAnnouncements = [
-  {
-    id: 'starter-mc-2026-015',
-    title: 'New DILG Memorandum Circular 2026-015',
-    date: '2026-05-29',
-    content: 'All employees are advised to review the updated Disaster Preparedness and Response Protocol and coordinate concerns with their assigned office.',
-    category: 'Memorandum',
-    referenceNo: 'MC-2026-015',
-    important: true
-  },
-  {
-    id: 'starter-attendance-guidelines',
-    title: 'Updated Field Work Attendance Guidelines',
-    date: '2026-05-27',
-    content: 'Employees assigned to field work must complete GPS verification and use the correct attendance mode when recording Time In and Time Out.',
-    category: 'Guidelines',
-    referenceNo: 'GL-2026-ATT',
-    important: false
-  },
-  {
-    id: 'starter-capacity-building',
-    title: 'Employee Capacity Building Workshop',
-    date: '2026-06-01',
-    content: 'A capacity building session will cover personnel processes, digital records, and service delivery updates. Watch for the official schedule from your office.',
-    category: 'Training',
-    referenceNo: 'TRN-2026-001',
-    important: false
-  },
-  {
-    id: 'starter-coordination-meeting',
-    title: 'Provincial Coordination Meeting',
-    date: '2026-06-09',
-    content: 'The provincial coordination meeting will discuss current operations, pending requests, and upcoming personnel activities.',
-    category: 'Meeting',
-    referenceNo: 'PM-2026-006',
-    important: false
-  }
-];
-
 export default function AnnouncementsView({
   announcements,
   acknowledgedIds,
@@ -66,9 +27,7 @@ export default function AnnouncementsView({
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState(null);
   // Newest first, like a notice board.
-  const visibleAnnouncements = announcements?.length
-    ? [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-    : starterAnnouncements;
+  const visibleAnnouncements = [...(announcements || [])].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   // Filter announcements
   const filteredAnnouncements = visibleAnnouncements.filter(ann => {
@@ -151,8 +110,8 @@ export default function AnnouncementsView({
         {filteredAnnouncements.length === 0 ? (
           <div className="md:col-span-2 p-16 text-center text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-55 space-y-2">
             <Megaphone className="w-8 h-8 text-slate-500 mx-auto animate-pulse" />
-            <p className="font-bold text-sm text-slate-800">No bulletins match your query.</p>
-            <p className="text-xs">Adjust filters or search criteria to query larger database indexes.</p>
+            <p className="font-bold text-sm text-slate-800">{visibleAnnouncements.length === 0 ? 'No announcements yet.' : 'No bulletins match your query.'}</p>
+            <p className="text-xs">{visibleAnnouncements.length === 0 ? 'Announcements from HR will appear here.' : 'Adjust filters or search criteria to query larger database indexes.'}</p>
           </div>
         ) : (
           filteredAnnouncements.map((ann) => {

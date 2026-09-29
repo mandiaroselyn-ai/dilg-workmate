@@ -910,6 +910,47 @@ export default function App() {
       });
   };
 
+  // HR announcements and calendar events. Each handler throws with the server's message
+  // on failure so the HR screen can show it.
+  const sendBulletinChange = async (path, method, body) => {
+    const response = await apiFetch(path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save. Please try again.');
+    return data;
+  };
+
+  const handleCreateAnnouncement = async fields => {
+    const { announcement } = await sendBulletinChange('/api/announcements', 'POST', fields);
+    setAnnouncements(previous => [announcement, ...previous]);
+    return announcement;
+  };
+
+  const handleUpdateAnnouncement = async (id, fields) => {
+    const { announcement } = await sendBulletinChange(`/api/announcements/${encodeURIComponent(id)}`, 'PATCH', fields);
+    setAnnouncements(previous => previous.map(item => item.id === id ? announcement : item));
+    return announcement;
+  };
+
+  const handleDeleteAnnouncement = async id => {
+    await sendBulletinChange(`/api/announcements/${encodeURIComponent(id)}`, 'DELETE');
+    setAnnouncements(previous => previous.filter(item => item.id !== id));
+  };
+
+  const handleUpdateEvent = async (id, fields) => {
+    const { event } = await sendBulletinChange(`/api/events/${encodeURIComponent(id)}`, 'PATCH', fields);
+    setEvents(previous => previous.map(item => item.id === id ? event : item));
+    return event;
+  };
+
+  const handleDeleteEvent = async id => {
+    await sendBulletinChange(`/api/events/${encodeURIComponent(id)}`, 'DELETE');
+    setEvents(previous => previous.filter(item => item.id !== id));
+  };
+
   // Acknowledge announcement
   const handleAcknowledgeAnnouncement = (id) => {
     fetch('/api/announcements/acknowledge', {
@@ -1150,7 +1191,7 @@ export default function App() {
               user={user}
               attendanceHistory={visibleEmployeeRecords}
               requests={visibleEmployeeRequests}
-              announcements={events}
+              announcements={announcements}
               events={events}
               onViewChange={handleViewChange}
               onQuickAction={handleViewChange}
@@ -1201,12 +1242,20 @@ export default function App() {
               onEmployeesChange={setEmployees}
               onUpdateUser={handleUpdateUser}
               onAdminNotification={handleAdminNotification}
+              announcements={announcements}
+              events={events}
+              onCreateAnnouncement={handleCreateAnnouncement}
+              onUpdateAnnouncement={handleUpdateAnnouncement}
+              onDeleteAnnouncement={handleDeleteAnnouncement}
+              onCreateEvent={handleAddEvent}
+              onUpdateEvent={handleUpdateEvent}
+              onDeleteEvent={handleDeleteEvent}
             />
           )}
 
           {currentView === 'announcements' && (
             <AnnouncementsView
-              announcements={events}
+              announcements={announcements}
               acknowledgedIds={acknowledgedAnnouncements}
               onAcknowledge={handleAcknowledgeAnnouncement}
             />

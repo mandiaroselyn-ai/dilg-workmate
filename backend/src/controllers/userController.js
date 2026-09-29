@@ -371,14 +371,15 @@ export const getFullState = async (req, res) => {
 
     // Employees only load their own attendance, filtered in the database rather than
     // loading every record (with selfies) and filtering here.
-    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged] = await Promise.all([
+    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements] = await Promise.all([
       req.user || User.get(),
       req.user?.accessLevel === 'employee' ? DtrLog.findForEmployee(req.user) : DtrLog.find(),
       Leave.findAllRequests(),
       Announcement.findEvents(),
       Announcement.findNotifications(),
       Announcement.findSmsAlerts(),
-      Announcement.getAcknowledged(req.user)
+      Announcement.getAcknowledged(req.user),
+      Announcement.findAnnouncementPosts()
     ]);
     const visibleRawRequests = req.user?.accessLevel === 'employee'
       ? rawRequests.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
@@ -411,7 +412,8 @@ export const getFullState = async (req, res) => {
       events,
       notifications: visibleNotifications,
       smsAlerts: visibleSmsAlerts,
-      acknowledged
+      acknowledged,
+      announcements
     });
   } catch (error) {
     sendServerError(res, error);

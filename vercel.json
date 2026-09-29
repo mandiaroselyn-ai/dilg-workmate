@@ -65,6 +65,10 @@
     {
       "source": "/api/auth/google/exchange",
       "destination": "/api/auth/google/url"
+    },
+    {
+      "source": "/api/events/:path*",
+      "destination": "/api/events"
     }
   ]
 }

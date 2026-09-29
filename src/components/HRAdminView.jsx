@@ -28,7 +28,6 @@ import {
   UserPlus,
   FolderKanban,
   CalendarDays,
-  Megaphone,
   ContactRound,
   UserCircle,
   LockKeyhole,
@@ -44,6 +43,7 @@ import HRAdminAttendanceHistoryView from './HRAdminAttendanceHistoryView';
 import HRAdminRequestsView from './HRAdminRequestsView';
 import HRAdminEmployeesView from './HRAdminEmployeesView';
 import HRAdminProfileView from './HRAdminProfileView';
+import HRAnnouncementsManager from './HRAnnouncementsManager';
 import HRAdminRecordsView from './HRAdminRecordsView';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import HRFaceComparison from './HRFaceComparison';
@@ -60,7 +60,15 @@ export default function HRAdminView({
   onViewChange,
   onEmployeesChange,
   onUpdateUser,
-  onAdminNotification
+  onAdminNotification,
+  announcements = [],
+  events = [],
+  onCreateAnnouncement,
+  onUpdateAnnouncement,
+  onDeleteAnnouncement,
+  onCreateEvent,
+  onUpdateEvent,
+  onDeleteEvent
 }) {
   const sectionTabs = {
     hr_dashboard: 'dashboard',
@@ -405,7 +413,17 @@ export default function HRAdminView({
       )}
 
       {activeTab === 'announcements' && (
-        <div className="space-y-5 animate-fadeIn"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-black text-slate-900">Announcements</h2><p className="text-sm text-slate-500">Create, edit, publish, archive, and notify employees.</p></div><button onClick={() => triggerToast('New announcement editor opened.')} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white"><Megaphone className="h-4 w-4" /> Create Announcement</button></div><div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">{['Official HR records maintenance schedule', 'DTR validation window is now open', 'Updated personnel document checklist'].map((item, index) => <div key={item} className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-4 last:border-0"><div><p className="font-black text-slate-800">{item}</p><p className="mt-1 text-xs text-slate-500">Published to employee notifications</p></div><div className="flex gap-2"><button onClick={() => triggerToast('Announcement edit mode opened.')} className="rounded-lg border border-slate-200 px-3 py-1 text-[10px] font-black text-slate-700">Edit</button><button onClick={() => triggerToast(index === 0 ? 'Announcement archived.' : 'Notification sent to employees.')} className="rounded-lg bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-700">{index === 0 ? 'Archive' : 'Notify'}</button></div></div>)}</div></div>
+        <HRAnnouncementsManager
+          announcements={announcements}
+          events={events}
+          onCreateAnnouncement={onCreateAnnouncement}
+          onUpdateAnnouncement={onUpdateAnnouncement}
+          onDeleteAnnouncement={onDeleteAnnouncement}
+          onCreateEvent={onCreateEvent}
+          onUpdateEvent={onUpdateEvent}
+          onDeleteEvent={onDeleteEvent}
+          onToast={triggerToast}
+        />
       )}
 
       {activeTab === 'profile' && <div className="hr-admin-profile-screen"><HRAdminProfileView user={user} onUpdateUser={onUpdateUser} onToast={triggerToast} /></div>}

@@ -44,7 +44,26 @@ const SettingSchema = new mongoose.Schema({
   ids: { type: [String], default: [] }
 });
 
+// Announcements that HR publishes to employees (memoranda, guidelines, and so on).
+const AnnouncementPostSchema = new mongoose.Schema({
+  customId: { type: String, required: true },
+  title: { type: String, required: true },
+  content: { type: String, required: true },
+  category: { type: String, default: 'Memorandum' },
+  referenceNo: { type: String, default: '' },
+  date: { type: String, required: true },
+  important: { type: Boolean, default: false },
+  author: { type: String, default: '' }
+}, { timestamps: true });
+
 const MongoEvent = mongoose.models.Event || mongoose.model('Event', EventSchema);
+const MongoAnnouncementPost = mongoose.models.AnnouncementPost || mongoose.model('AnnouncementPost', AnnouncementPostSchema);
+
+const withId = item => {
+  const obj = item.toObject();
+  obj.id = obj.customId;
+  return obj;
+};
 const MongoNotification = mongoose.models.Notification || mongoose.model('Notification', NotificationSchema);
 const MongoSmsAlert = mongoose.models.SmsAlert || mongoose.model('SmsAlert', SmsAlertSchema);
 const MongoSetting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
@@ -87,6 +106,44 @@ export const Announcement = {
       obj.id = obj.customId;
       return obj;
     });
+  },
+
+  // Applies HR's changes to one event. Returns the updated event, or null if not found.
+  updateEvent: async (id, changes) => {
+    ensureConnected();
+    const item = await MongoEvent.findOneAndUpdate({ customId: id }, { $set: changes }, { new: true, runValidators: true });
+    return item ? withId(item) : null;
+  },
+
+  deleteEvent: async (id) => {
+    ensureConnected();
+    const result = await MongoEvent.deleteOne({ customId: id });
+    return result.deletedCount === 1;
+  },
+
+  // Newest announcements first.
+  findAnnouncementPosts: async () => {
+    ensureConnected();
+    const list = await MongoAnnouncementPost.find().sort({ date: -1, createdAt: -1 });
+    return list.map(withId);
+  },
+
+  createAnnouncementPost: async (data) => {
+    ensureConnected();
+    const item = await MongoAnnouncementPost.create({ ...data, customId: createRecordId('ann') });
+    return withId(item);
+  },
+
+  updateAnnouncementPost: async (id, changes) => {
+    ensureConnected();
+    const item = await MongoAnnouncementPost.findOneAndUpdate({ customId: id }, { $set: changes }, { new: true, runValidators: true });
+    return item ? withId(item) : null;
+  },
+
+  deleteAnnouncementPost: async (id) => {
+    ensureConnected();
+    const result = await MongoAnnouncementPost.deleteOne({ customId: id });
+    return result.deletedCount === 1;
   },
 
   createEvent: async (eventData) => {
