@@ -212,6 +212,42 @@ export default function App() {
     };
   }, [authToken, activeRole]);
 
+  // Picks up announcements, events, and notifications posted after the app was opened:
+  // every minute while the app is on screen, and whenever the person comes back to it.
+  useEffect(() => {
+    if (!authToken || !activeRole) return undefined;
+
+    let isCurrentSession = true;
+    const readList = path => apiFetch(path).then(res => {
+      if (!res.ok) throw new Error(`${path} returned HTTP ${res.status}`);
+      return res.json();
+    });
+    const refreshBulletins = () => {
+      if (document.hidden) return;
+      Promise.all([readList('/api/announcements'), readList('/api/events'), readList('/api/notifications')])
+        .then(([latestAnnouncements, latestEvents, latestNotifications]) => {
+          if (!isCurrentSession) return;
+          if (Array.isArray(latestAnnouncements)) setAnnouncements(latestAnnouncements);
+          if (Array.isArray(latestEvents)) setEvents(latestEvents);
+          if (!Array.isArray(latestNotifications)) return;
+          if (activeRole === 'hr_admin') {
+            setAdminNotifications(scopeNotificationsToAccount(latestNotifications, 'hr_admin', user));
+          } else {
+            setNotifications(latestNotifications);
+          }
+        })
+        .catch(error => console.warn('Unable to refresh announcements and events:', error));
+    };
+
+    const refreshId = window.setInterval(refreshBulletins, 60000);
+    document.addEventListener('visibilitychange', refreshBulletins);
+    return () => {
+      isCurrentSession = false;
+      window.clearInterval(refreshId);
+      document.removeEventListener('visibilitychange', refreshBulletins);
+    };
+  }, [authToken, activeRole, user]);
+
   const normalizeRole = (role) => role?.toString().trim().toLowerCase() || 'employee';
 
   const roleAllowedViews = {
@@ -893,43 +929,8 @@ export default function App() {
     return data.request;
   };
 
-  // Add Calendar event
-  const handleAddEvent = (newEvent) => {
-    return fetch('/api/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newEvent)
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (!data.success || !data.event) {
-          throw new Error(data.error || 'The event could not be saved.');
-        }
-        setEvents(prev => [...prev, data.event]);
-
-        // Sent to every employee (no recipient), like a new announcement.
-        const newNotif = {
-          title: 'New Event',
-          message: `${newEvent.title} is scheduled on ${newEvent.date}${newEvent.time ? ` at ${newEvent.time}` : ''}. See the Calendar for details.`,
-          time: 'Just now',
-          type: 'announcement'
-        };
-        fetch('/api/notifications', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newNotif)
-        })
-          .then(res => res.json())
-          .then(notifData => {
-            if (notifData.success) {
-              setNotifications(prev => [notifData.notification, ...prev]);
-            }
-          });
-      });
-  };
-
   // HR announcements and calendar events. Each handler throws with the server's message
-  // on failure so the HR screen can show it.
+  // on failure so the HR screen can show it. The server notifies employees of new ones.
   const sendBulletinChange = async (path, method, body) => {
     const response = await apiFetch(path, {
       method,
@@ -939,6 +940,12 @@ export default function App() {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save. Please try again.');
     return data;
+  };
+
+  const handleAddEvent = async fields => {
+    const { event } = await sendBulletinChange('/api/events', 'POST', fields);
+    setEvents(previous => [...previous, event]);
+    return event;
   };
 
   const handleCreateAnnouncement = async fields => {

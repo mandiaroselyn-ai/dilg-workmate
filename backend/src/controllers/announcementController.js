@@ -26,6 +26,12 @@ export const createEvent = async (req, res) => {
     const { value, error } = normalizeEventInput(req.body);
     if (error) return res.status(400).json({ success: false, error });
     const created = await Announcement.createEvent(value);
+    // A notification with no recipient is shown to every employee.
+    await Announcement.createNotification({
+      title: 'New Event',
+      message: `${created.title} is scheduled on ${created.date}${created.time ? ` at ${created.time}` : ''}. See the Calendar for details.`,
+      type: 'announcement'
+    }).catch(notifyError => console.error('Unable to notify employees about an event:', notifyError));
     res.status(201).json({ success: true, event: created });
   } catch (error) {
     sendServerError(res, error);
