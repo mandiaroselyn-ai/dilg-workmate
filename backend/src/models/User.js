@@ -76,6 +76,8 @@ const UserSchema = new mongoose.Schema({
   // How the phone reaches the registered fingerprint (for example "internal" for its
   // built-in sensor), reported when it was registered.
   webauthnTransports: { type: [String], default: [] },
+  // When each Time In fingerprint was registered, shown to HR.
+  webauthnRegisteredAt: { type: Date, default: null },
   webauthnChallenges: {
     type: [{
       challenge: { type: String, required: true },
@@ -85,6 +87,7 @@ const UserSchema = new mongoose.Schema({
     default: []
   },
   nativeBiometricPublicKey: { type: String, default: '' },
+  nativeBiometricRegisteredAt: { type: Date, default: null },
   nativeBiometricChallenge: { type: String, default: '' },
   nativeBiometricChallengeExpiry: { type: Date, default: null },
   webauthnChallenge: { type: String, default: '' },
@@ -124,6 +127,9 @@ function ensureConnected() {
     throw new Error('MongoDB is not connected.');
   }
 }
+
+// Adds a fingerprint registration to the enrollment activity HR sees.
+const fingerprintRegisteredEvent = (outcome, provider) => ({ $each: [{ timestamp: new Date(), outcome, provider }], $slice: -50 });
 
 // Rounded down to the second, like token issue times, so the new session token issued
 // right after a change is still accepted.
@@ -558,9 +564,11 @@ export const User = {
       {
         $set: {
           nativeBiometricPublicKey: publicKey,
+          nativeBiometricRegisteredAt: new Date(),
           nativeBiometricChallenge: '',
           nativeBiometricChallengeExpiry: null
-        }
+        },
+        $push: { faceVerificationAudit: fingerprintRegisteredEvent('phone-app-fingerprint-registered', 'workmate-phone-app') }
       },
       { new: true, writeConcern: { w: 'majority' } }
     );
@@ -597,9 +605,11 @@ export const User = {
           webauthnPublicKey: credential.publicKey,
           webauthnCounter: credential.counter,
           webauthnTransports: credential.transports || [],
+          webauthnRegisteredAt: new Date(),
           webauthnChallenge: '',
           webauthnChallengeExpiry: null
-        }
+        },
+        $push: { faceVerificationAudit: fingerprintRegisteredEvent('browser-fingerprint-registered', 'browser-passkey') }
       },
       { new: true, writeConcern: { w: 'majority' } }
     );

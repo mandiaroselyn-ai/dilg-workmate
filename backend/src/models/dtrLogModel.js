@@ -54,6 +54,8 @@ const DtrLogSchema = new mongoose.Schema({
   fingerprintVerified: { type: Boolean, default: false },
   fingerprintHash: { type: String, default: '' },
   fingerprintProof: { type: String, default: '' },
+  // 'browser' or 'phone-app': the registered fingerprint this Time In matched.
+  fingerprintMethod: { type: String, enum: ['', 'browser', 'phone-app'], default: '' },
   faceVerified: { type: Boolean, default: false },
   faceMatchConfidence: { type: Number, default: null },
   faceMatchDistance: { type: Number, default: null },
@@ -204,6 +206,7 @@ export const DtrLog = {
       fingerprintVerified: logData.fingerprintVerified || false,
       fingerprintProof: logData.fingerprintProof || '',
       fingerprintHash: logData.fingerprintHash || null,
+      fingerprintMethod: ['browser', 'phone-app'].includes(logData.fingerprintMethod) ? logData.fingerprintMethod : '',
       selfieUrl: logData.selfieUrl || null,
       faceVerified: logData.faceVerified === true,
       faceMatchConfidence: logData.faceMatchConfidence == null

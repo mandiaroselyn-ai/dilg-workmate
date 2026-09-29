@@ -152,7 +152,7 @@ export const verifyAuthentication = async (req, res) => {
 
     const updatedUser = await User.updateWebAuthnCounter(user._id, verification.authenticationInfo.newCounter);
     if (!updatedUser) throw new Error('Could not update the passkey counter.');
-    const proof = createVerificationProof({ employeeId: user.employeeId, type: 'fingerprint' });
+    const proof = createVerificationProof({ employeeId: user.employeeId, type: 'fingerprint', method: 'browser' });
     res.status(200).json({ success: true, verificationProof: proof });
   } catch (error) {
     res.status(401).json({ success: false, error: 'WebAuthn biometric assertion failed.' });

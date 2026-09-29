@@ -263,6 +263,8 @@ export const clockInOut = async (req, res) => {
         faceLivenessConfidence: 0,
         faceVerificationProvider: 'local-face-api-v1',
         faceLivenessProvider: 'not-used',
+        // Which registered fingerprint this Time In matched.
+        fingerprintMethod: fingerprintProof.method === 'phone-app' ? 'phone-app' : 'browser',
         deviceId: ''
       });
       const sms = await sendAttendanceConfirmation(user,

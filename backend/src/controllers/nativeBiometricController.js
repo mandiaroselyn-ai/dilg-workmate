@@ -63,6 +63,6 @@ export const verifyNativeBiometric = async (req, res) => {
     if (!verifiedUser) return res.status(400).json({ success: false, error: 'Phone fingerprint challenge expired. Please retry.' });
   }
 
-  const proof = createVerificationProof({ employeeId: user.employeeId, type: 'fingerprint' });
+  const proof = createVerificationProof({ employeeId: user.employeeId, type: 'fingerprint', method: 'phone-app' });
   return res.status(200).json({ success: true, verificationProof: proof });
 };

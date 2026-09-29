@@ -5,6 +5,7 @@ import {
   CalendarDays,
   FileText,
   Filter,
+  Fingerprint,
   Mail,
   MapPin,
   Pencil,
@@ -18,6 +19,7 @@ import {
   X
 } from 'lucide-react';
 import { apiFetch, parseApiResponse } from '../utils/api';
+import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
 
 const emptyForm = {
@@ -852,6 +854,28 @@ This cannot be undone.`
                 {selectedEmployee.biometricEnrollmentReviewedAt ? ` · reviewed ${new Date(selectedEmployee.biometricEnrollmentReviewedAt).toLocaleString()}` : ''}
               </p>
             )}
+            {(() => {
+              const fingerprints = registeredFingerprints(selectedEmployee);
+              return (
+                <div className={`mt-3 rounded-xl border p-3 ${fingerprints.length ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                  <p className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide ${fingerprints.length ? 'text-emerald-800' : 'text-slate-600'}`}>
+                    <Fingerprint className="h-3.5 w-3.5" /> Fingerprint for Time In
+                  </p>
+                  {fingerprints.length ? (
+                    <>
+                      {fingerprints.map(({ source, registeredAt }) => (
+                        <p key={source} className="mt-1 text-xs font-bold text-emerald-900">
+                          Registered · {source}{registeredAt ? ` · ${new Date(registeredAt).toLocaleString()}` : ''}
+                        </p>
+                      ))}
+                      <p className="mt-1 text-[10px] font-semibold text-emerald-800">Every Time In must match this registered fingerprint. The fingerprint itself never leaves the employee's phone; WorkMate keeps only the phone's security key, so there is no fingerprint image to view.</p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs font-semibold text-slate-600">Not registered yet. The employee registers it on the Biometric Enrollment page. Time In needs a registered fingerprint.</p>
+                  )}
+                </div>
+              );
+            })()}
             {(dilgIdPhoto || dilgIdBackPhoto || savedEnrollmentImage) ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {dilgIdPhoto && (
@@ -951,7 +975,7 @@ This cannot be undone.`
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
-          <p className="mt-1 text-[10px] font-semibold text-slate-500">Enrollment and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
+          <p className="mt-1 text-[10px] font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
           {selectedEmployee.faceVerificationAudit?.length ? (
             <div className="mt-3 space-y-2">
               {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
@@ -970,7 +994,7 @@ This cannot be undone.`
               ))}
             </div>
           ) : (
-            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-[10px] font-semibold text-slate-500">No face verification events recorded yet.</p>
+            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-[10px] font-semibold text-slate-500">No enrollment events recorded yet.</p>
           )}
           {selectedEmployee.dilgIdVerifiedAt && (
             <p className="mt-3 text-[10px] font-semibold text-slate-500">
@@ -1138,6 +1162,11 @@ This cannot be undone.`
                         </span>
                         {employee.biometricEnrollmentStatus === 'pending' && (
                           <span className="mt-1 block rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800">Biometric review</span>
+                        )}
+                        {employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? (
+                          <span className="mt-1 block text-[10px] font-black text-emerald-700">Fingerprint ✓</span>
+                        ) : (
+                          <span className="mt-1 block text-[10px] font-semibold text-slate-400">No fingerprint</span>
                         )}
                       </td>
                       <td className="px-3 py-3 text-slate-700">{employee.assignedStation || '—'}</td>

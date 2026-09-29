@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 
 export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], onBack }) {
@@ -131,10 +132,10 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
             <span>Time Out: <b>{selectedRecord.record.timeOut || '-'}</b></span>
             <span>Total Hours: <b>{selectedRecord.record.totalHours || '-'}</b></span>
             <span>Attendance Status: <b>{selectedRecord.status}</b></span>
-            <span>Record Status: <b>{selectedRecord.record.selfieUrl && selectedRecord.record.fingerprintVerified ? 'Passkey verified; selfie attached' : 'For Review'}</b></span>
+            <span>Record Status: <b>{selectedRecord.record.selfieUrl && selectedRecord.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
             <span>Face liveness: <b>{selectedRecord.record.faceLivenessVerified ? `${Number(selectedRecord.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
             <span>Face match: <b>{selectedRecord.record.faceVerified ? `Matched · distance ${Number(selectedRecord.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
-            <span>Passkey verification: <b>{selectedRecord.record.fingerprintVerified ? 'Verified' : 'Not verified'}</b></span>
+            <span>Fingerprint: <b>{describeFingerprintCheck(selectedRecord.record)}</b></span>
             <span>Face-match time: <b>{selectedRecord.record.faceVerifiedAt ? new Date(selectedRecord.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
             <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
           </div>
@@ -146,7 +147,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
               <CheckCircle2 className="inline h-3 w-3" /> {selectedRecord.record.faceLivenessVerified ? 'Liveness checked' : 'No liveness check'}
             </span>
             <span className={`rounded-full px-2 py-1 font-bold ${selectedRecord.record.fingerprintVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              <CheckCircle2 className="inline h-3 w-3" /> Device Biometric
+              <CheckCircle2 className="inline h-3 w-3" /> Fingerprint
             </span>
             {Number.isFinite(selectedRecord.record.latitude) && Number.isFinite(selectedRecord.record.longitude) && (
               <a

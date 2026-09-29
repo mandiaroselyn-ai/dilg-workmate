@@ -48,6 +48,7 @@ import HRStaffAccountsView from './HRStaffAccountsView';
 import HRAdminRecordsView from './HRAdminRecordsView';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import HRFaceComparison from './HRFaceComparison';
+import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 
 export default function HRAdminView({
   section = 'hr_dashboard',
@@ -599,7 +600,7 @@ export default function HRAdminView({
                           {rec.selfieUrl ? <button type="button" onClick={() => setSelectedVerificationPhoto({ url: rec.selfieUrl, record: rec })} className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-700 hover:bg-blue-100"><img src={rec.selfieUrl} alt="Selfie verification" className="h-7 w-7 rounded-full object-cover" referrerPolicy="no-referrer" /><span>View selfie</span></button> : <span className="text-[10px] font-bold text-slate-400">No selfie</span>}
                         </td>
                         <td className="p-3 text-center">
-                          {rec.fingerprintVerified ? <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Verified</span> : rec.fingerprintHash ? <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-700">Recorded</span> : <span className="text-[10px] font-bold text-slate-400">Not verified</span>}
+                          {rec.fingerprintVerified ? <span title={describeFingerprintCheck(rec)} className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">Matched</span> : rec.fingerprintHash ? <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-black text-amber-700">Recorded</span> : <span className="text-[10px] font-bold text-slate-400">Not verified</span>}
                         </td>
                         <td className="p-3 text-center">
                           {rec.verificationAudit?.verifiedAt ? (
@@ -980,7 +981,7 @@ export default function HRAdminView({
               faceVerified={selectedVerificationPhoto.record.faceVerified}
               faceMatchDistance={selectedVerificationPhoto.record.faceMatchDistance}
             />
-            <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">Fingerprint</p><p className="mt-1 font-black text-emerald-700">{selectedVerificationPhoto.record.fingerprintVerified ? 'Verified' : selectedVerificationPhoto.record.fingerprintHash ? 'Recorded' : 'Not verified'}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">DTR Audit</p><p className="mt-1 font-black text-slate-800">{selectedVerificationPhoto.record.verificationAudit?.verifiedAt ? 'Verified' : 'Pending'}</p></div></div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">Fingerprint</p><p className="mt-1 font-black text-emerald-700">{describeFingerprintCheck(selectedVerificationPhoto.record)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-slate-500">DTR Audit</p><p className="mt-1 font-black text-slate-800">{selectedVerificationPhoto.record.verificationAudit?.verifiedAt ? 'Verified' : 'Pending'}</p></div></div>
           </div>
         </div>
       )}

@@ -23,3 +23,18 @@ export const describeFingerprintError = (error, abortReason = null) => {
   if (error?.name === 'TypeError') return 'Fingerprint verification failed. Check your connection and retry.';
   return message || 'Fingerprint verification failed. Check browser biometric support and retry.';
 };
+
+const FINGERPRINT_SOURCES = { browser: 'Chrome / browser', 'phone-app': 'WorkMate phone app' };
+
+// The fingerprints an employee registered for Time In, for HR's employee record.
+export const registeredFingerprints = employee => [
+  employee?.hasBrowserFingerprint && { source: FINGERPRINT_SOURCES.browser, registeredAt: employee.webauthnRegisteredAt || null },
+  employee?.hasPhoneFingerprint && { source: FINGERPRINT_SOURCES['phone-app'], registeredAt: employee.nativeBiometricRegisteredAt || null }
+].filter(Boolean);
+
+// How a Time In's fingerprint was checked, for HR's DTR records.
+export const describeFingerprintCheck = record => {
+  if (!record?.fingerprintVerified) return 'Not verified';
+  const source = FINGERPRINT_SOURCES[record.fingerprintMethod];
+  return source ? `Matched registered fingerprint (${source})` : 'Matched registered fingerprint';
+};

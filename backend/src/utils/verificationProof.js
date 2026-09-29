@@ -9,11 +9,13 @@ const getSecret = () => {
 
 const sign = value => crypto.createHmac('sha256', getSecret()).update(value).digest('base64url');
 
-export const createVerificationProof = ({ employeeId, type, confidence = 0 }) => {
+// `method` names the registered fingerprint that was checked: 'browser' or 'phone-app'.
+export const createVerificationProof = ({ employeeId, type, confidence = 0, method = '' }) => {
   const payload = Buffer.from(JSON.stringify({
     employeeId,
     type,
     confidence,
+    method,
     // Unique ID so a Time In can mark this proof as used.
     jti: crypto.randomBytes(12).toString('base64url'),
     exp: Math.floor(Date.now() / 1000) + PROOF_TTL_SECONDS
