@@ -93,10 +93,16 @@ const normalizeEmployee = (employee = {}) => {
   };
 };
 
+// Account status decides whether the employee can log in (Active, Pending, Inactive,
+// Suspended); employment status (ACTIVE, INACTIVE, ON LEAVE) is shown separately.
+const accountStatusOf = (employee = {}) => (employee.accountStatus || 'Pending').toString().trim().toLowerCase();
+const STATUS_FILTERS = ['All', 'Active', 'Pending', 'Inactive'];
+
 const statusStyle = (status = '') => {
+  // Check inactive first: 'Inactive' also contains 'active'.
+  if (/inactive|disabled|suspended/i.test(status)) return 'bg-slate-100 text-slate-600';
   if (/active/i.test(status)) return 'bg-emerald-50 text-emerald-700';
   if (/pending/i.test(status)) return 'bg-amber-50 text-amber-700';
-  if (/inactive|disabled|suspended/i.test(status)) return 'bg-slate-100 text-slate-600';
   return 'bg-slate-100 text-slate-600';
 };
 
@@ -128,16 +134,17 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     [employees]
   );
   const totalCount = employeeAccounts.length;
-  const activeCount = employeeAccounts.filter((emp) => /active|present/i.test(emp.employmentStatus || emp.status || '')).length;
-  const pendingCount = employeeAccounts.filter((emp) => /pending/i.test(emp.accountStatus || '')).length;
+  const activeCount = employeeAccounts.filter((emp) => accountStatusOf(emp) === 'active').length;
+  const pendingCount = employeeAccounts.filter((emp) => accountStatusOf(emp) === 'pending').length;
   const pendingBiometricCount = employeeAccounts.filter(emp => emp.biometricEnrollmentStatus === 'pending').length;
 
   const filteredEmployees = useMemo(() => {
     const q = query.toLowerCase();
     return employeeAccounts.filter((employee) => {
       const name = employeeName(employee).toLowerCase();
-      const status = (employee.employmentStatus || employee.status || 'ACTIVE').toLowerCase();
-      const matchesStatus = statusFilter === 'All' || status === statusFilter.toLowerCase();
+      const status = accountStatusOf(employee);
+      const matchesStatus = statusFilter === 'All'
+        || (statusFilter === 'Inactive' ? /inactive|suspended/.test(status) : status === statusFilter.toLowerCase());
       const matchesText = !q || `${name} ${employee.email || ''} ${employee.role || ''} ${employee.employeeId || ''}`.toLowerCase().includes(q);
       const matchesBiometricReview = !showBiometricPending || employee.biometricEnrollmentStatus === 'pending';
       return matchesStatus && matchesText && matchesBiometricReview;
@@ -824,27 +831,45 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         </div>
         <button
           type="button"
-          onClick={() => setStatusFilter((current) => current === 'All' ? 'ACTIVE' : current === 'ACTIVE' ? 'INACTIVE' : 'All')}
-          className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm"
-          title="Filter employees"
+          onClick={() => setStatusFilter((current) => STATUS_FILTERS[(STATUS_FILTERS.indexOf(current) + 1) % STATUS_FILTERS.length])}
+          className={`flex h-11 w-11 items-center justify-center rounded-xl border shadow-sm ${statusFilter === 'All' ? 'border-slate-200 bg-white text-slate-600' : 'border-blue-300 bg-blue-50 text-blue-700'}`}
+          title={`Filter employees (showing: ${statusFilter})`}
         >
           <Filter className="h-4 w-4" />
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <button
+          type="button"
+          onClick={() => { setStatusFilter('All'); setShowBiometricPending(false); }}
+          aria-pressed={statusFilter === 'All' && !showBiometricPending}
+          className={`rounded-2xl border p-3 text-left shadow-sm ${statusFilter === 'All' && !showBiometricPending ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'}`}
+        >
           <p className="text-[10px] font-black uppercase text-slate-500">Total Employees</p>
           <strong className="mt-1 block text-2xl text-slate-900">{totalCount}</strong>
-        </div>
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
+          <span className="text-[10px] font-semibold text-slate-500">{statusFilter === 'All' && !showBiometricPending ? 'Showing all' : 'Show all'}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter(current => (current === 'Active' ? 'All' : 'Active'))}
+          aria-pressed={statusFilter === 'Active'}
+          className={`rounded-2xl border p-3 text-left shadow-sm ${statusFilter === 'Active' ? 'border-emerald-300 bg-emerald-100' : 'border-emerald-100 bg-emerald-50'}`}
+        >
           <p className="text-[10px] font-black uppercase text-emerald-700">Active</p>
           <strong className="mt-1 block text-2xl text-emerald-700">{activeCount}</strong>
-        </div>
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
+          <span className="text-[10px] font-semibold text-emerald-700">{statusFilter === 'Active' ? 'Showing active' : 'Show active'}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter(current => (current === 'Pending' ? 'All' : 'Pending'))}
+          aria-pressed={statusFilter === 'Pending'}
+          className={`rounded-2xl border p-3 text-left shadow-sm ${statusFilter === 'Pending' ? 'border-amber-300 bg-amber-100' : 'border-amber-100 bg-amber-50'}`}
+        >
           <p className="text-[10px] font-black uppercase text-amber-700">Pending</p>
           <strong className="mt-1 block text-2xl text-amber-700">{pendingCount}</strong>
-        </div>
+          <span className="text-[10px] font-semibold text-amber-700">{statusFilter === 'Pending' ? 'Showing pending' : 'Show pending'}</span>
+        </button>
         <button
           type="button"
           onClick={() => setShowBiometricPending(current => !current)}
@@ -898,8 +923,11 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                       <td className="px-3 py-3 text-slate-700">{employee.role || 'Employee'}</td>
                       <td className="px-3 py-3 text-slate-700">{employee.office || 'Administrative Office'}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${statusStyle(employee.employmentStatus || employee.status || 'ACTIVE')}`}>
-                          {employee.employmentStatus || employee.status || 'ACTIVE'}
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${statusStyle(employee.accountStatus || 'Pending')}`}>
+                          {employee.accountStatus || 'Pending'}
+                        </span>
+                        <span className="mt-1 block text-[9px] font-semibold uppercase text-slate-400">
+                          Employment: {employee.employmentStatus || employee.status || 'ACTIVE'}
                         </span>
                         {employee.biometricEnrollmentStatus === 'pending' && (
                           <span className="mt-1 block rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800">Biometric review</span>
