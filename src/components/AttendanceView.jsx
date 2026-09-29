@@ -707,55 +707,7 @@ export default function AttendanceView({
       });
   };
 
-  // Send location tracking update to backend
-  const sendLocationUpdate = async (lat, lon, accuracy) => {
-    try {
-      const response = await fetch('/api/dtr/action?action=location-update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          latitude: lat,
-          longitude: lon,
-          accuracy: accuracy || 0,
-          employeeId: user?.employeeId || fillId
-        })
-      });
-
-      if (!response.ok) {
-        console.warn('Location update failed:', response.statusText);
-      }
-    } catch (error) {
-      console.warn('Location tracking error:', error);
-    }
-  };
-
-  // Location tracking interval - send updates every 60 seconds during active shift
-  useEffect(() => {
-    // Only track if shift is active (timeIn exists and timeOut is null)
-    const isShiftActive = Boolean(todayRecord?.timeIn && !todayRecord?.timeOut);
-
-    if (!isShiftActive) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const lat = Number(position.coords.latitude.toFixed(6));
-            const lon = Number(position.coords.longitude.toFixed(6));
-            const accuracy = position.coords.accuracy;
-            sendLocationUpdate(lat, lon, accuracy);
-          },
-          () => {}
-        );
-      }
-    }, 60000); // 60 seconds
-
-    return () => clearInterval(interval);
-  }, [attendanceHistory, assignmentMode, selectedMuni, user?.employeeId, fillId, todayRecord?.timeIn, todayRecord?.timeOut]);
+  // While a shift is open, App sends the employee's position every minute for HR's Live GPS Map.
 
   const isOfficeMode = assignmentMode === 'office';
   const isWfhMode = assignmentMode === 'wfh';

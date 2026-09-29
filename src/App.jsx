@@ -248,6 +248,50 @@ export default function App() {
     };
   }, [authToken, activeRole, user]);
 
+  // While an employee's shift is open, their position is sent right away, every minute,
+  // and whenever they come back to the app, from any page, so HR's Live GPS Map shows
+  // where they are now. Browsers do not share location while the app is closed.
+  const latestOwnRecord = activeRole === 'employee' && user
+    ? attendanceHistory.find(record => matchesAttendanceEmployee(record, user))
+    : null;
+  const openShiftId = latestOwnRecord?.timeIn && !latestOwnRecord.timeOut
+    ? latestOwnRecord.id || `${latestOwnRecord.date}-${latestOwnRecord.timeIn}`
+    : null;
+  useEffect(() => {
+    if (!openShiftId || !navigator.geolocation) return undefined;
+
+    let stopped = false;
+    const sendPosition = () => {
+      if (stopped || document.hidden) return;
+      navigator.geolocation.getCurrentPosition(position => {
+        if (stopped) return;
+        apiFetch('/api/dtr/action?action=location-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: Number(position.coords.latitude.toFixed(6)),
+            longitude: Number(position.coords.longitude.toFixed(6)),
+            accuracy: position.coords.accuracy || 0
+          })
+        })
+          .then(response => {
+            // The server has no open shift for this employee any more.
+            if (response.status === 404) stopped = true;
+          })
+          .catch(error => console.warn('Location tracking error:', error));
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 });
+    };
+
+    sendPosition();
+    const trackingId = window.setInterval(sendPosition, 60000);
+    document.addEventListener('visibilitychange', sendPosition);
+    return () => {
+      stopped = true;
+      window.clearInterval(trackingId);
+      document.removeEventListener('visibilitychange', sendPosition);
+    };
+  }, [openShiftId]);
+
   const normalizeRole = (role) => role?.toString().trim().toLowerCase() || 'employee';
 
   const roleAllowedViews = {
