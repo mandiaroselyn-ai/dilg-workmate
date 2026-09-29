@@ -19,4 +19,17 @@ router.get('/location/live', authorizeRoles('hr_admin', 'supervisor'), getActive
 router.post('/geofence/check', checkGeofenceStatus);
 router.post('/geofence/resolve', resolveGeofenceAssignment);
 
+// The frontend calls /api/dtr/action?action=... (the Vercel function in api/dtr rewrites
+// it the same way), so the local Express server needs the same dispatcher.
+const actionHandlers = {
+  'geofence-check': checkGeofenceStatus,
+  'geofence-resolve': resolveGeofenceAssignment,
+  'location-update': updateLocationTracking
+};
+router.post('/action', (req, res) => {
+  const handler = actionHandlers[req.query.action];
+  if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
+  return handler(req, res);
+});
+
 export default router;

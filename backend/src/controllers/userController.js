@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { getManilaDateString } from '../../../shared/localDate.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
@@ -316,7 +317,7 @@ export const getEmployees = async (req, res) => {
         id: plain.employeeId || String(plain._id),
         vacationLeaveCredits: plain.vacationLeaveCredits ?? 15.0,
         sickLeaveCredits: plain.sickLeaveCredits ?? 15.0,
-        lastActive: plain.lastActive || (plain.createdAt ? new Date(plain.createdAt).toISOString().split('T')[0] : '')
+        lastActive: plain.lastActive || (plain.createdAt ? getManilaDateString(new Date(plain.createdAt)) : '')
       };
     });
     res.status(200).json({ success: true, users });
@@ -329,18 +330,17 @@ export const getFullState = async (req, res) => {
   try {
     ensureConnected();
 
-    const [user, attendanceHistory, rawRequests, events, notifications, smsAlerts, acknowledged] = await Promise.all([
+    // Employees only load their own attendance, filtered in the database rather than
+    // loading every record (with selfies) and filtering here.
+    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged] = await Promise.all([
       req.user || User.get(),
-      DtrLog.find(),
+      req.user?.accessLevel === 'employee' ? DtrLog.findForEmployee(req.user) : DtrLog.find(),
       Leave.findAllRequests(),
       Announcement.findEvents(),
       Announcement.findNotifications(),
       Announcement.findSmsAlerts(),
       Announcement.getAcknowledged(req.user)
     ]);
-    const visibleAttendance = req.user?.accessLevel === 'employee'
-      ? attendanceHistory.filter(record => record.employeeId === req.user.employeeId || record.employeeEmail === req.user.email)
-      : attendanceHistory;
     const visibleRawRequests = req.user?.accessLevel === 'employee'
       ? rawRequests.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
       : rawRequests;

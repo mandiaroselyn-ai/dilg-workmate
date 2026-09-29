@@ -1,4 +1,5 @@
 import React from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   AlertCircle,
   ArrowRight,
@@ -34,7 +35,7 @@ export default function HRAdminDashboard({
   onOpenTab,
   onViewAllActivities
 }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDateString();
   const todayRecords = attendanceHistory.filter(record => record.date === today);
   const totalEmployees = employees.length;
   const isRegisteredRecord = record => employees.some(employee => matchesAttendanceEmployee(record, employee));

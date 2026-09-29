@@ -5,6 +5,8 @@ import crypto from 'crypto';
 import { verifyVerificationProof } from '../utils/verificationProof.js';
 import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment } from '../utils/attendanceAssignment.js';
+import { sendAttendanceConfirmation } from '../services/smsService.js';
+import { getManilaDateString } from '../../../shared/localDate.js';
 import {
   compareEnrollmentToAttendance,
   createFaceDescriptor,
@@ -75,12 +77,10 @@ const resolveAssignedCoords = (record) => {
 
 export const getDtrLogs = async (req, res) => {
   try {
-    const isEmployee = req.user?.accessLevel === 'employee';
-    const logs = await DtrLog.find({ includeEvidence: !isEmployee });
-    const visibleLogs = isEmployee
-      ? logs.filter(log => log.employeeId === req.user.employeeId || log.employeeEmail === req.user.email)
-      : logs;
-    res.status(200).json(visibleLogs);
+    const logs = req.user?.accessLevel === 'employee'
+      ? await DtrLog.findForEmployee(req.user, { includeEvidence: false })
+      : await DtrLog.find();
+    res.status(200).json(logs);
   } catch (error) {
     sendServerError(res, error);
   }
@@ -90,6 +90,8 @@ export const clockInOut = async (req, res) => {
   try {
     const { action } = req.body;
     const record = { ...(req.body.record || {}) };
+    // Record IDs are assigned by the server so a client cannot reuse another record's ID.
+    delete record.id;
     if (req.user?.accessLevel === 'employee') {
       record.employeeId = req.user.employeeId;
       record.employeeEmail = req.user.email;
@@ -256,7 +258,9 @@ export const clockInOut = async (req, res) => {
         faceLivenessProvider: 'not-used',
         deviceId: ''
       });
-      res.status(201).json({ success: true, record: newLog });
+      const sms = await sendAttendanceConfirmation(user,
+        `[DILG WorkMate] Clocked-In successfully on ${newLog.date} at ${newLog.timeIn} at ${newLog.location}. Have an outstanding day of service!`);
+      res.status(201).json({ success: true, record: newLog, sms });
     } else if (action === 'clock-out') {
       if (!record?.employeeId) {
         return res.status(400).json({ success: false, error: 'Employee ID is required to clock out.' });
@@ -268,7 +272,10 @@ export const clockInOut = async (req, res) => {
         accuracy: record.timeOutGpsAccuracy
       });
       if (closedLog) {
-        res.status(200).json({ success: true, record: closedLog });
+        const employee = req.user?.accessLevel === 'employee' ? req.user : await User.findByEmployeeId(record.employeeId);
+        const sms = await sendAttendanceConfirmation(employee,
+          `[DILG WorkMate] Clocked-Out recorded on ${getManilaDateString()} at ${closedLog.timeOut}. Operations sync complete for the day.`);
+        res.status(200).json({ success: true, record: closedLog, sms });
       } else {
         res.status(400).json({ success: false, error: 'No active clock-in found to clock out.' });
       }
@@ -307,9 +314,7 @@ export const updateLocationTracking = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Latitude and longitude must be valid numbers.' });
     }
 
-    const activeLog = await DtrLog.find().then(logs =>
-      logs.find(log => log.employeeId === employeeId && !log.timeOut)
-    );
+    const activeLog = await DtrLog.findActiveShift(employeeId);
 
     const assignedCoords = activeLog?.assignedLatitude && activeLog?.assignedLongitude
       ? { lat: Number(activeLog.assignedLatitude), lon: Number(activeLog.assignedLongitude) }
@@ -404,9 +409,7 @@ export const checkGeofenceStatus = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required fields: latitude, longitude, employeeId' });
     }
 
-    const activeLog = await DtrLog.find().then(logs =>
-      logs.find(log => log.employeeId === employeeId && !log.timeOut)
-    );
+    const activeLog = await DtrLog.findActiveShift(employeeId);
 
     const resolvedAssignment = assignmentSite ? await resolveAssignedLocation(assignmentSite) : null;
     const targetLat = Number(resolvedAssignment?.latitude ?? assignedLatitude ?? activeLog?.assignedLatitude ?? 13.4474);
@@ -428,10 +431,11 @@ export const checkGeofenceStatus = async (req, res) => {
     }
 
     if (activeLog) {
-      const eventType = activeLog.assignmentMatch === true && !inRange ? 'exit' : inRange ? 'entry' : null;
+      const wasInRange = activeLog.currentWithinGeofence ?? activeLog.assignmentMatch;
+      const eventType = wasInRange === true && !inRange ? 'exit' : inRange ? 'entry' : null;
       return res.status(200).json({
         success: true,
-        canAutoClockIn: !activeLog.timeOut && inRange && !activeLog.assignmentMatch,
+        canAutoClockIn: !activeLog.timeOut && inRange && !wasInRange,
         inRange,
         distanceMeters: distance,
         eventType,

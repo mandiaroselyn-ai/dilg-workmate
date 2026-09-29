@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   Activity,
   AlarmClockCheck,
@@ -28,7 +29,7 @@ const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
 export default function HRAdminRecordsView({ employees = [], attendanceHistory = [], requests = [] }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDateString();
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const matchesSearch = (value = '') => {

@@ -2,7 +2,7 @@ import { Leave } from '../models/leaveModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
-import { buildEmployeeRequest, pickReviewUpdate } from '../utils/requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, pickReviewUpdate } from '../utils/requestFields.js';
 
 const enrichRequestEmployees = async (requests) => Promise.all(requests.map(async request => {
   const employee = request.employeeId
@@ -42,7 +42,22 @@ export const createRequest = async (req, res) => {
 export const updateRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await Leave.updateStatus(id, pickReviewUpdate(req.body));
+    const role = req.user?.accessLevel;
+    let update;
+    if (role === 'employee') {
+      // Employees may only edit, submit, or discard their own drafts.
+      const existing = await Leave.findByCustomId(id);
+      if (!existing) return res.status(404).json({ success: false, error: 'Request ID not found.' });
+      update = buildEmployeeDraftUpdate(existing, req.body, req.user);
+      if (!update) {
+        return res.status(403).json({ success: false, error: 'You can only edit, submit, or discard your own drafts.' });
+      }
+    } else if (role === 'supervisor' || role === 'hr_admin') {
+      update = pickReviewUpdate(req.body);
+    } else {
+      return res.status(403).json({ success: false, error: 'You do not have permission to perform this action.' });
+    }
+    const updated = await Leave.updateStatus(id, update);
 
     if (updated) {
       res.status(200).json({ success: true, request: updated });

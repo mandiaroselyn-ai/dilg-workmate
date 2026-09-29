@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import { createWorker } from 'tesseract.js';
 import {
   FileText,
@@ -36,7 +37,7 @@ export default function RequestsView({
   user,
   requests,
   onSubmitRequest,
-  onUpdateRequestStatus
+  onUpdateDraft
 }) {
   // Configured view state
   const [activeTab2, setActiveTab2] = useState('Leave');
@@ -293,15 +294,17 @@ export default function RequestsView({
       attachments: attachments
     };
 
-    if (editingDraftId) {
-    }
-     
-
     const compiledPurpose = activeTab2 === 'Leave'
       ? `Leave Type: ${leaveType}. ${purpose}`
       : `Official Travel. ${travelActivity.trim()}`;
 
-    onSubmitRequest(typeLabel, startDate, endDate, compiledPurpose, extraFields);
+    if (editingDraftId) {
+      // Update the draft itself so submitting it does not leave the old draft behind.
+      onUpdateDraft(editingDraftId, { type: typeLabel, startDate, endDate, purpose: compiledPurpose, ...extraFields })
+        .catch(error => setFormErrorMessage(error.message || 'Unable to save the draft.'));
+    } else {
+      onSubmitRequest(typeLabel, startDate, endDate, compiledPurpose, extraFields);
+    }
 
     // Provide visual success report
     const bannerMessage = isDraftMode
@@ -366,10 +369,8 @@ export default function RequestsView({
   };
 
   const discardDraft = (draftId) => {
-    onUpdateRequestStatus(draftId, {
-      status: 'Cancelled',
-      remarks: 'Draft discarded by user.'
-    });
+    onUpdateDraft(draftId, { status: 'Cancelled' })
+      .catch(error => setFormErrorMessage(error.message || 'Unable to discard the draft.'));
   };
 
   const myRequests = requests.filter(request => {
@@ -622,7 +623,7 @@ export default function RequestsView({
                 </div>
                 <div>
                   <p className="text-slate-400 font-bold uppercase text-[9px]">Date of Filing</p>
-                  <p className="font-bold text-slate-700">{new Date().toISOString().split('T')[0]}</p>
+                  <p className="font-bold text-slate-700">{getManilaDateString()}</p>
                 </div>
               </div>
             </div>

@@ -100,7 +100,14 @@ const DtrLogSchema = new mongoose.Schema({
     siteName: String
   }],
   totalDistanceTraveledMeters: { type: Number, default: 0 },
-  lastLocationUpdate: { type: Date }
+  lastLocationUpdate: { type: Date },
+  // Latest live-tracking position. Kept separate so the clock-in location and
+  // clock-in geofence result above stay as they were recorded.
+  currentLatitude: { type: Number },
+  currentLongitude: { type: Number },
+  currentGpsStatus: { type: String },
+  currentDistanceMeters: { type: Number },
+  currentWithinGeofence: { type: Boolean }
 }, { timestamps: true });
 
 const MongoDtrLog = mongoose.models.DtrLog || mongoose.model('DtrLog', DtrLogSchema);
@@ -110,6 +117,36 @@ function ensureConnected() {
     throw new Error('MongoDB is not connected.');
   }
 }
+
+// A shift left open for longer than this (for example, a forgotten Time Out) is no
+// longer treated as the employee's active shift. It stays open so HR still sees the
+// missing Time Out, but it no longer receives live tracking or new Time Outs.
+const ACTIVE_SHIFT_WINDOW_MS = 18 * 60 * 60 * 1000;
+const activeShiftSince = () => new Date(Date.now() - ACTIVE_SHIFT_WINDOW_MS);
+
+// Matches the employee's open shift for the given date, or any open shift started
+// within the active window (covers records dated before the Manila date fix).
+const openShiftFilter = (employeeId, date) => ({
+  timeOut: null,
+  employeeId,
+  $or: [
+    ...(date ? [{ date }] : []),
+    { createdAt: { $gte: activeShiftSince() } }
+  ]
+});
+
+const EVIDENCE_FIELDS = '-selfieUrl -locationHistory -siteVisits -geofenceEvents -fingerprintHash -fingerprintProof';
+
+// Fields HR may change when correcting or verifying an attendance record.
+const HR_EDITABLE_FIELDS = ['timeIn', 'timeOut', 'status', 'location', 'workAssignment', 'verificationAudit', 'gpsStatus'];
+
+const toClientLog = item => {
+  const obj = typeof item.toObject === 'function' ? item.toObject() : { ...item };
+  delete obj.fingerprintHash;
+  delete obj.fingerprintProof;
+  obj.id = obj.customId;
+  return obj;
+};
 
 export const DtrLog = {
   findRecent: async (limit = 500) => {
@@ -207,20 +244,37 @@ export const DtrLog = {
 
   findActiveByEmployee: async (employeeId, date) => {
     ensureConnected();
-    return MongoDtrLog.findOne({
-      timeOut: null,
-      employeeId,
-      ...(date ? { date } : {})
-    }).sort({ createdAt: -1 });
+    return MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
+  },
+
+  // The employee's current open shift without selfie or tracking history, for
+  // frequent checks such as live location updates.
+  findActiveShift: async (employeeId) => {
+    ensureConnected();
+    if (!employeeId) return null;
+    return MongoDtrLog.findOne(openShiftFilter(employeeId))
+      .select(EVIDENCE_FIELDS)
+      .sort({ createdAt: -1 })
+      .lean();
+  },
+
+  // Records belonging to one employee, matched by employee ID or email in the database.
+  findForEmployee: async ({ employeeId, email }, { includeEvidence = true } = {}) => {
+    ensureConnected();
+    const owners = [
+      ...(employeeId ? [{ employeeId }] : []),
+      ...(email ? [{ employeeEmail: email }] : [])
+    ];
+    if (!owners.length) return [];
+    const query = MongoDtrLog.find({ $or: owners }).sort({ createdAt: -1 });
+    if (!includeEvidence) query.select(EVIDENCE_FIELDS);
+    const logs = await query;
+    return logs.map(toClientLog);
   },
 
   closeActiveLog: async (timeOut, employeeId, date, location = {}) => {
     ensureConnected();
-    const activeLog = await MongoDtrLog.findOne({
-      timeOut: null,
-      employeeId,
-      ...(date ? { date } : {})
-    }).sort({ createdAt: -1 });
+    const activeLog = await MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
     if (activeLog) {
       activeLog.timeOut = timeOut;
       activeLog.timeOutLatitude = location.latitude ?? null;
@@ -234,48 +288,36 @@ export const DtrLog = {
     return null;
   },
 
-  bulkUpdate: async (updatedHistory) => {
+  // Applies HR corrections and verifications. Each update names one existing record by
+  // `id` and only the HR-editable fields it changes, so fields HR did not touch (such as a
+  // Time Out recorded after HR loaded the page) are never overwritten.
+  bulkUpdate: async (updates) => {
     ensureConnected();
-    if (!Array.isArray(updatedHistory)) {
-      throw new Error('Invalid DTR bulk dataset');
+    if (!Array.isArray(updates) || updates.some(update => typeof update?.id !== 'string' || !update.id)) {
+      throw new Error('Each attendance update must include a record id.');
     }
 
-    const items = updatedHistory.map(h => {
-      const customId = h.id || `att-${Date.now()}-${Math.random().toString().slice(-3)}`;
-      const record = { ...h };
-      delete record.id;
-      delete record._id;
-      delete record.__v;
-      delete record.createdAt;
-      delete record.updatedAt;
-      return {
-        updateOne: {
-          filter: { customId },
-          update: {
-            $set: {
-              ...record,
-              customId,
-              timeOut: record.timeOut || null,
-              verificationAudit: record.verificationAudit || null
-            }
-          },
-          upsert: true
-        }
-      };
-    });
-    if (items.length) await MongoDtrLog.bulkWrite(items);
-    const freshLogs = await MongoDtrLog.find().sort({ createdAt: -1 });
-    return freshLogs.map(item => {
-      const obj = item.toObject();
-      obj.id = obj.customId;
-      return obj;
-    });
+    const operations = updates.map(update => {
+      const changes = {};
+      for (const field of HR_EDITABLE_FIELDS) {
+        if (update[field] !== undefined) changes[field] = update[field];
+      }
+      return { id: update.id, changes };
+    }).filter(({ changes }) => Object.keys(changes).length > 0);
+
+    if (operations.length) {
+      await MongoDtrLog.bulkWrite(operations.map(({ id, changes }) => ({
+        updateOne: { filter: { customId: id }, update: { $set: changes } }
+      })));
+    }
+    const updatedLogs = await MongoDtrLog.find({ customId: { $in: operations.map(({ id }) => id) } });
+    return updatedLogs.map(toClientLog);
   },
 
   // Add location tracking record to active DTR log
   updateLocationHistory: async (employeeId, locationData) => {
     ensureConnected();
-    const activeLog = await MongoDtrLog.findOne({ timeOut: null, employeeId }).sort({ createdAt: -1 });
+    const activeLog = await MongoDtrLog.findOne(openShiftFilter(employeeId)).sort({ createdAt: -1 });
     if (activeLog) {
       const previousPoint = activeLog.locationHistory[activeLog.locationHistory.length - 1] || null;
       const newLocationRecord = {
@@ -289,11 +331,11 @@ export const DtrLog = {
 
       activeLog.locationHistory.push(newLocationRecord);
       activeLog.lastLocationUpdate = new Date();
-      activeLog.latitude = locationData.latitude;
-      activeLog.longitude = locationData.longitude;
-      activeLog.gpsStatus = locationData.withinGeofence ? 'In Range' : 'Out of Range';
-      activeLog.distanceToAssignmentMeters = locationData.distanceFromAssignment;
-      activeLog.assignmentMatch = locationData.withinGeofence;
+      activeLog.currentLatitude = locationData.latitude;
+      activeLog.currentLongitude = locationData.longitude;
+      activeLog.currentGpsStatus = locationData.withinGeofence ? 'In Range' : 'Out of Range';
+      activeLog.currentDistanceMeters = locationData.distanceFromAssignment;
+      activeLog.currentWithinGeofence = Boolean(locationData.withinGeofence);
 
       // Calculate distance traveled (basic haversine distance)
       if (previousPoint) {
@@ -364,7 +406,7 @@ export const DtrLog = {
   // Get location history for an active DTR log
   getLocationHistory: async (employeeId) => {
     ensureConnected();
-    const activeLog = await MongoDtrLog.findOne({ timeOut: null, employeeId }).sort({ createdAt: -1 });
+    const activeLog = await MongoDtrLog.findOne(openShiftFilter(employeeId)).sort({ createdAt: -1 });
     if (activeLog) {
       return {
         locationHistory: activeLog.locationHistory,
@@ -379,8 +421,13 @@ export const DtrLog = {
   getActiveLocationTracking: async () => {
     ensureConnected();
     const activeLogs = await MongoDtrLog.find(
-      { timeOut: null },
+      { timeOut: null, createdAt: { $gte: activeShiftSince() } },
       {
+        currentLatitude: 1,
+        currentLongitude: 1,
+        currentGpsStatus: 1,
+        currentDistanceMeters: 1,
+        currentWithinGeofence: 1,
         customId: 1,
         employeeId: 1,
         employeeEmail: 1,
@@ -411,13 +458,14 @@ export const DtrLog = {
         employeeOffice: log.employeeOffice,
         location: log.location,
         workAssignment: log.workAssignment,
-        latitude: log.latitude,
-        longitude: log.longitude,
+        // Live map shows the latest tracked position, falling back to the clock-in position.
+        latitude: log.currentLatitude ?? log.latitude,
+        longitude: log.currentLongitude ?? log.longitude,
         assignedLatitude: log.assignedLatitude,
         assignedLongitude: log.assignedLongitude,
-        distanceToAssignmentMeters: log.distanceToAssignmentMeters,
-        assignmentMatch: log.assignmentMatch,
-        gpsStatus: log.gpsStatus,
+        distanceToAssignmentMeters: log.currentDistanceMeters ?? log.distanceToAssignmentMeters,
+        assignmentMatch: log.currentWithinGeofence ?? log.assignmentMatch,
+        gpsStatus: log.currentGpsStatus ?? log.gpsStatus,
         gpsAccuracy: latestPoint?.accuracy ?? null,
         lastLocationUpdate: log.lastLocationUpdate || latestPoint?.timestamp || log.createdAt
       };

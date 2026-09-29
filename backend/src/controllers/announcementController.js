@@ -2,21 +2,13 @@ import { Announcement } from '../models/announcementModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'node:crypto';
+import { normalizePhilippineNumber, sendSms, SmsError } from '../services/smsService.js';
 
 // Compares hashes so the check takes the same time regardless of where the secrets differ.
 const isMatchingSecret = (received, expected) => {
   if (typeof received !== 'string') return false;
   const digest = value => crypto.createHash('sha256').update(value).digest();
   return crypto.timingSafeEqual(digest(received), digest(expected));
-};
-
-const normalizePhilippineNumber = value => {
-  const raw = value?.toString().trim().replace(/[\s()-]/g, '');
-  if (!raw) return '';
-  if (raw.startsWith('+63')) return raw;
-  if (raw.startsWith('63')) return `+${raw}`;
-  if (raw.startsWith('09') && raw.length === 11) return `+63${raw.slice(1)}`;
-  return raw;
 };
 
 export const getEvents = async (req, res) => {
@@ -101,45 +93,13 @@ export const readNotification = async (req, res) => {
 
 export const createSmsAlert = async (req, res) => {
   try {
-    const { recipient, message } = req.body;
-    const normalizedRecipient = normalizePhilippineNumber(recipient);
-    const apiKey = process.env.UNISMS_API_KEY;
-    const apiUrl = process.env.UNISMS_API_URL || 'https://unismsapi.com/api/sms';
-    const senderId = process.env.UNISMS_SENDER_ID || 'UniSMS';
-
-    if (!normalizedRecipient || !message) {
-      return res.status(400).json({ success: false, error: 'SMS recipient and message are required.' });
-    }
-
-    if (!apiKey) {
-      return res.status(503).json({ success: false, error: 'UniSMS is not configured. Set UNISMS_API_KEY on the backend.' });
-    }
-
-    const providerResponse = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${apiKey}:`).toString('base64')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ recipient: normalizedRecipient, content: message, sender_id: senderId })
-    });
-
-    const providerData = await providerResponse.json().catch(() => ({}));
-    if (!providerResponse.ok) {
-      return res.status(502).json({
-        success: false,
-        error: providerData?.message || providerData?.error || 'UniSMS rejected the message.'
-      });
-    }
-
-    const sms = await Announcement.createSmsAlert({
-      ...req.body,
-      recipient: normalizedRecipient,
-      status: 'Sent',
-      providerMessageId: providerData?.id || providerData?.message_id || providerData?.message?.reference_id || ''
-    });
+    const { recipient, message, employeeId, employeeEmail, timestamp } = req.body;
+    const sms = await sendSms({ recipient, message, employeeId, employeeEmail, timestamp });
     res.status(201).json({ success: true, sms });
   } catch (error) {
+    if (error instanceof SmsError) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     sendServerError(res, error);
   }
 };

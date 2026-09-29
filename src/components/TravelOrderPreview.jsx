@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { jsPDF } from 'jspdf';
 import { X, Download, Printer, FileCheck } from 'lucide-react';
@@ -16,7 +17,7 @@ export default function TravelOrderPreview({ request, user, onClose }) {
   const showOfficialForm = false;
   const [filledFormUrl, setFilledFormUrl] = useState(null);
 
-  const submissionDateStr = request.submissionDate || new Date().toISOString().split('T')[0];
+  const submissionDateStr = request.submissionDate || getManilaDateString();
   const startDateStr = request.startDate;
   const endDateStr = request.endDate;
   const destinationStr = request.detailsSpecify && request.detailsSpecify !== 'N/A' ? request.detailsSpecify : '';

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   ArrowRight,
   CalendarDays,
@@ -101,7 +102,7 @@ export default function DashboardView({
   const [elapsedText, setElapsedText] = useState('--');
   const [currentUtcTime, setCurrentUtcTime] = useState('');
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDateString();
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user)) || {};
   const isOnDuty = todayRecord?.timeIn && !todayRecord?.timeOut;
 
@@ -435,7 +436,7 @@ export default function DashboardView({
                     className="w-full rounded-[18px] border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-slate-300"
                   >
                     <p className="text-sm font-semibold text-slate-900">{ann.title}</p>
-                    <p className="mt-1 text-[12px] text-slate-600">{ann.content}</p>
+                    <p className="mt-1 text-[12px] text-slate-600">{ann.content || ann.description}</p>
                   </button>
                 ))}
                 {dashboardAnnouncements.length === 0 && <p className="text-sm text-slate-500">No announcements available.</p>}

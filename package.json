@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test": "node --test \"shared/**/*.test.js\" \"src/**/*.test.js\" \"backend/src/**/*.test.js\"",
     "dev": "node scripts/dev.mjs",
     "dev:backend": "node backend/src/index.js",
     "dev:frontend": "cd frontend && npm run dev",

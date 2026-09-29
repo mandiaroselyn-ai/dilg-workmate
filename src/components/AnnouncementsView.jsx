@@ -69,7 +69,7 @@ export default function AnnouncementsView({
 
   // Filter announcements
   const filteredAnnouncements = visibleAnnouncements.filter(ann => {
-    const textToSearch = `${ann.title} ${ann.content} ${ann.referenceNo || ''}`.toLowerCase();
+    const textToSearch = `${ann.title} ${ann.content || ann.description || ''} ${ann.referenceNo || ''}`.toLowerCase();
     const matchesSearch = textToSearch.includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' ? true : ann.category === activeCategory;
     return matchesSearch && matchesCategory;
@@ -201,11 +201,11 @@ export default function AnnouncementsView({
                   <div className="text-xs text-slate-650 leading-relaxed font-semibold">
                     {isExpanded ? (
                       <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 font-sans whitespace-pre-line text-slate-700 shadow-inner leading-relaxed">
-                        {ann.content}
+                        {ann.content || ann.description}
                       </div>
                     ) : (
                       <p className="line-clamp-2">
-                        {ann.content}
+                        {ann.content || ann.description}
                       </p>
                     )}
                   </div>

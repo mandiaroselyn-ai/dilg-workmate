@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   AlertCircle,
   ArrowRight,
@@ -48,7 +49,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const [dtrStatusFilter, setDtrStatusFilter] = useState('All Statuses');
   const [selectedDtr, setSelectedDtr] = useState(null);
   const openDtrRecords = () => onOpenTab?.('dtr_records');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDateString();
   const records = attendanceHistory.filter(record => record.date === today);
   const refreshLiveGps = useCallback(async () => {
     setLastGpsRefreshText('Refreshing live locations...');

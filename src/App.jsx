@@ -4,6 +4,7 @@
  */
 
 import React, { lazy, Suspense, useCallback, useState, useEffect } from 'react';
+import { getManilaDateString } from '../shared/localDate';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
@@ -63,8 +64,9 @@ export default function App() {
   const [employees, setEmployees] = useState([]);
   const [acknowledgedAnnouncements, setAcknowledgedAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showResetPage, setShowResetPage] = useState(false);
-  const [resetToken, setResetToken] = useState(null);
+  // The password reset email links to /?resetToken=..., opened while signed out.
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('resetToken'));
+  const [showResetPage, setShowResetPage] = useState(() => Boolean(new URLSearchParams(window.location.search).get('resetToken')));
   const [profileToast, setProfileToast] = useState('');
   const [isSmallViewport, setIsSmallViewport] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -84,14 +86,19 @@ export default function App() {
     const applySyncedRecord = (action, record) => {
       setAttendanceHistory(previous => {
         if (action === 'clock-out') {
-          return previous.map(item => item.employeeId === record.employeeId && !item.timeOut ? record : item);
+          return previous.map(item => item.id === record.id || (item.employeeId === record.employeeId && !item.timeOut && item.date === record.date) ? record : item);
         }
         return [record, ...previous];
       });
     };
 
+    // Only sync while someone is signed in, and only their own queued records, so a
+    // queued Time Out is never rejected (and dropped) for lack of a session or sent
+    // under another person's account.
+    if (!authToken || (!user?.employeeId && !user?.email)) return undefined;
+    const owner = { employeeId: user.employeeId, email: user.email };
     const syncOfflineAttendance = () => {
-      syncQueuedAttendance(applySyncedRecord).catch(error => {
+      syncQueuedAttendance(applySyncedRecord, owner).catch(error => {
         console.warn('Offline attendance sync unavailable:', error);
       });
     };
@@ -103,7 +110,7 @@ export default function App() {
       window.removeEventListener('online', syncOfflineAttendance);
       window.clearInterval(syncId);
     };
-  }, []);
+  }, [authToken, user?.employeeId, user?.email]);
 
   useEffect(() => {
     if (!profileToast) return;
@@ -123,11 +130,6 @@ export default function App() {
     }
 
     let isCurrentSession = true;
-    const urlToken = new URLSearchParams(window.location.search).get('resetToken');
-    if (urlToken) {
-      setShowResetPage(true);
-      setResetToken(urlToken);
-    }
     apiFetch('/api/state')
       .then(res => {
         if (!res.ok) throw new Error('API server unreachable');
@@ -251,21 +253,33 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    window.localStorage.removeItem('dilg_auth_token');
+  // Clears the signed-in user's data so the next person on a shared device never sees it.
+  const clearSessionData = () => {
     setAuthToken('');
     setActiveRole(null);
+    setUser(null);
+    setAttendanceHistory([]);
+    setRequests([]);
+    setEvents([]);
+    setAnnouncements([]);
+    setNotifications([]);
+    setSmsAlerts([]);
+    setAdminNotifications([]);
+    setAdminSmsAlerts([]);
+    setEmployees([]);
+    setAcknowledgedAnnouncements([]);
     setCurrentView('dashboard');
     setSidebarOpen(false);
   };
 
+  const handleLogout = () => {
+    window.localStorage.removeItem('dilg_auth_token');
+    clearSessionData();
+  };
+
   useEffect(() => {
     const handleExpiredSession = () => {
-      setAuthToken('');
-      setActiveRole(null);
-      setUser(null);
-      setCurrentView('dashboard');
-      setSidebarOpen(false);
+      clearSessionData();
     };
     window.addEventListener('dilg:auth-expired', handleExpiredSession);
     return () => window.removeEventListener('dilg:auth-expired', handleExpiredSession);
@@ -476,7 +490,7 @@ export default function App() {
     assignmentSite = null,
     gpsAccuracy = null
   ) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getManilaDateString();
     const timeString = new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -563,32 +577,8 @@ export default function App() {
               }
             });
 
-          // Simulate SMS alert dispatch
-          const formatSmsTime = new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          }) + ' ' + timeString;
-
-          const newSms = {
-            recipient: user.phoneNumber,
-            employeeId: user?.employeeId || '',
-            employeeEmail: user?.email || '',
-            message: `[DILG WorkMate] Clocked-In successfully on ${today} at ${timeString} at ${municipality} (${barangay}). Have an outstanding day of service!`,
-            timestamp: formatSmsTime
-          };
-
-          fetch('/api/sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSms)
-          })
-            .then(res => res.json())
-            .then(smsData => {
-              if (smsData.success) {
-                setSmsAlerts(prev => [smsData.sms, ...prev]);
-              }
-            });
+          // The server sends the SMS confirmation and returns it when one was sent.
+          if (data.sms) setSmsAlerts(prev => [data.sms, ...prev]);
         }
       })
       .catch(error => {
@@ -613,7 +603,7 @@ export default function App() {
       }
     }
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getManilaDateString();
     const employeeId = user?.employeeId?.toString().toLowerCase();
     const employeeEmail = user?.email?.toString().toLowerCase();
     const activeRecord = attendanceHistory.find(record => (
@@ -625,7 +615,7 @@ export default function App() {
       )
     ));
     const clockOutRecord = {
-      date: new Date().toISOString().split('T')[0],
+      date: getManilaDateString(),
       timeOut: timeString,
       employeeId: user?.employeeId || user?.email,
       employeeEmail: user?.email || null,
@@ -642,7 +632,7 @@ export default function App() {
     }).then(data => {
         if (data.record) {
           if (!data.queued) {
-            setAttendanceHistory(prev => prev.map(record => record.employeeId === data.record.employeeId && !record.timeOut ? data.record : record));
+            setAttendanceHistory(prev => prev.map(record => record.id === data.record.id || (record.employeeId === data.record.employeeId && !record.timeOut && record.date === data.record.date) ? data.record : record));
           }
           if (data.queued) window.alert('No connection. Time Out saved offline and will sync automatically when internet returns.');
 
@@ -668,33 +658,8 @@ export default function App() {
               }
             });
 
-          // Dispatch SMS alert
-          const today = new Date().toISOString().split('T')[0];
-          const formatSmsTime = new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          }) + ' ' + timeString;
-
-          const newSms = {
-            recipient: user.phoneNumber,
-            employeeId: user?.employeeId || '',
-            employeeEmail: user?.email || '',
-            message: `[DILG WorkMate] Clocked-Out recorded on ${today} at ${timeString}. Operations sync complete for the day.`,
-            timestamp: formatSmsTime
-          };
-
-          fetch('/api/sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSms)
-          })
-            .then(res => res.json())
-            .then(smsData => {
-              if (smsData.success) {
-                setSmsAlerts(prev => [smsData.sms, ...prev]);
-              }
-            });
+          // The server sends the SMS confirmation and returns it when one was sent.
+          if (data.sms) setSmsAlerts(prev => [data.sms, ...prev]);
         }
       })
       .catch(error => {
@@ -710,7 +675,7 @@ export default function App() {
     purpose,
     extraFields
   ) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getManilaDateString();
     const initialStatus = extraFields?.status || 'Pending';
 
     const newReqInput = {
@@ -772,7 +737,7 @@ export default function App() {
   };
 
   const handleRequestCertifiedCopy = (recordDetails) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getManilaDateString();
     const request = {
       type: 'Certified Copy Request',
       submissionDate: today,
@@ -830,7 +795,7 @@ export default function App() {
     const currentHistory = Array.isArray(existingRequest?.statusHistory) ? existingRequest.statusHistory : [];
     const nextHistory = [...currentHistory, {
       status,
-      date: new Date().toISOString().split('T')[0],
+      date: getManilaDateString(),
       actor: approver || (user?.name || 'System')
     }];
     bodyPayload = {
@@ -1009,17 +974,20 @@ export default function App() {
   };
 
   // Administration Updates
-  const handleUpdateAllAttendance = async (updatedHistory) => {
+  // Sends only the changed attendance records ({ id, ...changedFields }) and merges the
+  // saved records back, so records HR did not touch are never overwritten.
+  const handleUpdateAllAttendance = async (attendanceUpdates) => {
     const response = await apiFetch('/api/attendance/history', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedHistory)
+      body: JSON.stringify(attendanceUpdates)
     });
     const data = await response.json();
     if (!response.ok || !data.success || !Array.isArray(data.attendanceHistory)) {
       throw new Error(data.error || 'Unable to save attendance changes.');
     }
-    setAttendanceHistory(data.attendanceHistory);
+    const savedById = new Map(data.attendanceHistory.map(record => [record.id, record]));
+    setAttendanceHistory(previous => previous.map(record => savedById.get(record.id) || record));
     pushSystemNotification({
       title: 'DTR Records Updated',
       message: 'Attendance records were reviewed and corrected in the HR/Admin desk.',
@@ -1029,18 +997,45 @@ export default function App() {
     return data.attendanceHistory;
   };
 
-  const handleUpdateAllRequests = async (updatedRequests) => {
+  // Sends review updates ({ id, ...reviewFields }) and merges the saved requests back.
+  const handleUpdateAllRequests = async (requestUpdates) => {
     const response = await apiFetch('/api/requests', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedRequests)
+      body: JSON.stringify(requestUpdates)
     });
     const data = await response.json();
     if (!response.ok || !data.success || !Array.isArray(data.requests)) {
       throw new Error(data.error || 'Unable to save request changes.');
     }
-    setRequests(data.requests);
+    const savedById = new Map(data.requests.map(request => [request.id, request]));
+    setRequests(previous => previous.map(request => savedById.get(request.id)
+      ? { ...request, ...savedById.get(request.id) }
+      : request));
     return data.requests;
+  };
+
+  // Lets an employee edit, submit, or discard one of their own drafts.
+  const handleUpdateDraftRequest = async (id, fields) => {
+    const response = await apiFetch(`/api/requests/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success || !data.request) {
+      throw new Error(data.error || 'Unable to save the draft.');
+    }
+    setRequests(previous => previous.map(request => request.id === id ? { ...request, ...data.request } : request));
+    if (data.request.status === 'Pending') {
+      pushSystemNotification({
+        title: 'Personnel Request Logged',
+        message: `Your new '${data.request.type}' was received. Reference ID: ${data.request.id}.`,
+        time: 'Just now',
+        type: 'request'
+      }, { admin: true, employee: true });
+    }
+    return data.request;
   };
 
   // Clear system history with hard reset
@@ -1149,7 +1144,7 @@ export default function App() {
               user={user}
               attendanceHistory={visibleEmployeeRecords}
               requests={visibleEmployeeRequests}
-              announcements={announcements}
+              announcements={events}
               events={events}
               onViewChange={handleViewChange}
               onQuickAction={handleViewChange}
@@ -1172,7 +1167,7 @@ export default function App() {
               activeRole={activeRole}
               requests={visibleEmployeeRequests}
               onSubmitRequest={handleSubmitRequest}
-              onUpdateRequestStatus={handleUpdateRequestStatus}
+              onUpdateDraft={handleUpdateDraftRequest}
             />
           )}
 

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 
 const fetch = apiFetch;
@@ -178,7 +179,7 @@ export default function AttendanceView({
     return () => { active = false; };
   }, [assignmentMode, selectedMuni, barangayLgu, selectedOfficeId, wfhStreet, wfhLandmark]);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDateString();
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user));
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
 

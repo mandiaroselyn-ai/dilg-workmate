@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   Activity,
   ArrowRight,
@@ -132,35 +133,31 @@ export default function HRAdminView({
     }
   };
 
+  // DTR saves send only the changed records and fields ({ id, ...changes }), so records
+  // updated elsewhere since this page loaded (for example, a new Time Out) are not overwritten.
   const handleSaveDTRCorrection = async () => {
     if (!selectedDtrRecord) return;
+    const rec = attendanceHistory.find(record => record.id === selectedDtrRecord.id) || selectedDtrRecord;
 
-    const updatedHistory = attendanceHistory.map((rec) => {
-      if (rec.id === selectedDtrRecord.id) {
-        return {
-          ...rec,
-          timeIn: editTimeIn,
-          timeOut: editTimeOut || null,
-          status: editStatus,
-          location: editLocation,
-          workAssignment: {
-            ...rec.workAssignment,
-            location: editLocation,
-            task: editTask
-          },
-          verificationAudit: {
-            verifiedBy: 'DILG HR Admin Desk',
-            verifiedAt: new Date().toISOString().split('T')[0],
-            originalTimeIn: rec.timeIn,
-            originalTimeOut: rec.timeOut
-          },
-          gpsStatus: 'In Range'
-        };
-      }
-      return rec;
-    });
-
-    const saved = await saveAttendanceUpdate(updatedHistory, {
+    const saved = await saveAttendanceUpdate([{
+      id: rec.id,
+      timeIn: editTimeIn,
+      timeOut: editTimeOut || null,
+      status: editStatus,
+      location: editLocation,
+      workAssignment: {
+        ...rec.workAssignment,
+        location: editLocation,
+        task: editTask
+      },
+      verificationAudit: {
+        verifiedBy: 'DILG HR Admin Desk',
+        verifiedAt: getManilaDateString(),
+        originalTimeIn: rec.timeIn,
+        originalTimeOut: rec.timeOut
+      },
+      gpsStatus: 'In Range'
+    }], {
       title: 'DTR Correction Verified',
       message: `Attendance record ${selectedDtrRecord.id} was corrected and verified by HR/Admin.`,
       time: 'Just now',
@@ -170,20 +167,13 @@ export default function HRAdminView({
   };
 
   const handleQuickVerifyDTR = async (id) => {
-    const updatedHistory = attendanceHistory.map((rec) => {
-      if (rec.id === id) {
-        return {
-          ...rec,
-          verificationAudit: {
-            verifiedBy: 'DILG HR Admin Desk',
-            verifiedAt: new Date().toISOString().split('T')[0]
-          }
-        };
+    await saveAttendanceUpdate([{
+      id,
+      verificationAudit: {
+        verifiedBy: 'DILG HR Admin Desk',
+        verifiedAt: getManilaDateString()
       }
-      return rec;
-    });
-
-    await saveAttendanceUpdate(updatedHistory, {
+    }], {
       title: 'DTR Verification Applied',
       message: `Attendance record ${id} was verified by HR/Admin.`,
       time: 'Just now',
@@ -192,18 +182,22 @@ export default function HRAdminView({
   };
 
   const handleValidateDTR = async () => {
-    const updatedHistory = attendanceHistory.map((record) => {
-      if (record.verificationAudit?.verifiedAt) return record;
-      return {
-        ...record,
+    const updates = attendanceHistory
+      .filter(record => !record.verificationAudit?.verifiedAt)
+      .map(record => ({
+        id: record.id,
         verificationAudit: {
           ...(record.verificationAudit || {}),
           verifiedBy: 'DILG HR Admin Desk',
-          verifiedAt: new Date().toISOString().split('T')[0]
+          verifiedAt: getManilaDateString()
         }
-      };
-    });
-    const saved = await saveAttendanceUpdate(updatedHistory, {
+      }));
+    if (updates.length === 0) {
+      triggerToast('All visible records are already verified.');
+      setDtrMode('verified');
+      return;
+    }
+    const saved = await saveAttendanceUpdate(updates, {
       title: 'DTR Batch Verification',
       message: 'All visible attendance records were validated and marked as verified by HR/Admin.',
       time: 'Just now',
@@ -213,39 +207,26 @@ export default function HRAdminView({
     setDtrMode('verified');
   };
 
-  const handleUpdateRequestStatusByAdmin = (requestId, newStatus, updatePayload = {}) => {
-    const today = new Date().toISOString().split('T')[0];
+  // Saves one request's review decision. Other requests are not sent or changed.
+  const handleUpdateRequestStatusByAdmin = async (requestId, newStatus, updatePayload = {}) => {
+    const today = getManilaDateString();
+    const req = requests.find(item => item.id === requestId);
+    if (!req) return;
 
-    const updatedRequests = requests.map((req) => {
-      if (req.id !== requestId) return req;
-
-      const nextHistory = [
-        ...(Array.isArray(req.statusHistory) ? req.statusHistory : []),
-        {
-          status: newStatus,
-          date: today,
-          actor: 'DILG HR Admin Desk'
-        }
-      ];
-
-      return {
-        ...req,
+    try {
+      await onUpdateRequestStatus(requestId, {
         status: newStatus,
         approver: 'DILG HR Admin Desk',
         remarks: updatePayload.remarks || req.remarks || 'Reviewed by HR Admin Desk.',
         directorSignature: req.directorSignature || req.signatureData || '',
         directorRemarks: req.directorRemarks || updatePayload.remarks || req.remarks || 'Reviewed by HR Admin Desk.',
         directorApprovedAt: today,
-        directorName: officialDirectorName || 'GERMAN F. YAP, CESO V',
-        approvedBy: 'DILG HR Admin Desk',
-        approvedAt: today,
-        statusHistory: nextHistory,
-        forwardedTo: updatePayload.forwardedTo || req.forwardedTo || '',
-        adminActionAt: updatePayload.adminActionAt || req.adminActionAt || ''
-      };
-    });
-
-    onUpdateRequests?.(updatedRequests);
+        directorName: officialDirectorName || 'GERMAN F. YAP, CESO V'
+      });
+    } catch (error) {
+      triggerToast(error.message || 'Unable to save the request status. Please try again.');
+      return;
+    }
     onAdminNotification?.({
       title: 'Request Status Updated',
       message: `Service Request ${requestId} has been marked as ${newStatus} by HR/Admin.`,
@@ -323,7 +304,7 @@ export default function HRAdminView({
   const dtrIssueRecords = attendanceHistory.filter(record => !record.timeIn || !record.timeOut || !record.selfieUrl || !record.fingerprintVerified);
   const pendingRequests = requests.filter(request => request.status === 'Pending');
   const leaveRecords = requests.filter(request => request.type === 'Leave Request');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getManilaDateString();
   const todayAttendance = attendanceHistory.filter(record => record.date === today);
   const presentToday = employees.filter(employee => {
     const record = todayAttendance.find(item => matchesAttendanceEmployee(item, employee));
@@ -463,7 +444,7 @@ export default function HRAdminView({
         requests={requests}
         employees={employees}
         onUpdateRequests={onUpdateRequests}
-        onUpdateRequestStatus={onUpdateRequestStatus || ((id, payload) => onUpdateRequestStatusByAdmin(id, payload.status, payload))}
+        onUpdateRequestStatus={onUpdateRequestStatus}
         onBack={() => setActiveTab('dashboard')}
       /></div>}
 

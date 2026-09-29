@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
+import { getManilaDateString } from '../../../shared/localDate.js';
 import { isConnected } from '../config/db.js';
 import { User } from './User.js';
+import { pickReviewUpdate } from '../utils/requestFields.js';
 
 const RequestSchema = new mongoose.Schema({
   customId: { type: String, required: true },
@@ -92,7 +94,7 @@ export const Leave = {
     const newRequestData = {
       customId,
       type: leaveData.type || 'Leave Request',
-      submissionDate: leaveData.submissionDate || new Date().toISOString().split('T')[0],
+      submissionDate: leaveData.submissionDate || getManilaDateString(),
       startDate: leaveData.startDate,
       endDate: leaveData.endDate,
       purpose: leaveData.purpose,
@@ -115,7 +117,7 @@ export const Leave = {
       attachments: leaveData.attachments || [],
       signatureData: leaveData.signatureData || '',
       employeeSignature: leaveData.employeeSignature || leaveData.employeeName || '',
-      employeeSignedAt: leaveData.employeeSignedAt || new Date().toISOString().split('T')[0],
+      employeeSignedAt: leaveData.employeeSignedAt || getManilaDateString(),
       stage: leaveData.stage || 'PM',
       supervisorSignature: leaveData.supervisorSignature || '',
       supervisorRemarks: leaveData.supervisorRemarks || '',
@@ -127,13 +129,19 @@ export const Leave = {
       directorName: leaveData.directorName || '',
       statusHistory: Array.isArray(leaveData.statusHistory) && leaveData.statusHistory.length
         ? leaveData.statusHistory
-        : [{ status: leaveData.status || 'Pending', date: new Date().toISOString().split('T')[0], actor: leaveData.employeeName || 'Employee' }]
+        : [{ status: leaveData.status || 'Pending', date: getManilaDateString(), actor: leaveData.employeeName || 'Employee' }]
     };
 
     const mongoRequest = await MongoRequest.create(newRequestData);
     const obj = mongoRequest.toObject();
     obj.id = obj.customId;
     return obj;
+  },
+
+  findByCustomId: async (id) => {
+    ensureConnected();
+    if (typeof id !== 'string' || !id) return null;
+    return MongoRequest.findOne({ customId: id }).lean();
   },
 
   updateStatus: async (id, updateBody) => {
@@ -149,53 +157,23 @@ export const Leave = {
     return obj;
   },
 
-  bulkUpdate: async (updatedRequests) => {
+  // Applies review updates to existing requests by id. Only review fields change, and
+  // requests that are not in the list are left alone (nothing is deleted).
+  bulkUpdate: async (updates) => {
     ensureConnected();
-    if (!Array.isArray(updatedRequests)) {
-      throw new Error('Invalid requests bulk dataset');
+    if (!Array.isArray(updates) || updates.some(update => typeof update?.id !== 'string' || !update.id)) {
+      throw new Error('Each request update must include a request id.');
     }
-
-    await MongoRequest.deleteMany({});
-    const items = updatedRequests.map(r => ({
-      customId: r.id || `req-${Math.floor(Math.random() * 9000) + 1000}-${Date.now().toString().slice(-4)}`,
-      type: r.type,
-      submissionDate: r.submissionDate || new Date().toISOString().split('T')[0],
-      startDate: r.startDate,
-      endDate: r.endDate,
-      purpose: r.purpose,
-      employeeId: r.employeeId || '',
-      employeeEmail: r.employeeEmail?.toString().trim().toLowerCase() || '',
-      employeePhoneNumber: r.employeePhoneNumber || '',
-      employeeName: r.employeeName || '',
-      recordDetails: r.recordDetails || null,
-      status: r.status || 'Pending',
-      approver: r.approver || 'OIC Provincial Director',
-      remarks: r.remarks || 'Awaiting final review',
-      leaveType: r.leaveType || '',
-      detailsType: r.detailsType || '',
-      detailsSpecify: r.detailsSpecify || '',
-      commutation: r.commutation || 'Not Requested',
-      workingDays: r.workingDays || 1,
-      attachments: r.attachments || [],
-      signatureData: r.signatureData || '',
-      employeeSignature: r.employeeSignature || r.employeeName || '',
-      employeeSignedAt: r.employeeSignedAt || '',
-      stage: r.stage || 'PM',
-      supervisorSignature: r.supervisorSignature || '',
-      supervisorRemarks: r.supervisorRemarks || '',
-      supervisorApprovedAt: r.supervisorApprovedAt || '',
-      supervisorName: r.supervisorName || '',
-      directorSignature: r.directorSignature || '',
-      directorRemarks: r.directorRemarks || '',
-      directorApprovedAt: r.directorApprovedAt || '',
-      directorName: r.directorName || '',
-      approvedBy: r.approvedBy || '',
-      approvedAt: r.approvedAt || '',
-      statusHistory: Array.isArray(r.statusHistory) ? r.statusHistory : []
-    }));
-    await MongoRequest.insertMany(items);
-    const freshList = await MongoRequest.find().sort({ createdAt: -1 });
-    return freshList.map(item => {
+    const operations = updates
+      .map(update => ({ id: update.id, changes: pickReviewUpdate(update) }))
+      .filter(({ changes }) => Object.keys(changes).length > 0);
+    if (operations.length) {
+      await MongoRequest.bulkWrite(operations.map(({ id, changes }) => ({
+        updateOne: { filter: { customId: id }, update: { $set: changes } }
+      })));
+    }
+    const updated = await MongoRequest.find({ customId: { $in: operations.map(({ id }) => id) } });
+    return updated.map(item => {
       const obj = item.toObject();
       obj.id = obj.customId;
       return obj;

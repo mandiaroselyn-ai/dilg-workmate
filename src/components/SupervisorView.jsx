@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   FileCheck2,
   XCircle,
@@ -151,7 +152,7 @@ export default function SupervisorView({
     const sigData = getSignatureDataUrl();
 
     let updatePayload = {};
-    const today = new Date().toISOString().split('T')[0];
+    const today = getManilaDateString();
 
     if (decision === 'Rejected') {
       updatePayload = {

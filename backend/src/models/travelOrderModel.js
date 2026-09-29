@@ -1,4 +1,5 @@
 import { MongoRequest } from './leaveModel.js';
+import { getManilaDateString } from '../../../shared/localDate.js';
 import { isConnected } from '../config/db.js';
 
 function ensureConnected() {
@@ -24,7 +25,7 @@ export const TravelOrder = {
     const newTravelData = {
       customId,
       type: 'Travel Order',
-      submissionDate: travelData.submissionDate || new Date().toISOString().split('T')[0],
+      submissionDate: travelData.submissionDate || getManilaDateString(),
       startDate: travelData.startDate,
       endDate: travelData.endDate,
       purpose: travelData.purpose,

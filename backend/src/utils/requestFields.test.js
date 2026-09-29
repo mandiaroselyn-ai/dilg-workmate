@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildEmployeeRequest, pickReviewUpdate } from './requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, pickReviewUpdate } from './requestFields.js';
 
 const employee = {
   employeeId: 'DILG-2026-1001',
@@ -57,4 +57,42 @@ test('review updates only change review fields', () => {
     customId: 'req-1'
   });
   assert.deepEqual(update, { status: 'Approved', remarks: 'OK', supervisorName: 'Supervisor' });
+});
+
+const draft = {
+  customId: 'req-1',
+  status: 'Draft',
+  employeeId: employee.employeeId,
+  employeeEmail: employee.email,
+  statusHistory: [{ status: 'Draft', date: '2026-09-28', actor: employee.name }]
+};
+
+test('employees can submit their own draft with edited content', () => {
+  const update = buildEmployeeDraftUpdate(draft, {
+    status: 'Pending',
+    purpose: 'Updated purpose',
+    travelVenue: 'Boac',
+    approver: 'Forged',
+    employeeId: 'DILG-OTHER'
+  }, employee, '2026-09-29');
+
+  assert.equal(update.status, 'Pending');
+  assert.equal(update.purpose, 'Updated purpose');
+  assert.equal(update.travelVenue, 'Boac');
+  assert.equal(update.submissionDate, '2026-09-29');
+  assert.equal(update.approver, undefined);
+  assert.equal(update.employeeId, undefined);
+  assert.deepEqual(update.statusHistory.at(-1), { status: 'Pending', date: '2026-09-29', actor: employee.name });
+});
+
+test('employees can discard their own draft without changing its content', () => {
+  const update = buildEmployeeDraftUpdate(draft, { status: 'Cancelled', purpose: 'ignored' }, employee, '2026-09-29');
+  assert.equal(update.status, 'Cancelled');
+  assert.equal(update.purpose, undefined);
+});
+
+test('employees cannot approve drafts or change other people\'s requests', () => {
+  assert.equal(buildEmployeeDraftUpdate(draft, { status: 'Approved' }, employee).status, 'Draft');
+  assert.equal(buildEmployeeDraftUpdate({ ...draft, status: 'Pending' }, { status: 'Cancelled' }, employee), null);
+  assert.equal(buildEmployeeDraftUpdate(draft, { status: 'Pending' }, { employeeId: 'DILG-OTHER', email: 'other@dilg.gov.ph' }), null);
 });

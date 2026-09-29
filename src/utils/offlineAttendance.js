@@ -1,4 +1,4 @@
-import { apiFetch } from './api';
+import { apiFetch } from './api.js';
 
 const fetch = apiFetch;
 
@@ -74,8 +74,26 @@ const removeQueuedAttendance = async (id) => {
   });
 };
 
-export const syncQueuedAttendance = async (onRecord) => {
-  const queuedItems = await readQueue();
+// A queued record is only discarded when the server rejects the record itself. Session
+// problems (401/403) and temporary limits (408/429) keep it queued for a later retry.
+const RETRYABLE_CLIENT_ERRORS = [401, 403, 408, 429];
+export const shouldDiscardQueuedAttendance = status => status >= 400 && status < 500 && !RETRYABLE_CLIENT_ERRORS.includes(status);
+
+const normalizeIdentity = value => value?.toString().trim().toLowerCase() || '';
+
+// True when the queued record belongs to the signed-in employee.
+export const isQueuedForOwner = (item, owner) => {
+  const record = item?.payload?.record || {};
+  const employeeId = normalizeIdentity(owner?.employeeId);
+  const email = normalizeIdentity(owner?.email);
+  return Boolean(
+    (employeeId && normalizeIdentity(record.employeeId) === employeeId)
+    || (email && normalizeIdentity(record.employeeEmail) === email)
+  );
+};
+
+export const syncQueuedAttendance = async (onRecord, owner) => {
+  const queuedItems = (await readQueue()).filter(item => isQueuedForOwner(item, owner));
   for (const item of queuedItems) {
     try {
       const response = await fetch('/api/attendance', {
@@ -85,7 +103,7 @@ export const syncQueuedAttendance = async (onRecord) => {
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        if (response.status >= 400 && response.status < 500) {
+        if (shouldDiscardQueuedAttendance(response.status)) {
           await removeQueuedAttendance(item.id);
           console.warn('Discarding invalid queued attendance record:', data?.error || response.statusText);
           continue;

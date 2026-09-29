@@ -6,7 +6,8 @@ const router = express.Router();
 
 router.get('/requests', getRequests);
 router.post('/requests', createRequest);
-router.patch('/requests/:id', authorizeRoles('supervisor', 'hr_admin'), updateRequestStatus);
+// Employees may PATCH their own drafts; the controller checks the role and ownership.
+router.patch('/requests/:id', updateRequestStatus);
 router.put('/requests', authorizeRoles('hr_admin'), bulkUpdateRequests);
 
 export default router;
