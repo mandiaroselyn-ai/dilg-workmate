@@ -25,6 +25,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import BiometricEnrollmentView from './BiometricEnrollmentView';
+import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 
 export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [name, setName] = useState(user.name);
@@ -130,8 +131,11 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
       );
       context.setTransform(1, 0, 0, 1, 0, 0); // reset transform
       
-      const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.88);
-      setTempPhoto(dataUrl);
+      try {
+        setTempPhoto(encodeProfilePhoto(canvasRef.current));
+      } catch (error) {
+        alert(error.message || 'Unable to process the photo.');
+      }
       stopCamera();
     }
   };
@@ -144,17 +148,16 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
         alert('Please choose an image file.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const uploadedPhoto = reader.result;
-        setProfilePicture(uploadedPhoto);
-        setTempPhoto(uploadedPhoto);
-        stopCamera();
-        setShowPhotoModal(false);
-        setShowAvatarActions(false);
-        onUpdateUser(buildUserPayload(uploadedPhoto));
-      };
-      reader.readAsDataURL(file);
+      resizeProfilePhoto(file)
+        .then(uploadedPhoto => {
+          setProfilePicture(uploadedPhoto);
+          setTempPhoto(uploadedPhoto);
+          stopCamera();
+          setShowPhotoModal(false);
+          setShowAvatarActions(false);
+          onUpdateUser(buildUserPayload(uploadedPhoto));
+        })
+        .catch(error => alert(error.message || 'Unable to process the photo.'));
     }
   };
 
@@ -449,7 +452,8 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
                   type="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  readOnly
+                  title="Your email is managed by the HR Administrator."
                   className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all"
                 />
               </div>
@@ -528,7 +532,8 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
                   id="input-prof-id"
                   type="text"
                   value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
+                  readOnly
+                  title="Your employee ID is managed by the HR Administrator."
                   placeholder="Official ID code sequence"
                   className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-550/10 focus:border-[#1e40af] transition-all font-mono"
                 />

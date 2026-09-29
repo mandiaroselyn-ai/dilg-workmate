@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
+import { createRecordId } from '../utils/recordId.js';
 
 const DtrLogSchema = new mongoose.Schema({
   customId: { type: String, required: true },
@@ -179,7 +180,7 @@ export const DtrLog = {
 
   create: async (logData) => {
     ensureConnected();
-    const customId = logData.id || `att-${Date.now()}`;
+    const customId = logData.id || createRecordId('att');
     const newLogData = {
       customId,
       date: logData.date,
@@ -198,6 +199,7 @@ export const DtrLog = {
       selfieLatitude: logData.selfieLatitude,
       selfieLongitude: logData.selfieLongitude,
       status: logData.status || 'Present',
+      late: logData.late === true,
       workAssignment: logData.workAssignment || null,
       fingerprintVerified: logData.fingerprintVerified || false,
       fingerprintProof: logData.fingerprintProof || '',

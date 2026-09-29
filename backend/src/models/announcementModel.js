@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
+import { createRecordId } from '../utils/recordId.js';
 
 // Schemas
 const EventSchema = new mongoose.Schema({
@@ -90,7 +91,7 @@ export const Announcement = {
 
   createEvent: async (eventData) => {
     ensureConnected();
-    const customId = eventData.id || `evt-${Math.floor(Math.random() * 9000) + 1000}-${Date.now().toString().slice(-4)}`;
+    const customId = eventData.id || createRecordId('evt');
     const newEventData = {
       customId,
       title: eventData.title,
@@ -143,7 +144,7 @@ export const Announcement = {
 
   createNotification: async (notifData) => {
     ensureConnected();
-    const customId = notifData.id || `notif-${Date.now()}`;
+    const customId = notifData.id || createRecordId('notif');
     const newNotifData = {
       customId,
       title: notifData.title,
@@ -162,9 +163,11 @@ export const Announcement = {
     return obj;
   },
 
-  clearNotifications: async () => {
+  // Marks only the notifications addressed to the given role (hr_admin or supervisor)
+  // as read, so clearing the HR or supervisor bell never touches employees' notifications.
+  clearNotificationsForRole: async (role) => {
     ensureConnected();
-    await MongoNotification.updateMany({}, { read: true });
+    await MongoNotification.updateMany({ recipientRole: role }, { read: true });
     const list = await MongoNotification.find().sort({ createdAt: -1 });
     return list.map(item => {
       const obj = item.toObject();
@@ -208,7 +211,7 @@ export const Announcement = {
 
   createSmsAlert: async (smsData) => {
     ensureConnected();
-    const customId = smsData.id || `sms-${Date.now()}`;
+    const customId = smsData.id || createRecordId('sms');
     const newSmsData = {
       customId,
       recipient: smsData.recipient,
@@ -230,7 +233,7 @@ export const Announcement = {
 
   createIncomingSms: async (smsData) => {
     ensureConnected();
-    const customId = smsData.id || `sms-in-${Date.now()}`;
+    const customId = smsData.id || createRecordId('sms-in');
     const item = await MongoSmsAlert.create({
       customId,
       recipient: smsData.recipient,

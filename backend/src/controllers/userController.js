@@ -31,6 +31,16 @@ export const getUserProfile = async (req, res) => {
   }
 };
 
+// Profile photos are sent with a user's details in many responses (for example, on every
+// request they filed), so only small embedded images or linked images (such as a Google
+// avatar) are accepted. The app resizes photos to about 200 KB before uploading.
+const MAX_PROFILE_PICTURE_LENGTH = 300 * 1024;
+export const isValidProfilePicture = value => typeof value === 'string' && (
+  value === ''
+  || (/^data:image\/(jpeg|png|webp);base64,/.test(value) && value.length <= MAX_PROFILE_PICTURE_LENGTH)
+  || (/^https:\/\//.test(value) && value.length <= 2048)
+);
+
 export const updateUserProfile = async (req, res) => {
   try {
     const allowedFields = ['name', 'role', 'office', 'region', 'phoneNumber', 'profilePicture'];
@@ -38,6 +48,12 @@ export const updateUserProfile = async (req, res) => {
       if (req.body[field] !== undefined) data[field] = req.body[field];
       return data;
     }, { lookupEmail: req.user.email });
+    // Only a new photo is checked; the app re-sends the current photo with every profile save.
+    if (profileData.profilePicture !== undefined
+      && profileData.profilePicture !== req.user.profilePicture
+      && !isValidProfilePicture(profileData.profilePicture)) {
+      return res.status(400).json({ success: false, error: 'Profile photo must be an image under 300 KB. Choose or take the photo again.' });
+    }
     const updated = await User.update(profileData);
     res.status(200).json({ success: true, user: toSafeUser(updated) });
   } catch (error) {

@@ -1,5 +1,6 @@
 ﻿import React, { useRef, useState, useEffect } from 'react';
 import { Building2, Camera, CheckCircle2, IdCard, Mail, MapPin, Pencil, Phone, ShieldAlert } from 'lucide-react';
+import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div className="flex items-center gap-3 border-b border-slate-100 py-4 last:border-0">
@@ -101,9 +102,11 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
     canvas.height = height;
 
     context.drawImage(video, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-
-    applyPhoto(dataUrl);
+    try {
+      applyPhoto(encodeProfilePhoto(canvas));
+    } catch (error) {
+      notify(error.message || 'Unable to process the photo.');
+    }
     stopCamera();
   };
 
@@ -121,12 +124,9 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
     event.target.value = '';
     if (!file || !file.type.startsWith('image/')) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const uploadedPhoto = reader.result;
-      applyPhoto(uploadedPhoto);
-    };
-    reader.readAsDataURL(file);
+    resizeProfilePhoto(file)
+      .then(applyPhoto)
+      .catch(error => notify(error.message || 'Unable to process the photo.'));
   };
 
   return (
@@ -254,7 +254,8 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
                   name="email"
                   type="email"
                   value={form.email}
-                  onChange={update}
+                  readOnly
+                  title="Account emails are managed in the employee records."
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
                 />
               </label>

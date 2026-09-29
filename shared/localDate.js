@@ -10,3 +10,16 @@ const MANILA_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
 
 // Returns the Manila calendar date as YYYY-MM-DD.
 export const getManilaDateString = (date = new Date()) => MANILA_DATE_FORMAT.format(date);
+
+const MANILA_TIME_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Manila',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23'
+});
+
+// Returns minutes since midnight in Manila (for example, 8:05 AM is 485).
+export const getManilaMinutesOfDay = (date = new Date()) => {
+  const parts = Object.fromEntries(MANILA_TIME_FORMAT.formatToParts(date).map(part => [part.type, part.value]));
+  return Number(parts.hour) * 60 + Number(parts.minute);
+};

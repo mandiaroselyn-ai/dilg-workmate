@@ -284,7 +284,17 @@ export const User = {
       if (duplicate) return { conflict: true };
     }
 
-    employee.set({ ...employeeData, accessLevel: 'employee' });
+    // Keep the original WFH approval date and approver when HR saves the employee without
+    // changing the approved location.
+    const nextWfh = employeeData.approvedWfhLocation;
+    const currentWfh = employee.approvedWfhLocation;
+    const sameWfhLocation = nextWfh && currentWfh?.approvedAt
+      && ['municipality', 'barangay', 'street', 'landmark'].every(field => (nextWfh[field] || '') === (currentWfh[field] || ''));
+    const updates = sameWfhLocation
+      ? { ...employeeData, approvedWfhLocation: { ...nextWfh, approvedAt: currentWfh.approvedAt, approvedBy: currentWfh.approvedBy } }
+      : employeeData;
+
+    employee.set({ ...updates, accessLevel: 'employee' });
     await employee.save();
     return employee.toObject();
   },

@@ -6,6 +6,7 @@ import { verifyVerificationProof } from '../utils/verificationProof.js';
 import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
+import { isLateClockIn } from '../utils/attendanceTime.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import {
   compareEnrollmentToAttendance,
@@ -248,6 +249,8 @@ export const clockInOut = async (req, res) => {
       }
       const newLog = await DtrLog.create({
         ...record,
+        // Lateness uses the server clock, not the time string sent by the phone.
+        late: isLateClockIn(new Date()),
         faceVerified: true,
         faceMatchConfidence: null,
         faceMatchDistance: faceMatch.distance,

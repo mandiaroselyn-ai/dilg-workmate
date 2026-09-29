@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.5
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Sliders,
   Bell,
@@ -32,8 +32,16 @@ export default function SettingsView({ smsNumber, onUpdateSMSNumber }) {
   const [assignedOffice, setAssignedOffice] = useState("DILG Provincial LGU Coordination Office - Marinduque");
   const [cscApprover, setCscApprover] = useState("Atty. Manuel G. Santos, Regional Director");
 
+  // The number is edited locally and saved once on Save, not on every keystroke.
+  const [smsDraft, setSmsDraft] = useState(smsNumber || '');
+  useEffect(() => {
+    setSmsDraft(smsNumber || '');
+  }, [smsNumber]);
+
   const handleSave = (e) => {
     e.preventDefault();
+    const nextNumber = smsDraft.trim();
+    if (nextNumber !== (smsNumber || '')) onUpdateSMSNumber(nextNumber);
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
@@ -187,8 +195,8 @@ export default function SettingsView({ smsNumber, onUpdateSMSNumber }) {
                           id="input-sms-number"
                           type="text"
                           required
-                          value={smsNumber}
-                          onChange={(e) => onUpdateSMSNumber(e.target.value)}
+                          value={smsDraft}
+                          onChange={(e) => setSmsDraft(e.target.value)}
                            placeholder="+63 917 123 4567"
                           className="w-48 text-xs font-bold rounded-lg border border-slate-200 p-2 focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] bg-slate-50 text-slate-800 placeholder:text-slate-400 font-semibold"
                         />

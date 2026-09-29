@@ -98,18 +98,23 @@ export default function CalendarView({ events, onAddEvent }) {
     setSelectedDayStr(formatDayString(day));
   };
 
-  const handleCreateEvent = (e) => {
+  const handleCreateEvent = async (e) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
-    onAddEvent({
-      title: newTitle,
-      date: selectedDayStr,
-      time: newTime,
-      type: newType,
-      description: newDesc,
-      location: newLoc
-    });
+    try {
+      await onAddEvent({
+        title: newTitle,
+        date: selectedDayStr,
+        time: newTime,
+        type: newType,
+        description: newDesc,
+        location: newLoc
+      });
+    } catch (error) {
+      window.alert(`Unable to add the event: ${error.message}`);
+      return;
+    }
 
     setNewTitle('');
     setNewDesc('');
@@ -287,7 +292,8 @@ export default function CalendarView({ events, onAddEvent }) {
             </div>
           </div>
 
-          {/* Schedule Form */}
+          {/* Schedule Form: only accounts that can create events (HR) get onAddEvent. */}
+          {onAddEvent ? (
           <div className="bg-white border border-slate-200 p-6 shadow-sm rounded-2xl">
             <form onSubmit={handleCreateEvent} className="space-y-4">
               <div className="border-b border-slate-100 pb-3">
@@ -383,6 +389,11 @@ export default function CalendarView({ events, onAddEvent }) {
               </button>
             </form>
           </div>
+          ) : (
+            <div className="bg-white border border-slate-200 p-6 shadow-sm rounded-2xl text-[11px] font-semibold text-slate-500">
+              Official events are scheduled by the HR Administrator. Contact HR to add an event to the calendar.
+            </div>
+          )}
 
         </div>
 

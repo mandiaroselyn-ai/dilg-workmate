@@ -38,6 +38,7 @@ const belongsToEmployee = (item, account) => {
 const scopeMessagesToAccount = (items, role, account) => {
   if (role === 'employee') return items.filter(item => belongsToEmployee(item, account));
   if (role === 'supervisor') return items.filter(item => item.recipientRole === 'supervisor');
+  if (role === 'hr_admin') return items.filter(item => item.recipientRole === 'hr_admin');
   return items;
 };
 
@@ -142,7 +143,11 @@ export default function App() {
           if (data.requests) setRequests(data.requests);
           if (data.events) setEvents(data.events);
           if (data.announcements) setAnnouncements(data.announcements);
-          if (data.notifications) setNotifications(data.notifications);
+          if (data.notifications) {
+            setNotifications(data.notifications);
+            // HR's bell shows the saved notifications addressed to HR, not only ones from this session.
+            if (activeRole === 'hr_admin') setAdminNotifications(scopeMessagesToAccount(data.notifications, 'hr_admin'));
+          }
           if (data.smsAlerts) setSmsAlerts(data.smsAlerts);
           if (data.adminNotifications) setAdminNotifications(data.adminNotifications);
           if (data.adminSmsAlerts) setAdminSmsAlerts(data.adminSmsAlerts);
@@ -873,34 +878,35 @@ export default function App() {
 
   // Add Calendar event
   const handleAddEvent = (newEvent) => {
-    fetch('/api/events', {
+    return fetch('/api/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newEvent)
     })
       .then(res => res.json())
       .then(data => {
-        if (data.success && data.event) {
-          setEvents(prev => [...prev, data.event]);
-
-          const newNotif = {
-            title: 'Interactive Event Added',
-            message: `Scheduled '${newEvent.title}' on your provincial agenda for ${newEvent.date}.`,
-            time: 'Just now',
-            type: 'system'
-          };
-          fetch('/api/notifications', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newNotif)
-          })
-            .then(res => res.json())
-            .then(notifData => {
-              if (notifData.success) {
-                setNotifications(prev => [notifData.notification, ...prev]);
-              }
-            });
+        if (!data.success || !data.event) {
+          throw new Error(data.error || 'The event could not be saved.');
         }
+        setEvents(prev => [...prev, data.event]);
+
+        const newNotif = {
+          title: 'Interactive Event Added',
+          message: `Scheduled '${newEvent.title}' on your provincial agenda for ${newEvent.date}.`,
+          time: 'Just now',
+          type: 'system'
+        };
+        fetch('/api/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newNotif)
+        })
+          .then(res => res.json())
+          .then(notifData => {
+            if (notifData.success) {
+              setNotifications(prev => [notifData.notification, ...prev]);
+            }
+          });
       });
   };
 
@@ -949,7 +955,7 @@ export default function App() {
       .then(data => {
         if (data.success) {
           if (activeRole === 'hr_admin') {
-            setAdminNotifications(data.notifications);
+            setAdminNotifications(scopeMessagesToAccount(data.notifications, 'hr_admin'));
           } else {
             setNotifications(scopeMessagesToAccount(data.notifications, activeRole, user));
           }
@@ -965,7 +971,7 @@ export default function App() {
       .then(data => {
         if (data.success) {
           if (activeRole === 'hr_admin') {
-            setAdminNotifications(data.notifications);
+            setAdminNotifications(scopeMessagesToAccount(data.notifications, 'hr_admin'));
           } else {
             setNotifications(scopeMessagesToAccount(data.notifications, activeRole, user));
           }
@@ -1212,7 +1218,7 @@ export default function App() {
           {currentView === 'calendar' && (
             <CalendarView
               events={events}
-              onAddEvent={handleAddEvent}
+              onAddEvent={activeRole === 'hr_admin' ? handleAddEvent : undefined}
             />
           )}
 

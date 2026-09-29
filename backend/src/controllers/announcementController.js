@@ -56,6 +56,8 @@ export const getNotifications = async (req, res) => {
 export const createNotification = async (req, res) => {
   try {
     const notificationBody = { ...req.body };
+    // The server assigns notification IDs so a client cannot reuse an existing one.
+    delete notificationBody.id;
     if (req.user?.accessLevel === 'employee') {
       notificationBody.employeeId = req.user.employeeId;
       notificationBody.employeeEmail = req.user.email;
@@ -72,7 +74,7 @@ export const clearNotifications = async (req, res) => {
   try {
     const cleared = req.user?.accessLevel === 'employee'
       ? await Announcement.clearNotificationsForUser(req.user)
-      : await Announcement.clearNotifications();
+      : await Announcement.clearNotificationsForRole(req.user?.accessLevel);
     res.status(200).json({ success: true, notifications: cleared });
   } catch (error) {
     sendServerError(res, error);

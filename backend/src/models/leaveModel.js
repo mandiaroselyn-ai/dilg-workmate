@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { isConnected } from '../config/db.js';
+import { createRecordId } from '../utils/recordId.js';
 import { User } from './User.js';
 import { pickReviewUpdate } from '../utils/requestFields.js';
 
@@ -90,7 +91,7 @@ export const Leave = {
 
   create: async (leaveData) => {
     ensureConnected();
-    const customId = leaveData.id || `req-${Math.floor(Math.random() * 9000) + 1000}-${Date.now().toString().slice(-4)}`;
+    const customId = leaveData.id || createRecordId('req');
     const newRequestData = {
       customId,
       type: leaveData.type || 'Leave Request',
