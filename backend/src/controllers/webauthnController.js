@@ -5,6 +5,7 @@ import {
   verifyRegistrationResponse
 } from '@simplewebauthn/server';
 import { User } from '../models/User.js';
+import { sendServerError } from '../middleware/requestSecurity.js';
 import { createVerificationProof } from '../utils/verificationProof.js';
 import { getFrontendOrigin, getRequestOrigin } from '../utils/frontendOrigin.js';
 
@@ -48,7 +49,7 @@ export const createRegistrationOptions = async (req, res) => {
     if (!savedChallenge) throw new Error('Could not save the passkey registration challenge.');
     res.status(200).json(options);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -106,7 +107,7 @@ export const createAuthenticationOptions = async (req, res) => {
     if (!savedChallenge) throw new Error('Could not save the passkey authentication challenge.');
     res.status(200).json(options);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 

@@ -11,6 +11,8 @@ import { rateLimit } from 'express-rate-limit';
 import { apiErrorHandler, apiNotFound, validateApiBody } from './middleware/requestSecurity.js';
 import { getAllowedFrontendOrigins } from './utils/frontendOrigin.js';
 
+const API_CONTENT_SECURITY_POLICY = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
+
 const isAllowedDevelopmentOrigin = origin => {
   if (process.env.NODE_ENV === 'production') return false;
   try {
@@ -31,6 +33,12 @@ export function createApiApp() {
   if (process.env.VERCEL) app.set('trust proxy', 1);
   else if (process.env.NODE_ENV !== 'production') app.set('trust proxy', 'loopback');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+  // API responses are JSON, so they never need to load or run anything. The Google
+  // callback page replaces this with a nonce-based policy for its one inline script.
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Content-Security-Policy', API_CONTENT_SECURITY_POLICY);
+    next();
+  });
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -57,7 +65,7 @@ export function createApiApp() {
   app.use('/api', apiRateLimit);
   app.use('/api', (req, res, next) => {
     const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
-    const limitedPaths = ['/login', '/password-reset-request', '/password-reset', '/face/enrollment', '/sms'];
+    const limitedPaths = ['/login', '/register', '/password-reset-request', '/password-reset', '/auth/google/exchange', '/face/enrollment', '/sms'];
     const isEnrollmentReview = /^\/face\/enrollment\/[^/]+\/review$/.test(apiPath);
     if (!limitedPaths.includes(apiPath) && !isEnrollmentReview) return next();
     return strictRateLimit(req, res, next);
@@ -67,7 +75,7 @@ export function createApiApp() {
   app.use('/api', (req, res, next) => {
     const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
     const publicRoutes = [
-      req.method === 'POST' && ['/login', '/register', '/password-reset-request', '/password-reset'].includes(apiPath),
+      req.method === 'POST' && ['/login', '/register', '/password-reset-request', '/password-reset', '/auth/google/exchange'].includes(apiPath),
       req.method === 'GET' && apiPath.startsWith('/auth/google'),
       req.method === 'POST' && apiPath === '/sms/webhook'
     ];

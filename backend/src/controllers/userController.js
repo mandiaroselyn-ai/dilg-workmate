@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { sendServerError } from '../middleware/requestSecurity.js';
 import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -11,6 +12,9 @@ import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 
+const MIN_PASSWORD_LENGTH = 10;
+const INVALID_LOGIN_MESSAGE = 'Invalid email or password. Please verify your credentials.';
+
 function ensureConnected() {
   if (!isConnected()) {
     throw new Error('MongoDB is not connected.');
@@ -22,7 +26,7 @@ export const getUserProfile = async (req, res) => {
     const profile = req.user || await User.get();
     res.status(200).json({ success: true, user: toSafeUser(profile) });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -36,21 +40,73 @@ export const updateUserProfile = async (req, res) => {
     const updated = await User.update(profileData);
     res.status(200).json({ success: true, user: toSafeUser(updated) });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
+const REGISTRATION_FIELD_LIMITS = {
+  name: 160,
+  email: 254,
+  role: 120,
+  office: 160,
+  region: 250,
+  phoneNumber: 250
+};
+
+// Self-registration only accepts basic profile fields. The account stays Pending
+// until HR activates it, and the server assigns a unique employee ID.
 export const registerUser = async (req, res) => {
   try {
-    const profileData = {
-      ...req.body,
-      email: req.body.email?.toLowerCase(),
-      accessLevel: 'employee'
-    };
-    const created = await User.create(profileData);
-    res.status(201).json({ success: true, user: toSafeUser(created) });
+    const body = req.body || {};
+    const profile = {};
+    for (const [field, limit] of Object.entries(REGISTRATION_FIELD_LIMITS)) {
+      const value = body[field] ?? '';
+      if (typeof value !== 'string') {
+        return res.status(400).json({ success: false, error: `${field} must be text.` });
+      }
+      profile[field] = value.trim();
+      if (profile[field].length > limit) {
+        return res.status(400).json({ success: false, error: `${field} exceeds the maximum length.` });
+      }
+    }
+    profile.email = profile.email.toLowerCase();
+    if (!profile.name || !profile.email || !profile.role || !profile.office) {
+      return res.status(400).json({ success: false, error: 'Name, email, job designation, and office are required.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
+      return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+    }
+    const password = typeof body.password === 'string' ? body.password.trim() : '';
+    if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
+      return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
+    }
+    if (await User.findByEmail(profile.email)) {
+      return res.status(409).json({ success: false, error: 'An account already uses this email address.' });
+    }
+
+    let created;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const employeeId = `DILG-${new Date().getFullYear()}-${crypto.randomInt(100000, 1000000)}`;
+      created = await User.createEmployee({
+        ...profile,
+        employeeId,
+        password,
+        accountStatus: 'Pending',
+        employmentStatus: 'ACTIVE'
+      });
+      if (!created?.conflict) break;
+    }
+    if (!created || created.conflict) {
+      return res.status(409).json({ success: false, error: 'Unable to register this account. Contact the HR Administrator.' });
+    }
+    res.status(201).json({
+      success: true,
+      message: 'Account created. The HR Administrator must activate it before you can log in.',
+      user: toSafeUser(created)
+    });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('Registration failed:', error);
+    res.status(500).json({ success: false, error: 'Unable to register this account.' });
   }
 };
 
@@ -184,7 +240,7 @@ export const updateEmployeeAccountStatus = async (req, res) => {
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     res.status(200).json({ success: true, user: toSafeUser(updated) });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -199,9 +255,11 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email, password, and role are required.' });
     }
 
+    // Verify the password before revealing anything about the account, and use the
+    // same response for unknown emails so the login form cannot enumerate accounts.
     const user = await User.findByEmail(normalizedEmail);
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'No account found with that email.' });
+    if (!(await User.verifyPassword(user, normalizedPassword))) {
+      return res.status(401).json({ success: false, error: INVALID_LOGIN_MESSAGE });
     }
 
     if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
@@ -223,13 +281,9 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    if (!(await User.verifyPassword(user, normalizedPassword))) {
-      return res.status(401).json({ success: false, error: 'Invalid password. Please verify your credentials.' });
-    }
-
     res.status(200).json({ success: true, token: createAuthToken(user), user: toSafeUser(user) });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -267,7 +321,7 @@ export const getEmployees = async (req, res) => {
     });
     res.status(200).json({ success: true, users });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -282,7 +336,7 @@ export const getFullState = async (req, res) => {
       Announcement.findEvents(),
       Announcement.findNotifications(),
       Announcement.findSmsAlerts(),
-      Announcement.getAcknowledged()
+      Announcement.getAcknowledged(req.user)
     ]);
     const visibleAttendance = req.user?.accessLevel === 'employee'
       ? attendanceHistory.filter(record => record.employeeId === req.user.employeeId || record.employeeEmail === req.user.email)
@@ -321,7 +375,7 @@ export const getFullState = async (req, res) => {
       acknowledged
     });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -330,7 +384,7 @@ export const seedDefaultUsers = async (req, res) => {
     await User.seedDefaultAccounts();
     res.status(200).json({ success: true, message: 'Default supervisor and HR accounts have been seeded.' });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -379,6 +433,15 @@ export const requestPasswordReset = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email is required.' });
     }
 
+    // Check the email configuration first so the response does not differ between known and unknown emails.
+    let transporter;
+    try {
+      transporter = createTransporter();
+    } catch (err) {
+      console.error('SMTP configuration error:', err.message);
+      return res.status(500).json({ success: false, error: 'Email service is not configured. Contact administrator.' });
+    }
+
     const user = await User.findByEmail(email);
     if (!user) {
       return res.status(200).json({ success: true, message: 'If that email exists, the reset link has been sent.' });
@@ -388,19 +451,10 @@ export const requestPasswordReset = async (req, res) => {
     const expiry = new Date(Date.now() + 60 * 60 * 1000);
     await User.setPasswordResetToken(email, token, expiry);
 
-    let transporter;
-    try {
-      transporter = createTransporter();
-    } catch (err) {
-      console.error('SMTP configuration error:', err.message);
-      return res.status(500).json({ success: false, error: 'Email service is not configured. Contact administrator.' });
-    }
-
     try {
       await sendPasswordResetEmail(transporter, email, token);
     } catch (err) {
       console.error('Password reset email send failed:', err);
-      return res.status(500).json({ success: false, error: 'Unable to send reset email at this time.' });
     }
 
     res.status(200).json({ success: true, message: 'If that email exists, the reset link has been sent.' });
@@ -417,6 +471,9 @@ export const completePasswordReset = async (req, res) => {
 
     if (!token || !password) {
       return res.status(400).json({ success: false, error: 'Reset token and password are required.' });
+    }
+    if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
+      return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
     }
 
     const updatedUser = await User.resetPasswordByToken(token, password);
@@ -436,6 +493,6 @@ export const resetDatabase = async (req, res) => {
     ensureConnected();
     res.status(200).json({ success: true, message: 'Reset endpoint is disabled in remote MongoDB mode.' });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };

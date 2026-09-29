@@ -1,6 +1,8 @@
 import { Leave } from '../models/leaveModel.js';
+import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
+import { buildEmployeeRequest, pickReviewUpdate } from '../utils/requestFields.js';
 
 const enrichRequestEmployees = async (requests) => Promise.all(requests.map(async request => {
   const employee = request.employeeId
@@ -21,30 +23,26 @@ export const getRequests = async (req, res) => {
       : list;
     res.status(200).json(await enrichRequestEmployees(visible));
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
 export const createRequest = async (req, res) => {
   try {
-    const requestBody = { ...req.body };
-    if (req.user?.accessLevel === 'employee') {
-      requestBody.employeeId = req.user.employeeId;
-      requestBody.employeeEmail = req.user.email;
-      requestBody.employeeName = req.user.name;
-      requestBody.employeePhoneNumber = req.user.phoneNumber;
-    }
+    const requestBody = req.user?.accessLevel === 'employee'
+      ? buildEmployeeRequest(req.body, req.user)
+      : { ...req.body };
     const newReq = await Leave.create(requestBody);
     res.status(201).json({ success: true, request: newReq });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
 export const updateRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const updated = await Leave.updateStatus(id, req.body);
+    const updated = await Leave.updateStatus(id, pickReviewUpdate(req.body));
 
     if (updated) {
       res.status(200).json({ success: true, request: updated });
@@ -52,7 +50,7 @@ export const updateRequestStatus = async (req, res) => {
       res.status(404).json({ success: false, error: 'Request ID not found.' });
     }
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 

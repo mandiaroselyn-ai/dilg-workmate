@@ -124,15 +124,25 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // Release builds are signed with a private upload key. Set these four properties in
+        // ~/.gradle/gradle.properties (never commit them). Without them the release APK is
+        // left unsigned instead of being signed with the public debug key.
+        if (project.hasProperty('DILG_UPLOAD_STORE_FILE')) {
+            release {
+                storeFile file(DILG_UPLOAD_STORE_FILE)
+                storePassword DILG_UPLOAD_STORE_PASSWORD
+                keyAlias DILG_UPLOAD_KEY_ALIAS
+                keyPassword DILG_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // See https://reactnative.dev/docs/signed-apk-android for creating the upload key.
+            signingConfig project.hasProperty('DILG_UPLOAD_STORE_FILE') ? signingConfigs.release : null
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

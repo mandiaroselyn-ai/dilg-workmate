@@ -48,6 +48,8 @@ const MongoNotification = mongoose.models.Notification || mongoose.model('Notifi
 const MongoSmsAlert = mongoose.models.SmsAlert || mongoose.model('SmsAlert', SmsAlertSchema);
 const MongoSetting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
 
+const acknowledgedKey = user => `acknowledged_ids:${String(user._id)}`;
+
 function ensureConnected() {
   if (!isConnected()) {
     throw new Error('MongoDB is not connected.');
@@ -105,23 +107,23 @@ export const Announcement = {
     return obj;
   },
 
-  getAcknowledged: async () => {
+  // Acknowledgements are kept per user, so one person signing an announcement
+  // does not mark it as signed for everyone else.
+  getAcknowledged: async (user) => {
     ensureConnected();
-    const config = await MongoSetting.findOne({ key: 'acknowledged_ids' });
+    if (!user?._id) return [];
+    const config = await MongoSetting.findOne({ key: acknowledgedKey(user) });
     return config ? config.ids : [];
   },
 
-  acknowledge: async (id) => {
+  acknowledge: async (id, user) => {
     ensureConnected();
-    let config = await MongoSetting.findOne({ key: 'acknowledged_ids' });
-    if (!config) {
-      config = new MongoSetting({ key: 'acknowledged_ids', ids: [] });
-    }
-    if (!config.ids.includes(id)) {
-      config.ids.push(id);
-      await config.save();
-    }
-    return config.ids;
+    const result = await MongoSetting.findOneAndUpdate(
+      { key: acknowledgedKey(user) },
+      { $addToSet: { ids: id } },
+      { upsert: true, new: true }
+    );
+    return result.ids;
   },
 
   findNotifications: async () => {

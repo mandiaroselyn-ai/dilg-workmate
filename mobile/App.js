@@ -5,9 +5,23 @@ import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as WebBrowser from 'expo-web-browser';
+import * as Crypto from 'expo-crypto';
 import { WebView } from 'react-native-webview';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const BASE64URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const toBase64Url = bytes => {
+	let output = '';
+	for (let index = 0; index < bytes.length; index += 3) {
+		const chunk = (bytes[index] << 16) | ((bytes[index + 1] ?? 0) << 8) | (bytes[index + 2] ?? 0);
+		const charCount = Math.min(4, Math.ceil(((bytes.length - index) * 8) / 6));
+		for (let position = 0; position < charCount; position += 1) {
+			output += BASE64URL_ALPHABET[(chunk >> (18 - position * 6)) & 63];
+		}
+	}
+	return output;
+};
 
 const configuredWebAppUrl = process.env.EXPO_PUBLIC_WEB_URL || (
 	Platform.OS === 'android' ? 'http://10.0.2.2:5173' : 'http://localhost:5173'
@@ -68,16 +82,33 @@ export default function App() {
 		}
 		if (message?.type === 'dilg-google-auth') {
 			try {
-				const authUrl = `${configuredWebAppUrl}/api/auth/google/url?mobile=1`;
+				// PKCE: the backend only returns a short-lived code in the redirect, and only this
+				// app instance knows the verifier needed to exchange it for a session token.
+				const codeVerifier = toBase64Url(Crypto.getRandomBytes(32));
+				const codeChallenge = toBase64Url(new Uint8Array(await Crypto.digest(
+					Crypto.CryptoDigestAlgorithm.SHA256,
+					new TextEncoder().encode(codeVerifier)
+				)));
+				const authUrl = `${configuredWebAppUrl}/api/auth/google/url?mobile=1&code_challenge=${codeChallenge}`;
 				const result = await WebBrowser.openAuthSessionAsync(authUrl, MOBILE_REDIRECT_URI);
 				if (result.type === 'success' && result.url) {
 					const callbackUrl = new URL(result.url);
-					const user = callbackUrl.searchParams.get('user');
-					const token = callbackUrl.searchParams.get('token');
+					const code = callbackUrl.searchParams.get('code');
 					const error = callbackUrl.searchParams.get('error');
-					const payload = error
-						? { type: 'google-login-failure', error: decodeURIComponent(error) }
-						: { type: 'google-login-success', user: user ? JSON.parse(user) : null, token };
+					let payload;
+					if (error || !code) {
+						payload = { type: 'google-login-failure', error: error || 'Google sign-in failed.' };
+					} else {
+						const response = await fetch(`${configuredWebAppUrl}/api/auth/google/exchange`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({ code, codeVerifier })
+						});
+						const data = await response.json().catch(() => ({}));
+						payload = response.ok && data.token
+							? { type: 'google-login-success', user: data.user || null, token: data.token }
+							: { type: 'google-login-failure', error: data.error || 'Google sign-in failed.' };
+					}
 					webViewRef.current?.injectJavaScript(
 						`window.postMessage(${JSON.stringify(payload)}, '*'); true;`
 					);

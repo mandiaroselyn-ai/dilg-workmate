@@ -1,5 +1,14 @@
 import { Announcement } from '../models/announcementModel.js';
+import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
+import crypto from 'node:crypto';
+
+// Compares hashes so the check takes the same time regardless of where the secrets differ.
+const isMatchingSecret = (received, expected) => {
+  if (typeof received !== 'string') return false;
+  const digest = value => crypto.createHash('sha256').update(value).digest();
+  return crypto.timingSafeEqual(digest(received), digest(expected));
+};
 
 const normalizePhilippineNumber = value => {
   const raw = value?.toString().trim().replace(/[\s()-]/g, '');
@@ -15,7 +24,7 @@ export const getEvents = async (req, res) => {
     const evts = await Announcement.findEvents();
     res.status(200).json(evts);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -24,17 +33,20 @@ export const createEvent = async (req, res) => {
     const created = await Announcement.createEvent(req.body);
     res.status(201).json({ success: true, event: created });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
 export const acknowledgeAnnouncement = async (req, res) => {
   try {
     const { id } = req.body;
-    const list = await Announcement.acknowledge(id);
+    if (typeof id !== 'string' || !id || id.length > 128) {
+      return res.status(400).json({ success: false, error: 'A valid announcement ID is required.' });
+    }
+    const list = await Announcement.acknowledge(id, req.user);
     res.status(200).json({ success: true, acknowledged: list });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -45,7 +57,7 @@ export const getNotifications = async (req, res) => {
       : await Announcement.findNotifications();
     res.status(200).json(list);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -60,7 +72,7 @@ export const createNotification = async (req, res) => {
     const newNotif = await Announcement.createNotification(notificationBody);
     res.status(201).json({ success: true, notification: newNotif });
   } catch (error) {
-    res.status(550).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -71,7 +83,7 @@ export const clearNotifications = async (req, res) => {
       : await Announcement.clearNotifications();
     res.status(200).json({ success: true, notifications: cleared });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -83,7 +95,7 @@ export const readNotification = async (req, res) => {
       : await Announcement.markNotificationAsRead(id);
     res.status(200).json({ success: true, notifications: list });
   } catch (error) {
-    res.status(550).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -128,15 +140,17 @@ export const createSmsAlert = async (req, res) => {
     });
     res.status(201).json({ success: true, sms });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
 export const receiveSmsWebhook = async (req, res) => {
   try {
     const expectedSecret = process.env.UNISMS_WEBHOOK_SECRET;
-    const receivedSecret = req.headers['webhook-secret-key'];
-    if (expectedSecret && receivedSecret !== expectedSecret) {
+    if (!expectedSecret) {
+      return res.status(503).json({ success: false, error: 'SMS webhook is not configured.' });
+    }
+    if (!isMatchingSecret(req.headers['webhook-secret-key'], expectedSecret)) {
       return res.status(401).json({ success: false, error: 'Invalid webhook secret.' });
     }
 
@@ -176,6 +190,6 @@ export const receiveSmsWebhook = async (req, res) => {
     res.status(200).json({ success: true, sms });
   } catch (error) {
     console.error('UniSMS webhook error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };

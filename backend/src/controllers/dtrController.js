@@ -1,4 +1,5 @@
 import { DtrLog } from '../models/dtrLogModel.js';
+import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { verifyVerificationProof } from '../utils/verificationProof.js';
@@ -81,7 +82,7 @@ export const getDtrLogs = async (req, res) => {
       : logs;
     res.status(200).json(visibleLogs);
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -348,7 +349,7 @@ export const updateLocationTracking = async (req, res) => {
     });
   } catch (error) {
     console.error('Location tracking error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -380,7 +381,7 @@ export const getLocationTracking = async (req, res) => {
     });
   } catch (error) {
     console.error('Get location history error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -390,7 +391,7 @@ export const getActiveLocationTracking = async (_req, res) => {
     res.status(200).json({ success: true, locations });
   } catch (error) {
     console.error('Get active location tracking error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 
@@ -452,7 +453,7 @@ export const checkGeofenceStatus = async (req, res) => {
     });
   } catch (error) {
     console.error('Geofence status check error:', error);
-    res.status(500).json({ success: false, error: error.message });
+    sendServerError(res, error);
   }
 };
 

@@ -105,6 +105,56 @@ test('binds local Google OAuth state to the active frontend origin', async () =>
   assert.equal(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).frontendOrigin, 'http://localhost:5174');
 });
 
+test('requires a PKCE code challenge for mobile Google sign-in', async () => {
+  const missing = await request(app).get('/api/auth/google/url').query({ mobile: '1' });
+  assert.equal(missing.status, 400);
+
+  const codeChallenge = crypto.createHash('sha256').update('a'.repeat(43)).digest('base64url');
+  const response = await request(app).get('/api/auth/google/url').query({ mobile: '1', code_challenge: codeChallenge });
+  assert.equal(response.status, 302);
+  const state = new URL(response.headers.location).searchParams.get('state');
+  assert.ok(state.startsWith('mobile:'));
+  const payload = state.replace(/^mobile:/, '').split('.')[0];
+  assert.equal(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')).codeChallenge, codeChallenge);
+});
+
+test('rejects a mobile Google sign-in exchange without a valid hand-off code', async () => {
+  const response = await request(app)
+    .post('/api/auth/google/exchange')
+    .send({ code: 'forged.code', codeVerifier: 'a'.repeat(43) });
+  assert.equal(response.status, 401);
+  assert.equal(response.body.token, undefined);
+});
+
+test('validates self-registration before touching the database', async () => {
+  const shortPassword = await request(app)
+    .post('/api/register')
+    .send({ name: 'Test User', email: 'test@example.com', role: 'Clerk', office: 'Boac', password: 'short' });
+  assert.equal(shortPassword.status, 400);
+  assert.match(shortPassword.body.error, /Password must be 10/);
+
+  const objectField = await request(app)
+    .post('/api/register')
+    .send({ name: { $gt: '' }, email: 'test@example.com', role: 'Clerk', office: 'Boac', password: 'long-enough-password' });
+  assert.equal(objectField.status, 400);
+});
+
+test('sends a restrictive Content-Security-Policy on API responses', async () => {
+  const response = await request(app).get('/api/state');
+  assert.match(response.headers['content-security-policy'], /default-src 'none'/);
+  assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/);
+});
+
+test('rejects SMS webhook calls with a missing or wrong secret', async () => {
+  const missing = await request(app).post('/api/sms/webhook').send({ sender: '09171234567', content: 'hi' });
+  const wrong = await request(app)
+    .post('/api/sms/webhook')
+    .set('webhook-secret-key', 'wrong')
+    .send({ sender: '09171234567', content: 'hi' });
+  assert.equal(missing.status, 401);
+  assert.equal(wrong.status, 401);
+});
+
 test('keeps the SMS webhook public but validates its payload', async () => {
   const response = await request(app)
     .post('/api/sms/webhook')

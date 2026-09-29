@@ -56,3 +56,9 @@ export const apiErrorHandler = (error, req, res, next) => {
   console.error('API error:', error);
   res.status(error.statusCode || 500).json({ success: false, error: 'Internal server error.' });
 };
+// Logs the real error on the server but only returns a generic message, so internal
+// details such as database errors are not shown to users.
+export const sendServerError = (res, error) => {
+  console.error('API error:', error);
+  return res.status(500).json({ success: false, error: 'Internal server error.' });
+};

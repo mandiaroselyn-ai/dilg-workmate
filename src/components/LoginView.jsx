@@ -37,7 +37,6 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [errorText, setErrorText] = useState('');
   const [successText, setSuccessText] = useState('');
   const [googleError, setGoogleError] = useState('');
-  const [registeredUsers, setRegisteredUsers] = useState([]);
 
   useEffect(() => {
     const handleGoogleData = (data) => {
@@ -189,6 +188,10 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       setErrorText('Please fill out all registration fields.');
       return;
     }
+    if (regPassword.trim().length < 10) {
+      setErrorText('Password must be at least 10 characters.');
+      return;
+    }
     setSubmitting(true);
     setErrorText('');
     setSuccessText('');
@@ -199,10 +202,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       role: regRole,
       office: regOffice,
       region: regRegion,
-      employeeId: `DILG-2026-${Math.floor(1000 + Math.random() * 9000)}`,
       phoneNumber: regPhone,
-      password: regPassword,
-      accessLevel: 'employee'
+      password: regPassword
     };
 
     setTimeout(async () => {
@@ -232,15 +233,10 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
           throw new Error(result.error || response.statusText || 'Failed to save to backend');
         }
 
-        const updatedUsers = [...registeredUsers, newProfile];
-        setRegisteredUsers(updatedUsers);
-
-        // Pre-fill login credentials
         setEmailInput(regEmail);
-        setPasswordInput(regPassword);
 
-        // Notify user and redirect to login
-        setSuccessText('Account created successfully! You can now log in.');
+        // New accounts stay Pending until HR activates them.
+        setSuccessText(result.message || 'Account created. The HR Administrator must activate it before you can log in.');
         setIsRegister(false);
       } catch (err) {
         console.error('Backend registration failed:', err);

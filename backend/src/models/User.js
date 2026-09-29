@@ -102,6 +102,15 @@ function ensureConnected() {
   }
 }
 
+// Reset tokens are stored as SHA-256 hashes so a database leak cannot be used to reset passwords.
+export const hashResetToken = token => crypto.createHash('sha256').update(token).digest('hex');
+
+let dummyPasswordHash;
+const getDummyPasswordHash = () => {
+  dummyPasswordHash ||= hashPassword(crypto.randomBytes(16).toString('hex'));
+  return dummyPasswordHash;
+};
+
 export const User = {
   get: async (profileData = {}) => {
     ensureConnected();
@@ -152,6 +161,12 @@ export const User = {
       ? { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
       : { accessLevel };
     return MongoUser.find(query).sort({ name: 1 });
+  },
+
+  findById: async (userId) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findById(userId);
   },
 
   findByEmployeeId: async (employeeId) => {
@@ -477,7 +492,12 @@ export const User = {
   },
 
   verifyPassword: async (user, password) => {
-    if (!user || !(await checkPassword(password, user.password || ''))) return false;
+    if (!user) {
+      // Spend the same bcrypt time as a real check so response timing does not reveal unknown emails.
+      await checkPassword(String(password ?? ''), await getDummyPasswordHash());
+      return false;
+    }
+    if (!(await checkPassword(password, user.password || ''))) return false;
     if (!isPasswordHash(user.password)) {
       user.password = await hashPassword(password);
       await user.save();
@@ -521,7 +541,7 @@ export const User = {
     if (!normalized) return null;
     const user = await MongoUser.findOne({ email: { $regex: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
     if (!user) return null;
-    user.resetToken = token;
+    user.resetToken = hashResetToken(token);
     user.resetTokenExpiry = expiry;
     await user.save();
     return user.toObject();
@@ -530,7 +550,8 @@ export const User = {
   resetPasswordByToken: async (token, password) => {
     ensureConnected();
     if (!token || !password) return null;
-    const user = await MongoUser.findOne({ resetToken: token, resetTokenExpiry: { $gt: new Date() } });
+    if (typeof token !== 'string') return null;
+    const user = await MongoUser.findOne({ resetToken: hashResetToken(token), resetTokenExpiry: { $gt: new Date() } });
     if (!user) return null;
     user.password = password;
     user.resetToken = '';

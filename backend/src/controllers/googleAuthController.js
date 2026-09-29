@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
+import { createMobileHandoffCode, isValidCodeChallenge, readMobileHandoffCode } from '../utils/mobileAuthHandoff.js';
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -62,11 +63,12 @@ function getStateSecret() {
   return process.env.JWT_SECRET;
 }
 
-function createState(mobile, frontendOrigin) {
+function createState(mobile, frontendOrigin, codeChallenge) {
   const payload = Buffer.from(JSON.stringify({
     createdAt: Date.now(),
     nonce: crypto.randomBytes(16).toString('hex'),
-    frontendOrigin: mobile ? null : frontendOrigin
+    frontendOrigin: mobile ? null : frontendOrigin,
+    codeChallenge: mobile ? codeChallenge : null
   })).toString('base64url');
   const signature = crypto.createHmac('sha256', getStateSecret()).update(payload).digest('base64url');
   return `${mobile ? 'mobile:' : ''}${payload}.${signature}`;
@@ -95,15 +97,49 @@ function readState(state) {
   }
 }
 
-export const googleAuthUrl = (req, res) => {
+// Escapes characters that could close the inline <script> when embedding JSON in HTML.
+const toScriptJson = value => JSON.stringify(value)
+  .replace(/</g, '\\u003c')
+  .replace(/>/g, '\\u003e')
+  .replace(/&/g, '\\u0026')
+  .replace(/\u2028/g, '\\u2028')
+  .replace(/\u2029/g, '\\u2029');
+
+const sendPopupResult = (res, status, frontendOrigin, message) => {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; frame-ancestors 'none'; base-uri 'none'`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(status).send(`
+      <html>
+        <body>
+          <script nonce="${nonce}">
+            const message = ${toScriptJson(message)};
+            if (window.opener && !window.opener.closed) {
+              window.opener.postMessage(message, ${toScriptJson(frontendOrigin)});
+              window.close();
+            } else {
+              window.location.replace(${toScriptJson(`${frontendOrigin}/#google-auth=`)} + encodeURIComponent(JSON.stringify(message)));
+            }
+          </script>
+        </body>
+      </html>
+    `);
+};
+
+export const googleAuthUrl =(req, res) => {
   const mobile = req.query.mobile === '1';
   const redirectUri = getRedirectUri(req, mobile);
   if (!CLIENT_ID || !redirectUri) {
     return res.status(500).json({ success: false, error: 'Google OAuth is not configured.' });
   }
 
+  const codeChallenge = req.query.code_challenge;
+  if (mobile && !isValidCodeChallenge(codeChallenge)) {
+    return res.status(400).json({ success: false, error: 'Update the WorkMate app to sign in with Google.' });
+  }
+
   const frontendOrigin = getDevelopmentFrontendOrigin(req);
-  const state = createState(mobile, frontendOrigin);
+  const state = createState(mobile, frontendOrigin, codeChallenge);
   const url = new URL(GOOGLE_AUTH_BASE);
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -148,60 +184,36 @@ export const googleAuthCallback = async (req, res) => {
       headers: { Authorization: `Bearer ${tokenData.access_token}` }
     });
     const profile = await userInfoResponse.json();
-    if (!profile.email) {
-      throw new Error('Google profile did not return an email address.');
+    if (!profile.email || profile.email_verified !== true) {
+      throw new Error('Google did not return a verified email address.');
     }
 
-    const existingUser = await User.findByEmail(profile.email);
-    let user;
-
-    if (existingUser) {
-      existingUser.googleId = profile.sub || existingUser.googleId;
-      existingUser.profilePicture = profile.picture || existingUser.profilePicture;
-      existingUser.name = profile.name || existingUser.name;
-      await existingUser.save();
-      user = existingUser;
-    } else {
-      user = await User.create({
-        name: profile.name,
-        email: profile.email.toLowerCase(),
-        profilePicture: profile.picture || '',
-        googleId: profile.sub || '',
-        accessLevel: 'employee'
-      });
+    // Google sign-in only links to accounts HR has already created and activated.
+    const user = await User.findByEmail(profile.email);
+    if (!user) {
+      throw new Error('No WorkMate account uses this Google email. Ask the HR Administrator to create your account first.');
     }
+    if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
+      throw new Error(`This account is ${user.accountStatus.toLowerCase()}. Please contact the HR Administrator.`);
+    }
+    user.googleId = profile.sub || user.googleId;
+    user.profilePicture = profile.picture || user.profilePicture;
+    user.name = profile.name || user.name;
+    await user.save();
 
-    if (isMobileState(state)) {
+    if (mobile) {
       const mobileRedirect = process.env.MOBILE_AUTH_REDIRECT_URI || 'com.dilg.workmate.employee://oauth';
       const redirect = new URL(mobileRedirect);
-      redirect.searchParams.set('user', JSON.stringify(toSafeUser(user)));
-      redirect.searchParams.set('token', createAuthToken(user));
+      redirect.searchParams.set('code', createMobileHandoffCode({ userId: user._id, codeChallenge: stateData.codeChallenge }));
       return res.redirect(redirect.toString());
     }
 
-    const token = createAuthToken(user);
     const frontendOrigin = stateData.frontendOrigin || getFrontendOrigin(req);
-    const successMessage = {
+    sendPopupResult(res, 200, frontendOrigin, {
       type: 'google-login-success',
-      token,
+      token: createAuthToken(user),
       user: toSafeUser(user)
-    };
-    const html = `
-      <html>
-        <body>
-          <script>
-            const message = ${JSON.stringify(successMessage)};
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage(message, ${JSON.stringify(frontendOrigin)});
-              window.close();
-            } else {
-              window.location.replace(${JSON.stringify(`${frontendOrigin}/#google-auth=`)} + encodeURIComponent(JSON.stringify(message)));
-            }
-          </script>
-        </body>
-      </html>
-    `;
-    res.status(200).send(html);
+    });
   } catch (error) {
     console.error('Google auth callback error', error);
     if (mobile) {
@@ -211,22 +223,20 @@ export const googleAuthCallback = async (req, res) => {
       return res.redirect(redirect.toString());
     }
     const frontendOrigin = stateData?.frontendOrigin || getFrontendOrigin(req);
-    const failureMessage = { type: 'google-login-failure', error: error.message || 'Google sign-in failed.' };
-    const html = `
-      <html>
-        <body>
-          <script>
-            const message = ${JSON.stringify(failureMessage)};
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage(message, ${JSON.stringify(frontendOrigin)});
-              window.close();
-            } else {
-              window.location.replace(${JSON.stringify(`${frontendOrigin}/#google-auth=`)} + encodeURIComponent(JSON.stringify(message)));
-            }
-          </script>
-        </body>
-      </html>
-    `;
-    res.status(500).send(html);
+    sendPopupResult(res, 500, frontendOrigin, { type: 'google-login-failure', error: error.message || 'Google sign-in failed.' });
+  }
+};
+
+export const googleMobileExchange = async (req, res) => {
+  try {
+    const userId = readMobileHandoffCode(req.body?.code, req.body?.codeVerifier);
+    const user = userId ? await User.findById(userId) : null;
+    if (!user || (user.accountStatus && user.accountStatus.toLowerCase() !== 'active')) {
+      return res.status(401).json({ success: false, error: 'Google sign-in expired. Please try again.' });
+    }
+    return res.status(200).json({ success: true, token: createAuthToken(user), user: toSafeUser(user) });
+  } catch (error) {
+    console.error('Google mobile sign-in exchange failed:', error);
+    return res.status(500).json({ success: false, error: 'Google sign-in failed.' });
   }
 };
