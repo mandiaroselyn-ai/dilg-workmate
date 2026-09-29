@@ -540,6 +540,7 @@ export default function App() {
     setSidebarOpen((prev) => !prev);
   };
 
+  // Returns true once the server has saved the profile.
   const handleUpdateUser = async (updated) => {
     const mergedUser = {
       ...user,
@@ -562,10 +563,12 @@ export default function App() {
         throw new Error(data?.error || 'MongoDB save failed.');
       }
       setUser(data.user);
+      return true;
     } catch (error) {
       console.error('User update failed:', error);
       setUser(user);
       window.alert(`Unable to save changes to MongoDB: ${error.message}`);
+      return false;
     }
   };
 

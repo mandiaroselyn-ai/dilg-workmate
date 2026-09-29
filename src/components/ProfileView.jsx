@@ -36,6 +36,8 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
   const [region, setRegion] = useState(user.region);
   const [employeeId, setEmployeeId] = useState(user.employeeId);
   const [profileSuccess, setProfileSuccess] = useState(false);
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
   const [activeProfileTab, setActiveProfileTab] = useState('profile');
 
   // Avatar and Camera Upload States
@@ -202,20 +204,35 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
     onUpdateUser(buildUserPayload(''));
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onUpdateUser(buildUserPayload(profilePicture));
-
-    setProfileSuccess(true);
-    setTimeout(() => {
-      setProfileSuccess(false);
-    }, 4000);
-  };
-
-  const handleMobileUpdate = () => {
-    onUpdateUser(buildUserPayload(profilePicture));
+  // Shows the success message only after the server has saved the changes.
+  const saveEmploymentInfo = async () => {
+    setSavingInfo(true);
+    const saved = await onUpdateUser(buildUserPayload(profilePicture));
+    setSavingInfo(false);
+    if (!saved) return false;
     setProfileSuccess(true);
     setTimeout(() => setProfileSuccess(false), 4000);
+    return true;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    void saveEmploymentInfo();
+  };
+
+  // The phone layout shows the details first; Update Personnel Information opens the form.
+  const handleMobileSave = async (e) => {
+    e.preventDefault();
+    if (await saveEmploymentInfo()) setEditingInfo(false);
+  };
+
+  const cancelMobileEdit = () => {
+    setName(user.name || '');
+    setRole(user.role || '');
+    setPhoneNumber(user.phoneNumber || '');
+    setOffice(user.office || '');
+    setRegion(user.region || '');
+    setEditingInfo(false);
   };
 
   return (
@@ -295,36 +312,73 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
           </div>
         </section>
 
-        <section className="mt-5 rounded-[20px] bg-white px-4 py-5 shadow-sm ring-1 ring-slate-100">
+        <form onSubmit={handleMobileSave} className="mt-5 rounded-[20px] bg-white px-4 py-5 shadow-sm ring-1 ring-slate-100">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1551b5] text-white"><User className="h-6 w-6" /></div>
-              <div><h3 className="text-base font-black text-slate-800">Employment Information</h3><p className="mt-1 text-[11px] text-slate-500">View your personal and employment information.</p></div>
+              <div><h3 className="text-base font-black text-slate-800">Employment Information</h3><p className="mt-1 text-[11px] text-slate-500">{editingInfo ? 'Update your personal and employment information.' : 'View your personal and employment information.'}</p></div>
             </div>
             <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 sm:flex"><Database className="h-6 w-6" /> Personnel<br />Record</div>
           </div>
-          <div className="divide-y divide-slate-100">
-            {[
-              ['Full Name', name, User],
-              ['Government Email', email, Mail],
-              ['Position Title', role, Shield],
-              ['Contact Number', phoneNumber, Phone],
-              ['Office Assignment', office, Building],
-              ['Regional Assignment', region, MapPin],
-              ['Employee ID', employeeId, BadgeAlert]
-            ].map(([label, value, Icon]) => (
-              <div key={label} className="flex items-center gap-3 py-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1551b5]"><Icon className="h-5 w-5" /></div>
-                <span className="min-w-0 flex-1 text-xs text-slate-700">{label}</span>
-                <span className="min-w-0 max-w-[52%] break-words text-right text-xs font-bold leading-snug text-slate-800">{value || '-'}</span>
-              </div>
-            ))}
-          </div>
-          <button type="button" onClick={handleMobileUpdate} className="mt-5 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#0645ad] px-4 py-3 text-xs font-bold text-white shadow-md">
-            <Pencil className="h-4 w-4" /> Update Personnel Information
-          </button>
+          {editingInfo ? (
+            <div className="space-y-3 pt-4">
+              {[
+                ['Full Name', name, setName, 'text'],
+                ['Position Title', role, setRole, 'text'],
+                ['Contact Number', phoneNumber, setPhoneNumber, 'tel'],
+                ['Office Assignment', office, setOffice, 'text'],
+                ['Regional Assignment', region, setRegion, 'text']
+              ].map(([label, value, setValue, type]) => (
+                <label key={label} className="block text-[11px] font-bold text-slate-600">
+                  {label}
+                  <input
+                    type={type}
+                    required
+                    value={value || ''}
+                    onChange={(e) => setValue(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#1551b5] focus:bg-white"
+                  />
+                </label>
+              ))}
+              <p className="rounded-xl bg-slate-50 p-3 text-[11px] text-slate-500">
+                Government Email ({email || 'none'}) and Employee ID ({employeeId || 'not assigned'}) are managed by the HR Administrator.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {[
+                ['Full Name', name, User],
+                ['Government Email', email, Mail],
+                ['Position Title', role, Shield],
+                ['Contact Number', phoneNumber, Phone],
+                ['Office Assignment', office, Building],
+                ['Regional Assignment', region, MapPin],
+                ['Employee ID', employeeId, BadgeAlert]
+              ].map(([label, value, Icon]) => (
+                <div key={label} className="flex items-center gap-3 py-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1551b5]"><Icon className="h-5 w-5" /></div>
+                  <span className="min-w-0 flex-1 text-xs text-slate-700">{label}</span>
+                  <span className="min-w-0 max-w-[52%] break-words text-right text-xs font-bold leading-snug text-slate-800">{value || '-'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {editingInfo ? (
+            <div className="mt-5 flex gap-2">
+              <button type="submit" disabled={savingInfo} className="flex-1 rounded-2xl bg-[#0645ad] px-4 py-3 text-xs font-bold text-white shadow-md disabled:opacity-60">
+                {savingInfo ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button type="button" onClick={cancelMobileEdit} disabled={savingInfo} className="rounded-2xl border border-slate-200 px-4 py-3 text-xs font-bold text-slate-700 disabled:opacity-60">
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setEditingInfo(true)} className="mt-5 flex w-full items-center justify-center gap-3 rounded-2xl bg-[#0645ad] px-4 py-3 text-xs font-bold text-white shadow-md">
+              <Pencil className="h-4 w-4" /> Update Personnel Information
+            </button>
+          )}
           {profileSuccess && <p className="mt-3 text-center text-xs font-bold text-emerald-600">Personnel information updated successfully.</p>}
-        </section>
+        </form>
       </div>
 
       <div className="hidden md:block p-8 space-y-8 overflow-y-auto flex-1 id-profile-view font-sans">
@@ -553,9 +607,10 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
             <button
               id="btn-profile-save"
               type="submit"
-              className="px-6 py-3.5 bg-[#1e40af] hover:bg-blue-800 transition-all text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm animate-none font-semibold"
+              disabled={savingInfo}
+              className="px-6 py-3.5 bg-[#1e40af] hover:bg-blue-800 transition-all text-white font-bold text-xs rounded-lg cursor-pointer shadow-sm animate-none font-semibold disabled:opacity-60"
             >
-              Update Personnel Information
+              {savingInfo ? 'Saving...' : 'Update Personnel Information'}
             </button>
           </div>
         </form>

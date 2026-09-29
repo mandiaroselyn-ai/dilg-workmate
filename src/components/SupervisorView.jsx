@@ -669,7 +669,7 @@ export default function SupervisorView({
       {showForm6Request && showForm6Request.type === 'Leave Request' && (
         <CSCForm6Preview
           request={showForm6Request}
-          user={user}
+          user={getRequester(showForm6Request) || { name: showForm6Request.employeeName }}
           onClose={() => setShowForm6Request(null)}
         />
       )}
@@ -677,7 +677,7 @@ export default function SupervisorView({
       {showForm6Request && showForm6Request.type === 'Travel Order' && (
         <TravelOrderPreview
           request={showForm6Request}
-          user={user}
+          user={getRequester(showForm6Request) || { name: showForm6Request.employeeName }}
           onClose={() => setShowForm6Request(null)}
         />
       )}
