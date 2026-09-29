@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import ChangePasswordCard from './ChangePasswordCard';
 import {
   Sliders,
   Bell,
@@ -19,7 +20,7 @@ import {
   UserCheck
 } from 'lucide-react';
 
-export default function SettingsView({ smsNumber, onUpdateSMSNumber }) {
+export default function SettingsView({ smsNumber, onUpdateSMSNumber, hasPassword = true }) {
   const [geofenceRadius, setGeofenceRadius] = useState(150);
   const [disableGeofenceMock, setDisableGeofenceMock] = useState(false);
   const [enableSMSDispatch, setEnableSMSDispatch] = useState(true);
@@ -302,6 +303,10 @@ export default function SettingsView({ smsNumber, onUpdateSMSNumber }) {
 
       </div>
 
+
+      <div className="mt-6">
+        <ChangePasswordCard hasPassword={hasPassword} />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-const TOKEN_TTL_SECONDS = 8 * 60 * 60;
+export const TOKEN_TTL_SECONDS = 8 * 60 * 60;
 
 const getSecret = () => {
   const secret = process.env.JWT_SECRET;
@@ -24,6 +24,7 @@ export const createAuthToken = user => {
     sub: String(user._id || user.id || user.employeeId || user.email),
     email: user.email,
     accessLevel: user.accessLevel || 'employee',
+    iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + TOKEN_TTL_SECONDS
   });
   const unsigned = `${header}.${payload}`;
@@ -44,3 +45,7 @@ export const verifyAuthToken = token => {
   if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) return null;
   return payload;
 };
+
+// When the token was issued, in milliseconds. Tokens created before `iat` was added
+// are dated from their expiry time.
+export const tokenIssuedAtMs = claims => 1000 * (Number.isFinite(claims?.iat) ? claims.iat : Number(claims?.exp) - TOKEN_TTL_SECONDS);

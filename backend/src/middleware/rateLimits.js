@@ -41,6 +41,7 @@ export const createRateLimits = () => {
     // Every reset request sends an email, so all requests count, per email address.
     '/password-reset-request': [limit({ limit: 5, keyGenerator: ipAndEmail })],
     '/register': [limit({ limit: 20, keyGenerator: clientIp })],
+    '/change-password': [limit({ limit: 10, keyGenerator: sessionOrIp, skipSuccessfulRequests: true })],
     '/password-reset': [limit({ limit: 20, keyGenerator: clientIp, skipSuccessfulRequests: true })],
     '/auth/google/exchange': [limit({ limit: 20, keyGenerator: clientIp, skipSuccessfulRequests: true })],
     '/face/enrollment': [signedInActionLimit()],

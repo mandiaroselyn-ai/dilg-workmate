@@ -21,3 +21,7 @@ export const parseApiResponse = async (response, context = 'API request') => {
     throw new Error(message);
   }
 };
+// Saves the session token that apiFetch sends with each request.
+export const storeSessionToken = token => {
+  window.localStorage.setItem('dilg_auth_token', token);
+};

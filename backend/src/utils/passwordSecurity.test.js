@@ -46,6 +46,8 @@ test('removes authentication and biometric secrets from API user objects', () =>
     email: 'employee@example.com',
     biometricEnrollmentStatus: 'pending',
     biometricEnrollmentReviewNote: 'private HR note',
-    faceLivenessStatus: 'not-configured'
+    faceLivenessStatus: 'not-configured',
+    // Only whether a password exists is shared, never the password itself.
+    hasPassword: true
   });
 });

@@ -1,5 +1,5 @@
 import { User } from '../models/User.js';
-import { verifyAuthToken } from '../utils/authToken.js';
+import { tokenIssuedAtMs, verifyAuthToken } from '../utils/authToken.js';
 
 const authenticationFailure = (res, error) => res
   .set('X-Authentication-Error', 'true')
@@ -16,6 +16,11 @@ export const authenticate = async (req, res, next) => {
     const currentUser = await User.findByEmail(claims.email);
     if (!currentUser || (currentUser.accountStatus && currentUser.accountStatus.toLowerCase() !== 'active')) {
       return authenticationFailure(res, 'Authentication expired or account is inactive.');
+    }
+
+    // Sessions that started before the latest password change or reset are ended.
+    if (currentUser.passwordChangedAt && tokenIssuedAtMs(claims) < new Date(currentUser.passwordChangedAt).getTime()) {
+      return authenticationFailure(res, 'Your password was changed. Please log in again.');
     }
 
     req.user = currentUser;

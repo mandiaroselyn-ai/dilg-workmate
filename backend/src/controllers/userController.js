@@ -284,6 +284,32 @@ export const updateEmployeeAccountStatus = async (req, res) => {
   }
 };
 
+// Changes the signed-in user's password. The current password is required unless the
+// account has none yet (for example, one created with Google sign-in). Other sessions
+// end, and this session gets a new token.
+export const changePassword = async (req, res) => {
+  try {
+    const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword.trim() : '';
+    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword.trim() : '';
+    if (newPassword.length < MIN_PASSWORD_LENGTH || newPassword.length > 256) {
+      return res.status(400).json({ success: false, error: `New password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
+    }
+    const user = req.user;
+    if (user.password) {
+      if (!currentPassword || !(await User.verifyPassword(user, currentPassword))) {
+        return res.status(400).json({ success: false, error: 'Your current password is incorrect.' });
+      }
+      if (currentPassword === newPassword) {
+        return res.status(400).json({ success: false, error: 'Choose a new password that is different from your current one.' });
+      }
+    }
+    await User.changePassword(user, newPassword);
+    res.status(200).json({ success: true, message: 'Password changed. You were signed out on your other devices.', token: createAuthToken(user) });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const loginUser = async (req, res) => {
   try {
     const { email, password, role, platform } = req.body;

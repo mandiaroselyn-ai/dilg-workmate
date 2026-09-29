@@ -1,6 +1,7 @@
 ﻿import React, { useRef, useState, useEffect } from 'react';
 import { Building2, Camera, CheckCircle2, IdCard, Mail, MapPin, Pencil, Phone, ShieldAlert } from 'lucide-react';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
+import ChangePasswordCard from './ChangePasswordCard';
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div className="flex items-center gap-3 border-b border-slate-100 py-4 last:border-0">
@@ -355,6 +356,7 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
           </div>
         </div>
       )}
+      <ChangePasswordCard hasPassword={sourceUser.hasPassword !== false} />
     </div>
   );
 }

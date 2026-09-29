@@ -1296,6 +1296,7 @@ export default function App() {
             <SettingsView
               smsNumber={user.phoneNumber}
               onUpdateSMSNumber={(num) => handleUpdateUser({ ...user, phoneNumber: num })}
+              hasPassword={user.hasPassword !== false}
               onClearLocalHistories={handleClearLocalHistories}
             />
           )}

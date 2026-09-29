@@ -42,5 +42,5 @@ export const toSafeUser = (user) => {
     nativeBiometricChallengeExpiry,
     ...safeUser
   } = plainUser;
-  return safeUser;
+  return { ...safeUser, hasPassword: Boolean(password) };
 };

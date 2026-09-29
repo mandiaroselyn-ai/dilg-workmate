@@ -88,6 +88,8 @@ const UserSchema = new mongoose.Schema({
   webauthnChallengeExpiry: { type: Date, default: null },
   resetToken: { type: String, default: '' },
   resetTokenExpiry: { type: Date, default: null },
+  // Sessions issued before this time are no longer accepted.
+  passwordChangedAt: { type: Date, default: null },
   vacationLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
   sickLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
   // IDs of fingerprint proofs already used for a Time In, so each proof works only once.
@@ -106,6 +108,10 @@ function ensureConnected() {
     throw new Error('MongoDB is not connected.');
   }
 }
+
+// Rounded down to the second, like token issue times, so the new session token issued
+// right after a change is still accepted.
+const passwordChangeTime = () => new Date(Math.floor(Date.now() / 1000) * 1000);
 
 // Reset tokens are stored as SHA-256 hashes so a database leak cannot be used to reset passwords.
 export const hashResetToken = token => crypto.createHash('sha256').update(token).digest('hex');
@@ -182,6 +188,18 @@ export const User = {
       [{ $set: { [field]: { $max: [0, { $subtract: [{ $ifNull: [`$${field}`, DEFAULT_LEAVE_CREDITS] }, days] }] } } }],
       { new: true }
     );
+  },
+
+  // Sets a new password for a signed-in user (the pre-save hook hashes it) and ends
+  // their other sessions.
+  changePassword: async (user, newPassword) => {
+    ensureConnected();
+    user.password = newPassword;
+    user.passwordChangedAt = passwordChangeTime();
+    user.resetToken = '';
+    user.resetTokenExpiry = null;
+    await user.save();
+    return user;
   },
 
   // Records a fingerprint proof as used. Returns false when it was already used.
@@ -631,6 +649,7 @@ export const User = {
     const user = await MongoUser.findOne({ resetToken: hashResetToken(token), resetTokenExpiry: { $gt: new Date() } });
     if (!user) return null;
     user.password = password;
+    user.passwordChangedAt = passwordChangeTime();
     user.resetToken = '';
     user.resetTokenExpiry = null;
     await user.save();
