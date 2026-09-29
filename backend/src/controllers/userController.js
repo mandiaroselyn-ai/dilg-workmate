@@ -417,10 +417,12 @@ export const getFullState = async (req, res) => {
     ensureConnected();
 
     // Employees only load their own attendance, filtered in the database rather than
-    // loading every record (with selfies) and filtering here.
+    // loading every record (with selfies) and filtering here. HR/Admins load everyone's.
+    // Supervisors only decide requests, so they get no attendance.
+    const accessLevel = req.user?.accessLevel;
     const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements] = await Promise.all([
       req.user || User.get(),
-      req.user?.accessLevel === 'employee' ? DtrLog.findForEmployee(req.user) : DtrLog.find(),
+      accessLevel === 'employee' ? DtrLog.findForEmployee(req.user) : accessLevel === 'hr_admin' ? DtrLog.find() : [],
       Leave.findAllRequests(),
       Announcement.findEvents(),
       Announcement.findNotificationsFor(req.user),

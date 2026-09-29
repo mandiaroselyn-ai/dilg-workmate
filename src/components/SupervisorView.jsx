@@ -31,7 +31,6 @@ export default function SupervisorView({
   user,
   requests,
   employees = [],
-  attendanceHistory = [],
   onUpdateRequestStatus
 }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -665,35 +664,6 @@ export default function SupervisorView({
 
         </div>
       </div>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="text-sm font-black uppercase tracking-wide text-blue-800">Employee Attendance Records</h2>
-            <p className="mt-1 text-xs text-slate-500">Attendance submitted by employees and saved for HR/Admin and supervisor review.</p>
-          </div>
-          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{attendanceHistory.length} records</span>
-        </div>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left text-xs">
-            <thead className="text-[10px] uppercase tracking-wide text-slate-400">
-              <tr><th className="py-2">Employee</th><th>Employee ID</th><th>Date</th><th>Time In</th><th>Time Out</th><th>Status</th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {attendanceHistory.slice(0, 50).map((record, index) => (
-                <tr key={record.id || `${record.employeeId}-${record.date}-${index}`}>
-                  <td className="py-3 font-bold text-slate-800">{getRequester(record)?.name || record.employeeName || 'Employee name unavailable'}</td>
-                  <td className="font-semibold text-slate-600">{getRequester(record)?.employeeId || record.employeeId || 'Not assigned'}</td>
-                  <td>{record.date || '-'}</td><td>{record.timeIn || '-'}</td><td>{record.timeOut || '-'}</td>
-                  <td><span className="rounded-full bg-slate-100 px-2 py-1 font-bold text-slate-700">{record.status || 'Recorded'}</span></td>
-                </tr>
-              ))}
-              {attendanceHistory.length === 0 && <tr><td colSpan="6" className="py-8 text-center text-slate-400">No employee attendance records have been saved yet.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {attendanceHistory.length > 50 && <p className="mt-3 text-[11px] text-slate-500">Showing the 50 most recent records.</p>}
-      </section>
 
       {/* Renders CSC Form No. 6 Modal Preview / Travel Order Preview */}
       {showForm6Request && showForm6Request.type === 'Leave Request' && (

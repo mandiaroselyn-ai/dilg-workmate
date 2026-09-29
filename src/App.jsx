@@ -1267,7 +1267,6 @@ export default function App() {
               user={user}
               requests={requests}
               employees={employees}
-              attendanceHistory={attendanceHistory}
               onUpdateRequestStatus={handleUpdateRequestStatus}
             />
           )}

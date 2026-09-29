@@ -76,9 +76,14 @@ const resolveAssignedCoords = (record) => {
   return null;
 };
 
+// Attendance is for HR/Admins and for each employee's own records. Supervisors only
+// decide requests, so they are not sent attendance.
 export const getDtrLogs = async (req, res) => {
   try {
-    const logs = req.user?.accessLevel === 'employee'
+    if (!['employee', 'hr_admin'].includes(req.user?.accessLevel)) {
+      return res.status(403).json({ success: false, error: 'You do not have permission to view attendance records.' });
+    }
+    const logs = req.user.accessLevel === 'employee'
       ? await DtrLog.findForEmployee(req.user, { includeEvidence: false })
       : await DtrLog.find();
     res.status(200).json(logs);
@@ -396,7 +401,7 @@ export const getLocationTracking = async (req, res) => {
       && String(req.params.employeeId).toLowerCase() !== String(req.user.employeeId).toLowerCase()) {
       return res.status(403).json({ success: false, error: 'You can only view your own location history.' });
     }
-    if (!['employee', 'hr_admin', 'supervisor'].includes(req.user?.accessLevel)) {
+    if (!['employee', 'hr_admin'].includes(req.user?.accessLevel)) {
       return res.status(403).json({ success: false, error: 'You do not have permission to view location history.' });
     }
 

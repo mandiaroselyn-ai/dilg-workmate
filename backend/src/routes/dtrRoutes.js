@@ -15,7 +15,7 @@ router.put('/attendance/history', authorizeRoles('hr_admin'), bulkUpdateDtrHisto
 // Location tracking endpoints
 router.post('/location/update', updateLocationTracking);
 router.get('/location/history/:employeeId', getLocationTracking);
-router.get('/location/live', authorizeRoles('hr_admin', 'supervisor'), getActiveLocationTracking);
+router.get('/location/live', authorizeRoles('hr_admin'), getActiveLocationTracking);
 router.post('/geofence/check', checkGeofenceStatus);
 router.post('/geofence/resolve', resolveGeofenceAssignment);
 
@@ -31,7 +31,7 @@ router.post('/action', (req, res) => {
   if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
   return handler(req, res);
 });
-router.get('/action', authorizeRoles('hr_admin', 'supervisor'), (req, res) => {
+router.get('/action', authorizeRoles('hr_admin'), (req, res) => {
   if (req.query.action !== 'location-live') return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
   return getActiveLocationTracking(req, res);
 });
