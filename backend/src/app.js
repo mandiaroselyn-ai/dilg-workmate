@@ -7,7 +7,7 @@ import announcementRoutes from './routes/announcementRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
+import { createRateLimits } from './middleware/rateLimits.js';
 import { apiErrorHandler, apiNotFound, validateApiBody } from './middleware/requestSecurity.js';
 import { getAllowedFrontendOrigins } from './utils/frontendOrigin.js';
 
@@ -60,16 +60,9 @@ export function createApiApp() {
     next();
   });
 
-  const apiRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false });
-  const strictRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-7', legacyHeaders: false });
+  const { apiRateLimit, routeRateLimit } = createRateLimits();
   app.use('/api', apiRateLimit);
-  app.use('/api', (req, res, next) => {
-    const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
-    const limitedPaths = ['/login', '/register', '/password-reset-request', '/password-reset', '/auth/google/exchange', '/face/enrollment', '/sms'];
-    const isEnrollmentReview = /^\/face\/enrollment\/[^/]+\/review$/.test(apiPath);
-    if (!limitedPaths.includes(apiPath) && !isEnrollmentReview) return next();
-    return strictRateLimit(req, res, next);
-  });
+  app.use('/api', routeRateLimit);
   app.use('/api', validateApiBody);
 
   app.use('/api', (req, res, next) => {
