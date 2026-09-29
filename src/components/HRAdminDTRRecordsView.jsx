@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
+import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { dtrIssue, dtrRecordStatus, recordsForEmployees } from '../utils/hrAttendance';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 
@@ -11,20 +13,18 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedRecord, setSelectedRecord] = useState(null);
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
-  const records = attendanceHistory.map((record, index) => {
+  const today = getManilaDateString();
+  // Only records that belong to current employee accounts.
+  const records = recordsForEmployees(attendanceHistory, employees).map((record, index) => {
     const employee = findEmployee(record);
-    const status = !record.timeIn || !record.timeOut
-      ? 'Incomplete'
-      : record.late || /late/i.test(record.status || '')
-        ? 'Late'
-        : 'Complete';
+    const status = dtrRecordStatus(record, today);
     return {
       record,
       employee,
       id: record.id || `dtr-${index}`,
       name: employee?.name || record.employeeName || 'Registered employee',
       employeeId: employee?.employeeId || record.employeeId || 'Not assigned',
-      office: employee?.office || 'Office not assigned',
+      office: employee?.office || record.employeeOffice || 'Office not assigned',
       status
     };
   });
@@ -38,11 +38,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
   ));
   const complete = records.filter(row => row.status === 'Complete').length;
   const incomplete = records.filter(row => row.status === 'Incomplete').length;
-  const forReview = records.filter(row => (
-    row.status !== 'Complete'
-    || !row.record.selfieUrl
-    || !row.record.fingerprintVerified
-  )).length;
+  const forReview = records.filter(row => dtrIssue(row.record, today)).length;
 
   return (
     <div className="animate-fadeIn space-y-4">
@@ -77,7 +73,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
           <option>All Offices</option>{offices.map(office => <option key={office}>{office}</option>)}
         </select>
         <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
-          <option>All Statuses</option><option>Complete</option><option>Late</option><option>Incomplete</option>
+          <option>All Statuses</option><option>On Duty</option><option>Complete</option><option>Late</option><option>Incomplete</option>
         </select>
       </div>
       <section>
@@ -92,8 +88,8 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
                     <p className="mt-1 text-xs text-slate-500">Employee ID: {row.employeeId}</p>
                     <p className="text-xs text-slate-500">Date: {row.record.date || '-'}</p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-[10px] font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
-                    {row.status === 'Complete' ? 'Complete' : row.status === 'Late' ? 'Late' : 'Missing Time Out'}
+                  <span className={`rounded-full px-3 py-1 text-[10px] font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
+                    {row.status === 'Incomplete' ? (row.record.timeIn ? 'Missing Time Out' : 'Missing Time In') : row.status}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">

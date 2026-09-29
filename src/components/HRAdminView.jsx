@@ -452,6 +452,7 @@ export default function HRAdminView({
       {activeTab === 'dtr' && <HRAdminAttendanceView
         employees={employees}
         attendanceHistory={attendanceHistory}
+        requests={requests}
         onOpenTab={setActiveTab}
       />}
 

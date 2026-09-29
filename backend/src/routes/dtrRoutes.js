@@ -31,5 +31,9 @@ router.post('/action', (req, res) => {
   if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
   return handler(req, res);
 });
+router.get('/action', authorizeRoles('hr_admin', 'supervisor'), (req, res) => {
+  if (req.query.action !== 'location-live') return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
+  return getActiveLocationTracking(req, res);
+});
 
 export default router;

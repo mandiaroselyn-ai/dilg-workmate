@@ -13,7 +13,7 @@ import {
   Users,
   XCircle
 } from 'lucide-react';
-import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { activeEmployees, dtrIssue, employeeDayStatus, recordsForEmployees } from '../utils/hrAttendance';
 
 const MetricCard = ({ icon: Icon, label, value, detail, action, color, onClick }) => (
   <article className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -36,57 +36,69 @@ export default function HRAdminDashboard({
   onViewAllActivities
 }) {
   const today = getManilaDateString();
-  const todayRecords = attendanceHistory.filter(record => record.date === today);
-  const totalEmployees = employees.length;
-  const isRegisteredRecord = record => employees.some(employee => matchesAttendanceEmployee(record, employee));
-  const registeredTodayRecords = todayRecords.filter(isRegisteredRecord);
-  const employeeTodayRecord = employee => registeredTodayRecords.find(record => matchesAttendanceEmployee(record, employee));
-  const present = employees.filter(employee => {
-    const record = employeeTodayRecord(employee);
-    return record?.status !== 'Absent' && Boolean(record?.timeIn);
-  }).length;
-  const absent = Math.max(0, totalEmployees - present);
-  const late = employees.filter(employee => {
-    const record = employeeTodayRecord(employee);
-    return Boolean(record?.late || /late/i.test(record?.status || ''));
-  }).length;
-  const leaveRequests = requests.filter(request => request.type === 'Leave Request');
-  const travelRequests = requests.filter(request => request.type === 'Travel Order');
-  const onLeave = leaveRequests.filter(request => request.status === 'Approved').length;
-  const onTravel = travelRequests.filter(request => request.status === 'Approved').length;
-  const dtrIssues = attendanceHistory.filter(record => isRegisteredRecord(record) && (!record.timeIn || !record.timeOut || !record.selfieUrl || !record.fingerprintVerified));
-  const geofenceAlerts = attendanceHistory.filter(record => isRegisteredRecord(record) && record.gpsStatus && !/in range/i.test(record.gpsStatus));
+  // Only current, active employee accounts and their own records and requests are counted.
+  const staff = activeEmployees(employees);
+  const employeeHistory = recordsForEmployees(attendanceHistory, employees);
+  const employeeRequests = recordsForEmployees(requests, employees);
+  const totalEmployees = staff.length;
+  const todayStatuses = staff.map(employee => ({
+    employee,
+    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date: today })
+  }));
+  const countStatus = (...statuses) => todayStatuses.filter(item => statuses.includes(item.status)).length;
+  const late = countStatus('Late');
+  const present = countStatus('Present', 'Late');
+  const onTime = present - late;
+  const onLeave = countStatus('On Leave');
+  const onTravel = countStatus('On Travel');
+  const absent = countStatus('Absent');
+  const leaveRequests = employeeRequests.filter(request => request.type === 'Leave Request');
+  const travelRequests = employeeRequests.filter(request => request.type === 'Travel Order');
+  const dtrIssues = employeeHistory.filter(record => dtrIssue(record, today));
+  const geofenceAlerts = employeeHistory.filter(record => record.date === today && record.gpsStatus && !/in range/i.test(record.gpsStatus));
   const pendingLeave = leaveRequests.filter(request => request.status === 'Pending').length;
   const pendingTravel = travelRequests.filter(request => request.status === 'Pending').length;
-  const returned = requests.filter(request => request.status === 'Returned' || request.status === 'Rejected').length;
+  const returned = employeeRequests.filter(request => request.status === 'Returned' || request.status === 'Rejected').length;
   const rate = totalEmployees ? ((present / totalEmployees) * 100).toFixed(1) : '0.0';
   const greetingHour = new Date().getHours();
   const greeting = greetingHour < 12 ? 'Good Morning' : greetingHour < 18 ? 'Good Afternoon' : 'Good Evening';
+  const activityTime = value => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+  // The latest Time Ins, Time Outs, and requests from current employees.
   const activityItems = [
-    ['DTR validated', `Employee: ${attendanceHistory[0]?.employeeName || 'No recent record'}`, CheckCircle2, '9:21 AM', 'text-emerald-600 bg-emerald-50'],
-    ['Leave request pending review', `Request ID: ${leaveRequests[0]?.id || 'No recent record'}`, FileCheck2, '8:48 AM', 'text-blue-600 bg-blue-50'],
-    ['Geofence alert detected', `Employee: ${geofenceAlerts[0]?.employeeName || 'No recent record'}`, AlertCircle, '8:15 AM', 'text-amber-600 bg-amber-50'],
-    ['Travel order submitted', `Request ID: ${travelRequests[0]?.id || 'No recent record'}`, Plane, '7:35 AM', 'text-violet-600 bg-violet-50']
-  ];
-  const attendanceStatusTotal = Math.max(1, present + absent + late);
-  const presentDegrees = (present / attendanceStatusTotal) * 360;
+    ...employeeHistory.map(record => ({
+      at: record.updatedAt || record.createdAt || record.date,
+      title: record.timeOut ? 'Time Out recorded' : 'Time In recorded',
+      detail: `${record.employeeName || 'Employee'} · ${record.date || ''} · ${record.timeOut || record.timeIn || ''}`,
+      icon: record.timeOut ? Clock3 : CheckCircle2,
+      tone: 'text-emerald-600 bg-emerald-50'
+    })),
+    ...employeeRequests.map(request => ({
+      at: request.updatedAt || request.createdAt || request.dateSubmitted,
+      title: `${request.type || 'Request'} · ${request.status || 'Submitted'}`,
+      detail: `${request.employeeName || 'Employee'} · ${request.id || ''}`,
+      icon: request.type === 'Travel Order' ? Plane : FileCheck2,
+      tone: request.type === 'Travel Order' ? 'text-violet-600 bg-violet-50' : 'text-blue-600 bg-blue-50'
+    }))
+  ]
+    .sort((a, b) => (new Date(b.at).getTime() || 0) - (new Date(a.at).getTime() || 0))
+    .slice(0, 5)
+    .map(item => [item.title, item.detail, item.icon, activityTime(item.at), item.tone]);
+  const attendanceStatusTotal = Math.max(1, totalEmployees);
+  const presentDegrees = (onTime / attendanceStatusTotal) * 360;
   const lateDegrees = (late / attendanceStatusTotal) * 360;
   const absentDegrees = (absent / attendanceStatusTotal) * 360;
 
-  const employeeAttendanceRows = employees
-    .map((employee) => {
-      const record = attendanceHistory.find((entry) => {
-        return matchesAttendanceEmployee(entry, employee) && entry.date === today;
-      });
-
-      return {
-        employeeName: employee.name || 'Unnamed Employee',
-        status: record?.status || 'No Record',
-        timeIn: record?.timeIn || '--',
-        timeOut: record?.timeOut || '--',
-        late: Boolean(record?.late || /late/i.test(record?.status || ''))
-      };
-    })
+  const employeeAttendanceRows = todayStatuses
+    .map(({ employee, status, record }) => ({
+      employeeName: employee.name || 'Unnamed Employee',
+      status,
+      timeIn: record?.timeIn || '--',
+      timeOut: record?.timeOut || '--',
+      late: status === 'Late'
+    }))
     .slice(0, 8);
 
   const getAttendanceStatusStyle = (status) => {
@@ -130,7 +142,7 @@ export default function HRAdminDashboard({
         <MetricCard icon={MapPin} label="Geofence Alerts" value={geofenceAlerts.length} detail="Employees outside assigned location" action="View Alerts" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Today's Attendance Overview</h3><button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-5 flex flex-wrap items-center justify-center gap-8 md:justify-start"><div className="relative h-44 w-44 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0deg ${presentDegrees}deg, #f97316 ${presentDegrees}deg ${presentDegrees + lateDegrees}deg, #ef4444 ${presentDegrees + lateDegrees}deg ${presentDegrees + lateDegrees + absentDegrees}deg, #8b5cf6 ${presentDegrees + lateDegrees + absentDegrees}deg 360deg)` }}><div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white"><strong className="text-2xl font-black text-slate-900">{rate}%</strong><span className="text-[10px] font-bold text-slate-500">Attendance Rate</span></div></div><div className="grid min-w-[210px] gap-3 text-sm">{[['Present', present, 'bg-emerald-500'], ['Late', late, 'bg-orange-500'], ['Absent', absent, 'bg-rose-500'], ['On Leave', onLeave, 'bg-violet-500']].map(([label, value, color]) => <div key={label} className="flex items-center justify-between gap-8"><span className="flex items-center gap-2 font-semibold text-slate-600"><i className={`h-3 w-3 rounded-full ${color}`} />{label}</span><strong className="text-lg text-slate-900">{value}</strong></div>)}</div></div></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Today's Attendance Overview</h3><button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-5 flex flex-wrap items-center justify-center gap-8 md:justify-start"><div className="relative h-44 w-44 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0deg ${presentDegrees}deg, #f97316 ${presentDegrees}deg ${presentDegrees + lateDegrees}deg, #ef4444 ${presentDegrees + lateDegrees}deg ${presentDegrees + lateDegrees + absentDegrees}deg, #8b5cf6 ${presentDegrees + lateDegrees + absentDegrees}deg 360deg)` }}><div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white"><strong className="text-2xl font-black text-slate-900">{rate}%</strong><span className="text-[10px] font-bold text-slate-500">Attendance Rate</span></div></div><div className="grid min-w-[210px] gap-3 text-sm">{[['On Time', onTime, 'bg-emerald-500'], ['Late', late, 'bg-orange-500'], ['Absent', absent, 'bg-rose-500'], ['On Leave / Travel', onLeave + onTravel, 'bg-violet-500']].map(([label, value, color]) => <div key={label} className="flex items-center justify-between gap-8"><span className="flex items-center gap-2 font-semibold text-slate-600"><i className={`h-3 w-3 rounded-full ${color}`} />{label}</span><strong className="text-lg text-slate-900">{value}</strong></div>)}</div></div></section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
@@ -163,7 +175,7 @@ export default function HRAdminDashboard({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Pending Requests</h3><button onClick={() => onOpenTab('requests')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4"><CalendarDays className="h-7 w-7 text-emerald-600" /><div><p className="text-sm font-bold text-slate-700">Leave Applications</p><strong className="text-2xl text-emerald-600">{pendingLeave}</strong><p className="text-[11px] text-slate-500">For Supervisor Review</p></div></div><div className="flex items-center gap-3 rounded-xl bg-blue-50 p-4"><Plane className="h-7 w-7 text-blue-600" /><div><p className="text-sm font-bold text-slate-700">Travel Orders</p><strong className="text-2xl text-blue-600">{pendingTravel}</strong><p className="text-[11px] text-slate-500">For Supervisor Review</p></div></div><div className="flex items-center gap-3 rounded-xl bg-amber-50 p-4"><FileCheck2 className="h-7 w-7 text-amber-600" /><div><p className="text-sm font-bold text-slate-700">Returned Requests</p><strong className="text-2xl text-amber-600">{returned}</strong><p className="text-[11px] text-slate-500">Needs employee action</p></div></div></div></section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 pb-3"><h3 className="text-lg font-black text-slate-900">Recent Activities</h3><button onClick={onViewAllActivities} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="divide-y divide-slate-100">{activityItems.map(([title, detail, Icon, time, tone]) => <div key={title} className="flex items-center gap-3 py-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-800">{title}</p><p className="truncate text-xs text-slate-500">{detail}</p></div><span className="text-xs font-semibold text-slate-400">{time}</span></div>)}</div></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 pb-3"><h3 className="text-lg font-black text-slate-900">Recent Activities</h3><button onClick={onViewAllActivities} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="divide-y divide-slate-100">{activityItems.length ? activityItems.map(([title, detail, Icon, time, tone], index) => <div key={`${title}-${index}`} className="flex items-center gap-3 py-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-800">{title}</p><p className="truncate text-xs text-slate-500">{detail}</p></div><span className="shrink-0 text-xs font-semibold text-slate-400">{time}</span></div>) : <p className="py-4 text-center text-xs font-semibold text-slate-400">No attendance or request activity from current employees yet.</p>}</div></section>
     </div>
   );
 }

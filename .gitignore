@@ -9,3 +9,6 @@ coverage/
 !/backend/.env.example
 
 .vercel
+
+# Local database backups (contain personal data)
+backups/

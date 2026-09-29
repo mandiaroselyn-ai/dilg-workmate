@@ -350,7 +350,11 @@ export const updateLocationTracking = async (req, res) => {
         }) || ASSIGNED_LOCATION_MAP['Office Station'] || { lat: 13.4474, lon: 121.8344 };
 
     const distance = computeDistanceMeters(Number(latitude), Number(longitude), Number(assignedCoords.lat), Number(assignedCoords.lon));
-    const withinGeofence = distance <= GEO_THRESHOLD_METERS;
+    // Use the same assignment area as Time In (a field assignment covers the whole
+    // barangay, not just 150 m around its center).
+    const withinGeofence = Number.isFinite(Number(activeLog?.assignmentSite?.latitude))
+      ? isWithinAssignedLocation(latitude, longitude, activeLog.assignmentSite)
+      : distance <= GEO_THRESHOLD_METERS;
 
     const locationData = {
       latitude: Number(latitude),
