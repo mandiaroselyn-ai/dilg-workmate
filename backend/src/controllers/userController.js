@@ -508,7 +508,11 @@ const createTransporter = () => {
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
-    }
+    },
+    // Give up on an unreachable mail server well before the 30-second function limit.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000
   });
 };
 
@@ -533,13 +537,19 @@ export const requestPasswordReset = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Email is required.' });
     }
 
-    // Check the email configuration first so the response does not differ between known and unknown emails.
+    // Check the email service first, so the response does not differ between known and
+    // unknown emails. Signing in to the mail server here means a wrong server name or
+    // password is reported, instead of the page saying a link was sent when none was.
     let transporter;
     try {
       transporter = createTransporter();
+      await transporter.verify();
     } catch (err) {
-      console.error('SMTP configuration error:', err.message);
-      return res.status(500).json({ success: false, error: 'Email service is not configured. Contact administrator.' });
+      console.error('Password reset email service is not available:', err.message);
+      return res.status(503).json({
+        success: false,
+        error: 'Password reset emails cannot be sent right now because the email service is not set up correctly. Please contact the HR Administrator.'
+      });
     }
 
     const user = await User.findByEmail(email);
