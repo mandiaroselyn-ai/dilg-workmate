@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { validateApiBody } from './requestSecurity.js';
+import { sendServerError, validateApiBody } from './requestSecurity.js';
 
 const invokeValidator = (body, path = '/') => {
   let statusCode = 200;
@@ -74,4 +74,13 @@ test('limits SMS text to 918 characters but allows longer notification messages'
   assert.equal(invokeValidator({ message }, '/sms').statusCode, 400);
   assert.equal(invokeValidator({ message }, '/notifications').nextCalled, true);
   assert.equal(invokeValidator({ message: 'x'.repeat(5001) }, '/notifications').statusCode, 400);
+});
+
+test('database validation errors are reported as a 400 naming the fields', () => {
+  let statusCode;
+  let body;
+  const res = { status(code) { statusCode = code; return this; }, json(value) { body = value; return this; } };
+  sendServerError(res, Object.assign(new Error('Request validation failed'), { name: 'ValidationError', errors: { purpose: {} } }));
+  assert.equal(statusCode, 400);
+  assert.equal(body.error, 'Missing or invalid field: purpose.');
 });

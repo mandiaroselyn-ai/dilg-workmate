@@ -62,6 +62,15 @@ export const apiErrorHandler = (error, req, res, next) => {
 // Logs the real error on the server but only returns a generic message, so internal
 // details such as database errors are not shown to users.
 export const sendServerError = (res, error) => {
+  // A record the database rejects (a missing or malformed field) is the sender's input,
+  // not a server fault, so say which fields to fix.
+  if (error?.name === 'ValidationError' || error?.name === 'CastError') {
+    const fields = error.errors ? Object.keys(error.errors) : [error.path].filter(Boolean);
+    return res.status(400).json({
+      success: false,
+      error: `Missing or invalid field${fields.length === 1 ? '' : 's'}: ${fields.join(', ') || 'request data'}.`
+    });
+  }
   console.error('API error:', error);
   return res.status(500).json({ success: false, error: 'Internal server error.' });
 };

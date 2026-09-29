@@ -73,6 +73,14 @@
     {
       "source": "/api/staff/:path*",
       "destination": "/api/staff"
+    },
+    {
+      "source": "/api/notifications/:id/read",
+      "destination": "/api/notifications"
+    },
+    {
+      "source": "/api/biometric/native/:path*",
+      "destination": "/api/biometric"
     }
   ]
 }

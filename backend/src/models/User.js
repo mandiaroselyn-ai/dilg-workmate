@@ -210,7 +210,8 @@ export const User = {
     return MongoUser.findOneAndUpdate(
       { $or: owners },
       [{ $set: { [field]: { $max: [0, { $subtract: [{ $ifNull: [`$${field}`, DEFAULT_LEAVE_CREDITS] }, days] }] } } }],
-      { new: true }
+      // Mongoose 9 only runs update pipelines (like this one) when asked to.
+      { new: true, updatePipeline: true }
     );
   },
 
