@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { getManilaDateString } from '../../shared/localDate';
 import {
   Calendar as CalendarIcon,
   Plus,
@@ -30,9 +31,11 @@ export default function CalendarView({ events, onAddEvent }) {
   } catch (e) {
     // ignore if data import fails
   }
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(5); // 5 is June (0-based: 4 = May, 5 = June)
-  const [selectedDayStr, setSelectedDayStr] = useState('2026-05-30'); // ISO format YYYY-MM-DD
+  // Opens on today's month with today selected (Philippine time).
+  const today = getManilaDateString(); // YYYY-MM-DD
+  const [currentYear, setCurrentYear] = useState(() => Number(today.slice(0, 4)));
+  const [currentMonth, setCurrentMonth] = useState(() => Number(today.slice(5, 7)) - 1); // 0-based
+  const [selectedDayStr, setSelectedDayStr] = useState(today);
   
   // Quick event form states
   const [newTitle, setNewTitle] = useState('');
@@ -197,8 +200,7 @@ export default function CalendarView({ events, onAddEvent }) {
                 const dayEvents = getEventsForDay(day);
                 const hasEvents = dayEvents.length > 0;
 
-                // Highlight today (May 30, 2026 is today in default timeline)
-                const isToday = dateStr === '2026-05-30';
+                const isToday = dateStr === today;
 
                 return (
                   <button
