@@ -4,6 +4,8 @@ import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { createMobileHandoffCode, isValidCodeChallenge, readMobileHandoffCode } from '../utils/mobileAuthHandoff.js';
+import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
+import { notifyHrOfNewAccount } from '../services/accountNotifications.js';
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -188,10 +190,26 @@ export const googleAuthCallback = async (req, res) => {
       throw new Error('Google did not return a verified email address.');
     }
 
-    // Google sign-in only links to accounts HR has already created and activated.
-    const user = await User.findByEmail(profile.email);
+    let user = await User.findByEmail(profile.email);
     if (!user) {
-      throw new Error('No WorkMate account uses this Google email. Ask the HR Administrator to create your account first.');
+      // A new Google user gets an employee account. A verified DILG email is activated
+      // right away; any other Google account (such as Gmail) waits for HR approval.
+      const isAgencyEmail = isAgencyEmailAddress(profile.email);
+      const created = await User.createSelfServiceEmployee({
+        name: profile.name || profile.email,
+        email: profile.email.toLowerCase(),
+        profilePicture: profile.picture || '',
+        googleId: profile.sub || '',
+        role: '',
+        office: '',
+        accountStatus: isAgencyEmail ? 'Active' : 'Pending'
+      });
+      if (!created) throw new Error('Unable to create your WorkMate account. Please contact the HR Administrator.');
+      await notifyHrOfNewAccount(created, 'Google sign-in');
+      if (!isAgencyEmail) {
+        throw new Error('Your WorkMate account was created and is waiting for HR approval. You can sign in with Google once the HR Administrator activates it.');
+      }
+      user = await User.findById(created._id);
     }
     if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
       throw new Error(`This account is ${user.accountStatus.toLowerCase()}. Please contact the HR Administrator.`);

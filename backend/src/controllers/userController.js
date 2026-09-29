@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
+import { notifyHrOfNewAccount } from '../services/accountNotifications.js';
 import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -101,21 +102,11 @@ export const registerUser = async (req, res) => {
       return res.status(409).json({ success: false, error: 'An account already uses this email address.' });
     }
 
-    let created;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const employeeId = `DILG-${new Date().getFullYear()}-${crypto.randomInt(100000, 1000000)}`;
-      created = await User.createEmployee({
-        ...profile,
-        employeeId,
-        password,
-        accountStatus: 'Pending',
-        employmentStatus: 'ACTIVE'
-      });
-      if (!created?.conflict) break;
-    }
-    if (!created || created.conflict) {
+    const created = await User.createSelfServiceEmployee({ ...profile, password, accountStatus: 'Pending' });
+    if (!created) {
       return res.status(409).json({ success: false, error: 'Unable to register this account. Contact the HR Administrator.' });
     }
+    await notifyHrOfNewAccount(created, 'the sign-up form');
     res.status(201).json({
       success: true,
       message: 'Account created. The HR Administrator must activate it before you can log in.',

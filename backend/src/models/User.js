@@ -286,6 +286,18 @@ export const User = {
     return employee.toObject();
   },
 
+  // Creates an employee account for self-service sign-up (the sign-up form or Google
+  // sign-in) with a unique, server-assigned employee ID. Returns null when the account
+  // could not be created, for example because the email is already in use.
+  createSelfServiceEmployee: async (employeeData) => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const employeeId = `DILG-${new Date().getFullYear()}-${crypto.randomInt(100000, 1000000)}`;
+      const created = await User.createEmployee({ employmentStatus: 'ACTIVE', ...employeeData, employeeId });
+      if (!created?.conflict) return created;
+    }
+    return null;
+  },
+
   updateEmployee: async (identifier, employeeData) => {
     ensureConnected();
     const value = identifier?.toString().trim();
