@@ -396,12 +396,13 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     }
   };
 
-  const handleAccountStatus = async accountStatus => {
-    if (!selectedEmployee) return;
-    const key = employeeKey(selectedEmployee);
+  const updateAccountStatus = async (targetEmployee, accountStatus, { openProfile = true } = {}) => {
+    if (!targetEmployee) return;
+    const key = employeeKey(targetEmployee);
+    const wasPending = accountStatusOf(targetEmployee) === 'pending';
     setAccountStatusUpdating(true);
     try {
-      const identifier = selectedEmployee.employeeId || selectedEmployee.email;
+      const identifier = targetEmployee.employeeId || targetEmployee.email;
       const response = await apiFetch(`/api/employees/${encodeURIComponent(identifier)}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -424,7 +425,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       try {
         await onAdminNotification?.({
           title: 'Employee Account Status Changed',
-          message: `${employeeName(selectedEmployee)} account status was updated to ${accountStatus} by HR/Admin.`,
+          message: `${employeeName(targetEmployee)} account status was updated to ${accountStatus} by HR/Admin.`,
           time: 'Just now',
           type: 'employee_management'
         });
@@ -433,14 +434,22 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         notificationFailed = true;
         notify('Employee status saved, but its notification could not be delivered.', true);
       }
-      if (!notificationFailed) notify(`Account status updated to ${accountStatus}.`);
-      setScreen('profile');
+      if (!notificationFailed) {
+        notify(wasPending && accountStatus === 'Active'
+          ? `Account approved. ${employeeName(targetEmployee)} can now log in.`
+          : wasPending && accountStatus === 'Inactive'
+            ? `Account declined. ${employeeName(targetEmployee)} cannot log in.`
+            : `Account status updated to ${accountStatus}.`);
+      }
+      if (openProfile) setScreen('profile');
     } catch (error) {
       notify(error.message || 'Unable to update employee account status.', true);
     } finally {
       setAccountStatusUpdating(false);
     }
   };
+
+  const handleAccountStatus = accountStatus => updateAccountStatus(selectedEmployee, accountStatus);
 
   if (screen === 'editor') {
     return (
@@ -609,9 +618,25 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             <button type="button" onClick={() => openEdit(selectedEmployee)} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white">
               <Pencil className="h-4 w-4" /> Edit
             </button>
-            <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Activate'}</button>
-            <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Deactivate'}</button>
+            {accountStatusOf(selectedEmployee) === 'active' ? (
+              <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Deactivate'}</button>
+            ) : accountStatusOf(selectedEmployee) !== 'pending' && (
+              <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Reactivate'}</button>
+            )}
           </div>
+
+          {accountStatusOf(selectedEmployee) === 'pending' && (
+            <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+              <p className="text-sm font-black text-amber-900">This account is waiting for approval</p>
+              <p className="mt-1 text-xs font-semibold text-amber-800">
+                Check that {selectedEmployee.email || 'this email'} belongs to a DILG employee. After approval, they can log in; set their office and job designation with Edit.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Approve account'}</button>
+                <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Decline'}</button>
+              </div>
+            </div>
+          )}
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -936,6 +961,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
                       <td className="px-3 py-3 text-slate-700">{employee.assignedStation || '—'}</td>
                       <td className="px-3 py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          {accountStatusOf(employee) === 'pending' && (
+                            <button type="button" onClick={() => updateAccountStatus(employee, 'Active', { openProfile: false })} disabled={accountStatusUpdating} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-black text-white disabled:opacity-50">Approve</button>
+                          )}
                           <button type="button" onClick={() => openView(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-700">View</button>
                           <button type="button" onClick={() => openEdit(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-700">Edit</button>
                         </div>

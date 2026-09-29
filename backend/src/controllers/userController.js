@@ -246,6 +246,17 @@ export const updateEmployeeAccountStatus = async (req, res) => {
     }
     const updated = await User.updateAccountStatus(identifier, accountStatus);
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    if (accountStatus === 'Active') {
+      // The employee sees this after their first login. A failed notification never
+      // fails the approval.
+      await Announcement.createNotification({
+        title: 'Account Approved',
+        message: 'Your DILG WorkMate account is now active. Complete your profile and biometric enrollment before your first Time In.',
+        type: 'system',
+        employeeId: updated.employeeId || '',
+        employeeEmail: updated.email || ''
+      }).catch(error => console.error('Unable to notify the employee about account approval:', error));
+    }
     res.status(200).json({ success: true, user: toSafeUser(updated) });
   } catch (error) {
     sendServerError(res, error);
