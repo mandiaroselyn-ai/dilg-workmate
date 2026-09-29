@@ -115,6 +115,8 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
       const publicKey = {
         ...options,
+        // Prefer this phone's own fingerprint (browsers that do not support hints ignore it).
+        hints: ['client-device'],
         challenge: fromBase64Url(options.challenge),
         user: { ...options.user, id: fromBase64Url(options.user.id) },
         excludeCredentials: (options.excludeCredentials || []).map(credential => ({

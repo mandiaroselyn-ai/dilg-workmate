@@ -37,7 +37,9 @@ export const createRegistrationOptions = async (req, res) => {
         residentKey: 'preferred',
         userVerification: 'required'
       },
-      excludeCredentials: user.webauthnCredentialId ? [{ id: user.webauthnCredentialId }] : []
+      excludeCredentials: user.webauthnCredentialId
+        ? [{ id: user.webauthnCredentialId, transports: registeredTransports(user.webauthnTransports) }]
+        : []
     });
 
     const savedChallenge = await User.saveWebAuthnChallenge(
@@ -77,13 +79,23 @@ export const verifyRegistration = async (req, res) => {
     const savedCredential = await User.saveWebAuthnCredential(user._id, {
       id: credential.id,
       publicKey: toBase64Url(credential.publicKey),
-      counter: credential.counter
+      counter: credential.counter,
+      transports: registeredTransports(credential.transports)
     });
     if (!savedCredential) throw new Error('Could not save the passkey credential.');
     res.status(201).json({ success: true, credentialId: credential.id });
   } catch (error) {
     res.status(400).json({ success: false, error: 'WebAuthn registration failed.' });
   }
+};
+
+// Fingerprints are only registered with the phone's own authenticator
+// (authenticatorAttachment: 'platform'), so "internal" is the right transport when an
+// older registration did not record one.
+const KNOWN_TRANSPORTS = ['internal', 'hybrid', 'usb', 'nfc', 'ble', 'smart-card', 'cable'];
+export const registeredTransports = transports => {
+  const known = Array.isArray(transports) ? transports.filter(transport => KNOWN_TRANSPORTS.includes(transport)) : [];
+  return known.length ? known : ['internal'];
 };
 
 export const createAuthenticationOptions = async (req, res) => {
@@ -95,7 +107,9 @@ export const createAuthenticationOptions = async (req, res) => {
 
     const options = await generateAuthenticationOptions({
       rpID: getRpId(req),
-      allowCredentials: [{ id: user.webauthnCredentialId }],
+      // Pointing Chrome at the phone's built-in sensor lets it open the fingerprint
+      // screen directly instead of a passkey chooser first.
+      allowCredentials: [{ id: user.webauthnCredentialId, transports: registeredTransports(user.webauthnTransports) }],
       userVerification: 'required'
     });
     const savedChallenge = await User.saveWebAuthnChallenge(

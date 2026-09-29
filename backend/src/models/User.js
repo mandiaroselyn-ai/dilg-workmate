@@ -73,6 +73,9 @@ const UserSchema = new mongoose.Schema({
   webauthnCredentialId: { type: String, default: '' },
   webauthnPublicKey: { type: String, default: '' },
   webauthnCounter: { type: Number, default: 0 },
+  // How the phone reaches the registered fingerprint (for example "internal" for its
+  // built-in sensor), reported when it was registered.
+  webauthnTransports: { type: [String], default: [] },
   webauthnChallenges: {
     type: [{
       challenge: { type: String, required: true },
@@ -593,6 +596,7 @@ export const User = {
           webauthnCredentialId: credential.id,
           webauthnPublicKey: credential.publicKey,
           webauthnCounter: credential.counter,
+          webauthnTransports: credential.transports || [],
           webauthnChallenge: '',
           webauthnChallengeExpiry: null
         }

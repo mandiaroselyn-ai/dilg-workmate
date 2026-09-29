@@ -486,6 +486,8 @@ export default function AttendanceView({
 
       const publicKey = {
         ...options,
+        // Prefer this phone's own fingerprint (browsers that do not support hints ignore it).
+        hints: ['client-device'],
         challenge: fromBase64Url(options.challenge),
         allowCredentials: (options.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
       };
