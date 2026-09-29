@@ -33,11 +33,14 @@ import TravelOrderPreview from './TravelOrderPreview';
 import { Plane, MapPin } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 
+// Submitted requests that are not decided yet can be withdrawn (matches the server).
+const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
+
 export default function RequestsView({
   user,
   requests,
   onSubmitRequest,
-  onUpdateDraft
+  onUpdateOwnRequest
 }) {
   // Configured view state
   const [activeTab2, setActiveTab2] = useState('Leave');
@@ -300,7 +303,7 @@ export default function RequestsView({
 
     if (editingDraftId) {
       // Update the draft itself so submitting it does not leave the old draft behind.
-      onUpdateDraft(editingDraftId, { type: typeLabel, startDate, endDate, purpose: compiledPurpose, ...extraFields })
+      onUpdateOwnRequest(editingDraftId, { type: typeLabel, startDate, endDate, purpose: compiledPurpose, ...extraFields })
         .catch(error => setFormErrorMessage(error.message || 'Unable to save the draft.'));
     } else {
       onSubmitRequest(typeLabel, startDate, endDate, compiledPurpose, extraFields);
@@ -368,8 +371,21 @@ export default function RequestsView({
     }
   };
 
+  // A submitted request can be withdrawn until it is approved or rejected.
+  const canWithdraw = request => WITHDRAWABLE_STATUSES.includes(request.status);
+  const isClosedByEmployee = request => request.status === 'Withdrawn' || request.status === 'Cancelled';
+
+  const withdrawRequest = (request) => {
+    const reason = window.prompt(`Withdraw ${request.type} ${request.id}? HR will be notified and it will no longer be reviewed.
+
+Reason (optional):`, '');
+    if (reason === null) return;
+    onUpdateOwnRequest(request.id, { status: 'Withdrawn', withdrawalReason: reason })
+      .catch(error => window.alert(error.message || 'Unable to withdraw the request.'));
+  };
+
   const discardDraft = (draftId) => {
-    onUpdateDraft(draftId, { status: 'Cancelled' })
+    onUpdateOwnRequest(draftId, { status: 'Cancelled' })
       .catch(error => setFormErrorMessage(error.message || 'Unable to discard the draft.'));
   };
 
@@ -1140,7 +1156,7 @@ export default function RequestsView({
 
               {/* Status categories with counts */}
               <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-[10px] font-bold text-slate-500 shrink-0 self-start sm:self-auto">
-                {['All', 'Pending', 'Approved', 'Rejected', 'Draft'].map(tab => (
+                {['All', 'Pending', 'Approved', 'Rejected', 'Draft', 'Withdrawn'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setStatusFilter(tab)}
@@ -1168,7 +1184,8 @@ export default function RequestsView({
                     className={`p-5 rounded-xl border transition-all space-y-4 bg-white text-left ${
                       req.status === 'Pending' ? 'border-amber-200 shadow-xs' :
                       req.status === 'Approved' ? 'border-emerald-200 shadow-xs' :
-                      req.status === 'Draft' ? 'border-indigo-200 shadow-xs' : 'border-rose-200 shadow-xs'
+                      req.status === 'Draft' ? 'border-indigo-200 shadow-xs' :
+                      isClosedByEmployee(req) ? 'border-slate-200' : 'border-rose-200 shadow-xs'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -1194,12 +1211,14 @@ export default function RequestsView({
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-extrabold border shrink-0 ${
                         req.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-150' :
                         req.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-150' :
-                        req.status === 'Draft' ? 'bg-indigo-50 text-indigo-700 border-indigo-150' : 'bg-amber-50 text-amber-700 border-amber-150'
+                        req.status === 'Draft' ? 'bg-indigo-50 text-indigo-700 border-indigo-150' :
+                        isClosedByEmployee(req) ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-amber-50 text-amber-700 border-amber-150'
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${
                           req.status === 'Approved' ? 'bg-emerald-500' :
                           req.status === 'Rejected' ? 'bg-rose-500' :
-                          req.status === 'Draft' ? 'bg-indigo-500' : 'bg-amber-500 animate-pulse'
+                          req.status === 'Draft' ? 'bg-indigo-500' :
+                          isClosedByEmployee(req) ? 'bg-slate-400' : 'bg-amber-500 animate-pulse'
                         }`}></span>
                         {req.status}
                       </span>
@@ -1250,10 +1269,15 @@ export default function RequestsView({
                       ) : (
                         <>
                           <div className="text-[10px] text-slate-405 font-bold flex items-center gap-1.5 font-semibold text-left">
-                            {req.status === 'Pending' ? (
+                            {isClosedByEmployee(req) ? (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                <span>{req.status === 'Withdrawn' ? 'Withdrawn by you' : 'Discarded draft'}</span>
+                              </>
+                            ) : canWithdraw(req) ? (
                               <>
                                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
-                                <span>Awaiting Program Manager endorsement</span>
+                                <span>{req.status === 'For Supervisor' ? 'Awaiting supervisor approval' : 'Awaiting Program Manager endorsement'}</span>
                               </>
                             ) : (
                               <>
@@ -1263,14 +1287,24 @@ export default function RequestsView({
                             )}
                           </div>
 
+                          {canWithdraw(req) && (
+                            <button
+                              type="button"
+                              onClick={() => withdrawRequest(req)}
+                              className="px-3 py-2 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[10px] font-black rounded-lg transition-all"
+                            >
+                              Withdraw
+                            </button>
+                          )}
+
                           {/* Dynamic CSC Form 6 / Travel Order trigger modal */}
-                          <button
+                          {!isClosedByEmployee(req) && <button
                             onClick={() => setPreviewRequest(req)}
                             className="px-3 py-2 bg-gradient-to-r from-blue-900 to-[#1e40af] hover:from-black hover:to-indigo-900 text-white text-[10px] font-black rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer select-none font-semibold border-0"
                           >
                             <Eye className="w-4 h-4 text-yellow-300" />
                             <span>{req.type === 'Leave Request' ? 'Generate CSC Form 6' : 'Generate Travel Order'}</span>
-                          </button>
+                          </button>}
                         </>
                       )}
 

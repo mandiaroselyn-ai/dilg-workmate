@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, pickReviewUpdate } from './requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate } from './requestFields.js';
 
 const employee = {
   employeeId: 'DILG-2026-1001',
@@ -95,4 +95,18 @@ test('employees cannot approve drafts or change other people\'s requests', () =>
   assert.equal(buildEmployeeDraftUpdate(draft, { status: 'Approved' }, employee).status, 'Draft');
   assert.equal(buildEmployeeDraftUpdate({ ...draft, status: 'Pending' }, { status: 'Cancelled' }, employee), null);
   assert.equal(buildEmployeeDraftUpdate(draft, { status: 'Pending' }, { employeeId: 'DILG-OTHER', email: 'other@dilg.gov.ph' }), null);
+});
+
+test('employees can withdraw their own request while it is still undecided', () => {
+  const pending = { ...draft, status: 'For Supervisor' };
+  const update = buildEmployeeWithdrawal(pending, { status: 'Withdrawn', withdrawalReason: 'Schedule changed' }, employee, '2026-09-29');
+  assert.equal(update.status, 'Withdrawn');
+  assert.match(update.remarks, /Schedule changed/);
+  assert.deepEqual(update.statusHistory.at(-1), { status: 'Withdrawn', date: '2026-09-29', actor: employee.name });
+});
+
+test('employees cannot withdraw decided requests or other people\'s requests', () => {
+  assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Approved' }, { status: 'Withdrawn' }, employee), null);
+  assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Pending' }, { status: 'Approved' }, employee), null);
+  assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Pending' }, { status: 'Withdrawn' }, { employeeId: 'X', email: 'x@dilg.gov.ph' }), null);
 });

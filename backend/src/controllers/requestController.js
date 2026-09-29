@@ -2,7 +2,7 @@ import { Leave } from '../models/leaveModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, pickReviewUpdate } from '../utils/requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate } from '../utils/requestFields.js';
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 
@@ -18,6 +18,20 @@ const notifyHrOfSubmission = async (request, employee) => {
     });
   } catch (error) {
     console.error('Unable to notify HR about a submitted request:', error);
+  }
+};
+
+// Tells HR (and the supervisor, if the request was forwarded to them) that an employee
+// withdrew a request, so nobody keeps reviewing it.
+const notifyReviewersOfWithdrawal = async (request, employee, previousStatus) => {
+  const roles = previousStatus === 'For Supervisor' ? ['hr_admin', 'supervisor'] : ['hr_admin'];
+  for (const recipientRole of roles) {
+    await Announcement.createNotification({
+      title: 'Request Withdrawn',
+      message: `${employee.name || 'An employee'} withdrew their ${request.type} (Ref ${request.id}).`,
+      type: 'request',
+      recipientRole
+    }).catch(error => console.error('Unable to notify reviewers about a withdrawn request:', error));
   }
 };
 
@@ -67,10 +81,13 @@ export const updateRequestStatus = async (req, res) => {
     const existing = await Leave.findByCustomId(id);
     if (!existing) return res.status(404).json({ success: false, error: 'Request ID not found.' });
     if (role === 'employee') {
-      // Employees may only edit, submit, or discard their own drafts.
-      update = buildEmployeeDraftUpdate(existing, req.body, req.user);
+      // Employees may edit, submit, or discard their own drafts, and withdraw their own
+      // requests that have not been decided yet.
+      update = existing.status === 'Draft'
+        ? buildEmployeeDraftUpdate(existing, req.body, req.user)
+        : buildEmployeeWithdrawal(existing, req.body, req.user);
       if (!update) {
-        return res.status(403).json({ success: false, error: 'You can only edit, submit, or discard your own drafts.' });
+        return res.status(403).json({ success: false, error: 'You can only change your own drafts, or withdraw your own requests before they are approved or rejected.' });
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);
@@ -88,6 +105,9 @@ export const updateRequestStatus = async (req, res) => {
 
     if (updated && role === 'employee' && updated.status === 'Pending') {
       await notifyHrOfSubmission(updated, req.user);
+    }
+    if (updated && role === 'employee' && updated.status === 'Withdrawn') {
+      await notifyReviewersOfWithdrawal(updated, req.user, existing.status);
     }
 
     if (updated) {

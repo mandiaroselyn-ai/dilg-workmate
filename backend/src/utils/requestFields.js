@@ -97,3 +97,24 @@ export const buildEmployeeDraftUpdate = (existing, body, user, today = getManila
   }
   return update;
 };
+
+// Statuses in which a submitted request has not been decided yet, so the employee may
+// still withdraw it. Approved requests need HR, since leave credits may be affected.
+export const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
+
+// Builds the update for an employee withdrawing their own undecided request. Returns
+// null when the request is not theirs or can no longer be withdrawn.
+export const buildEmployeeWithdrawal = (existing, body, user, today = getManilaDateString()) => {
+  if (body?.status !== 'Withdrawn' || !isRequestOwner(existing, user) || !WITHDRAWABLE_STATUSES.includes(existing.status)) {
+    return null;
+  }
+  const reason = typeof body.withdrawalReason === 'string' ? body.withdrawalReason.trim().slice(0, 500) : '';
+  return {
+    status: 'Withdrawn',
+    remarks: reason ? `Withdrawn by the employee: ${reason}` : 'Withdrawn by the employee.',
+    statusHistory: [
+      ...(Array.isArray(existing.statusHistory) ? existing.statusHistory : []),
+      { status: 'Withdrawn', date: today, actor: user.name || 'Employee' }
+    ]
+  };
+};

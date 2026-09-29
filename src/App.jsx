@@ -1062,8 +1062,9 @@ export default function App() {
     return data.requests;
   };
 
-  // Lets an employee edit, submit, or discard one of their own drafts.
-  const handleUpdateDraftRequest = async (id, fields) => {
+  // Lets an employee edit, submit, or discard their own drafts, or withdraw their own
+  // requests that have not been decided yet.
+  const handleUpdateOwnRequest = async (id, fields) => {
     const response = await apiFetch(`/api/requests/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1214,7 +1215,7 @@ export default function App() {
               activeRole={activeRole}
               requests={visibleEmployeeRequests}
               onSubmitRequest={handleSubmitRequest}
-              onUpdateDraft={handleUpdateDraftRequest}
+              onUpdateOwnRequest={handleUpdateOwnRequest}
             />
           )}
 
