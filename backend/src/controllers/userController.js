@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { notifyHrOfNewAccount } from '../services/accountNotifications.js';
+import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
 import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -234,6 +235,26 @@ export const updateEmployee = async (req, res) => {
   } catch (error) {
     console.error('Unable to update employee account:', error);
     res.status(500).json({ success: false, error: 'Unable to update employee account.' });
+  }
+};
+
+export const updateEmployeeLeaveCredits = async (req, res) => {
+  try {
+    const { value, reason, error } = normalizeLeaveCreditInput(req.body);
+    if (error) return res.status(400).json({ success: false, error });
+    const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
+    const updated = await User.setLeaveCredits(req.params.identifier, value, { reason, changedBy });
+    if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    await Announcement.createNotification({
+      title: 'Leave Credits Updated',
+      message: `HR updated your leave credits: ${value.vacationLeaveCredits} days vacation leave and ${value.sickLeaveCredits} days sick leave. Reason: ${reason}`,
+      type: 'system',
+      employeeId: updated.employeeId || '',
+      employeeEmail: updated.email || ''
+    }).catch(notifyError => console.error('Unable to notify the employee about leave credits:', notifyError));
+    res.status(200).json({ success: true, employee: employeeResponse(updated) });
+  } catch (error) {
+    sendServerError(res, error);
   }
 };
 

@@ -20,3 +20,21 @@ export const leaveCreditDeduction = (previous, updated) => {
   if (!field || !Number.isFinite(days) || days <= 0) return null;
   return { field, days };
 };
+
+// Validates HR's manual adjustment of an employee's balances. Credits may be fractional
+// (monthly accrual is 1.25 days) and can accumulate past one year's entitlement.
+export const normalizeLeaveCreditInput = body => {
+  const value = {};
+  for (const [field, label] of [['vacationLeaveCredits', 'Vacation leave'], ['sickLeaveCredits', 'Sick leave']]) {
+    const raw = body?.[field];
+    const number = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+    if (typeof number !== 'number' || !Number.isFinite(number) || number < 0 || number > 1000) {
+      return { error: `${label} credits must be a number from 0 to 1000.` };
+    }
+    value[field] = Math.round(number * 1000) / 1000;
+  }
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  if (!reason) return { error: 'Give a reason for the adjustment, for example "Balance from the leave card".' };
+  if (reason.length > 300) return { error: 'The reason must be 300 characters or fewer.' };
+  return { value, reason };
+};

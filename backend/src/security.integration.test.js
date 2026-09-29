@@ -230,3 +230,10 @@ test('requires authentication to manage announcements and events', async () => {
   ]);
   for (const response of responses) assert.equal(response.status, 401);
 });
+
+test('requires authentication before adjusting leave credits', async () => {
+  const response = await request(app)
+    .patch('/api/employees/DILG-2026-000001/leave-credits')
+    .send({ vacationLeaveCredits: 15, sickLeaveCredits: 15, reason: 'Leave card' });
+  assert.equal(response.status, 401);
+});

@@ -410,14 +410,16 @@ Reason (optional):`, '');
   };
 
   const leaveCredits = [
-    { label: 'Vacation Leave', max: 15, color: 'text-blue-700', bar: 'bg-blue-600' }
+    { label: 'Vacation Leave', field: 'vacationLeaveCredits', color: 'text-blue-700', bar: 'bg-blue-600' },
+    { label: 'Sick Leave', field: 'sickLeaveCredits', color: 'text-emerald-700', bar: 'bg-emerald-600' }
   ].map((credit) => {
     const used = myRequests
       .filter(request => request.type === 'Leave Request' && request.status === 'Approved')
       .filter(request => (request.leaveType || '').toLowerCase().includes(credit.label.toLowerCase().replace(' leave', '')))
       .reduce((total, request) => total + Number(request.workingDays || 0), 0);
-    // The server deducts approved leave from the stored balance.
-    return { ...credit, used, remaining: Math.max(0, Number(user?.vacationLeaveCredits ?? credit.max)) };
+    // The server deducts approved leave from the stored balance, which can exceed 15 days.
+    const remaining = Math.max(0, Number(user?.[credit.field] ?? 15));
+    return { ...credit, used, remaining, max: Math.max(15, remaining) };
   });
 
   return (

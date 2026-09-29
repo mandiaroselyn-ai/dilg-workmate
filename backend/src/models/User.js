@@ -92,6 +92,19 @@ const UserSchema = new mongoose.Schema({
   passwordChangedAt: { type: Date, default: null },
   vacationLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
   sickLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
+  // Record of HR's manual balance adjustments (latest 50).
+  leaveCreditHistory: {
+    type: [{
+      changedAt: { type: Date, default: Date.now },
+      changedBy: { type: String, default: '' },
+      reason: { type: String, default: '' },
+      vacationLeaveCredits: Number,
+      sickLeaveCredits: Number,
+      previousVacationLeaveCredits: Number,
+      previousSickLeaveCredits: Number
+    }],
+    default: []
+  },
   // IDs of fingerprint proofs already used for a Time In, so each proof works only once.
   usedVerificationProofIds: { type: [String], default: [], select: false }
 }, { timestamps: true });
@@ -605,6 +618,33 @@ export const User = {
     user.accountStatus = accountStatus;
     await user.save();
     return user.toObject();
+  },
+
+  // Sets an employee's leave balances (HR adjustment) and records the change.
+  setLeaveCredits: async (identifier, credits, { reason, changedBy }) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const employee = await MongoUser.findOne({
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    });
+    if (!employee) return null;
+    const entry = {
+      changedAt: new Date(),
+      changedBy,
+      reason,
+      ...credits,
+      previousVacationLeaveCredits: employee.vacationLeaveCredits,
+      previousSickLeaveCredits: employee.sickLeaveCredits
+    };
+    employee.set(credits);
+    employee.leaveCreditHistory = [...(employee.leaveCreditHistory || []), entry].slice(-50);
+    await employee.save();
+    return employee.toObject();
   },
 
   // Permanently deletes an employee account that is not Active. Returns

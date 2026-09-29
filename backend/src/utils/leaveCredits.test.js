@@ -17,3 +17,12 @@ test('deducts credits only when a leave request first becomes Approved', () => {
   assert.equal(leaveCreditDeduction({ status: 'Pending' }, { ...approved, type: 'Travel Order' }), null);
   assert.equal(leaveCreditDeduction({ status: 'Pending' }, { ...approved, workingDays: 0 }), null);
 });
+
+test('validates HR leave credit adjustments', async () => {
+  const { normalizeLeaveCreditInput } = await import('./leaveCredits.js');
+  const valid = normalizeLeaveCreditInput({ vacationLeaveCredits: '18.75', sickLeaveCredits: 20, reason: ' Leave card balance ' });
+  assert.deepEqual(valid, { value: { vacationLeaveCredits: 18.75, sickLeaveCredits: 20 }, reason: 'Leave card balance' });
+  assert.match(normalizeLeaveCreditInput({ vacationLeaveCredits: -1, sickLeaveCredits: 5, reason: 'x' }).error, /Vacation/);
+  assert.match(normalizeLeaveCreditInput({ vacationLeaveCredits: 5, sickLeaveCredits: 'many', reason: 'x' }).error, /Sick/);
+  assert.match(normalizeLeaveCreditInput({ vacationLeaveCredits: 5, sickLeaveCredits: 5 }).error, /reason/);
+});

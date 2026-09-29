@@ -166,16 +166,18 @@ export default function DashboardView({
   const personalRequests = requests.filter((request) => matchesAttendanceEmployee(request, user));
   const pendingRequests = personalRequests.filter((req) => req.status === 'Pending');
   const approvedLeaveRequests = personalRequests.filter((request) => request.type === 'Leave Request' && request.status === 'Approved');
-  // The server keeps the balance and deducts approved leave, so it is already the remaining balance.
-  const availableVacationCredits = Number(user?.vacationLeaveCredits ?? 15);
   const personalAttendanceHistory = attendanceHistory.filter((record) => matchesAttendanceEmployee(record, user));
+  // The server keeps each balance and deducts approved leave, so it is already the
+  // remaining balance. Balances can exceed one year's 15 days when credits accumulate.
   const leaveCredits = [
-    { title: 'Vacation Leave', max: 15, available: availableVacationCredits, color: 'bg-[#0B4EA2]' }
+    { title: 'Vacation Leave', available: Number(user?.vacationLeaveCredits ?? 15), color: 'bg-[#0B4EA2]' },
+    { title: 'Sick Leave', available: Number(user?.sickLeaveCredits ?? 15), color: 'bg-emerald-600' }
   ].map((credit) => {
     const used = approvedLeaveRequests
       .filter((request) => (request.leaveType || '').toLowerCase().includes(credit.title.toLowerCase().replace(' leave', '')))
       .reduce((total, request) => total + Number(request.workingDays || 0), 0);
-    return { ...credit, used, remaining: Math.max(0, credit.available) };
+    const remaining = Math.max(0, credit.available);
+    return { ...credit, used, remaining, max: Math.max(15, remaining) };
   });
   const recentDocs = [
     { id: 'doc-1', title: 'Memorandum Circular 2026-015', subtitle: 'May 29, 2026 • PDF' },

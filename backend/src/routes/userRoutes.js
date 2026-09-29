@@ -7,6 +7,7 @@ import {
   updateEmployee,
   updateEmployeeAccountStatus,
   deleteEmployee,
+  updateEmployeeLeaveCredits,
   changePassword,
   loginUser,
   seedDefaultUsers,
@@ -95,6 +96,7 @@ router.post('/employees', requireAdmin, createEmployee);
 router.patch('/employees/:identifier', requireAdmin, updateEmployee);
 router.patch('/employees/:identifier/status', requireAdmin, updateEmployeeAccountStatus);
 router.delete('/employees/:identifier', requireAdmin, deleteEmployee);
+router.patch('/employees/:identifier/leave-credits', requireAdmin, updateEmployeeLeaveCredits);
 router.post('/login', loginUser);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset', completePasswordReset);
