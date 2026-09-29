@@ -7,7 +7,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 
+import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 const fetch = apiFetch;
+
+// A fingerprint prompt that has not opened or finished by now is abandoned so the
+// employee can try again (the server challenge itself allows about 60 seconds).
+const FINGERPRINT_PROMPT_TIMEOUT_MS = 65000;
 import {
   Clock,
   MapPin,
@@ -200,6 +205,12 @@ export default function AttendanceView({
   const [fingerprintVerified, setFingerprintVerified] = useState(false);
   const [fingerprintProof, setFingerprintProof] = useState('');
   const fingerprintScanInFlightRef = useRef(false);
+  // Cancels a browser fingerprint prompt that is still open (for example after Take
+  // Again), so a new request never collides with it ("A request is already pending").
+  const webAuthnAbortRef = useRef(null);
+  // Each fingerprint attempt gets a number; results from an older attempt are ignored.
+  const fingerprintAttemptRef = useRef(0);
+  const [fingerprintError, setFingerprintError] = useState(null);
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
@@ -404,19 +415,29 @@ export default function AttendanceView({
   // The server creates and verifies the WebAuthn challenge and assertion.
   const handleStartFingerprintScan = async () => {
     if (!capturedSelfie) {
-      setCameraError('Please complete selfie capture before fingerprint verification.');
+      setFingerprintError('Please complete selfie capture before fingerprint verification.');
       return;
     }
-    if (fingerprintVerified || fingerprintScanInFlightRef.current) return;
+    if (fingerprintVerified) return;
+    if (fingerprintScanInFlightRef.current || webAuthnAbortRef.current) {
+      setFingerprintError(PROMPT_STILL_OPEN_MESSAGE);
+      return;
+    }
 
     if (!hasNativeBridge && !hasSecureWebAuthn) {
-      setCameraError('Fingerprint sign-in needs a supported browser on HTTPS. Open the official Vercel site in Chrome or Safari, not an embedded preview, and make sure your phone lock and biometrics are enabled.');
+      setFingerprintError('Fingerprint sign-in needs a supported browser on HTTPS. Open the official Vercel site in Chrome or Safari, not an embedded preview, and make sure your phone lock and biometrics are enabled.');
       return;
     }
+
+    fingerprintAttemptRef.current += 1;
+    const attempt = fingerprintAttemptRef.current;
+    const isCurrentAttempt = () => attempt === fingerprintAttemptRef.current;
+    let abortReason = null;
+    let promptTimer = null;
 
     fingerprintScanInFlightRef.current = true;
     setFingerprintScanning(true);
-    setCameraError(null);
+    setFingerprintError(null);
 
     try {
       if (hasNativeBridge) {
@@ -440,6 +461,7 @@ export default function AttendanceView({
         if (!verifyResponse.ok || !verification.success) {
           throw new Error(verification.error || 'Phone fingerprint verification failed.');
         }
+        if (!isCurrentAttempt()) return;
 
         setFingerprintProof(verification.verificationProof);
         setFingerprintScanning(false);
@@ -473,7 +495,19 @@ export default function AttendanceView({
           throw new Error('This browser cannot access the phone fingerprint sensor. Open this site in Chrome or Safari on a phone with screen lock and biometrics enabled.');
         }
       }
-      const credential = await navigator.credentials.get({ publicKey });
+      if (!isCurrentAttempt()) return;
+      // The prompt can be cancelled by Take Again, and is abandoned if it never opens
+      // (for example, when a floating chat bubble blocks it).
+      const controller = new AbortController();
+      webAuthnAbortRef.current = { controller, setReason: reason => { abortReason = reason; } };
+      promptTimer = window.setTimeout(() => {
+        abortReason = 'timeout';
+        controller.abort();
+      }, FINGERPRINT_PROMPT_TIMEOUT_MS);
+      const credential = await navigator.credentials.get({ publicKey, signal: controller.signal });
+      window.clearTimeout(promptTimer);
+      webAuthnAbortRef.current = null;
+      if (!isCurrentAttempt()) return;
       if (!credential) throw new Error('Biometric verification was cancelled.');
 
       const verifyResponse = await apiFetch('/api/biometric/action?action=authenticate-verify', {
@@ -487,37 +521,46 @@ export default function AttendanceView({
       if (!verifyResponse.ok) throw new Error('Fingerprint verification failed. Please try again.');
       const verification = await verifyResponse.json();
       if (!verification.success) throw new Error('Fingerprint verification failed. Please try again.');
+      if (!isCurrentAttempt()) return;
       setFingerprintProof(verification.verificationProof);
       setFingerprintScanning(false);
       setFingerprintVerified(true);
       setFingerprintProgress(100);
       fingerprintScanInFlightRef.current = false;
     } catch (error) {
+      window.clearTimeout(promptTimer);
+      if (webAuthnAbortRef.current && isCurrentAttempt()) webAuthnAbortRef.current = null;
+      // A prompt cancelled by Take Again or a new selfie is not an error.
+      if (!isCurrentAttempt() || abortReason === 'reset') return;
       console.error('WebAuthn biometric verification failed:', error);
       setFingerprintScanning(false);
       setFingerprintProgress(0);
       fingerprintScanInFlightRef.current = false;
-      const message = error?.name === 'NotAllowedError'
-        ? 'Fingerprint verification was cancelled or blocked. Retry and approve the biometric prompt.'
-        : error?.name === 'SecurityError'
-          ? 'Fingerprint verification origin mismatch. Open the official Vercel domain directly.'
-          : error?.name === 'InvalidStateError'
-            ? 'Fingerprint verification is already registered. Retry the fingerprint check.'
-            : error?.message?.includes('challenge expired')
-              ? 'The fingerprint verification request expired before it finished. Tap the fingerprint button again and complete the biometric prompt right away.'
-              : error?.name === 'TypeError'
-                ? 'Fingerprint verification failed. Check your connection and retry.'
-                : error?.message || 'Fingerprint verification failed. Check browser biometric support and retry.';
-      setCameraError(message);
+      setFingerprintError(describeFingerprintError(error, abortReason));
     }
   };
 
+  // Clears the fingerprint step (Take Again, a new selfie, or Reset). Any prompt that is
+  // still open is cancelled, and a late result from it is ignored.
   const handleResetFingerprint = () => {
+    fingerprintAttemptRef.current += 1;
+    if (webAuthnAbortRef.current) {
+      webAuthnAbortRef.current.setReason('reset');
+      webAuthnAbortRef.current.controller.abort();
+      webAuthnAbortRef.current = null;
+    }
     fingerprintScanInFlightRef.current = false;
+    setFingerprintScanning(false);
     setFingerprintVerified(false);
     setFingerprintProof('');
     setFingerprintProgress(0);
+    setFingerprintError(null);
   };
+
+  // Cancel an open fingerprint prompt when leaving the attendance screen.
+  useEffect(() => () => {
+    webAuthnAbortRef.current?.controller.abort();
+  }, []);
 
   const updateGpsPosition = (latitude, longitude, accuracy) => {
     const parsedLatitude = Number(latitude);
@@ -1480,9 +1523,9 @@ export default function AttendanceView({
                     </div>
                   </div>
                 </div>
-                {cameraError && (
+                {fingerprintError && (
                   <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                    {cameraError}
+                    {fingerprintError}
                   </p>
                 )}
               </div>
