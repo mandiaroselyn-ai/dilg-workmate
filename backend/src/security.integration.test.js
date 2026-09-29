@@ -237,3 +237,14 @@ test('requires authentication before adjusting leave credits', async () => {
     .send({ vacationLeaveCredits: 15, sickLeaveCredits: 15, reason: 'Leave card' });
   assert.equal(response.status, 401);
 });
+
+test('requires authentication to manage supervisor and HR/Admin accounts', async () => {
+  const responses = await Promise.all([
+    request(app).get('/api/staff'),
+    request(app).post('/api/staff').send({ name: 'A', email: 'a@dilg.gov.ph', role: 'R', office: 'O', accessLevel: 'hr_admin', password: 'long-enough-password' }),
+    request(app).patch('/api/staff/a@dilg.gov.ph/access').send({ accessLevel: 'hr_admin' }),
+    request(app).patch('/api/staff/a@dilg.gov.ph/status').send({ accountStatus: 'Inactive' }),
+    request(app).delete('/api/staff/a@dilg.gov.ph')
+  ]);
+  for (const response of responses) assert.equal(response.status, 401);
+});

@@ -329,6 +329,49 @@ export const User = {
     return null;
   },
 
+  // Supervisor and HR/Admin accounts, sorted by name.
+  findStaff: async () => {
+    ensureConnected();
+    return MongoUser.find({ accessLevel: { $in: ['supervisor', 'hr_admin'] } }).sort({ name: 1 });
+  },
+
+  // Any account (employee, supervisor, or HR/Admin) by employee ID or email.
+  findAccount: async (identifier) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    return MongoUser.findOne({ $or: [{ email: emailPattern }, { employeeId: value }] });
+  },
+
+  countActiveAdmins: async () => {
+    ensureConnected();
+    return MongoUser.countDocuments({
+      accessLevel: 'hr_admin',
+      $or: [{ accountStatus: { $regex: /^active$/i } }, { accountStatus: { $exists: false } }, { accountStatus: null }]
+    });
+  },
+
+  // Creates an active Supervisor or HR/Admin account. The employee ID is generated when
+  // HR leaves it blank. Returns { conflict } when the email or employee ID is taken.
+  createStaffAccount: async (data) => {
+    ensureConnected();
+    const email = data.email.toLowerCase();
+    const emailPattern = new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    if (await MongoUser.findOne({ email: emailPattern }).select('_id')) return { conflict: 'email' };
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const employeeId = data.employeeId || `DILG-${new Date().getFullYear()}-${crypto.randomInt(100000, 1000000)}`;
+      if (await MongoUser.findOne({ employeeId }).select('_id')) {
+        if (data.employeeId) return { conflict: 'employeeId' };
+        continue;
+      }
+      const created = await MongoUser.create({ ...data, email, employeeId, accountStatus: 'Active', employmentStatus: 'ACTIVE' });
+      return created.toObject();
+    }
+    return null;
+  },
+
+
   updateEmployee: async (identifier, employeeData) => {
     ensureConnected();
     const value = identifier?.toString().trim();

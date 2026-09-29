@@ -49,6 +49,8 @@ export const createRateLimits = () => {
     '/sms': [signedInActionLimit()]
   };
   const enrollmentReviewLimit = signedInActionLimit();
+  // Staff account changes can require the HR password; failed attempts are limited.
+  const staffChangeLimit = limit({ limit: 20, keyGenerator: sessionOrIp, skipSuccessfulRequests: true });
 
   const runLimiters = (limiters, req, res, next) => {
     const [first, ...rest] = limiters;
@@ -60,7 +62,8 @@ export const createRateLimits = () => {
     const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
     const limiters = routeLimits[apiPath]
       || (/^\/face\/enrollment\/[^/]+\/review$/.test(apiPath) ? [enrollmentReviewLimit] : []);
-    return runLimiters(limiters, req, res, next);
+    const staffLimiters = apiPath.startsWith('/staff') && req.method !== 'GET' ? [staffChangeLimit] : [];
+    return runLimiters([...limiters, ...staffLimiters], req, res, next);
   };
 
   return { apiRateLimit, routeRateLimit };

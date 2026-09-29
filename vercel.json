@@ -69,6 +69,10 @@
     {
       "source": "/api/events/:path*",
       "destination": "/api/events"
+    },
+    {
+      "source": "/api/staff/:path*",
+      "destination": "/api/staff"
     }
   ]
 }

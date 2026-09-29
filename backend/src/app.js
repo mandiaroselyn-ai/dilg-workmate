@@ -1,5 +1,6 @@
 import express from 'express';
 import userRoutes from './routes/userRoutes.js';
+import staffRoutes from './routes/staffRoutes.js';
 import dtrRoutes from './routes/dtrRoutes.js';
 import leaveRoutes from './routes/leaveRoutes.js';
 import travelRoutes from './routes/travelRoutes.js';
@@ -77,6 +78,7 @@ export function createApiApp() {
   });
 
   app.use('/api', userRoutes);
+  app.use('/api', staffRoutes);
   app.use('/api', dtrRoutes);
   app.use('/api/dtr', dtrRoutes);
   app.use('/api', leaveRoutes);

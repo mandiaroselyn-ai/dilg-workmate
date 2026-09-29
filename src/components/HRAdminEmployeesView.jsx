@@ -130,6 +130,8 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
   const [accountStatusUpdating, setAccountStatusUpdating] = useState(false);
   const [creditForm, setCreditForm] = useState(null); // { vacationLeaveCredits, sickLeaveCredits, reason } while editing
   const [creditSaving, setCreditSaving] = useState(false);
+  const [promotion, setPromotion] = useState(null); // { accessLevel, password } while confirming
+  const [promotionSaving, setPromotionSaving] = useState(false);
 
   const employeeAccounts = useMemo(
     () => employees.filter(employee => !employee.accessLevel || employee.accessLevel === 'employee'),
@@ -295,8 +297,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
   const openView = (employee) => {
     setSelectedId(employeeKey(employee));
-    // An adjustment form belongs to one employee, so start closed on each profile.
+    // Adjustment and promotion forms belong to one employee, so start closed on each profile.
     setCreditForm(null);
+    setPromotion(null);
     setScreen('profile');
   };
 
@@ -484,6 +487,34 @@ This cannot be undone.`
       notify(error.message || 'Unable to delete the employee account.', true);
     } finally {
       setAccountStatusUpdating(false);
+    }
+  };
+
+  // Promotes the selected employee to Supervisor or HR/Admin. HR/Admin needs HR's password.
+  const promoteEmployee = async event => {
+    event.preventDefault();
+    if (!selectedEmployee || !promotion) return;
+    const key = employeeKey(selectedEmployee);
+    const label = promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor';
+    setPromotionSaving(true);
+    try {
+      const identifier = selectedEmployee.employeeId || selectedEmployee.email;
+      const response = await apiFetch(`/api/staff/${encodeURIComponent(identifier)}/access`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessLevel: promotion.accessLevel, adminPassword: promotion.password })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to change access.');
+      onEmployeesChange?.(previous => previous.filter(employee => employeeKey(employee) !== key));
+      setPromotion(null);
+      setSelectedId(null);
+      setScreen('list');
+      notify(`${employeeName(selectedEmployee)} is now ${label}. Find them under Supervisors & HR/Admin.`);
+    } catch (error) {
+      notify(error.message || 'Unable to change access.', true);
+    } finally {
+      setPromotionSaving(false);
     }
   };
 
@@ -701,6 +732,32 @@ This cannot be undone.`
           {accountStatusOf(selectedEmployee) === 'active' && (
             <p className="mt-2 text-[10px] font-semibold text-slate-400">To delete this account, deactivate it first.</p>
           )}
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Access</p>
+            {promotion ? (
+              <form onSubmit={promoteEmployee} className="mt-2 space-y-2">
+                <p className="text-xs font-semibold text-slate-700">
+                  Make {employeeName(selectedEmployee)} a {promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor'}? They will log in with that role, and their attendance and leave records are kept.
+                </p>
+                {promotion.accessLevel === 'hr_admin' && (
+                  <label className="block text-[10px] font-black uppercase text-slate-500">Your current password (required for HR/Admin)
+                    <input type="password" autoComplete="current-password" required value={promotion.password} onChange={event => setPromotion(current => ({ ...current, password: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold normal-case text-slate-800" />
+                  </label>
+                )}
+                <div className="flex gap-2">
+                  <button type="submit" disabled={promotionSaving} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{promotionSaving ? 'Saving...' : 'Confirm'}</button>
+                  <button type="button" onClick={() => setPromotion(null)} disabled={promotionSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Cancel</button>
+                </div>
+              </form>
+            ) : (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-600">Employee</span>
+                <button type="button" onClick={() => setPromotion({ accessLevel: 'supervisor', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-700">Make Supervisor</button>
+                <button type="button" onClick={() => setPromotion({ accessLevel: 'hr_admin', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-700">Make HR/Admin</button>
+              </div>
+            )}
+          </div>
 
           {accountStatusOf(selectedEmployee) === 'pending' && (
             <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
