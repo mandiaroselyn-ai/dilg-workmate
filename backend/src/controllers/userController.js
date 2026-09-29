@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
-import { notifyHrOfNewAccount } from '../services/accountNotifications.js';
+import { inactiveAccountMessage, notifyHrOfNewAccount } from '../services/accountNotifications.js';
+import { sendAccountApprovedSms, toPhilippineMobile } from '../services/smsService.js';
 import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
 import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
@@ -111,7 +112,9 @@ export const registerUser = async (req, res) => {
     await notifyHrOfNewAccount(created, 'the sign-up form');
     res.status(201).json({
       success: true,
-      message: 'Account created. The HR Administrator must activate it before you can log in.',
+      message: toPhilippineMobile(created.phoneNumber)
+        ? 'Account created. The HR Administrator must activate it before you can log in. You will get an SMS at your contact number once it is approved.'
+        : 'Account created. The HR Administrator must activate it before you can log in.',
       user: toSafeUser(created)
     });
   } catch (error) {
@@ -287,11 +290,13 @@ export const updateEmployeeAccountStatus = async (req, res) => {
     if (!['Active', 'Inactive', 'Pending', 'Suspended'].includes(accountStatus)) {
       return res.status(400).json({ success: false, error: 'Invalid account status.' });
     }
+    const before = await User.findAccount(identifier);
     const updated = await User.updateAccountStatus(identifier, accountStatus);
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
-    if (accountStatus === 'Active') {
-      // The employee sees this after their first login. A failed notification never
-      // fails the approval.
+    // When an account becomes active, the employee gets an SMS so they know they can log
+    // in, and a notice they see after logging in. Neither ever fails the approval.
+    let approvalSms;
+    if (accountStatus === 'Active' && String(before?.accountStatus || '').toLowerCase() !== 'active') {
       await Announcement.createNotification({
         title: 'Account Approved',
         message: 'Your DILG WorkMate account is now active. Complete your profile and biometric enrollment before your first Time In.',
@@ -299,8 +304,9 @@ export const updateEmployeeAccountStatus = async (req, res) => {
         employeeId: updated.employeeId || '',
         employeeEmail: updated.email || ''
       }).catch(error => console.error('Unable to notify the employee about account approval:', error));
+      approvalSms = await sendAccountApprovedSms(updated);
     }
-    res.status(200).json({ success: true, user: toSafeUser(updated) });
+    res.status(200).json({ success: true, user: toSafeUser(updated), ...(approvalSms ? { approvalSms } : {}) });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -351,7 +357,7 @@ export const loginUser = async (req, res) => {
     }
 
     if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
-      return res.status(403).json({ success: false, error: `This account is ${user.accountStatus.toLowerCase()}. Please contact HR Administrator.` });
+      return res.status(403).json({ success: false, error: inactiveAccountMessage(user) });
     }
 
     const storedRole = (user.accessLevel || 'employee').toString().trim().toLowerCase();

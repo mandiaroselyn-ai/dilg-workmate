@@ -4,7 +4,7 @@ import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { createMobileHandoffCode, isValidCodeChallenge, readMobileHandoffCode } from '../utils/mobileAuthHandoff.js';
-import { notifyHrOfNewAccount } from '../services/accountNotifications.js';
+import { inactiveAccountMessage, notifyHrOfNewAccount } from '../services/accountNotifications.js';
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -207,7 +207,7 @@ export const googleAuthCallback = async (req, res) => {
       throw new Error('Your WorkMate account was created and is waiting for HR approval. You can sign in with Google once the HR Administrator activates it.');
     }
     if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
-      throw new Error(`This account is ${user.accountStatus.toLowerCase()}. Please contact the HR Administrator.`);
+      throw new Error(inactiveAccountMessage(user));
     }
     user.googleId = profile.sub || user.googleId;
     user.profilePicture = profile.picture || user.profilePicture;

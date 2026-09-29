@@ -74,3 +74,30 @@ export const sendAttendanceConfirmation = async (employee, message) => {
     return null;
   }
 };
+
+// A Philippine mobile number the SMS service can send to (+639XXXXXXXXX), or ''.
+export const toPhilippineMobile = value => {
+  const number = normalizePhilippineNumber(value);
+  return /^\+639\d{9}$/.test(number) ? number : '';
+};
+
+// Tells an employee by SMS that HR approved their account, so they know they can log in.
+// (Messages with links are blocked by Philippine carriers, so it has none.) Returns
+// 'sent', 'no-phone', 'not-configured', or 'failed'; it never fails the approval.
+export const sendAccountApprovedSms = async employee => {
+  if (!toPhilippineMobile(employee?.phoneNumber)) return 'no-phone';
+  if (!isSmsConfigured()) return 'not-configured';
+  try {
+    await sendSms({
+      recipient: employee.phoneNumber,
+      message: 'DILG WorkMate: Your account has been approved by HR. You can now log in using your email address.',
+      employeeId: employee.employeeId || '',
+      employeeEmail: employee.email || '',
+      timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' })
+    });
+    return 'sent';
+  } catch (error) {
+    console.error('Account approval SMS failed:', error.message);
+    return 'failed';
+  }
+};

@@ -99,6 +99,10 @@ const normalizeEmployee = (employee = {}) => {
 // Account status decides whether the employee can log in (Active, Pending, Inactive,
 // Suspended); employment status (ACTIVE, INACTIVE, ON LEAVE) is shown separately.
 const accountStatusOf = (employee = {}) => (employee.accountStatus || 'Pending').toString().trim().toLowerCase();
+
+// True when the employee has a Philippine mobile number the approval SMS can go to
+// (09XXXXXXXXX or +639XXXXXXXXX), matching the server's check.
+const mobileNumberOf = (employee = {}) => /^(09|\+?639)\d{9}$/.test(String(employee.phoneNumber || '').replace(/[\s()-]/g, ''));
 const STATUS_FILTERS = ['All', 'Active', 'Pending', 'Inactive'];
 
 const statusStyle = (status = '') => {
@@ -445,11 +449,19 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         notify('Employee status saved, but its notification could not be delivered.', true);
       }
       if (!notificationFailed) {
+        const name = employeeName(targetEmployee);
+        // Whether the employee was told by SMS that they can now log in.
+        const smsNote = {
+          sent: `${name} was sent an SMS and can now log in.`,
+          'no-phone': `${name} has no mobile number on file, so let them know they can now log in.`,
+          'not-configured': `SMS is not set up, so let ${name} know they can now log in.`,
+          failed: `The SMS could not be sent, so let ${name} know they can now log in.`
+        }[data.approvalSms];
         notify(wasPending && accountStatus === 'Active'
-          ? `Account approved. ${employeeName(targetEmployee)} can now log in.`
+          ? `Account approved. ${smsNote || `${name} can now log in.`}`
           : wasPending && accountStatus === 'Inactive'
-            ? `Account declined. ${employeeName(targetEmployee)} cannot log in.`
-            : `Account status updated to ${accountStatus}.`);
+            ? `Account declined. ${name} cannot log in.`
+            : `Account status updated to ${accountStatus}.${smsNote ? ` ${smsNote}` : ''}`);
       }
       if (openProfile) setScreen('profile');
     } catch (error) {
@@ -769,6 +781,11 @@ This cannot be undone.`
               <p className="text-sm font-black text-amber-900">This account is waiting for approval</p>
               <p className="mt-1 text-xs font-semibold text-amber-800">
                 Check that {selectedEmployee.email || 'this email'} belongs to a DILG employee. After approval, they can log in; set their office and job designation with Edit.
+              </p>
+              <p className="mt-1 text-xs font-semibold text-amber-800">
+                {mobileNumberOf(selectedEmployee)
+                  ? `They will get an SMS at ${selectedEmployee.phoneNumber} when you approve.`
+                  : 'No mobile number on file, so no SMS will be sent. Add one with Edit before approving, or let them know yourself.'}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Approve account'}</button>
