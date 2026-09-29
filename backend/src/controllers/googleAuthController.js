@@ -4,7 +4,6 @@ import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { createMobileHandoffCode, isValidCodeChallenge, readMobileHandoffCode } from '../utils/mobileAuthHandoff.js';
-import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 import { notifyHrOfNewAccount } from '../services/accountNotifications.js';
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -190,11 +189,10 @@ export const googleAuthCallback = async (req, res) => {
       throw new Error('Google did not return a verified email address.');
     }
 
-    let user = await User.findByEmail(profile.email);
+    const user = await User.findByEmail(profile.email);
     if (!user) {
-      // A new Google user gets an employee account. A verified DILG email is activated
-      // right away; any other Google account (such as Gmail) waits for HR approval.
-      const isAgencyEmail = isAgencyEmailAddress(profile.email);
+      // A new Google user gets an employee account that waits for HR approval, like one
+      // made with the sign-up form, whatever the email's domain.
       const created = await User.createSelfServiceEmployee({
         name: profile.name || profile.email,
         email: profile.email.toLowerCase(),
@@ -202,14 +200,11 @@ export const googleAuthCallback = async (req, res) => {
         googleId: profile.sub || '',
         role: '',
         office: '',
-        accountStatus: isAgencyEmail ? 'Active' : 'Pending'
+        accountStatus: 'Pending'
       });
       if (!created) throw new Error('Unable to create your WorkMate account. Please contact the HR Administrator.');
       await notifyHrOfNewAccount(created, 'Google sign-in');
-      if (!isAgencyEmail) {
-        throw new Error('Your WorkMate account was created and is waiting for HR approval. You can sign in with Google once the HR Administrator activates it.');
-      }
-      user = await User.findById(created._id);
+      throw new Error('Your WorkMate account was created and is waiting for HR approval. You can sign in with Google once the HR Administrator activates it.');
     }
     if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
       throw new Error(`This account is ${user.accountStatus.toLowerCase()}. Please contact the HR Administrator.`);
