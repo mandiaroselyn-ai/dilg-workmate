@@ -1,4 +1,5 @@
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../../shared/marinduqueLocations.js';
+import { isWithinAssignedLocation } from '../../../shared/assignmentGeofence.js';
 
 const fail = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -118,4 +119,17 @@ export const normalizeAttendanceAssignment = ({ dutyType, assignmentSite, user }
       landmark: approvedLandmark
     }
   };
+};
+// Returns why a Time Out's GPS is not accepted, or null when it is. Records saved before
+// assignment areas were stored have no area to check against.
+export const timeOutLocationError = (assignmentSite, { timeOutLatitude, timeOutLongitude, timeOutGpsAccuracy } = {}) => {
+  if (!assignmentSite || !Number.isFinite(Number(assignmentSite.latitude))) return null;
+  if (timeOutLatitude == null || timeOutLongitude == null) return 'GPS location is required for Time Out. Turn on Location Services and retry.';
+  if (timeOutGpsAccuracy != null && !(Number(timeOutGpsAccuracy) <= 50)) {
+    return 'GPS accuracy must be 50 meters or better for Time Out. Move outdoors or near a window and retry.';
+  }
+  if (!isWithinAssignedLocation(timeOutLatitude, timeOutLongitude, assignmentSite)) {
+    return `Time Out blocked: your GPS location is outside ${assignmentSite.label || 'the assigned area'}.`;
+  }
+  return null;
 };

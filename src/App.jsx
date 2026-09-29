@@ -381,12 +381,15 @@ export default function App() {
     return data.sms;
   };
 
+  // A Time Out saved offline keeps the time it was made; online ones use the server clock.
+  const markRecordedOffline = payload => ({ ...payload, record: { ...payload.record, recordedOfflineAt: new Date().toISOString() } });
+
   const submitAttendance = async (payload, optimisticRecord) => {
     if (!navigator.onLine) {
       if (payload.action === 'clock-in') {
         throw new Error('An internet connection is required to verify your fingerprint and submit Time In. Reconnect and try again.');
       }
-      await queueAttendance({ payload });
+      await queueAttendance({ payload: markRecordedOffline(payload) });
       if (optimisticRecord) {
         setAttendanceHistory(previous => payload.action === 'clock-out'
           ? previous.map(item => item.employeeId === optimisticRecord.employeeId && !item.timeOut ? optimisticRecord : item)
@@ -413,7 +416,7 @@ export default function App() {
         throw error;
       }
       if (payload.action === 'clock-in') throw error;
-      await queueAttendance({ payload });
+      await queueAttendance({ payload: markRecordedOffline(payload) });
       if (optimisticRecord) {
         setAttendanceHistory(previous => payload.action === 'clock-out'
           ? previous.map(item => item.employeeId === optimisticRecord.employeeId && !item.timeOut ? optimisticRecord : item)
@@ -564,7 +567,7 @@ export default function App() {
           // Create system notification
           const newNotif = {
             title: 'Clock-In Success',
-            message: `Time In registered at ${timeString} at ${municipality}.`,
+            message: `Time In registered at ${data.record.timeIn || timeString} at ${municipality}.`,
             time: 'Just now',
             type: 'attendance',
             employeeId: user?.employeeId || '',
@@ -644,7 +647,7 @@ export default function App() {
           // Create notification
           const newNotif = {
             title: 'Clock-Out Recorded',
-            message: `Clock Out registered at ${timeString}. Have a safe commute home.`,
+            message: `Clock Out registered at ${data.record.timeOut || timeString}. Have a safe commute home.`,
             time: 'Just now',
             type: 'attendance',
             employeeId: user?.employeeId || '',

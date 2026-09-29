@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeApprovedWfhLocation, normalizeAttendanceAssignment } from './attendanceAssignment.js';
+import { normalizeApprovedWfhLocation, normalizeAttendanceAssignment, timeOutLocationError } from './attendanceAssignment.js';
 
 test('canonicalizes a valid office assignment from the office catalog', () => {
   assert.deepEqual(normalizeAttendanceAssignment({
@@ -91,4 +91,12 @@ test('validates and records HR approval metadata for a WFH location', () => {
   assert.equal(approved.municipality, 'Boac');
   assert.equal(approved.approvedBy, 'HR-001');
   assert.ok(approved.approvedAt instanceof Date);
+});
+test('Time Out GPS must be inside the assigned area the shift started in', () => {
+  const office = { mode: 'office', latitude: 13.4474, longitude: 121.8344, label: 'DILG Provincial Office' };
+  assert.equal(timeOutLocationError(office, { timeOutLatitude: 13.4475, timeOutLongitude: 121.8345, timeOutGpsAccuracy: 12 }), null);
+  assert.match(timeOutLocationError(office, { timeOutLatitude: 13.5, timeOutLongitude: 121.9, timeOutGpsAccuracy: 12 }), /outside DILG Provincial Office/);
+  assert.match(timeOutLocationError(office, { timeOutLatitude: 13.4475, timeOutLongitude: 121.8345, timeOutGpsAccuracy: 80 }), /50 meters/);
+  assert.match(timeOutLocationError(office, {}), /GPS location is required/);
+  assert.equal(timeOutLocationError(null, {}), null);
 });

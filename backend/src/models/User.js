@@ -90,6 +90,8 @@ const UserSchema = new mongoose.Schema({
   nativeBiometricRegisteredAt: { type: Date, default: null },
   nativeBiometricChallenge: { type: String, default: '' },
   nativeBiometricChallengeExpiry: { type: Date, default: null },
+  // Set when the employee asked to register this phone's fingerprint in place of the old one.
+  nativeBiometricChallengeReplacesKey: { type: Boolean, default: false },
   webauthnChallenge: { type: String, default: '' },
   webauthnChallengeExpiry: { type: Date, default: null },
   resetToken: { type: String, default: '' },
@@ -566,7 +568,8 @@ export const User = {
           nativeBiometricPublicKey: publicKey,
           nativeBiometricRegisteredAt: new Date(),
           nativeBiometricChallenge: '',
-          nativeBiometricChallengeExpiry: null
+          nativeBiometricChallengeExpiry: null,
+          nativeBiometricChallengeReplacesKey: false
         },
         $push: { faceVerificationAudit: fingerprintRegisteredEvent('phone-app-fingerprint-registered', 'workmate-phone-app') }
       },
@@ -574,12 +577,12 @@ export const User = {
     );
   },
 
-  saveNativeBiometricChallenge: async (userId, challenge, expiry) => {
+  saveNativeBiometricChallenge: async (userId, challenge, expiry, replacesKey = false) => {
     ensureConnected();
     if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findOneAndUpdate(
       { _id: userId },
-      { $set: { nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: expiry } },
+      { $set: { nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: expiry, nativeBiometricChallengeReplacesKey: replacesKey === true } },
       { new: true, writeConcern: { w: 'majority' } }
     );
   },
@@ -589,7 +592,7 @@ export const User = {
     if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findOneAndUpdate(
       { _id: userId, nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: { $gt: new Date() } },
-      { $set: { nativeBiometricChallenge: '', nativeBiometricChallengeExpiry: null } },
+      { $set: { nativeBiometricChallenge: '', nativeBiometricChallengeExpiry: null, nativeBiometricChallengeReplacesKey: false } },
       { new: true, writeConcern: { w: 'majority' } }
     );
   },

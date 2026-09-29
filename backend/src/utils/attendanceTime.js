@@ -15,3 +15,14 @@ export const isLateClockIn = (date = new Date(), officeStartTime = process.env.O
   const startMinutes = parseOfficeStart(officeStartTime) ?? parseOfficeStart(DEFAULT_OFFICE_START_TIME);
   return getManilaMinutesOfDay(date) > startMinutes;
 };
+
+// When a Time Out happened. An online Time Out uses the server clock. A Time Out that was
+// saved offline and sent later keeps the time the phone recorded, but never earlier than
+// the Time In or later than now.
+export const resolveTimeOutMoment = ({ recordedOfflineAt, timeInAt, now = new Date() }) => {
+  const recorded = typeof recordedOfflineAt === 'string' ? Date.parse(recordedOfflineAt) : NaN;
+  if (!Number.isFinite(recorded)) return now;
+  const timeIn = timeInAt ? new Date(timeInAt).getTime() : NaN;
+  const earliest = Number.isFinite(timeIn) ? timeIn : recorded;
+  return new Date(Math.min(now.getTime(), Math.max(recorded, earliest)));
+};

@@ -40,6 +40,7 @@ export const toSafeUser = (user) => {
     nativeBiometricPublicKey,
     nativeBiometricChallenge,
     nativeBiometricChallengeExpiry,
+    nativeBiometricChallengeReplacesKey,
     ...safeUser
   } = plainUser;
   return {

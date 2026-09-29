@@ -5,6 +5,8 @@ export const FINGERPRINT_OVERLAY_HINT = 'Close floating chat bubbles (such as Me
 
 export const PROMPT_STILL_OPEN_MESSAGE = `A fingerprint prompt is still open. ${FINGERPRINT_OVERLAY_HINT} If you do not see the prompt, reload the page, then tap Use Fingerprint once.`;
 
+export const WRONG_PHONE_HINT = 'If this is not the phone you registered, open Biometric Enrollment and tap "Changed phones?" to register this phone.';
+
 // `abortReason` is 'timeout' when the app gave up waiting for the prompt.
 export const describeFingerprintError = (error, abortReason = null) => {
   const message = error?.message || '';
@@ -37,4 +39,11 @@ export const describeFingerprintCheck = record => {
   if (!record?.fingerprintVerified) return 'Not verified';
   const source = FINGERPRINT_SOURCES[record.fingerprintMethod];
   return source ? `Matched registered fingerprint (${source})` : 'Matched registered fingerprint';
+};
+
+// Time In only accepts the fingerprint registered on Biometric Enrollment, and a phone
+// without that registration fails the same way as a cancelled prompt.
+export const describeTimeInFingerprintError = (error, abortReason = null) => {
+  const message = describeFingerprintError(error, abortReason);
+  return error?.name === 'NotAllowedError' && !abortReason ? `${message} ${WRONG_PHONE_HINT}` : message;
 };

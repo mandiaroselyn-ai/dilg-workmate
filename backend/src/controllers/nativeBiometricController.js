@@ -8,10 +8,14 @@ import {
 
 const challengeExpiry = () => new Date(Date.now() + 5 * 60 * 1000);
 
+export const PHONE_KEY_CHANGED_MESSAGE = 'This phone\'s fingerprint key does not match the one registered to your account. This happens after adding a new fingerprint to the phone, reinstalling WorkMate, or changing phones. Tap "Register This Phone" to use this phone from now on.';
+
 export const createNativeBiometricOptions = async (req, res) => {
   try {
     const challenge = createNativeBiometricChallenge();
-    const savedChallenge = await User.saveNativeBiometricChallenge(req.user._id, challenge, challengeExpiry());
+    // The employee asked to register this phone in place of the old fingerprint key.
+    const replacesKey = req.body?.replaceRegisteredKey === true && Boolean(req.user.nativeBiometricPublicKey);
+    const savedChallenge = await User.saveNativeBiometricChallenge(req.user._id, challenge, challengeExpiry(), replacesKey);
     if (!savedChallenge) throw new Error('Could not save the native biometric challenge.');
     return res.status(200).json({
       challenge,
@@ -37,9 +41,16 @@ export const verifyNativeBiometric = async (req, res) => {
     return res.status(400).json({ success: false, error: 'Phone fingerprint challenge expired. Please retry.' });
   }
 
-  const registrationRequired = !user.nativeBiometricPublicKey;
-  const verificationKey = registrationRequired ? publicKey : user.nativeBiometricPublicKey;
+  const registeredKey = user.nativeBiometricPublicKey;
+  const isOtherKey = Boolean(registeredKey) && typeof publicKey === 'string' && publicKey !== registeredKey;
+  const replacingKey = isOtherKey && user.nativeBiometricChallengeReplacesKey === true;
+  const registrationRequired = !registeredKey || replacingKey;
+  const verificationKey = registrationRequired ? publicKey : registeredKey;
   if (!verifyNativeBiometricSignature({ publicKey: verificationKey, challenge, signature })) {
+    // A valid signature from a different key means the phone's key changed, not a wrong finger.
+    if (isOtherKey && verifyNativeBiometricSignature({ publicKey, challenge, signature })) {
+      return res.status(409).json({ success: false, code: 'phone-key-changed', error: PHONE_KEY_CHANGED_MESSAGE });
+    }
     return res.status(401).json({ success: false, error: 'Phone fingerprint verification failed.' });
   }
 

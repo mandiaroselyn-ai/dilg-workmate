@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 
-import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
+import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 const fetch = apiFetch;
 
 // A fingerprint prompt that has not opened or finished by now is abandoned so the
@@ -211,6 +211,8 @@ export default function AttendanceView({
   // Each fingerprint attempt gets a number; results from an older attempt are ignored.
   const fingerprintAttemptRef = useRef(0);
   const [fingerprintError, setFingerprintError] = useState(null);
+  // True when the WorkMate app's fingerprint key no longer matches the registered one.
+  const [phoneKeyChanged, setPhoneKeyChanged] = useState(false);
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
@@ -413,7 +415,8 @@ export default function AttendanceView({
   };
 
   // The server creates and verifies the WebAuthn challenge and assertion.
-  const handleStartFingerprintScan = async () => {
+  // `replacePhoneKey` registers this phone's app fingerprint in place of the old one.
+  const handleStartFingerprintScan = async ({ replacePhoneKey = false } = {}) => {
     if (!capturedSelfie) {
       setFingerprintError('Please complete selfie capture before fingerprint verification.');
       return;
@@ -438,10 +441,15 @@ export default function AttendanceView({
     fingerprintScanInFlightRef.current = true;
     setFingerprintScanning(true);
     setFingerprintError(null);
+    setPhoneKeyChanged(false);
 
     try {
       if (hasNativeBridge) {
-        const optionsResponse = await fetch('/api/biometric/native/options', { method: 'POST' });
+        const optionsResponse = await fetch('/api/biometric/native/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ replaceRegisteredKey: replacePhoneKey === true })
+        });
         const options = await optionsResponse.json();
         if (!optionsResponse.ok || !options.challenge) {
           throw new Error(options.error || 'Unable to start phone fingerprint verification.');
@@ -459,7 +467,9 @@ export default function AttendanceView({
         });
         const verification = await verifyResponse.json();
         if (!verifyResponse.ok || !verification.success) {
-          throw new Error(verification.error || 'Phone fingerprint verification failed.');
+          const error = new Error(verification.error || 'Phone fingerprint verification failed.');
+          error.phoneKeyChanged = verification.code === 'phone-key-changed';
+          throw error;
         }
         if (!isCurrentAttempt()) return;
 
@@ -538,7 +548,8 @@ export default function AttendanceView({
       setFingerprintScanning(false);
       setFingerprintProgress(0);
       fingerprintScanInFlightRef.current = false;
-      setFingerprintError(describeFingerprintError(error, abortReason));
+      setPhoneKeyChanged(error?.phoneKeyChanged === true);
+      setFingerprintError(describeTimeInFingerprintError(error, abortReason));
     }
   };
 
@@ -557,6 +568,7 @@ export default function AttendanceView({
     setFingerprintProof('');
     setFingerprintProgress(0);
     setFingerprintError(null);
+    setPhoneKeyChanged(false);
   };
 
   // Cancel an open fingerprint prompt when leaving the attendance screen.
@@ -787,7 +799,6 @@ export default function AttendanceView({
     : `https://www.google.com/maps/search/?api=1&query=${mapFocus.lat},${mapFocus.lon}`;
 
   const autoClockInRef = useRef(false);
-  const autoClockOutRef = useRef(false);
 
   const executeClockIn = async () => {
     if (assignmentMode === 'wfh' && !user?.approvedWfhLocation?.approvedAt) {
@@ -860,9 +871,9 @@ export default function AttendanceView({
         );
         setCapturedSelfie(null);
         setFingerprintVerified(false);
+        setFingerprintProof('');
         setFingerprintProgress(0);
         autoClockInRef.current = false;
-        autoClockOutRef.current = false;
       })
       .catch(error => {
         setGpsChecked(true);
@@ -929,21 +940,6 @@ export default function AttendanceView({
     setLocationError('Auto clock-in triggered: employee entered the assigned geofence.');
     executeClockIn();
   }, [isCurrentlyActive, capturedSelfie, fingerprintVerified, geofenceStatus.inRange]);
-
-  useEffect(() => {
-    if (!isCurrentlyActive) {
-      autoClockOutRef.current = false;
-      return;
-    }
-
-    if (!gpsChecked || geofenceStatus.inRange || autoClockOutRef.current) {
-      return;
-    }
-
-    autoClockOutRef.current = true;
-    setLocationError('Auto clock-out triggered: employee left the assigned geofence.');
-    executeClockOut();
-  }, [isCurrentlyActive, gpsChecked, geofenceStatus.inRange, onTimeOut]);
 
   // Filter logs logic
   const normalize = (value) => (value ?? '').toString().trim().toLowerCase();
@@ -1071,7 +1067,7 @@ export default function AttendanceView({
         doc.setFont("helvetica", "normal");
         
         doc.text(log.location.substring(0, 18), 35, currentY);
-        doc.text(log.workAssignment.barangayLgu.substring(0, 20), 75, currentY);
+        doc.text(String(log.workAssignment?.barangayLgu || '-').substring(0, 20), 75, currentY);
         
         doc.setFont("helvetica", "bold");
         doc.text(log.timeIn, 118, currentY);
@@ -1529,6 +1525,18 @@ export default function AttendanceView({
                   <p role="alert" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                     {fingerprintError}
                   </p>
+                )}
+                {phoneKeyChanged && hasNativeBridge && !fingerprintScanning && (
+                  <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => handleStartFingerprintScan({ replacePhoneKey: true })}
+                      className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white hover:bg-blue-800"
+                    >
+                      Register This Phone
+                    </button>
+                    <p className="mt-1 text-[10px] font-semibold text-blue-900">Only do this on your own phone. HR will see that your phone fingerprint was registered again.</p>
+                  </div>
                 )}
               </div>
             )}
@@ -2113,8 +2121,8 @@ export default function AttendanceView({
                         <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold block">{log.workAssignment?.barangayLgu || "Not set"}</span>
                       </div>
                     </td>
-                    <td className="p-3 max-w-xs truncate text-slate-650" title={log.workAssignment.task}>
-                      {log.workAssignment.task}
+                    <td className="p-3 max-w-xs truncate text-slate-650" title={log.workAssignment?.task || ''}>
+                      {log.workAssignment?.task || '-'}
                     </td>
                     <td className="p-3 text-center">
                       <span className="bg-blue-50 text-[#1e40af] border border-blue-100 px-2 py-1 rounded font-mono font-bold text-[11px] sm:text-xs">

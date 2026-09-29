@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { describeFingerprintCheck, describeFingerprintError, registeredFingerprints } from './fingerprintMessages.js';
+import { describeFingerprintCheck, describeFingerprintError, describeTimeInFingerprintError, registeredFingerprints } from './fingerprintMessages.js';
 
 const domError = (name, message) => Object.assign(new Error(message), { name });
 
@@ -36,4 +36,11 @@ test('describes how a Time In fingerprint was checked', () => {
   assert.equal(describeFingerprintCheck({ fingerprintVerified: true, fingerprintMethod: 'phone-app' }), 'Matched registered fingerprint (WorkMate phone app)');
   assert.equal(describeFingerprintCheck({ fingerprintVerified: true }), 'Matched registered fingerprint');
   assert.equal(describeFingerprintCheck({ fingerprintVerified: false, fingerprintMethod: 'browser' }), 'Not verified');
+});
+
+test('Time In tells an employee on another phone how to register it', () => {
+  const notAllowed = domError('NotAllowedError', 'The operation either timed out or was not allowed.');
+  assert.match(describeTimeInFingerprintError(notAllowed), /Changed phones\?/);
+  assert.doesNotMatch(describeFingerprintError(notAllowed), /Changed phones/);
+  assert.doesNotMatch(describeTimeInFingerprintError(domError('AbortError', 'aborted'), 'timeout'), /Changed phones/);
 });

@@ -2,6 +2,7 @@ package com.dilg.workmate.employee
 
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.biometric.BiometricManager
@@ -15,6 +16,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 
@@ -27,6 +29,28 @@ class NativeBiometricModule(
   }
 
   override fun getName() = "NativeBiometric"
+
+  // The signing key can only be used right after a strong (Class 3) biometric check,
+  // such as the phone's fingerprint sensor.
+  private fun loadOrCreateKey(keyStore: KeyStore, keyAlias: String): PrivateKey {
+    (keyStore.getKey(keyAlias, null) as? PrivateKey)?.let { return it }
+    val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KEYSTORE)
+    val builder = KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_SIGN)
+      .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+      .setDigests(KeyProperties.DIGEST_SHA256)
+      .setUserAuthenticationRequired(true)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      builder.setInvalidatedByBiometricEnrollment(true)
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      builder.setUserAuthenticationParameters(0, KeyProperties.AUTH_BIOMETRIC_STRONG)
+    } else {
+      @Suppress("DEPRECATION")
+      builder.setUserAuthenticationValidityDurationSeconds(-1)
+    }
+    generator.initialize(builder.build())
+    return generator.generateKeyPair().private
+  }
 
   @ReactMethod
   fun signChallenge(challenge: String, keyId: String, promise: Promise) {
@@ -43,7 +67,7 @@ class NativeBiometricModule(
 
     try {
       val biometricManager = BiometricManager.from(activity)
-      val allowedAuthenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.BIOMETRIC_WEAK
+      val allowedAuthenticators = BiometricManager.Authenticators.BIOMETRIC_STRONG
       val authenticationStatus = biometricManager.canAuthenticate(allowedAuthenticators)
       if (authenticationStatus != BiometricManager.BIOMETRIC_SUCCESS) {
         when (authenticationStatus) {
@@ -52,7 +76,7 @@ class NativeBiometricModule(
           BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
             promise.reject("E_BIOMETRIC_UNAVAILABLE", "The fingerprint sensor is currently unavailable. Please try again.")
           BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
-            promise.reject("E_BIOMETRIC_ENROLL", "Register at least one fingerprint or face unlock in your device settings, then retry.")
+            promise.reject("E_BIOMETRIC_ENROLL", "Register a fingerprint in your phone settings, then retry.")
           else ->
             promise.reject("E_BIOMETRIC_UNAVAILABLE", "Phone fingerprint verification is not available on this device.")
         }
@@ -61,30 +85,15 @@ class NativeBiometricModule(
 
       val keyAlias = KEY_ALIAS_PREFIX + keyId
       val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-      val privateKey = (keyStore.getKey(keyAlias, null) as? java.security.PrivateKey)
-        ?: run {
-          val generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KEYSTORE)
-          val builder = KeyGenParameterSpec.Builder(keyAlias, KeyProperties.PURPOSE_SIGN)
-            .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
-            .setDigests(KeyProperties.DIGEST_SHA256)
-            .setUserAuthenticationRequired(true)
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            builder.setInvalidatedByBiometricEnrollment(true)
-          }
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            builder.setUserAuthenticationParameters(
-              0,
-              KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_BIOMETRIC_WEAK
-            )
-          } else {
-            @Suppress("DEPRECATION")
-            builder.setUserAuthenticationValidityDurationSeconds(-1)
-          }
-          generator.initialize(builder.build())
-          generator.generateKeyPair().private
-        }
-
-      val signature = Signature.getInstance("SHA256withECDSA").apply { initSign(privateKey) }
+      val signature = Signature.getInstance("SHA256withECDSA")
+      try {
+        signature.initSign(loadOrCreateKey(keyStore, keyAlias))
+      } catch (error: KeyPermanentlyInvalidatedException) {
+        // Adding a fingerprint to the phone retires the old key. A new key is made, and the
+        // server asks the employee to register this phone again.
+        keyStore.deleteEntry(keyAlias)
+        signature.initSign(loadOrCreateKey(keyStore, keyAlias))
+      }
       val publicKey = Base64.encodeToString(
         keyStore.getCertificate(keyAlias).publicKey.encoded,
         Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING

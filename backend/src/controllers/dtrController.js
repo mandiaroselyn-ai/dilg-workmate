@@ -4,10 +4,10 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
 import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
-import { normalizeAttendanceAssignment } from '../utils/attendanceAssignment.js';
+import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
-import { isLateClockIn } from '../utils/attendanceTime.js';
-import { getManilaDateString } from '../../../shared/localDate.js';
+import { isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
+import { formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
 import {
   compareEnrollmentToAttendance,
   createFaceDescriptor,
@@ -105,6 +105,11 @@ export const clockInOut = async (req, res) => {
       if (!record || typeof record !== 'object') {
         return res.status(400).json({ success: false, error: 'Invalid attendance payload.' });
       }
+      // The DTR date and Time In come from the server clock, not the phone's clock.
+      const clockInAt = new Date();
+      record.date = getManilaDateString(clockInAt);
+      record.timeIn = formatManilaClockTime(clockInAt);
+      record.timeOut = null;
 
       const requiredFields = ['latitude', 'longitude', 'gpsStatus', 'selfieUrl', 'fingerprintVerified', 'dutyType', 'assignmentSite'];
       for (const field of requiredFields) {
@@ -253,8 +258,7 @@ export const clockInOut = async (req, res) => {
       }
       const newLog = await DtrLog.create({
         ...record,
-        // Lateness uses the server clock, not the time string sent by the phone.
-        late: isLateClockIn(new Date()),
+        late: isLateClockIn(clockInAt),
         faceVerified: true,
         faceMatchConfidence: null,
         faceMatchDistance: faceMatch.distance,
@@ -275,7 +279,16 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'Employee ID is required to clock out.' });
       }
 
-      const closedLog = await DtrLog.closeActiveLog(record.timeOut, record.employeeId, record.date, {
+      const activeLog = await DtrLog.findActiveByEmployee(record.employeeId, record.date);
+      if (!activeLog) {
+        return res.status(400).json({ success: false, error: 'No active clock-in found to clock out.' });
+      }
+      if (req.user?.accessLevel === 'employee') {
+        const locationError = timeOutLocationError(activeLog.assignmentSite, record);
+        if (locationError) return res.status(400).json({ success: false, error: locationError });
+      }
+      const timeOutAt = resolveTimeOutMoment({ recordedOfflineAt: record.recordedOfflineAt, timeInAt: activeLog.createdAt });
+      const closedLog = await DtrLog.closeActiveLog(formatManilaClockTime(timeOutAt), record.employeeId, record.date, {
         latitude: record.timeOutLatitude,
         longitude: record.timeOutLongitude,
         accuracy: record.timeOutGpsAccuracy
