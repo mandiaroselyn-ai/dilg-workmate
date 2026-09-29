@@ -48,6 +48,9 @@ test('removes authentication and biometric secrets from API user objects', () =>
     biometricEnrollmentReviewNote: 'private HR note',
     faceLivenessStatus: 'not-configured',
     // Only whether a password exists is shared, never the password itself.
-    hasPassword: true
+    hasPassword: true,
+    // Only yes/no flags about registered fingerprints are shared, never keys.
+    hasBrowserFingerprint: false,
+    hasPhoneFingerprint: true
   });
 });

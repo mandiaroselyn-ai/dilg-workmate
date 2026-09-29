@@ -12,7 +12,9 @@ const enrollmentStatus = user => ({
   biometricEnrollmentReviewedAt: user.biometricEnrollmentReviewedAt || null,
   biometricEnrollmentReviewedBy: user.biometricEnrollmentReviewedBy || '',
   biometricEnrollmentReviewNote: user.biometricEnrollmentReviewNote || '',
-  faceLivenessStatus: 'not-configured'
+  faceLivenessStatus: 'not-configured',
+  hasBrowserFingerprint: Boolean(user.webauthnCredentialId && user.webauthnPublicKey),
+  hasPhoneFingerprint: Boolean(user.nativeBiometricPublicKey)
 });
 
 const isSupportedImage = value => typeof value === 'string'

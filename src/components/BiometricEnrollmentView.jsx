@@ -2,6 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, RefreshCw, Upload, X } from 'lucide-react';
 import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
 import { apiFetch, parseApiResponse } from '../utils/api';
+import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
+
+// A registration prompt that has not opened or finished by now is abandoned.
+const FINGERPRINT_PROMPT_TIMEOUT_MS = 65000;
 
 const fromBase64Url = value => {
   const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((value.length + 3) % 4);
@@ -53,6 +57,10 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const [registeringFingerprint, setRegisteringFingerprint] = useState(false);
   const [fingerprintRegistered, setFingerprintRegistered] = useState(false);
   const [fingerprintRegistrationError, setFingerprintRegistrationError] = useState('');
+  const registrationAbortRef = useRef(null);
+  const [confirmingNewPhone, setConfirmingNewPhone] = useState(false);
+  // Registered on this visit, or already registered on the server.
+  const hasRegisteredFingerprint = fingerprintRegistered || Boolean(user?.hasBrowserFingerprint);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const idInputRef = useRef(null);
@@ -81,11 +89,17 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
   const handleRegisterFingerprint = async () => {
     setFingerprintRegistrationError('');
+    if (registrationAbortRef.current || registeringFingerprint) {
+      setFingerprintRegistrationError(PROMPT_STILL_OPEN_MESSAGE);
+      return;
+    }
     if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials?.create) {
       setFingerprintRegistrationError('Fingerprint registration requires a supported browser on HTTPS or localhost.');
       return;
     }
 
+    let abortReason = null;
+    let promptTimer = null;
     setRegisteringFingerprint(true);
     try {
       if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
@@ -108,7 +122,17 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           id: fromBase64Url(credential.id)
         }))
       };
-      const credential = await navigator.credentials.create({ publicKey });
+      // The prompt is abandoned if it never opens (for example, when a floating chat
+      // bubble blocks it), so the employee can try again.
+      const controller = new AbortController();
+      registrationAbortRef.current = controller;
+      promptTimer = window.setTimeout(() => {
+        abortReason = 'timeout';
+        controller.abort();
+      }, FINGERPRINT_PROMPT_TIMEOUT_MS);
+      const credential = await navigator.credentials.create({ publicKey, signal: controller.signal });
+      window.clearTimeout(promptTimer);
+      registrationAbortRef.current = null;
       if (!credential) throw new Error('Fingerprint registration was cancelled.');
 
       const verifyResponse = await apiFetch('/api/biometric/action?action=register-verify', {
@@ -122,14 +146,23 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       }
 
       setFingerprintRegistered(true);
+      setConfirmingNewPhone(false);
+      refreshStatus();
     } catch (registrationError) {
-      setFingerprintRegistrationError(registrationError.name === 'NotAllowedError'
-        ? 'Fingerprint registration was cancelled or not approved. Try again and complete the device prompt.'
-        : registrationError.message || 'Unable to register this device fingerprint.');
+      window.clearTimeout(promptTimer);
+      registrationAbortRef.current = null;
+      setFingerprintRegistrationError(registrationError?.name === 'InvalidStateError'
+        ? 'This phone is already registered. Go to Attendance and tap Use Fingerprint for Time In.'
+        : describeFingerprintError(registrationError, abortReason));
     } finally {
       setRegisteringFingerprint(false);
     }
   };
+
+  // Cancel an open registration prompt when leaving this screen.
+  useEffect(() => () => {
+    registrationAbortRef.current?.abort();
+  }, []);
 
   useEffect(() => {
     refreshStatus();
@@ -365,7 +398,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           </div>
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-3 py-1.5 text-xs font-black ${badgeClass}`}>
-              {status === 'hr-approved' && user.biometricEnrollmentIsDemo
+              ID &amp; selfie: {status === 'hr-approved' && user.biometricEnrollmentIsDemo
                 ? 'DEMO approved · attendance matching for testing'
                 : statusCopy[status] || 'Pending review'}
             </span>
@@ -378,20 +411,36 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
         <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3 text-blue-950">
-            {fingerprintRegistered ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
+            {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
             <div>
-              <p className="text-sm font-black">{fingerprintRegistered ? 'Fingerprint Registered' : 'Fingerprint Registration'}</p>
-              <p className="mt-1 text-xs text-blue-900">Register this browser or device using its built-in fingerprint authenticator. Your fingerprint stays on your device.</p>
+              <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Fingerprint registered ✓' : 'Fingerprint registration'}</p>
+              <p className="mt-1 text-xs text-blue-900">
+                {hasRegisteredFingerprint
+                  ? 'Your phone is set up. Use Use Fingerprint on the Attendance page for Time In. Register again only if you changed phones.'
+                  : 'Register this phone using its built-in fingerprint. Your fingerprint stays on your device.'}
+              </p>
+              {confirmingNewPhone && (
+                <p className="mt-2 text-xs font-bold text-amber-800">Registering this phone replaces the phone registered before; that phone will stop working for Time In.</p>
+              )}
             </div>
           </div>
-          {!fingerprintRegistered && (
-            <button
-              type="button"
-              onClick={handleRegisterFingerprint}
-              disabled={registeringFingerprint}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60"
-            >
-              <Fingerprint className="h-4 w-4" /> {registeringFingerprint ? 'Waiting for device...' : 'Register this device'}
+          {!hasRegisteredFingerprint || confirmingNewPhone ? (
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={handleRegisterFingerprint}
+                disabled={registeringFingerprint}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60"
+              >
+                <Fingerprint className="h-4 w-4" /> {registeringFingerprint ? 'Waiting for device...' : 'Register this phone'}
+              </button>
+              {confirmingNewPhone && !registeringFingerprint && (
+                <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs font-black text-blue-800">Cancel</button>
+              )}
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmingNewPhone(true)} className="shrink-0 rounded-lg border border-blue-200 bg-white px-3 py-2 text-[11px] font-black text-blue-800">
+              Changed phones?
             </button>
           )}
         </div>

@@ -42,5 +42,11 @@ export const toSafeUser = (user) => {
     nativeBiometricChallengeExpiry,
     ...safeUser
   } = plainUser;
-  return { ...safeUser, hasPassword: Boolean(password) };
+  return {
+    ...safeUser,
+    hasPassword: Boolean(password),
+    // Whether a fingerprint is registered for Time In (browser passkey or phone app).
+    hasBrowserFingerprint: Boolean(webauthnCredentialId && webauthnPublicKey),
+    hasPhoneFingerprint: Boolean(nativeBiometricPublicKey)
+  };
 };
