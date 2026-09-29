@@ -20,7 +20,7 @@ import {
 
 export default function AnnouncementsView({
   announcements,
-  acknowledgedIds,
+  acknowledgedIds = [],
   onAcknowledge
 }) {
   const [activeCategory, setActiveCategory] = useState('All');
@@ -176,7 +176,7 @@ export default function AnnouncementsView({
                   <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                     {/* Read receipt check */}
                     <div>
-                      {isAcknowledged ? (
+                      {!onAcknowledge ? null : isAcknowledged ? (
                         <span className="text-[10px] text-emerald-800 font-bold flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100 shadow-sm">
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <span>Acknowledged Memo</span>

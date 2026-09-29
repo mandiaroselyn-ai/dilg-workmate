@@ -43,9 +43,9 @@ export default function Sidebar({ currentView, onViewChange, user, activeRole, o
     { id: 'attendance', label: 'Attendance', icon: Clock, roles: ['employee'] },
     { id: 'requests', label: 'Requests', icon: FileText, roles: ['employee'] },
     { id: 'hr_admin', label: 'HR / Admin Desk', icon: ShieldAlert, roles: ['hr_admin'] },
-    { id: 'announcements', label: 'Announcements', icon: Megaphone, roles: ['employee', 'hr_admin'] },
+    { id: 'announcements', label: 'Announcements', icon: Megaphone, roles: ['employee', 'supervisor'] },
     { id: 'documents', label: 'Documents', icon: FileArchive, roles: ['employee', 'hr_admin'] },
-    { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['employee', 'hr_admin'] },
+    { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['employee', 'supervisor'] },
     { id: 'profile', label: 'Profile', icon: User, roles: ['employee', 'supervisor', 'hr_admin'] },
     { id: 'settings', label: 'Settings', icon: Settings, roles: ['employee', 'hr_admin'] },
     { id: 'help', label: 'Help & Support', icon: HelpCircle, roles: ['employee', 'hr_admin'] },
@@ -57,6 +57,8 @@ export default function Sidebar({ currentView, onViewChange, user, activeRole, o
     { id: 'hr_records', label: 'Records', icon: FileArchive },
     { id: 'hr_employees', label: 'Employees', icon: UserCog },
     { id: 'hr_leave_records', label: 'Requests', icon: FileText },
+    { id: 'hr_announcements', label: 'Announcements', icon: Megaphone },
+    { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'hr_profile', label: 'Profile', icon: User },
   ];
 

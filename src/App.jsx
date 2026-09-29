@@ -216,15 +216,20 @@ export default function App() {
 
   const roleAllowedViews = {
     employee: ['dashboard', 'attendance', 'requests', 'announcements', 'documents', 'office_directory', 'calendar', 'profile', 'settings', 'help'],
-    supervisor: ['supervisor', 'profile'],
-    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile']
+    supervisor: ['supervisor', 'announcements', 'calendar', 'profile'],
+    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile']
+  };
+  // Shared links (such as the profile picture in the header) open HR's own version.
+  const roleViewAliases = {
+    hr_admin: { dashboard: 'hr_dashboard', profile: 'hr_profile', announcements: 'hr_announcements' }
   };
 
   const handleViewChange = (view) => {
     const normalizedRole = normalizeRole(activeRole);
     const allowedViews = roleAllowedViews[normalizedRole] || roleAllowedViews.employee;
-    if (allowedViews.includes(view)) {
-      setCurrentView(view);
+    const targetView = roleViewAliases[normalizedRole]?.[view] || view;
+    if (allowedViews.includes(targetView)) {
+      setCurrentView(targetView);
       return;
     }
     if (normalizedRole === 'hr_admin') {
@@ -902,11 +907,12 @@ export default function App() {
         }
         setEvents(prev => [...prev, data.event]);
 
+        // Sent to every employee (no recipient), like a new announcement.
         const newNotif = {
-          title: 'Interactive Event Added',
-          message: `Scheduled '${newEvent.title}' on your provincial agenda for ${newEvent.date}.`,
+          title: 'New Event',
+          message: `${newEvent.title} is scheduled on ${newEvent.date}${newEvent.time ? ` at ${newEvent.time}` : ''}. See the Calendar for details.`,
           time: 'Just now',
-          type: 'system'
+          type: 'announcement'
         };
         fetch('/api/notifications', {
           method: 'POST',
@@ -982,7 +988,10 @@ export default function App() {
             title: 'Bulletin Acknowledged',
             message: `Read receipt recorded for: ${label}`,
             time: 'Just now',
-            type: 'announcement'
+            type: 'announcement',
+            // Addressed to the reader, so it is not sent to every employee.
+            employeeId: user?.employeeId || '',
+            employeeEmail: user?.email || ''
           };
           fetch('/api/notifications', {
             method: 'POST',

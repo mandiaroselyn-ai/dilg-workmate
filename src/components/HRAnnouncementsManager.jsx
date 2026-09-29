@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CalendarDays, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
+import { CalendarDays, Eye, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
+import AnnouncementsView from './AnnouncementsView';
 import { getManilaDateString } from '../../shared/localDate';
 
 const ANNOUNCEMENT_CATEGORIES = ['Memorandum', 'Meeting', 'Guidelines', 'Training'];
@@ -49,6 +50,7 @@ export default function HRAnnouncementsManager({
   const [error, setError] = useState('');
 
   const isAnnouncements = tab === 'announcements';
+  const isPreview = tab === 'preview';
   const sortedAnnouncements = [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const sortedEvents = [...events].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
   const today = getManilaDateString();
@@ -186,13 +188,15 @@ export default function HRAnnouncementsManager({
           <h2 className="text-2xl font-black text-slate-900">Announcements &amp; Events</h2>
           <p className="text-sm text-slate-500">Publish announcements and schedule calendar events for employees.</p>
         </div>
-        <button type="button" onClick={startCreate} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">
-          <Plus className="h-4 w-4" /> {isAnnouncements ? 'Create Announcement' : 'Add Event'}
-        </button>
+        {!isPreview && (
+          <button type="button" onClick={startCreate} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">
+            <Plus className="h-4 w-4" /> {isAnnouncements ? 'Create Announcement' : 'Add Event'}
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-black">
-        {[['announcements', Megaphone, `Announcements (${announcements.length})`], ['events', CalendarDays, `Events (${events.length})`]].map(([value, Icon, label]) => (
+        {[['announcements', Megaphone, `Announcements (${announcements.length})`], ['events', CalendarDays, `Events (${events.length})`], ['preview', Eye, 'Employee view']].map(([value, Icon, label]) => (
           <button key={value} type="button" onClick={() => { setTab(value); setEditing(null); }} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 ${tab === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>
             <Icon className="h-4 w-4" /> {label}
           </button>
@@ -201,6 +205,12 @@ export default function HRAnnouncementsManager({
 
       {editing && editing.kind === tab && renderForm()}
 
+      {isPreview ? (
+        <div className="space-y-2">
+          <p className="rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">This is the Announcements page employees see. Employees can acknowledge each announcement there.</p>
+          <AnnouncementsView announcements={announcements} />
+        </div>
+      ) : (
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         {items.length === 0 && (
           <p className="p-6 text-center text-sm font-semibold text-slate-500">
@@ -235,6 +245,7 @@ export default function HRAnnouncementsManager({
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }
