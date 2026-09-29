@@ -237,6 +237,27 @@ export const updateEmployee = async (req, res) => {
   }
 };
 
+export const deleteEmployee = async (req, res) => {
+  try {
+    const result = await User.deleteEmployee(req.params.identifier);
+    if (!result) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    if (result.active) {
+      return res.status(409).json({ success: false, error: 'Deactivate this account before deleting it.' });
+    }
+    const { deleted } = result;
+    const reviewer = req.user?.name || req.user?.email || 'HR/Admin';
+    await Announcement.createNotification({
+      title: 'Employee Account Deleted',
+      message: `${deleted.name || deleted.email} (${deleted.employeeId || deleted.email}) was deleted by ${reviewer}. Their attendance and request records were kept.`,
+      type: 'employee_management',
+      recipientRole: 'hr_admin'
+    }).catch(error => console.error('Unable to record the employee deletion notice:', error));
+    res.status(200).json({ success: true, employeeId: deleted.employeeId || '', email: deleted.email || '' });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const updateEmployeeAccountStatus = async (req, res) => {
   try {
     const { identifier } = req.params;

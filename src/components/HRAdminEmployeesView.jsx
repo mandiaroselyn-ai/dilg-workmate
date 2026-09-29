@@ -451,6 +451,38 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
 
   const handleAccountStatus = accountStatus => updateAccountStatus(selectedEmployee, accountStatus);
 
+  // Deletes an account that is not Active. Attendance and request records are kept.
+  const handleDeleteEmployee = async () => {
+    if (!selectedEmployee) return;
+    const name = employeeName(selectedEmployee);
+    const confirmed = window.confirm(
+      `Delete ${name}'s account permanently?
+
+They will no longer be able to log in, and their ID photos and enrollment selfie will be removed. Their attendance and leave/travel records are kept.
+
+This cannot be undone.`
+    );
+    if (!confirmed) return;
+    const key = employeeKey(selectedEmployee);
+    setAccountStatusUpdating(true);
+    try {
+      const identifier = selectedEmployee.employeeId || selectedEmployee.email;
+      const response = await apiFetch(`/api/employees/${encodeURIComponent(identifier)}`, { method: 'DELETE' });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Unable to delete the employee account.');
+      }
+      onEmployeesChange?.(previous => previous.filter(employee => employeeKey(employee) !== key));
+      setSelectedId(null);
+      setScreen('list');
+      notify(`${name}'s account was deleted. Their attendance and request records were kept.`);
+    } catch (error) {
+      notify(error.message || 'Unable to delete the employee account.', true);
+    } finally {
+      setAccountStatusUpdating(false);
+    }
+  };
+
   if (screen === 'editor') {
     return (
       <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
@@ -623,7 +655,13 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
             ) : accountStatusOf(selectedEmployee) !== 'pending' && (
               <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Reactivate'}</button>
             )}
+            {accountStatusOf(selectedEmployee) !== 'active' && (
+              <button type="button" onClick={handleDeleteEmployee} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Delete account'}</button>
+            )}
           </div>
+          {accountStatusOf(selectedEmployee) === 'active' && (
+            <p className="mt-2 text-[10px] font-semibold text-slate-400">To delete this account, deactivate it first.</p>
+          )}
 
           {accountStatusOf(selectedEmployee) === 'pending' && (
             <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">

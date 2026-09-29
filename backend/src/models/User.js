@@ -589,6 +589,29 @@ export const User = {
     return user.toObject();
   },
 
+  // Permanently deletes an employee account that is not Active. Returns
+  // { deleted } on success, { active: true } when the account must be deactivated
+  // first, or null when no employee account matches. Attendance and request records
+  // are separate documents and are kept.
+  deleteEmployee: async (identifier) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const employeeMatch = {
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    };
+    const deleted = await MongoUser.findOneAndDelete({
+      $and: [...employeeMatch.$and, { accountStatus: { $not: /^active$/i } }]
+    });
+    if (deleted) return { deleted: deleted.toObject() };
+    const existing = await MongoUser.findOne(employeeMatch).select('_id');
+    return existing ? { active: true } : null;
+  },
+
   setPasswordResetToken: async (email, token, expiry) => {
     ensureConnected();
     const normalized = email?.toLowerCase?.().trim();

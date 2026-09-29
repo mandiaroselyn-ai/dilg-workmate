@@ -214,3 +214,8 @@ test('validates native biometric signatures against P-256 public keys and exact 
     signature
   }), false);
 });
+
+test('requires authentication before deleting an employee account', async () => {
+  const response = await request(app).delete('/api/employees/DILG-2026-000001');
+  assert.equal(response.status, 401);
+});
