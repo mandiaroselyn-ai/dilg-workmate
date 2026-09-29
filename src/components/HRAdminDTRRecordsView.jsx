@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { dtrIssue, dtrRecordStatus, recordsForEmployees } from '../utils/hrAttendance';
+import { dtrIssue, dtrRecordStatus, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 
@@ -11,7 +11,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
-  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const today = getManilaDateString();
   // Only records that belong to current employee accounts.
@@ -39,6 +39,60 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
   const complete = records.filter(row => row.status === 'Complete').length;
   const incomplete = records.filter(row => row.status === 'Incomplete').length;
   const forReview = records.filter(row => dtrIssue(row.record, today)).length;
+
+  // Shown right under the record that was opened.
+  const renderDetails = selected => (
+    <section className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs">
+      <div className="flex justify-between">
+        <h3 className="font-black text-blue-900">DTR Details</h3>
+        <button type="button" onClick={() => setSelectedId(null)} className="font-black text-blue-700">Close</button>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-blue-900">
+        <span>Employee: <b>{selected.name}</b></span>
+        <span>Employee ID: <b>{selected.employeeId}</b></span>
+        <span>Position: <b>{selected.employee?.role || '-'}</b></span>
+        <span>Office: <b>{selected.office}</b></span>
+        <span>Date: <b>{selected.record.date || '-'}</b></span>
+        <span>Time In: <b>{selected.record.timeIn || '-'}</b></span>
+        <span>Time Out: <b>{selected.record.timeOut || '-'}</b></span>
+        <span>Total Hours: <b>{totalHoursWorked(selected.record) || '-'}</b></span>
+        <span>Attendance Status: <b>{selected.status}</b></span>
+        <span>Record Status: <b>{selected.record.selfieUrl && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
+        <span>Face liveness: <b>{selected.record.faceLivenessVerified ? `${Number(selected.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
+        <span>Face match: <b>{selected.record.faceVerified ? `Matched · distance ${Number(selected.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
+        <span>Fingerprint: <b>{describeFingerprintCheck(selected.record)}</b></span>
+        <span>Face-match time: <b>{selected.record.faceVerifiedAt ? new Date(selected.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
+        <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <span className={`rounded-full px-2 py-1 font-bold ${selected.record.assignmentMatch ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+          <CheckCircle2 className="inline h-3 w-3" /> GPS Verification
+        </span>
+        <span className={`rounded-full px-2 py-1 font-bold ${selected.record.faceLivenessVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+          <CheckCircle2 className="inline h-3 w-3" /> {selected.record.faceLivenessVerified ? 'Liveness checked' : 'No liveness check'}
+        </span>
+        <span className={`rounded-full px-2 py-1 font-bold ${selected.record.fingerprintVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+          <CheckCircle2 className="inline h-3 w-3" /> Fingerprint
+        </span>
+        {Number.isFinite(selected.record.latitude) && Number.isFinite(selected.record.longitude) && (
+          <a
+            href={`https://www.google.com/maps?q=${selected.record.latitude},${selected.record.longitude}`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-white px-2 py-1 font-bold text-blue-700 underline"
+          >
+            View GPS Location
+          </a>
+        )}
+      </div>
+      <HRFaceComparison
+        employeeId={selected.employee?.employeeId || selected.record.employeeId}
+        attendanceSelfie={selected.record.selfieUrl}
+        faceVerified={selected.record.faceVerified}
+        faceMatchDistance={selected.record.faceMatchDistance}
+      />
+    </section>
+  );
 
   return (
     <div className="animate-fadeIn space-y-4">
@@ -80,29 +134,33 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <h3 className="mb-3 text-sm font-black text-slate-900">DTR Records</h3>
         {filtered.length ? (
           <div className="space-y-3">
-            {filtered.map(row => (
-              <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-black text-slate-800">{row.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">Employee ID: {row.employeeId}</p>
-                    <p className="text-xs text-slate-500">Date: {row.record.date || '-'}</p>
+            {filtered.map(row => {
+              const isOpen = row.id === selectedId;
+              return (
+                <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-800">{row.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">Employee ID: {row.employeeId}</p>
+                      <p className="text-xs text-slate-500">Date: {row.record.date || '-'}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
+                      {row.status === 'Incomplete' ? (row.record.timeIn ? 'Missing Time Out' : 'Missing Time In') : row.status}
+                    </span>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-[10px] font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
-                    {row.status === 'Incomplete' ? (row.record.timeIn ? 'Missing Time Out' : 'Missing Time In') : row.status}
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
-                  <span>Time In: <b className="text-slate-700">{row.record.timeIn || '-'}</b></span>
-                  <span>Time Out: <b className="text-slate-700">{row.record.timeOut || '-'}</b></span>
-                  <span>Total Hours: <b className="text-slate-700">{row.record.totalHours || '-'}</b></span>
-                  <span>Office: <b className="text-slate-700">{row.office}</b></span>
-                </div>
-                <button onClick={() => setSelectedRecord(row)} className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
-                  View Details <ChevronRight className="inline h-3 w-3" />
-                </button>
-              </article>
-            ))}
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
+                    <span>Time In: <b className="text-slate-700">{row.record.timeIn || '-'}</b></span>
+                    <span>Time Out: <b className="text-slate-700">{row.record.timeOut || '-'}</b></span>
+                    <span>Total Hours: <b className="text-slate-700">{totalHoursWorked(row.record) || '-'}</b></span>
+                    <span>Office: <b className="text-slate-700">{row.office}</b></span>
+                  </div>
+                  <button type="button" onClick={() => setSelectedId(isOpen ? null : row.id)} aria-expanded={isOpen} className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-black text-blue-700">
+                    {isOpen ? 'Hide Details' : 'View Details'} <ChevronRight className={`inline h-3 w-3 ${isOpen ? 'rotate-90' : ''}`} />
+                  </button>
+                  {isOpen && renderDetails(row)}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-2xl bg-slate-50 p-6 text-center">
@@ -112,58 +170,6 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
           </div>
         )}
       </section>
-      {selectedRecord && (
-        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs">
-          <div className="flex justify-between">
-            <h3 className="font-black text-blue-900">DTR Details</h3>
-            <button onClick={() => setSelectedRecord(null)} className="font-black text-blue-700">Close</button>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-blue-900">
-            <span>Employee: <b>{selectedRecord.name}</b></span>
-            <span>Employee ID: <b>{selectedRecord.employeeId}</b></span>
-            <span>Position: <b>{selectedRecord.employee?.role || '-'}</b></span>
-            <span>Office: <b>{selectedRecord.office}</b></span>
-            <span>Date: <b>{selectedRecord.record.date || '-'}</b></span>
-            <span>Time In: <b>{selectedRecord.record.timeIn || '-'}</b></span>
-            <span>Time Out: <b>{selectedRecord.record.timeOut || '-'}</b></span>
-            <span>Total Hours: <b>{selectedRecord.record.totalHours || '-'}</b></span>
-            <span>Attendance Status: <b>{selectedRecord.status}</b></span>
-            <span>Record Status: <b>{selectedRecord.record.selfieUrl && selectedRecord.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
-            <span>Face liveness: <b>{selectedRecord.record.faceLivenessVerified ? `${Number(selectedRecord.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
-            <span>Face match: <b>{selectedRecord.record.faceVerified ? `Matched · distance ${Number(selectedRecord.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
-            <span>Fingerprint: <b>{describeFingerprintCheck(selectedRecord.record)}</b></span>
-            <span>Face-match time: <b>{selectedRecord.record.faceVerifiedAt ? new Date(selectedRecord.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
-            <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className={`rounded-full px-2 py-1 font-bold ${selectedRecord.record.assignmentMatch ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              <CheckCircle2 className="inline h-3 w-3" /> GPS Verification
-            </span>
-            <span className={`rounded-full px-2 py-1 font-bold ${selectedRecord.record.faceLivenessVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              <CheckCircle2 className="inline h-3 w-3" /> {selectedRecord.record.faceLivenessVerified ? 'Liveness checked' : 'No liveness check'}
-            </span>
-            <span className={`rounded-full px-2 py-1 font-bold ${selectedRecord.record.fingerprintVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              <CheckCircle2 className="inline h-3 w-3" /> Fingerprint
-            </span>
-            {Number.isFinite(selectedRecord.record.latitude) && Number.isFinite(selectedRecord.record.longitude) && (
-              <a
-                href={`https://www.google.com/maps?q=${selectedRecord.record.latitude},${selectedRecord.record.longitude}`}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full bg-white px-2 py-1 font-bold text-blue-700 underline"
-              >
-                View GPS Location
-              </a>
-            )}
-          </div>
-          <HRFaceComparison
-            employeeId={selectedRecord.employee?.employeeId || selectedRecord.record.employeeId}
-            attendanceSelfie={selectedRecord.record.selfieUrl}
-            faceVerified={selectedRecord.record.faceVerified}
-            faceMatchDistance={selectedRecord.record.faceMatchDistance}
-          />
-        </section>
-      )}
     </div>
   );
 }

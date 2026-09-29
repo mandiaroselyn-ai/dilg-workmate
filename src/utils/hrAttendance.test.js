@@ -6,7 +6,8 @@ import {
   dtrRecordStatus,
   employeeDayStatus,
   recordsForEmployees,
-  requestCoversDate
+  requestCoversDate,
+  totalHoursWorked
 } from './hrAttendance.js';
 
 const today = '2026-09-29';
@@ -62,4 +63,25 @@ test('flags records missing verification', () => {
   assert.equal(dtrIssue({ ...complete, fingerprintVerified: false }, today), 'Missing Biometric Verification');
   assert.equal(dtrIssue({ date: today, status: 'Absent' }, today), null);
   assert.equal(dtrRecordStatus({ ...complete, late: true }, today), 'Late');
+});
+
+test('total hours run from Time In to Time Out', () => {
+  assert.equal(totalHoursWorked({ timeIn: '08:00 AM', timeOut: '05:00 PM' }), '9h 00m');
+  assert.equal(totalHoursWorked({ timeIn: '07:52 AM', timeOut: '12:07 PM' }), '4h 15m');
+  assert.equal(totalHoursWorked({ timeIn: '12:30 PM', timeOut: '01:05 PM' }), '0h 35m');
+  assert.equal(totalHoursWorked({ timeIn: '11:39 PM', timeOut: '11:44 PM' }), '0h 05m');
+  assert.equal(totalHoursWorked({ timeIn: '11:45 PM', timeOut: '11:45 PM' }), '0h 00m');
+});
+
+test('a Time Out after midnight counts into the next day', () => {
+  assert.equal(totalHoursWorked({ timeIn: '10:30 PM', timeOut: '06:30 AM' }), '8h 00m');
+  assert.equal(totalHoursWorked({ timeIn: '11:46 PM', timeOut: '12:01 AM' }), '0h 15m');
+});
+
+test('total hours stay empty until both times are recorded', () => {
+  assert.equal(totalHoursWorked({ timeIn: '11:46 PM', timeOut: null }), '');
+  assert.equal(totalHoursWorked({ timeIn: '', timeOut: '05:00 PM' }), '');
+  assert.equal(totalHoursWorked({ timeIn: '8 in the morning', timeOut: '05:00 PM' }), '');
+  assert.equal(totalHoursWorked({ timeIn: '13:00 PM', timeOut: '05:00 PM' }), '');
+  assert.equal(totalHoursWorked(null), '');
 });

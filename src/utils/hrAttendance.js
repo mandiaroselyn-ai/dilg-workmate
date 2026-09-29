@@ -48,6 +48,25 @@ export const dtrIssue = (record, today) => {
   return null;
 };
 
+// "08:05 AM" (how Time In and Time Out are saved) as minutes after midnight, or null.
+const clockMinutes = value => {
+  const match = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(value || '').trim());
+  if (!match || Number(match[1]) > 12 || Number(match[2]) > 59) return null;
+  const hour = (Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+  return hour * 60 + Number(match[2]);
+};
+
+// Time between Time In and Time Out, such as "8h 05m", or '' until both are recorded.
+// A Time Out earlier than the Time In is past midnight, since a record keeps its Time In
+// date. No lunch break is deducted.
+export const totalHoursWorked = record => {
+  const start = clockMinutes(record?.timeIn);
+  const end = clockMinutes(record?.timeOut);
+  if (start === null || end === null) return '';
+  const minutes = (end - start + 24 * 60) % (24 * 60);
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+};
+
 // A record's DTR status: On Duty (open today), Incomplete, Late, or Complete.
 export const dtrRecordStatus = (record, today) => {
   if (record?.timeIn && !record.timeOut && record.date === today) return 'On Duty';
