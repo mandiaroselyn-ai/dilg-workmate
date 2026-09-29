@@ -412,6 +412,22 @@ export const getEmployees = async (req, res) => {
   }
 };
 
+// Fingerprints of the lists this person sees. The app asks every few seconds and downloads
+// only the lists whose fingerprint changed, so updates show up quickly without reloading
+// everything. Attendance is included for HR/Admins only.
+export const getUpdateStamps = async (req, res) => {
+  try {
+    const [bulletins, requests, attendance] = await Promise.all([
+      Announcement.updateStamps(req.user),
+      Leave.updateStamp(req.user),
+      req.user?.accessLevel === 'hr_admin' ? DtrLog.updateStamp() : null
+    ]);
+    res.status(200).json({ success: true, stamps: { ...bulletins, requests, ...(attendance ? { attendance } : {}) } });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const getFullState = async (req, res) => {
   try {
     ensureConnected();

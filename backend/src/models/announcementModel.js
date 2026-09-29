@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
+import { stampOf } from '../utils/updateStamp.js';
 
 // Schemas
 const EventSchema = new mongoose.Schema({
@@ -203,6 +204,17 @@ export const Announcement = {
       { upsert: true, new: true }
     );
     return result.ids;
+  },
+
+  // Fingerprints of the announcements, calendar events, and this person's notifications.
+  updateStamps: async (user) => {
+    ensureConnected();
+    const [announcements, events, notifications] = await Promise.all([
+      stampOf(MongoAnnouncementPost),
+      stampOf(MongoEvent),
+      stampOf(MongoNotification, notificationFilter(user))
+    ]);
+    return { announcements, events, notifications };
   },
 
   findNotificationsFor: async (user) => {

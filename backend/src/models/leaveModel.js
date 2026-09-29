@@ -4,6 +4,18 @@ import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
 import { User } from './User.js';
 import { pickReviewUpdate } from '../utils/requestFields.js';
+import { stampOf } from '../utils/updateStamp.js';
+
+// The requests one person sees: an employee's own, or all of them for HR and supervisors.
+// Returns null for an employee with neither an employee ID nor an email.
+export const visibleRequestFilter = user => {
+  if (user?.accessLevel !== 'employee') return {};
+  const owners = [
+    ...(user.employeeId ? [{ employeeId: user.employeeId }] : []),
+    ...(user.email ? [{ employeeEmail: user.email }] : [])
+  ];
+  return owners.length ? { $or: owners } : null;
+};
 
 const RequestSchema = new mongoose.Schema({
   customId: { type: String, required: true },
@@ -55,6 +67,13 @@ function ensureConnected() {
 }
 
 export const Leave = {
+  // Changes whenever a request this person sees is filed, reviewed, or withdrawn.
+  updateStamp: async (user) => {
+    ensureConnected();
+    const filter = visibleRequestFilter(user);
+    return filter ? stampOf(MongoRequest, filter) : '0:0';
+  },
+
   find: async () => {
     ensureConnected();
     const mongoList = await MongoRequest.find({ type: 'Leave Request' }).sort({ createdAt: -1 });

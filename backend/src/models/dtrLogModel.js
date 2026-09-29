@@ -152,6 +152,19 @@ const toClientLog = item => {
 };
 
 export const DtrLog = {
+  // Changes on every Time In (a new record) and Time Out (a record closed). The location
+  // updates sent every minute during a shift are left out, so HR's attendance list is
+  // not downloaded again for each of them.
+  updateStamp: async () => {
+    ensureConnected();
+    const [count, closed, newest] = await Promise.all([
+      MongoDtrLog.countDocuments(),
+      MongoDtrLog.countDocuments({ timeOut: { $ne: null } }),
+      MongoDtrLog.findOne().sort({ createdAt: -1 }).select('createdAt').lean()
+    ]);
+    return `${count}:${closed}:${newest?.createdAt ? new Date(newest.createdAt).getTime() : 0}`;
+  },
+
   findRecent: async (limit = 500) => {
     ensureConnected();
     const mongoLogs = await MongoDtrLog.find({})

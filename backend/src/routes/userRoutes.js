@@ -13,6 +13,7 @@ import {
   seedDefaultUsers,
   getEmployees,
   getFullState,
+  getUpdateStamps,
   resetDatabase,
   requestPasswordReset,
   completePasswordReset
@@ -104,6 +105,7 @@ router.post('/change-password', changePassword);
 router.post('/seed-default-users', requireAdmin, seedDefaultUsers);
 router.get('/employees', requireAdmin, getEmployees);
 router.get('/state', getFullState);
+router.get('/updates', getUpdateStamps);
 router.post('/reset', requireAdmin, resetDatabase);
 
 export default router;

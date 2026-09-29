@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense, useCallback, useState, useEffect } from 'react';
+import React, { lazy, Suspense, useCallback, useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../shared/localDate';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -212,41 +212,89 @@ export default function App() {
     };
   }, [authToken, activeRole]);
 
-  // Picks up announcements, events, and notifications posted after the app was opened:
-  // every minute while the app is on screen, and whenever the person comes back to it.
+  // Every 15 seconds while the app is on screen, and right away when the person comes back
+  // to it, the app asks the server which lists changed and downloads only those. New
+  // announcements, events, notifications, requests (and the leave credits a decision
+  // changes), and, for HR, Time Ins and Time Outs show up within seconds without a refresh.
+  const userRef = useRef(user);
+  userRef.current = user;
   useEffect(() => {
     if (!authToken || !activeRole) return undefined;
 
     let isCurrentSession = true;
-    const readList = path => apiFetch(path).then(res => {
+    let checking = false;
+    let lastStamps = null;
+    const readJson = path => apiFetch(path).then(res => {
       if (!res.ok) throw new Error(`${path} returned HTTP ${res.status}`);
       return res.json();
     });
-    const refreshBulletins = () => {
-      if (document.hidden) return;
-      Promise.all([readList('/api/announcements'), readList('/api/events'), readList('/api/notifications')])
-        .then(([latestAnnouncements, latestEvents, latestNotifications]) => {
-          if (!isCurrentSession) return;
-          if (Array.isArray(latestAnnouncements)) setAnnouncements(latestAnnouncements);
-          if (Array.isArray(latestEvents)) setEvents(latestEvents);
-          if (!Array.isArray(latestNotifications)) return;
-          if (activeRole === 'hr_admin') {
-            setAdminNotifications(scopeNotificationsToAccount(latestNotifications, 'hr_admin', user));
-          } else {
-            setNotifications(latestNotifications);
-          }
-        })
-        .catch(error => console.warn('Unable to refresh announcements and events:', error));
+    const reloaders = {
+      announcements: async () => {
+        const list = await readJson('/api/announcements');
+        if (isCurrentSession && Array.isArray(list)) setAnnouncements(list);
+      },
+      events: async () => {
+        const list = await readJson('/api/events');
+        if (isCurrentSession && Array.isArray(list)) setEvents(list);
+      },
+      notifications: async () => {
+        const list = await readJson('/api/notifications');
+        if (!isCurrentSession || !Array.isArray(list)) return;
+        if (activeRole === 'hr_admin') {
+          setAdminNotifications(scopeNotificationsToAccount(list, 'hr_admin', userRef.current));
+        } else {
+          setNotifications(list);
+        }
+      },
+      requests: async () => {
+        const [list, profile] = await Promise.all([
+          readJson('/api/requests'),
+          activeRole === 'employee' ? readJson('/api/profile') : null
+        ]);
+        if (!isCurrentSession) return;
+        if (Array.isArray(list)) setRequests(list);
+        if (profile?.user) setUser(profile.user);
+      },
+      attendance: async () => {
+        const list = await readJson('/api/dtr/logs');
+        if (isCurrentSession && Array.isArray(list)) setAttendanceHistory(list);
+      }
     };
 
-    const refreshId = window.setInterval(refreshBulletins, 60000);
-    document.addEventListener('visibilitychange', refreshBulletins);
+    const checkForUpdates = async () => {
+      if (checking || document.hidden) return;
+      checking = true;
+      try {
+        const { stamps } = await readJson('/api/updates');
+        if (!isCurrentSession || !stamps) return;
+        // The first answer is the starting point: the lists were just loaded with the app.
+        const previous = lastStamps;
+        const changed = previous
+          ? Object.keys(reloaders).filter(key => stamps[key] !== undefined && stamps[key] !== previous[key])
+          : [];
+        const reloaded = await Promise.all(changed.map(key => reloaders[key]().then(() => true, error => {
+          console.warn(`Unable to reload ${key}:`, error);
+          return false;
+        })));
+        // A list that failed to reload keeps its old fingerprint, so it is tried again.
+        lastStamps = { ...stamps };
+        changed.forEach((key, index) => { if (!reloaded[index]) lastStamps[key] = previous[key]; });
+      } catch (error) {
+        console.warn('Unable to check for updates:', error);
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkForUpdates();
+    const checkId = window.setInterval(checkForUpdates, 15000);
+    document.addEventListener('visibilitychange', checkForUpdates);
     return () => {
       isCurrentSession = false;
-      window.clearInterval(refreshId);
-      document.removeEventListener('visibilitychange', refreshBulletins);
+      window.clearInterval(checkId);
+      document.removeEventListener('visibilitychange', checkForUpdates);
     };
-  }, [authToken, activeRole, user]);
+  }, [authToken, activeRole]);
 
   // While an employee's shift is open, their position is sent right away, every minute,
   // and whenever they come back to the app, from any page, so HR's Live GPS Map shows

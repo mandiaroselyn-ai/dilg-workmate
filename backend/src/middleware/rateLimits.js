@@ -27,8 +27,11 @@ const limit = options => rateLimit({
 });
 
 export const createRateLimits = () => {
-  // Applies to every API request.
-  const apiRateLimit = limit({ limit: 300, keyGenerator: sessionOrIp });
+  // Applies to every API request except the app's check for updates, which it sends every
+  // few seconds while open; that check only reads a few counts and still needs a login.
+  const isUpdateCheck = req => req.method === 'GET'
+    && new URL(req.originalUrl, 'http://localhost').pathname === '/api/updates';
+  const apiRateLimit = limit({ limit: 300, keyGenerator: sessionOrIp, skip: isUpdateCheck });
 
   const signedInActionLimit = () => limit({ limit: 10, keyGenerator: sessionOrIp });
   const routeLimits = {
