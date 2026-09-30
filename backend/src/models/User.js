@@ -364,6 +364,17 @@ export const User = {
     return MongoUser.findOne({ $or: [{ email: emailPattern }, { employeeId: value }] });
   },
 
+  // Employee accounts that can log in, for the supervisor's dashboard.
+  countActiveEmployees: async () => {
+    ensureConnected();
+    return MongoUser.countDocuments({
+      $and: [
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] },
+        { $or: [{ accountStatus: { $regex: /^active$/i } }, { accountStatus: { $exists: false } }, { accountStatus: null }] }
+      ]
+    });
+  },
+
   countActiveAdmins: async () => {
     ensureConnected();
     return MongoUser.countDocuments({

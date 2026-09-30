@@ -454,6 +454,8 @@ export const getFullState = async (req, res) => {
       Announcement.getAcknowledged(req.user),
       Announcement.findAnnouncementPosts()
     ]);
+    // Supervisors do not load the employee list, only how many employees can log in.
+    const activeEmployeeCount = accessLevel === 'supervisor' ? await User.countActiveEmployees() : undefined;
     // A draft is the employee's own until they submit it.
     const visibleRawRequests = req.user?.accessLevel === 'employee'
       ? rawRequests.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
@@ -482,7 +484,8 @@ export const getFullState = async (req, res) => {
       notifications: visibleNotifications,
       smsAlerts: visibleSmsAlerts,
       acknowledged,
-      announcements
+      announcements,
+      activeEmployeeCount
     });
   } catch (error) {
     sendServerError(res, error);

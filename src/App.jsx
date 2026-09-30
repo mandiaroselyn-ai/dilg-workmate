@@ -82,6 +82,8 @@ export default function App() {
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminSmsAlerts, setAdminSmsAlerts] = useState([]);
   const [employees, setEmployees] = useState([]);
+  // Supervisors get only how many employee accounts can log in, not the employee list.
+  const [activeEmployeeCount, setActiveEmployeeCount] = useState(null);
   const [acknowledgedAnnouncements, setAcknowledgedAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   // The password reset email links to /?resetToken=..., opened while signed out.
@@ -175,6 +177,7 @@ export default function App() {
           if (data.adminNotifications) setAdminNotifications(data.adminNotifications);
           if (data.adminSmsAlerts) setAdminSmsAlerts(data.adminSmsAlerts);
           if (data.acknowledged) setAcknowledgedAnnouncements(data.acknowledged);
+          setActiveEmployeeCount(Number.isFinite(data.activeEmployeeCount) ? data.activeEmployeeCount : null);
         }
         if (isCurrentSession) setLoading(false);
       })
@@ -1039,6 +1042,16 @@ export default function App() {
     } else {
       pushSystemNotification(newNotif, { admin: false, employee: true });
     }
+    // HR follows each request to the end, so it hears about the supervisor's decision too.
+    if (activeRole === 'supervisor' && ['Approved', 'Rejected'].includes(status)) {
+      pushSystemNotification({
+        title: `${label} ${status === 'Approved' ? 'Approved' : 'Disapproved'} by Supervisor`,
+        message: `${data.request.employeeName || 'An employee'}'s ${label} ${id} was ${status === 'Approved' ? 'approved' : 'disapproved'} by ${user?.name || 'the supervisor'}. Remarks: ${remarks || 'none'}`,
+        time: 'Just now',
+        type: 'request',
+        recipientRole: 'hr_admin'
+      }).catch(error => console.error('Unable to notify HR about the supervisor decision:', error));
+    }
 
     const timeString = new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -1428,6 +1441,7 @@ export default function App() {
               user={user}
               requests={requests}
               employees={employees}
+              activeEmployeeCount={activeEmployeeCount}
               onUpdateRequestStatus={handleUpdateRequestStatus}
             />
           )}

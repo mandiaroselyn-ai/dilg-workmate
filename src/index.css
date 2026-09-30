@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* Alex Brush, Caveat, and Dancing Script are the supervisor's typed signature styles;
+   browsers download them only when a signature uses them. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&family=Alex+Brush&family=Caveat:wght@400;600&family=Dancing+Script:wght@400;600&display=swap');
 @import "tailwindcss";
 
 @theme {

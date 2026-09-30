@@ -31,6 +31,7 @@ export default function SupervisorView({
   user,
   requests,
   employees = [],
+  activeEmployeeCount = null,
   onUpdateRequestStatus
 }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -45,7 +46,8 @@ export default function SupervisorView({
 
   // Canvas drawing state
   const canvasRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  // A ref, so every pointer move sees at once that a stroke has started.
+  const drawingRef = useRef(false);
   const [hasDrawn, setHasDrawn] = useState(false);
 
   // Filters & Tabs
@@ -78,14 +80,17 @@ export default function SupervisorView({
     }
   }, [signatureMode, selectedInkColor]);
 
-  // Map cursive styles to fonts
-  const getCursiveFontClass = (name) => {
-    switch (name) {
-      case 'Dancing Script': return 'font-["Dancing_Script",cursive]';
-      case 'Alex Brush': return 'font-["Alex_Brush",cursive]';
-      case 'Caveat': return 'font-["Caveat",cursive]';
-      default: return 'font-serif italic';
-    }
+  // The cursive signature fonts (loaded in index.css), by name.
+  const cursiveFontStyle = name => ({ fontFamily: `"${name}", cursive` });
+
+  // Where a mouse, finger, or pen is on the signature canvas, in canvas pixels: the canvas
+  // is drawn 350 px wide but shown at the width of its box.
+  const canvasPoint = (e, canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
+    };
   };
 
   const startDrawing = (e) => {
@@ -94,26 +99,34 @@ export default function SupervisorView({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
+    e.preventDefault();
+    // Keeps the stroke going when the finger slides past the edge; drawing works without it.
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // Not every browser allows capturing this pointer.
+    }
+    const { x, y } = canvasPoint(e, canvas);
     ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    setIsDrawing(true);
+    ctx.moveTo(x, y);
+    drawingRef.current = true;
   };
 
   const draw = (e) => {
-    if (!isDrawing || !canvasRef.current) return;
+    if (!drawingRef.current || !canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    e.preventDefault();
+    const { x, y } = canvasPoint(e, canvas);
+    ctx.lineTo(x, y);
     ctx.stroke();
     setHasDrawn(true);
   };
 
   const stopDrawing = () => {
-    setIsDrawing(false);
+    drawingRef.current = false;
   };
 
   const clearCanvas = () => {
@@ -195,7 +208,7 @@ export default function SupervisorView({
   };
 
   // Stats summaries
-  const pendingRequests = requests.filter(r => ['Pending', 'For Supervisor'].includes(r.status));
+  const pendingRequests = requests.filter(r => r.status === 'For Supervisor');
   const approvedRequests = requests.filter(r => r.status === 'Approved');
   const rejectedRequests = requests.filter(r => r.status === 'Rejected');
 
@@ -297,8 +310,8 @@ export default function SupervisorView({
           >
             <div className="space-y-1.5">
               <span className="text-[10px] text-blue-700 font-extrabold uppercase tracking-wider block">Total Active Personnel Base</span>
-              <span className="text-2xl font-black text-blue-800 tracking-tight block">14 Staff</span>
-              <span className="text-[10px] text-blue-600/80 font-bold block leading-relaxed">DILG Marinduque Field Personnel</span>
+              <span className="text-2xl font-black text-blue-800 tracking-tight block">{activeEmployeeCount ?? '–'} Staff</span>
+              <span className="text-[10px] text-blue-600/80 font-bold block leading-relaxed">Active employee accounts</span>
             </div>
             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-blue-200 shadow-sm shrink-0">
               <Users className="w-5.5 h-5.5 text-blue-600" />
@@ -362,7 +375,7 @@ export default function SupervisorView({
                   key={req.id}
                   onClick={() => {
                     setSelectedRequest(req);
-                    setRemarks(req.remarks || '');
+                    setRemarks(['Pending', 'For Supervisor'].includes(req.status) ? '' : req.supervisorRemarks || '');
                   }}
                   className={`p-4 rounded-xl border cursor-pointer transition-all space-y-3 text-xs leading-relaxed text-left ${
                     selectedRequest?.id === req.id 
@@ -467,6 +480,9 @@ export default function SupervisorView({
                     <p className="font-semibold text-slate-500 mt-0.5">Requested by: <span className="text-slate-800 font-bold">{requesterName(selectedRequest)}</span></p>
                     <p className="font-semibold text-slate-500 mt-0.5">Employee ID: <span className="text-slate-800 font-bold">{requesterId(selectedRequest)}</span></p>
                     {selectedRequest.workingDays && <p className="font-semibold text-emerald-800 font-sans mt-0.5">Total Days: {selectedRequest.workingDays} Day(s)</p>}
+                    {['Pending', 'For Supervisor'].includes(selectedRequest.status) && selectedRequest.remarks && (
+                      <p className="font-semibold text-slate-500 mt-0.5">HR remarks: <span className="text-slate-800 font-bold">{selectedRequest.remarks}</span></p>
+                    )}
                   </div>
                 </div>
 
@@ -539,7 +555,7 @@ export default function SupervisorView({
 
                       {/* Preview script */}
                       <div className="bg-white border border-slate-200 rounded p-4 text-center min-h-[50px] flex items-center justify-center select-none shadow-inner">
-                        <span className={`text-xl text-blue-700 ${getCursiveFontClass(cursiveStyle)}`}>
+                        <span className="text-2xl text-blue-700" style={cursiveFontStyle(cursiveStyle)}>
                           {typewrittenName || 'Empty'}
                         </span>
                       </div>
@@ -564,11 +580,12 @@ export default function SupervisorView({
                           ref={canvasRef}
                           width={350}
                           height={120}
-                          onMouseDown={startDrawing}
-                          onMouseMove={draw}
-                          onMouseUp={stopDrawing}
-                          onMouseLeave={stopDrawing}
-                          className="w-full"
+                          onPointerDown={startDrawing}
+                          onPointerMove={draw}
+                          onPointerUp={stopDrawing}
+                          onPointerCancel={stopDrawing}
+                          onPointerLeave={stopDrawing}
+                          className="w-full touch-none"
                         />
                       </div>
                       <div className="flex justify-end select-none">
