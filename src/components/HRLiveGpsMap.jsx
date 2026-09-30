@@ -27,9 +27,9 @@ const loadGoogleMaps = key => {
   return googleMapsLoading;
 };
 
-// HR's live map of employees on duty. Each dot is where the employee's phone last reported
-// them: green inside their assigned area, red outside it, gray when there has been no
-// update for a while (their app is probably closed).
+// HR's map of employees on duty. Each dot is where the employee was when they timed in
+// (their phone's GPS, checked against their assigned area at Time In): green inside the
+// area, red outside it. Someone picked after timing out is gray.
 
 const COLORS = { inside: '#16a34a', outside: '#dc2626', stale: '#94a3b8' };
 const MARINDUQUE = [13.4, 121.95];
@@ -54,12 +54,11 @@ const popupFor = point => {
   const wrapper = document.createElement('div');
   wrapper.append(
     textElement('strong', point.name),
-    textElement('div', point.place ? `Now at: ${point.place}` : 'Now at: finding place name…'),
+    textElement('div', point.place ? `Place at Time In: ${point.place}` : 'Place at Time In: finding place name…'),
     textElement('div', point.statusText || (point.state === 'inside' ? 'Inside assigned area' : 'Outside assigned area')),
     textElement('div', `Assigned: ${point.areaLabel || 'Not recorded'}`),
-    textElement('div', `Last GPS update: ${point.lastUpdateText}`)
+    textElement('div', point.lastUpdateText)
   );
-  if (point.stale && !point.statusText) wrapper.append(textElement('div', 'No recent update: their app may be closed.'));
   return wrapper;
 };
 
@@ -176,8 +175,9 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
       <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-600">
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.stale }} />No update for 5+ minutes</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.stale }} />Timed out</span>
       </div>
+      <p className="text-xs font-semibold text-slate-500">Each dot is where the employee was when they timed in (their phone's GPS at Time In).</p>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
     </div>
   );

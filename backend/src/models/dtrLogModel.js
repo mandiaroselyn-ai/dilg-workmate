@@ -441,11 +441,6 @@ export const DtrLog = {
     const activeLogs = await MongoDtrLog.find(
       { timeOut: null, createdAt: { $gte: activeShiftSince() } },
       {
-        currentLatitude: 1,
-        currentLongitude: 1,
-        currentGpsStatus: 1,
-        currentDistanceMeters: 1,
-        currentWithinGeofence: 1,
         customId: 1,
         employeeId: 1,
         employeeEmail: 1,
@@ -460,38 +455,50 @@ export const DtrLog = {
         distanceToAssignmentMeters: 1,
         assignmentMatch: 1,
         gpsStatus: 1,
-        locationHistory: { $slice: -1 },
+        date: 1,
+        timeIn: 1,
+        // The first point is the one recorded at Time In.
+        locationHistory: { $slice: 1 },
         lastLocationUpdate: 1,
         createdAt: 1,
         'assignmentSite.label': 1
       }
     ).sort({ lastLocationUpdate: -1, createdAt: -1 }).lean();
 
-    return activeLogs.map(log => {
-      const latestPoint = log.locationHistory?.[0];
-      return {
-        id: log.customId,
-        employeeId: log.employeeId,
-        employeeEmail: log.employeeEmail,
-        employeeName: log.employeeName,
-        employeeOffice: log.employeeOffice,
-        location: log.location,
-        workAssignment: log.workAssignment,
-        // Live map shows the latest tracked position, falling back to the clock-in position.
-        latitude: log.currentLatitude ?? log.latitude,
-        longitude: log.currentLongitude ?? log.longitude,
-        assignedLatitude: log.assignedLatitude,
-        assignedLongitude: log.assignedLongitude,
-        distanceToAssignmentMeters: log.currentDistanceMeters ?? log.distanceToAssignmentMeters,
-        assignmentMatch: log.currentWithinGeofence ?? log.assignmentMatch,
-        gpsStatus: log.currentGpsStatus ?? log.gpsStatus,
-        gpsAccuracy: latestPoint?.accuracy ?? null,
-        lastLocationUpdate: log.lastLocationUpdate || latestPoint?.timestamp || log.createdAt,
-        // The name of the area the employee chose at Time In, shown on HR's live map.
-        assignmentArea: log.assignmentSite?.label ? { label: log.assignmentSite.label } : null
-      };
-    });
+    return activeLogs.map(liveLocationFromLog);
   }
+};
+
+// One entry of HR's live map from an open attendance record (with its first location point,
+// the one recorded at Time In).
+export const liveLocationFromLog = log => {
+  const timeInPoint = log.locationHistory?.[0];
+  return {
+    id: log.customId,
+    employeeId: log.employeeId,
+    employeeEmail: log.employeeEmail,
+    employeeName: log.employeeName,
+    employeeOffice: log.employeeOffice,
+    location: log.location,
+    workAssignment: log.workAssignment,
+    // HR's map shows where the employee was when they timed in: the phone GPS that Time
+    // In checked (within 50 m accuracy) against the assigned area. Positions sent later
+    // while the app is open are not used, because a laptop or desktop browser only
+    // estimates its location from the internet connection, often kilometres away.
+    latitude: log.latitude,
+    longitude: log.longitude,
+    assignedLatitude: log.assignedLatitude,
+    assignedLongitude: log.assignedLongitude,
+    distanceToAssignmentMeters: log.distanceToAssignmentMeters,
+    assignmentMatch: log.assignmentMatch,
+    gpsStatus: log.gpsStatus,
+    gpsAccuracy: timeInPoint?.accuracy ?? null,
+    date: log.date,
+    timeIn: log.timeIn,
+    lastLocationUpdate: log.lastLocationUpdate || timeInPoint?.timestamp || log.createdAt,
+    // The name of the area the employee chose at Time In, shown on HR's live map.
+    assignmentArea: log.assignmentSite?.label ? { label: log.assignmentSite.label } : null
+  };
 };
 
 // Helper function to calculate distance between two coordinates (Haversine formula)

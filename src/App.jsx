@@ -29,6 +29,8 @@ const LoginView = lazy(() => import('./components/LoginView'));
 const PasswordResetView = lazy(() => import('./components/PasswordResetView'));
 
 const fetch = apiFetch;
+// Positions less precise than this are not sent while a shift is open.
+const MAX_TRACKING_ACCURACY_METERS = 100;
 
 const belongsToEmployee = (item, account) => {
   const hasRecipient = item?.employeeId || item?.employeeEmail;
@@ -312,7 +314,9 @@ export default function App() {
     const sendPosition = () => {
       if (stopped || document.hidden) return;
       navigator.geolocation.getCurrentPosition(position => {
-        if (stopped) return;
+        // A laptop or desktop browser only estimates its location from the internet
+        // connection (often kilometres off), so only phone-grade fixes are sent.
+        if (stopped || !(position.coords.accuracy <= MAX_TRACKING_ACCURACY_METERS)) return;
         apiFetch('/api/dtr/action?action=location-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
