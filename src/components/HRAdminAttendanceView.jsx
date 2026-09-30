@@ -20,6 +20,7 @@ import {
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { activeEmployees, dtrIssue, employeeDayStatus, recordsForEmployees } from '../utils/hrAttendance';
 import { apiFetch } from '../utils/api';
+import { scrollIntoContentView } from '../utils/scroll';
 
 // Loaded only when HR opens GPS & Geofence, so the map library does not slow other screens.
 const HRLiveGpsMap = lazy(() => import('./HRLiveGpsMap'));
@@ -259,7 +260,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const mapCardRef = useRef(null);
   const showOnMap = employee => {
     setSelectedEmployee(employee);
-    mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollIntoContentView(mapCardRef.current);
   };
   const selectMapPoint = key => {
     const row = locationRows.find(item => employeeMapKey(item.employee) === key);

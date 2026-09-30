@@ -1319,7 +1319,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex bg-[#f8fafc] text-slate-800 min-h-screen font-sans relative overflow-hidden">
+    <div className="app-frame flex bg-[#f8fafc] text-slate-800 min-h-screen font-sans relative">
       {/* Subtle modern soft lighting background gradients */}
       <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-indigo-50/50 blur-[100px] rounded-full pointer-events-none z-0"></div>
       <div className="absolute bottom-[-10%] left-[10%] w-[400px] h-[400px] bg-slate-100/50 blur-[100px] rounded-full pointer-events-none z-0"></div>
@@ -1339,7 +1339,7 @@ export default function App() {
       />
 
       {/* Main viewport flow */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
+      <div className="app-frame flex-1 flex flex-col h-screen relative z-10">
         {/* Persistent top-bar HUD */}
         <Header
           currentView={currentView}

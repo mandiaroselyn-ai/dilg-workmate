@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, RefreshCw, Upload, X } from 'lucide-react';
 import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
 import { apiFetch, parseApiResponse } from '../utils/api';
+import { scrollIntoContentView } from '../utils/scroll';
 import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 
 // A registration prompt that has not opened or finished by now is abandoned.
@@ -460,7 +461,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
             </div>
             <button
               type="button"
-              onClick={() => enrollmentFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() => scrollIntoContentView(enrollmentFormRef.current)}
               className="shrink-0 rounded-lg bg-amber-800 px-3 py-2 text-xs font-black text-white"
             >
               Resubmit ID + Selfie

@@ -14,6 +14,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* The app's outer frame never scrolls; only its content area does. "clip" (unlike
+   "hidden") also stops scrollIntoView and focus from scrolling it, which pushed the
+   header and sidebar logo out of view. Browsers without "clip" keep "hidden". */
+.app-frame {
+  overflow: hidden;
+}
+
+@supports (overflow: clip) {
+  .app-frame {
+    overflow: clip;
+  }
+}
+
 .hr-admin-requests-screen header > button:first-child,
 .hr-admin-requests-screen header > div > button:first-child {
   display: none;
