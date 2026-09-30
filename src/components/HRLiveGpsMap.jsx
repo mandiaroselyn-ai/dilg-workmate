@@ -23,11 +23,11 @@ const popupFor = point => {
   const wrapper = document.createElement('div');
   wrapper.append(
     textElement('strong', point.name),
-    textElement('div', point.state === 'inside' ? 'Inside assigned area' : 'Outside assigned area'),
+    textElement('div', point.statusText || (point.state === 'inside' ? 'Inside assigned area' : 'Outside assigned area')),
     textElement('div', `Assigned: ${point.areaLabel || 'Not recorded'}`),
     textElement('div', `Last GPS update: ${point.lastUpdateText}`)
   );
-  if (point.stale) wrapper.append(textElement('div', 'No recent update: their app may be closed.'));
+  if (point.stale && !point.statusText) wrapper.append(textElement('div', 'No recent update: their app may be closed.'));
   return wrapper;
 };
 
@@ -47,8 +47,16 @@ const areaLayerFor = area => {
   return null;
 };
 
+// The area's extent, measured without adding it to the map: a Leaflet circle can only
+// measure itself once it is on a map, so its extent is worked out from its radius.
+const areaBoundsFor = area => {
+  const layer = areaLayerFor(area);
+  if (!layer) return null;
+  return layer instanceof L.Circle ? layer.getLatLng().toBounds(layer.getRadius() * 2) : layer.getBounds();
+};
+
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside', stale,
-//            area, areaLabel, lastUpdateText }]
+//            statusText?, area, areaLabel, lastUpdateText }]
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -105,14 +113,19 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     }
   }, [points, selectedKey]);
 
-  // Zooms to the selected employee together with their assigned area.
+  // Zooms to the selected employee together with their assigned area, or back out to
+  // everyone when the selection is cleared.
   useEffect(() => {
     const map = mapRef.current;
+    if (!map) return;
     const selected = points.find(point => point.key === selectedKey);
-    if (!map || !selected) return;
+    if (!selected) {
+      if (points.length) map.fitBounds(L.latLngBounds(points.map(point => [point.latitude, point.longitude])).pad(0.3), { maxZoom: 16 });
+      return;
+    }
     const bounds = L.latLngBounds([[selected.latitude, selected.longitude]]);
-    const area = areaLayerFor(selected.area);
-    if (area) bounds.extend(area.getBounds());
+    const areaBounds = areaBoundsFor(selected.area);
+    if (areaBounds) bounds.extend(areaBounds);
     map.fitBounds(bounds.pad(0.15), { maxZoom: 17 });
     fittedRef.current = true;
     // Only when HR picks a different employee, not on every refresh.
