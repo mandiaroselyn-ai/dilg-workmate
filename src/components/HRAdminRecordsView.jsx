@@ -21,7 +21,7 @@ const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
       </div>
       <span className="text-2xl font-black tracking-tight text-slate-900">{value}</span>
     </div>
-    <p className="mt-4 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</p>
+    <p className="mt-4 text-xs font-black uppercase tracking-[0.2em] text-slate-500">{label}</p>
     <p className="mt-1 text-[11px] font-semibold text-slate-500">{hint}</p>
   </div>
 );
@@ -194,7 +194,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
         </p>
 
         <div className="relative w-full max-w-lg">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="search"
             value={searchQuery}
@@ -243,7 +243,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                     <p className="text-xs text-slate-500">Attendance compliance log</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
                   {verifiedDtr} verified
                 </span>
               </div>
@@ -267,7 +267,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                         <td className="px-3 py-3 text-slate-600">{row.timeIn}</td>
                         <td className="px-3 py-3 text-slate-600">{row.timeOut}</td>
                         <td className="px-3 py-3">
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-black ${row.status === 'Absent' ? 'bg-rose-50 text-rose-700' : row.late === 'Late' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          <span className={`rounded-full px-2 py-1 text-xs font-black ${row.status === 'Absent' ? 'bg-rose-50 text-rose-700' : row.late === 'Late' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                             {row.status === 'Absent' ? 'Absent' : row.late === 'Late' ? 'Late' : 'Present'}
                           </span>
                         </td>
@@ -363,10 +363,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-600">DTR Repository</p>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-indigo-600">DTR Repository</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Daily Time Record (DTR)</h3>
             </div>
-            <span className="rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-black text-indigo-700">{attendanceHistory.length} total records</span>
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{attendanceHistory.length} total records</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -396,7 +396,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                       <td className="px-3 py-3 text-slate-600">{record.timeIn}</td>
                       <td className="px-3 py-3 text-slate-600">{record.timeOut}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${record.status === 'Absent' ? 'bg-rose-50 text-rose-700' : record.status === 'Late' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${record.status === 'Absent' ? 'bg-rose-50 text-rose-700' : record.status === 'Late' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
                           {record.status}
                         </span>
                       </td>
@@ -414,10 +414,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-violet-600">Leave Registry</p>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-violet-600">Leave Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Leave Applications & Approved Leaves</h3>
             </div>
-            <span className="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-black text-violet-700">{leaveApplications.length} total</span>
+            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">{leaveApplications.length} total</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
@@ -445,7 +445,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                       <td className="px-3 py-3 text-slate-600">{record.type}</td>
                       <td className="px-3 py-3 text-slate-600">{record.date}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${record.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${record.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                           {record.status}
                         </span>
                       </td>
@@ -462,10 +462,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-600">Travel Registry</p>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-600">Travel Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Travel Order Records</h3>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">{travelOrders.length} total</span>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{travelOrders.length} total</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
@@ -493,7 +493,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                       <td className="px-3 py-3 text-slate-600">{record.purpose}</td>
                       <td className="px-3 py-3 text-slate-600">{record.date}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${record.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${record.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                           {record.status}
                         </span>
                       </td>
@@ -509,7 +509,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
       {activeTab === 'reports' && (
         <section className="space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-indigo-600">HR/Admin Reports</p>
+            <p className="text-xs font-black uppercase tracking-[0.25em] text-indigo-600">HR/Admin Reports</p>
             <h3 className="mt-2 text-xl font-black text-slate-900">Records Reports</h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">Download filtered summaries for attendance, leave, travel, and employee records.</p>
           </div>

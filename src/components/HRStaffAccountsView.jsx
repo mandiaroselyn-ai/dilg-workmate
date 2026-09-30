@@ -6,7 +6,7 @@ import HRResetPasswordCard from './HRResetPasswordCard';
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold normal-case text-slate-800 outline-none focus:border-blue-500 focus:bg-white';
-const labelClass = 'block text-[10px] font-black uppercase tracking-wide text-slate-500';
+const labelClass = 'block text-xs font-black uppercase tracking-wide text-slate-500';
 
 const emptyForm = { name: '', email: '', role: '', office: '', phoneNumber: '', employeeId: '', accessLevel: 'supervisor', password: '' };
 const isActive = account => !account.accountStatus || account.accountStatus.toLowerCase() === 'active';
@@ -250,29 +250,29 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
               <div className="min-w-0 flex-1">
                 <p className="font-black text-slate-800">
                   {account.name}
-                  {self && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black text-blue-700">You</span>}
+                  {self && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">You</span>}
                 </p>
                 <p className="text-[11px] text-slate-500">{account.email} • {account.role || 'No designation'} • {account.office || 'No office'}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black ${account.accessLevel === 'hr_admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-sky-50 text-sky-700'}`}>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black ${account.accessLevel === 'hr_admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-sky-50 text-sky-700'}`}>
                     <ShieldCheck className="h-3 w-3" /> {ACCESS_LABELS[account.accessLevel]}
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${isActive(account) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-black ${isActive(account) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                     {account.accountStatus || 'Active'}
                   </span>
                 </div>
                 {!self && <HRResetPasswordCard account={account} />}
               </div>
               {self ? (
-                <p className="max-w-[220px] text-right text-[10px] font-semibold text-slate-400">Another HR/Admin must change your own access or status. Edit your details under Profile.</p>
+                <p className="max-w-[220px] text-right text-xs font-semibold text-slate-500">Another HR/Admin must change your own access or status. Edit your details under Profile.</p>
               ) : (
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { name: account.name || '', role: account.role || '', office: account.office || '', phoneNumber: account.phoneNumber || '' } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-700">Edit</button>
+                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { name: account.name || '', role: account.role || '', office: account.office || '', phoneNumber: account.phoneNumber || '' } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
                   <select
                     aria-label={`Change access for ${account.name}`}
                     value=""
                     onChange={event => event.target.value && changeAccess(account, event.target.value)}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-700"
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700"
                   >
                     <option value="">Change access…</option>
                     {Object.entries(ACCESS_LABELS).filter(([level]) => level !== account.accessLevel).map(([level, label]) => (
@@ -280,11 +280,11 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                     ))}
                   </select>
                   {isActive(account) ? (
-                    <button type="button" onClick={() => changeStatus(account, 'Inactive')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-700">Deactivate</button>
+                    <button type="button" onClick={() => changeStatus(account, 'Inactive')} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Deactivate</button>
                   ) : (
                     <>
-                      <button type="button" onClick={() => changeStatus(account, 'Active')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-black text-white">Reactivate</button>
-                      <button type="button" onClick={() => deleteAccount(account)} className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] font-black text-rose-700">Delete</button>
+                      <button type="button" onClick={() => changeStatus(account, 'Active')} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-black text-white">Reactivate</button>
+                      <button type="button" onClick={() => deleteAccount(account)} className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-black text-rose-700">Delete</button>
                     </>
                   )}
                 </div>

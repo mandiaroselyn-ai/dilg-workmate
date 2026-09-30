@@ -22,7 +22,8 @@ import {
   UserCog,
   FolderKanban,
   CalendarCheck,
-  ContactRound
+  ContactRound,
+  LogOut
 } from 'lucide-react';
 
 export default function Sidebar({ currentView, onViewChange, user, activeRole, onLogout, isOpen, onClose }) {
@@ -162,8 +163,9 @@ export default function Sidebar({ currentView, onViewChange, user, activeRole, o
           onClick={() => {
             setShowConfirmLogout(true);
           }}
-          className="flex w-full items-center justify-center px-4 py-2.5 rounded-xl text-[13px] font-black text-white bg-rose-600 hover:bg-rose-700 transition-colors duration-200 cursor-pointer shadow-sm"
+          className="flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-[13px] font-bold text-slate-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 transition-colors duration-200 cursor-pointer"
         >
+          <LogOut className="h-4 w-4" />
           <span>Log Out</span>
         </button>
       </div>

@@ -29,7 +29,7 @@ const emptyEvent = () => ({
 });
 
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white';
-const labelClass = 'block text-[10px] font-black uppercase tracking-wide text-slate-500';
+const labelClass = 'block text-xs font-black uppercase tracking-wide text-slate-500';
 
 // HR screen for publishing announcements and scheduling calendar events. Employees see
 // them on their Dashboard, Announcements page, and Calendar.
@@ -222,8 +222,8 @@ export default function HRAnnouncementsManager({
             <div className="min-w-0 flex-1">
               <p className="font-black text-slate-800">
                 {item.title}
-                {isAnnouncements && item.important && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase text-amber-800">Important</span>}
-                {!isAnnouncements && item.date < today && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase text-slate-500">Past</span>}
+                {isAnnouncements && item.important && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black uppercase text-amber-800">Important</span>}
+                {!isAnnouncements && item.date < today && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black uppercase text-slate-500">Past</span>}
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 {isAnnouncements
@@ -235,10 +235,10 @@ export default function HRAnnouncementsManager({
               )}
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => startEdit(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1 text-[10px] font-black text-slate-700">
+              <button type="button" onClick={() => startEdit(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1 text-xs font-black text-slate-700">
                 <Pencil className="h-3 w-3" /> Edit
               </button>
-              <button type="button" onClick={() => remove(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black text-rose-700">
+              <button type="button" onClick={() => remove(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">
                 <Trash2 className="h-3 w-3" /> Delete
               </button>
             </div>

@@ -19,10 +19,6 @@ body {
   display: none;
 }
 
-.hr-admin-requests-screen header > div > div > p:first-child {
-  display: none;
-}
-
 .hr-admin-profile-screen {
   padding-top: 1rem;
 }

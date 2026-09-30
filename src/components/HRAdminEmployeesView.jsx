@@ -100,6 +100,12 @@ const normalizeEmployee = (employee = {}) => {
 // Suspended); employment status (ACTIVE, INACTIVE, ON LEAVE) is shown separately.
 const accountStatusOf = (employee = {}) => (employee.accountStatus || 'Pending').toString().trim().toLowerCase();
 
+// Shown in the employee list only when employment is something other than the usual ACTIVE.
+const employmentNote = (employee = {}) => {
+  const employment = String(employee.employmentStatus || employee.status || '').trim();
+  return employment && employment.toUpperCase() !== 'ACTIVE' ? ` · Employment: ${employment}` : '';
+};
+
 // True when the employee has a Philippine mobile number the approval SMS can go to
 // (09XXXXXXXXX or +639XXXXXXXXX), matching the server's check.
 const mobileNumberOf = (employee = {}) => /^(09|\+?639)\d{9}$/.test(String(employee.phoneNumber || '').replace(/[\s()-]/g, ''));
@@ -161,6 +167,8 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       return matchesStatus && matchesText && matchesBiometricReview;
     });
   }, [employeeAccounts, query, statusFilter, showBiometricPending]);
+  // The Assigned Station column is shown only when some employee has one recorded.
+  const showStationColumn = employeeAccounts.some(employee => employee.assignedStation || employee.assignedLGU);
 
   const selectedEmployee = employeeAccounts.find((employee) => {
     return employeeKey(employee) === selectedId;
@@ -614,7 +622,7 @@ This cannot be undone.`
               {!editingId && (
                 <label className="text-[11px] font-black text-slate-600">Initial Employee Password
                   <input name="password" type="password" value={form.password} onChange={handleChange} minLength={10} maxLength={256} autoComplete="new-password" required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
-                  <span className="mt-1 block text-[10px] font-medium text-slate-500">At least 10 characters. Share it securely with the employee.</span>
+                  <span className="mt-1 block text-xs font-medium text-slate-500">At least 10 characters. Share it securely with the employee.</span>
                 </label>
               )}
 
@@ -660,7 +668,7 @@ This cannot be undone.`
 
               <div className="sm:col-span-2 xl:col-span-4">
                 <p className="text-[11px] font-black text-slate-700">Approved Work-From-Home Location</p>
-                <p className="mt-1 text-[10px] font-medium text-slate-500">Saving a valid municipality and barangay approves this WFH geofence for the employee.</p>
+                <p className="mt-1 text-xs font-medium text-slate-500">Saving a valid municipality and barangay approves this WFH geofence for the employee.</p>
                 <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <label className="text-[11px] font-black text-slate-600">Municipality
                     <select name="approvedWfhMunicipality" value={form.approvedWfhMunicipality} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
@@ -718,10 +726,10 @@ This cannot be undone.`
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${statusStyle(selectedEmployee.employmentStatus || selectedEmployee.status || 'ACTIVE')}`}>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusStyle(selectedEmployee.employmentStatus || selectedEmployee.status || 'ACTIVE')}`}>
               {selectedEmployee.employmentStatus || selectedEmployee.status || 'ACTIVE'}
             </span>
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
               {selectedEmployee.accountStatus || 'Pending'} account
             </span>
           </div>
@@ -745,18 +753,18 @@ This cannot be undone.`
             )}
           </div>
           {accountStatusOf(selectedEmployee) === 'active' && (
-            <p className="mt-2 text-[10px] font-semibold text-slate-400">To delete this account, deactivate it first.</p>
+            <p className="mt-2 text-xs font-semibold text-slate-500">To delete this account, deactivate it first.</p>
           )}
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Access</p>
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Access</p>
             {promotion ? (
               <form onSubmit={promoteEmployee} className="mt-2 space-y-2">
                 <p className="text-xs font-semibold text-slate-700">
                   Make {employeeName(selectedEmployee)} a {promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor'}? They will log in with that role, and their attendance and leave records are kept.
                 </p>
                 {promotion.accessLevel === 'hr_admin' && (
-                  <label className="block text-[10px] font-black uppercase text-slate-500">Your current password (required for HR/Admin)
+                  <label className="block text-xs font-black uppercase text-slate-500">Your current password (required for HR/Admin)
                     <input type="password" autoComplete="current-password" required value={promotion.password} onChange={event => setPromotion(current => ({ ...current, password: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold normal-case text-slate-800" />
                   </label>
                 )}
@@ -768,8 +776,8 @@ This cannot be undone.`
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-600">Employee</span>
-                <button type="button" onClick={() => setPromotion({ accessLevel: 'supervisor', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-700">Make Supervisor</button>
-                <button type="button" onClick={() => setPromotion({ accessLevel: 'hr_admin', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px] font-black text-slate-700">Make HR/Admin</button>
+                <button type="button" onClick={() => setPromotion({ accessLevel: 'supervisor', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make Supervisor</button>
+                <button type="button" onClick={() => setPromotion({ accessLevel: 'hr_admin', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make HR/Admin</button>
               </div>
             )}
           </div>
@@ -798,23 +806,23 @@ This cannot be undone.`
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Leave Credits</h3>
-                <p className="mt-1 text-[10px] font-semibold text-slate-500">Approved vacation, forced, and sick leave is deducted automatically. Adjust here to match the official leave card.</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Approved vacation, forced, and sick leave is deducted automatically. Adjust here to match the official leave card.</p>
               </div>
               {!creditForm && (
-                <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-black text-slate-700">Adjust</button>
+                <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">Adjust</button>
               )}
             </div>
             {creditForm ? (
               <form onSubmit={saveLeaveCredits} className="mt-3 space-y-3">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-[10px] font-black uppercase text-slate-500">Vacation leave (days)
+                  <label className="text-xs font-black uppercase text-slate-500">Vacation leave (days)
                     <input type="number" min="0" max="1000" step="0.001" required value={creditForm.vacationLeaveCredits} onChange={event => setCreditForm(form => ({ ...form, vacationLeaveCredits: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800" />
                   </label>
-                  <label className="text-[10px] font-black uppercase text-slate-500">Sick leave (days)
+                  <label className="text-xs font-black uppercase text-slate-500">Sick leave (days)
                     <input type="number" min="0" max="1000" step="0.001" required value={creditForm.sickLeaveCredits} onChange={event => setCreditForm(form => ({ ...form, sickLeaveCredits: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800" />
                   </label>
                 </div>
-                <label className="block text-[10px] font-black uppercase text-slate-500">Reason (recorded and sent to the employee)
+                <label className="block text-xs font-black uppercase text-slate-500">Reason (recorded and sent to the employee)
                   <input required maxLength={300} value={creditForm.reason} onChange={event => setCreditForm(form => ({ ...form, reason: event.target.value }))} placeholder="e.g. Balance from the leave card as of September 2026" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold normal-case text-slate-800" />
                 </label>
                 <div className="flex gap-2">
@@ -826,7 +834,7 @@ This cannot be undone.`
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {[['Vacation leave', creditsOf(selectedEmployee).vacationLeaveCredits], ['Sick leave', creditsOf(selectedEmployee).sickLeaveCredits]].map(([label, days]) => (
                   <div key={label} className="rounded-xl bg-slate-50 p-3">
-                    <p className="text-[10px] font-black uppercase text-slate-500">{label}</p>
+                    <p className="text-xs font-black uppercase text-slate-500">{label}</p>
                     <p className="mt-1 text-xl font-black text-slate-900">{days} <span className="text-xs font-bold text-slate-500">days</span></p>
                   </div>
                 ))}
@@ -835,7 +843,7 @@ This cannot be undone.`
             {(() => {
               const last = (selectedEmployee.leaveCreditHistory || []).at(-1);
               return last ? (
-                <p className="mt-2 text-[10px] font-semibold text-slate-400">
+                <p className="mt-2 text-xs font-semibold text-slate-500">
                   Last adjusted {new Date(last.changedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} by {last.changedBy}: {last.reason}
                 </p>
               ) : null;
@@ -846,9 +854,9 @@ This cannot be undone.`
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
-                <p className="mt-1 text-[10px] font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
               </div>
-              <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
                 selectedEmployee.biometricEnrollmentStatus === 'rejected'
                   ? 'bg-rose-100 text-rose-800'
                   : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
@@ -869,7 +877,7 @@ This cannot be undone.`
               </span>
             </div>
             {selectedEmployee.biometricEnrollmentSubmittedAt && (
-              <p className="mt-2 text-[10px] font-semibold text-slate-500">
+              <p className="mt-2 text-xs font-semibold text-slate-500">
                 Submitted {new Date(selectedEmployee.biometricEnrollmentSubmittedAt).toLocaleString()}
                 {selectedEmployee.biometricEnrollmentReviewedAt ? ` · reviewed ${new Date(selectedEmployee.biometricEnrollmentReviewedAt).toLocaleString()}` : ''}
               </p>
@@ -878,7 +886,7 @@ This cannot be undone.`
               const fingerprints = registeredFingerprints(selectedEmployee);
               return (
                 <div className={`mt-3 rounded-xl border p-3 ${fingerprints.length ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
-                  <p className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wide ${fingerprints.length ? 'text-emerald-800' : 'text-slate-600'}`}>
+                  <p className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${fingerprints.length ? 'text-emerald-800' : 'text-slate-600'}`}>
                     <Fingerprint className="h-3.5 w-3.5" /> Fingerprint for Time In
                   </p>
                   {fingerprints.length ? (
@@ -888,7 +896,7 @@ This cannot be undone.`
                           Registered · {source}{registeredAt ? ` · ${new Date(registeredAt).toLocaleString()}` : ''}
                         </p>
                       ))}
-                      <p className="mt-1 text-[10px] font-semibold text-emerald-800">Every Time In must match this registered fingerprint. The fingerprint itself never leaves the employee's phone; WorkMate keeps only the phone's security key, so there is no fingerprint image to view.</p>
+                      <p className="mt-1 text-xs font-semibold text-emerald-800">Every Time In must match this registered fingerprint. The fingerprint itself never leaves the employee's phone; WorkMate keeps only the phone's security key, so there is no fingerprint image to view.</p>
                     </>
                   ) : (
                     <p className="mt-1 text-xs font-semibold text-slate-600">Not registered yet. The employee registers it on the Biometric Enrollment page. Time In needs a registered fingerprint.</p>
@@ -900,19 +908,19 @@ This cannot be undone.`
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {dilgIdPhoto && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
-                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Government ID · Front</p>
+                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-amber-900">Government ID · Front</p>
                     <img src={dilgIdPhoto} alt="Employee-submitted front of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
                   </div>
                 )}
                 {dilgIdBackPhoto && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
-                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-amber-900">Government ID · Back</p>
+                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-amber-900">Government ID · Back</p>
                     <img src={dilgIdBackPhoto} alt="Employee-submitted back of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
                   </div>
                 )}
                 {savedEnrollmentImage && (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 p-2">
-                    <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Employee enrollment selfie</p>
+                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-blue-900">Employee enrollment selfie</p>
                     <img src={savedEnrollmentImage} alt="Employee-submitted enrollment selfie for HR review" className="max-h-64 w-full rounded-lg object-contain" />
                   </div>
                 )}
@@ -966,9 +974,9 @@ This cannot be undone.`
                   />
                 </label>
                 {isDemoEnrollment ? (
-                  <p role="status" className="text-[10px] font-semibold text-amber-800">This is a demo enrollment. Approving enables attendance selfie matching for testing only.</p>
+                  <p role="status" className="text-xs font-semibold text-amber-800">This is a demo enrollment. Approving enables attendance selfie matching for testing only.</p>
                 ) : (!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
-                  <p role="status" className="text-[10px] font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
+                  <p role="status" className="text-xs font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
                 )}
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
@@ -978,7 +986,7 @@ This cannot be undone.`
                     {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
                   </button>
                 </div>
-                <p className="text-[10px] font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
+                <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
               </div>
             )}
           </section>
@@ -995,11 +1003,11 @@ This cannot be undone.`
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
-          <p className="mt-1 text-[10px] font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
           {selectedEmployee.faceVerificationAudit?.length ? (
             <div className="mt-3 space-y-2">
               {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
-                <div key={`${event.timestamp}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-[10px]">
+                <div key={`${event.timestamp}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs">
                   <div>
                     <p className="font-black text-blue-700">
                       {String(event.outcome || 'unknown').replaceAll('-', ' ').toUpperCase()}
@@ -1014,10 +1022,10 @@ This cannot be undone.`
               ))}
             </div>
           ) : (
-            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-[10px] font-semibold text-slate-500">No enrollment events recorded yet.</p>
+            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">No enrollment events recorded yet.</p>
           )}
           {selectedEmployee.dilgIdVerifiedAt && (
-            <p className="mt-3 text-[10px] font-semibold text-slate-500">
+            <p className="mt-3 text-xs font-semibold text-slate-500">
               HR manually recorded ID review {new Date(selectedEmployee.dilgIdVerifiedAt).toLocaleString()}
               {selectedEmployee.dilgIdVerifiedBy ? ` by ${selectedEmployee.dilgIdVerifiedBy}` : ''}
               {' · attendance face matching runs after HR approval'}
@@ -1027,20 +1035,20 @@ This cannot be undone.`
 
         <section className="grid gap-3 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Employee Information</p>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Employee Information</p>
             <div className="mt-4 space-y-3">
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><UserRound className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Full Name</p><p className="mt-1 text-xs font-bold text-slate-800">{employeeName(selectedEmployee)}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Mail className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Email</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.email || '-'}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Phone className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Phone</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.phoneNumber || '-'}</p></div></div>
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><UserRound className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Full Name</p><p className="mt-1 text-xs font-bold text-slate-800">{employeeName(selectedEmployee)}</p></div></div>
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Mail className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Email</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.email || '-'}</p></div></div>
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Phone className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Phone</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.phoneNumber || '-'}</p></div></div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Assignment Details</p>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Assignment Details</p>
             <div className="mt-4 space-y-3">
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Building2 className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Office</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.office || '-'}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><ShieldCheck className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Role</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.role || '-'}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><MapPin className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Assigned LGU / Station</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.assignedLGU || selectedEmployee.assignedStation || '-'}</p></div></div>
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Building2 className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Office</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.office || '-'}</p></div></div>
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><ShieldCheck className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Role</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.role || '-'}</p></div></div>
+              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><MapPin className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Assigned LGU / Station</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.assignedLGU || selectedEmployee.assignedStation || '-'}</p></div></div>
             </div>
           </div>
         </section>
@@ -1053,8 +1061,7 @@ This cannot be undone.`
       <header className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-slate-900 sm:text-2xl">Employee Management</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">Create and manage employee accounts, job designations, and access status.</p>
+            <p className="text-sm font-semibold text-slate-600">Create and manage employee accounts, job designations, and access status.</p>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={refreshEmployees} disabled={employeesRefreshing} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
@@ -1077,7 +1084,7 @@ This cannot be undone.`
 
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee or email..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm shadow-sm outline-none focus:border-blue-500" />
         </div>
         <button
@@ -1097,9 +1104,9 @@ This cannot be undone.`
           aria-pressed={statusFilter === 'All' && !showBiometricPending}
           className={`rounded-2xl border p-3 text-left shadow-sm ${statusFilter === 'All' && !showBiometricPending ? 'border-slate-400 bg-slate-50' : 'border-slate-200 bg-white'}`}
         >
-          <p className="text-[10px] font-black uppercase text-slate-500">Total Employees</p>
+          <p className="text-xs font-black uppercase text-slate-500">Total Employees</p>
           <strong className="mt-1 block text-2xl text-slate-900">{totalCount}</strong>
-          <span className="text-[10px] font-semibold text-slate-500">{statusFilter === 'All' && !showBiometricPending ? 'Showing all' : 'Show all'}</span>
+          <span className="text-xs font-semibold text-slate-500">{statusFilter === 'All' && !showBiometricPending ? 'Showing all' : 'Show all'}</span>
         </button>
         <button
           type="button"
@@ -1107,9 +1114,9 @@ This cannot be undone.`
           aria-pressed={statusFilter === 'Active'}
           className={`rounded-2xl border p-3 text-left shadow-sm ${statusFilter === 'Active' ? 'border-emerald-300 bg-emerald-100' : 'border-emerald-100 bg-emerald-50'}`}
         >
-          <p className="text-[10px] font-black uppercase text-emerald-700">Active</p>
+          <p className="text-xs font-black uppercase text-emerald-700">Active</p>
           <strong className="mt-1 block text-2xl text-emerald-700">{activeCount}</strong>
-          <span className="text-[10px] font-semibold text-emerald-700">{statusFilter === 'Active' ? 'Showing active' : 'Show active'}</span>
+          <span className="text-xs font-semibold text-emerald-700">{statusFilter === 'Active' ? 'Showing active' : 'Show active'}</span>
         </button>
         <button
           type="button"
@@ -1117,9 +1124,9 @@ This cannot be undone.`
           aria-pressed={statusFilter === 'Pending'}
           className={`rounded-2xl border p-3 text-left shadow-sm ${statusFilter === 'Pending' ? 'border-amber-300 bg-amber-100' : 'border-amber-100 bg-amber-50'}`}
         >
-          <p className="text-[10px] font-black uppercase text-amber-700">Pending</p>
+          <p className="text-xs font-black uppercase text-amber-700">Pending</p>
           <strong className="mt-1 block text-2xl text-amber-700">{pendingCount}</strong>
-          <span className="text-[10px] font-semibold text-amber-700">{statusFilter === 'Pending' ? 'Showing pending' : 'Show pending'}</span>
+          <span className="text-xs font-semibold text-amber-700">{statusFilter === 'Pending' ? 'Showing pending' : 'Show pending'}</span>
         </button>
         <button
           type="button"
@@ -1127,9 +1134,9 @@ This cannot be undone.`
           aria-pressed={showBiometricPending}
           className={`rounded-2xl border p-3 text-left shadow-sm ${showBiometricPending ? 'border-amber-300 bg-amber-100' : 'border-amber-100 bg-amber-50'}`}
         >
-          <p className="text-[10px] font-black uppercase text-amber-800">Biometric Reviews</p>
+          <p className="text-xs font-black uppercase text-amber-800">Biometric Reviews</p>
           <strong className="mt-1 block text-2xl text-amber-800">{pendingBiometricCount}</strong>
-          <span className="text-[10px] font-semibold text-amber-800">{showBiometricPending ? 'Showing pending' : 'Show pending'}</span>
+          <span className="text-xs font-semibold text-amber-800">{showBiometricPending ? 'Showing pending' : 'Show pending'}</span>
         </button>
       </div>
 
@@ -1142,14 +1149,14 @@ This cannot be undone.`
                 <th className="px-3 py-3 font-black uppercase tracking-wide">Role</th>
                 <th className="px-3 py-3 font-black uppercase tracking-wide">Office</th>
                 <th className="px-3 py-3 font-black uppercase tracking-wide">Status</th>
-                <th className="px-3 py-3 font-black uppercase tracking-wide">Assigned Station</th>
+                {showStationColumn && <th className="px-3 py-3 font-black uppercase tracking-wide">Assigned Station</th>}
                 <th className="px-3 py-3 font-black uppercase tracking-wide text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredEmployees.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">No employees found.</td>
+                  <td colSpan={showStationColumn ? 6 : 5} className="px-3 py-8 text-center text-sm font-semibold text-slate-500">No employees found.</td>
                 </tr>
               ) : (
                 filteredEmployees.map((employee) => {
@@ -1158,7 +1165,7 @@ This cannot be undone.`
                     <tr key={key} className="border-t border-slate-100">
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-[10px] font-black text-blue-700">
+                          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-xs font-black text-blue-700">
                             {employee.profilePicture ? (
                               <img src={employee.profilePicture} alt={employeeName(employee)} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
@@ -1167,36 +1174,35 @@ This cannot be undone.`
                           </div>
                           <div>
                             <p className="font-black text-slate-800">{employeeName(employee)}</p>
-                            <p className="text-[10px] text-slate-500">{employee.email || 'No email'}</p>
+                            <p className="text-xs text-slate-500">{employee.email || 'No email'}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-3 text-slate-700">{employee.role || 'Employee'}</td>
                       <td className="px-3 py-3 text-slate-700">{employee.office || 'Administrative Office'}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-[10px] font-black ${statusStyle(employee.accountStatus || 'Pending')}`}>
-                          {employee.accountStatus || 'Pending'}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`rounded-full px-2 py-1 text-xs font-black ${statusStyle(employee.accountStatus || 'Pending')}`}>
+                            {employee.accountStatus || 'Pending'}
+                          </span>
+                          {employee.biometricEnrollmentStatus === 'pending' && (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">Biometric review</span>
+                          )}
+                        </div>
+                        {/* One line under the badge; employment status only when it is not the usual ACTIVE. */}
+                        <span className={`mt-1 block text-xs font-semibold ${employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'text-emerald-700' : 'text-slate-500'}`}>
+                          {employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'Fingerprint ✓' : 'No fingerprint'}
+                          {employmentNote(employee)}
                         </span>
-                        <span className="mt-1 block text-[9px] font-semibold uppercase text-slate-400">
-                          Employment: {employee.employmentStatus || employee.status || 'ACTIVE'}
-                        </span>
-                        {employee.biometricEnrollmentStatus === 'pending' && (
-                          <span className="mt-1 block rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800">Biometric review</span>
-                        )}
-                        {employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? (
-                          <span className="mt-1 block text-[10px] font-black text-emerald-700">Fingerprint ✓</span>
-                        ) : (
-                          <span className="mt-1 block text-[10px] font-semibold text-slate-400">No fingerprint</span>
-                        )}
                       </td>
-                      <td className="px-3 py-3 text-slate-700">{employee.assignedStation || '—'}</td>
+                      {showStationColumn && <td className="px-3 py-3 text-slate-700">{employee.assignedStation || employee.assignedLGU || '—'}</td>}
                       <td className="px-3 py-3 text-right">
                         <div className="flex justify-end gap-2">
                           {accountStatusOf(employee) === 'pending' && (
-                            <button type="button" onClick={() => updateAccountStatus(employee, 'Active', { openProfile: false })} disabled={accountStatusUpdating} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-black text-white disabled:opacity-50">Approve</button>
+                            <button type="button" onClick={() => updateAccountStatus(employee, 'Active', { openProfile: false })} disabled={accountStatusUpdating} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
                           )}
-                          <button type="button" onClick={() => openView(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-700">View</button>
-                          <button type="button" onClick={() => openEdit(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-black text-slate-700">Edit</button>
+                          <button type="button" onClick={() => openView(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">View</button>
+                          <button type="button" onClick={() => openEdit(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
                         </div>
                       </td>
                     </tr>

@@ -156,7 +156,7 @@ export default function Header({
               setShowSMSLogs(previous => !previous);
               setShowNotifications(false);
             }}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:text-white hover:bg-[#facc15] transition-all relative border border-[#facc15] cursor-pointer bg-[#facc15]"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all relative border border-white/30 bg-white/10 hover:bg-white/20 cursor-pointer"
             title="SMS Alerts Activity Feed"
           >
             <Mail className="w-5 h-5 text-white" />
@@ -222,7 +222,7 @@ export default function Header({
               setShowNotifications(previous => !previous);
               setShowSMSLogs(false);
             }}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:text-white hover:bg-[#facc15] transition-all relative border border-[#facc15] cursor-pointer bg-[#facc15]"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all relative border border-white/30 bg-white/10 hover:bg-white/20 cursor-pointer"
             title="System Inbox"
           >
             <Bell className="w-5 h-5 text-white" />

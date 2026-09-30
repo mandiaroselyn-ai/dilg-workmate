@@ -110,14 +110,14 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
           ['For Review', forReview, 'text-blue-600']
         ].map(([label, value, color]) => (
           <div key={label} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[10px] font-black uppercase text-slate-500">{label}</p>
+            <p className="text-xs font-black uppercase text-slate-500">{label}</p>
             <strong className={`mt-1 block text-2xl ${color}`}>{value}</strong>
           </div>
         ))}
       </div>
       <div className="flex flex-wrap gap-2">
         <div className="relative min-w-[180px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employee..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm" />
         </div>
         <select value={dateFilter} onChange={event => setDateFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
@@ -144,7 +144,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
                       <p className="mt-1 text-xs text-slate-500">Employee ID: {row.employeeId}</p>
                       <p className="text-xs text-slate-500">Date: {row.record.date || '-'}</p>
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-[10px] font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
+                    <span className={`rounded-full px-3 py-1 text-xs font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
                       {row.status === 'Incomplete' ? (row.record.timeIn ? 'Missing Time Out' : 'Missing Time In') : row.status}
                     </span>
                   </div>
