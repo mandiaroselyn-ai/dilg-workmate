@@ -1,6 +1,31 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
+import GoogleMutant from 'leaflet.gridlayer.googlemutant';
 import 'leaflet/dist/leaflet.css';
+
+// With a Google Maps API key (VITE_GOOGLE_MAPS_API_KEY, set on Vercel), the map uses
+// Google's satellite view through Google's official Maps JavaScript API. Without one, or
+// if Google rejects the key, it uses Esri's satellite imagery.
+const GOOGLE_MAPS_KEY = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
+
+let googleMapsLoading = null;
+const loadGoogleMaps = key => {
+  if (window.google?.maps?.Map) return Promise.resolve();
+  if (!googleMapsLoading) {
+    googleMapsLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&v=weekly`;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        googleMapsLoading = null;
+        reject(new Error('Google Maps could not load.'));
+      };
+      document.head.append(script);
+    });
+  }
+  return googleMapsLoading;
+};
 
 // HR's live map of employees on duty. Each dot is where the employee's phone last reported
 // them: green inside their assigned area, red outside it, gray when there has been no
@@ -68,24 +93,48 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
 
   useEffect(() => {
     const map = L.map(containerRef.current).setView(MARINDUQUE, 11);
-    // Satellite imagery with place names on top, so HR can see the actual surroundings.
-    // The street map is one tap away in the top-right corner.
+    // Satellite imagery with roads and place names drawn on top (like Google Maps'
+    // satellite view), so HR can see the actual surroundings. The street map is one tap
+    // away in the top-right corner.
+    const esriLayer = service => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`, {
+      maxZoom: 19,
+      maxNativeZoom: 18
+    });
     const satellite = L.layerGroup([
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         maxNativeZoom: 18,
         attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics'
       }),
-      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        maxNativeZoom: 18
-      })
+      esriLayer('Reference/World_Transportation'),
+      esriLayer('Reference/World_Boundaries_and_Places')
     ]).addTo(map);
     const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     });
-    L.control.layers({ Satellite: satellite, Map: street }, null, { position: 'topright' }).addTo(map);
+    const layerSwitch = L.control.layers({ Satellite: satellite, Map: street }, null, { position: 'topright' }).addTo(map);
+
+    if (GOOGLE_MAPS_KEY) {
+      loadGoogleMaps(GOOGLE_MAPS_KEY)
+        .then(() => {
+          if (mapRef.current !== map) return;
+          const google = new GoogleMutant({ type: 'hybrid', maxZoom: 21, maxNativeZoom: 21 });
+          // Google calls this when it rejects the key (for example, the site is not
+          // allowed); the map then goes back to Esri's imagery.
+          window.gm_authFailure = () => {
+            if (mapRef.current !== map || !map.hasLayer(google)) return;
+            map.removeLayer(google);
+            satellite.addTo(map);
+          };
+          layerSwitch.addBaseLayer(google, 'Google satellite');
+          map.removeLayer(satellite);
+          google.addTo(map);
+        })
+        .catch(() => {
+          // Esri's satellite imagery stays.
+        });
+    }
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {
