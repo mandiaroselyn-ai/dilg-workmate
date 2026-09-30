@@ -3,7 +3,7 @@ import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
-import { isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
+import { describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
@@ -498,5 +498,20 @@ export const resolveGeofenceAssignment = async (req, res) => {
     res.status(200).json({ success: true, location });
   } catch (error) {
     res.status(422).json({ success: false, error: error.message || 'Unable to resolve the selected location.' });
+  }
+};
+
+// The name of the place at a GPS position (such as "Brgy. Bangbang, Gasan"), shown with
+// each employee on HR's live map.
+export const getPlaceName = async (req, res) => {
+  try {
+    const latitude = Number(req.query.lat);
+    const longitude = Number(req.query.lon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+      return res.status(400).json({ success: false, error: 'A valid latitude and longitude are required.' });
+    }
+    res.status(200).json({ success: true, place: await describePlace(latitude, longitude) });
+  } catch (error) {
+    sendServerError(res, error);
   }
 };

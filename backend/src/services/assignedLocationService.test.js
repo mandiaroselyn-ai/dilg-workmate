@@ -140,3 +140,27 @@ test('a barangay that is not on the map uses its whole municipality', async t =>
   assert.equal(isWithinAssignedLocation(13.344325, 121.824574, site), true);
   assert.equal(isWithinAssignedLocation(13.4474, 121.8344, site), false, 'Boac is still outside');
 });
+
+test('a place name is built from the road, barangay, and town', async () => {
+  const { shortPlaceName } = await import('./assignedLocationService.js');
+  // OpenStreetMap's real answers for two employee positions.
+  assert.equal(shortPlaceName({ name: '', address: { village: 'Bangbang', town: 'Gasan', state: 'Marinduque' } }), 'Brgy. Bangbang, Gasan');
+  assert.equal(shortPlaceName({ name: '', address: { village: 'Sawi', town: 'Boac' } }), 'Brgy. Sawi, Boac');
+  assert.equal(
+    shortPlaceName({ name: 'Marinduque Circumferential Road', address: { road: 'Marinduque Circumferential Road', village: 'Tabionan', town: 'Gasan' } }),
+    'Marinduque Circumferential Road, Brgy. Tabionan, Gasan'
+  );
+  assert.equal(shortPlaceName({ name: 'Marinduque State University', address: { road: 'Tanza Road', suburb: 'Tanza', town: 'Boac' } }), 'Marinduque State University, Tanza Road, Brgy. Tanza, Boac');
+  assert.equal(shortPlaceName({}), '');
+});
+
+test('place names are looked up once for positions about 100 m apart', async t => {
+  const { describePlace } = await import('./assignedLocationService.js');
+  const lookup = t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ address: { village: 'Bangbang', town: 'Gasan' } }) }));
+  assert.equal(await describePlace(13.3443, 121.8246), 'Brgy. Bangbang, Gasan');
+  assert.equal(await describePlace(13.3444, 121.8247), 'Brgy. Bangbang, Gasan');
+  assert.equal(lookup.mock.callCount(), 1);
+  const url = lookup.mock.calls[0].arguments[0];
+  assert.equal(url.pathname, '/reverse');
+  assert.equal(url.searchParams.get('lat'), '13.3443');
+});

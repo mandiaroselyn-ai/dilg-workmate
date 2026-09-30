@@ -61,6 +61,58 @@ const buildQuery = assignment => {
 
 class LocationNotFoundError extends Error {}
 
+const USER_AGENT = () => `DILGWorkMate/1.0 (${process.env.FRONTEND_URL || 'https://dilg-workmate.vercel.app'})`;
+
+// OpenStreetMap's free service allows about one request a second, so requests wait
+// their turn.
+const takeTurn = () => {
+  pendingRequest = pendingRequest.then(async () => {
+    const delay = Math.max(0, MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt));
+    if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+    lastRequestAt = Date.now();
+  });
+  return pendingRequest;
+};
+
+// A short name for a place from OpenStreetMap's address details, such as
+// "Marinduque Circumferential Rd, Brgy. Sawi, Boac" (barangays are villages on the map).
+export const shortPlaceName = result => {
+  const address = result?.address || {};
+  const barangay = address.village || address.suburb || address.quarter || address.neighbourhood || address.hamlet;
+  const parts = [
+    result?.name,
+    address.road,
+    barangay && `Brgy. ${barangay}`,
+    address.town || address.city || address.municipality
+  ].filter(Boolean);
+  return parts.filter((part, index) => parts.findIndex(other => lower(other) === lower(part)) === index).join(', ');
+};
+
+// The name of the place at a GPS position, for HR's live map. Positions about 100 m
+// apart share a cached name.
+export const describePlace = async (latitude, longitude) => {
+  const cacheKey = `reverse|${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+  const cached = cache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  await takeTurn();
+  const url = new URL('https://nominatim.openstreetmap.org/reverse');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('lat', String(latitude));
+  url.searchParams.set('lon', String(longitude));
+  url.searchParams.set('zoom', '18');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('accept-language', 'en');
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': USER_AGENT() },
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) throw new Error('Place names are temporarily unavailable. Retry in a moment.');
+  const place = shortPlaceName(await response.json());
+  cache.set(cacheKey, { value: place, expiresAt: Date.now() + CACHE_TTL_MS });
+  return place;
+};
+
 const isArea = item => ['Polygon', 'MultiPolygon'].includes(item.geojson?.type);
 const lower = value => String(value || '').trim().toLowerCase();
 
@@ -89,12 +141,7 @@ const geocode = async (query, { boundary: includeBoundary = false, kind = 'any',
   if (existing) return existing.promise;
 
   const promise = (async () => {
-    pendingRequest = pendingRequest.then(async () => {
-      const delay = Math.max(0, MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt));
-      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-      lastRequestAt = Date.now();
-    });
-    await pendingRequest;
+    await takeTurn();
 
     const url = new URL('https://nominatim.openstreetmap.org/search');
     url.searchParams.set('format', 'jsonv2');
@@ -108,7 +155,7 @@ const geocode = async (query, { boundary: includeBoundary = false, kind = 'any',
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json',
-        'User-Agent': `DILGWorkMate/1.0 (${process.env.FRONTEND_URL || 'https://dilg-workmate.vercel.app'})`
+        'User-Agent': USER_AGENT()
       },
       signal: AbortSignal.timeout(8000)
     });

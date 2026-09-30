@@ -45,3 +45,18 @@ test('HR/Admins can still view attendance and live locations', async t => {
   assert.equal((await session.get('/api/dtr/location/live')).status, 200);
   assert.equal((await session.get('/api/dtr/location/history/E1')).status, 200);
 });
+
+test('only HR/Admins can look up the place name of an employee position', async t => {
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ address: { village: 'Sawi', town: 'Boac' } }) }));
+  const supervisorSession = signIn(t, supervisor);
+  assert.equal((await supervisorSession.get('/api/dtr/action?action=place-name&lat=13.4452&lon=121.8446')).status, 403);
+});
+
+test('HR gets the place name, and a bad position is refused', async t => {
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ address: { village: 'Sawi', town: 'Boac' } }) }));
+  const session = signIn(t, hr);
+  const found = await session.get('/api/dtr/action?action=place-name&lat=13.4452&lon=121.8446');
+  assert.equal(found.status, 200);
+  assert.equal(found.body.place, 'Brgy. Sawi, Boac');
+  assert.equal((await session.get('/api/dtr/action?action=place-name&lat=north&lon=121.8')).status, 400);
+});

@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
+import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
 import { authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -31,9 +31,15 @@ router.post('/action', (req, res) => {
   if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
   return handler(req, res);
 });
+// HR-only reads for the live map.
+const hrReadHandlers = {
+  'location-live': getActiveLocationTracking,
+  'place-name': getPlaceName
+};
 router.get('/action', authorizeRoles('hr_admin'), (req, res) => {
-  if (req.query.action !== 'location-live') return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
-  return getActiveLocationTracking(req, res);
+  const handler = hrReadHandlers[req.query.action];
+  if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
+  return handler(req, res);
 });
 
 export default router;

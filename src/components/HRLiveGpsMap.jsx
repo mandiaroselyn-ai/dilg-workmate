@@ -48,10 +48,19 @@ const textElement = (tag, text, className = '') => {
   return element;
 };
 
+// The label on a dot: the employee's name and, once known, the place they are in.
+const labelFor = point => {
+  const label = document.createElement('div');
+  label.append(textElement('div', point.name, 'font-bold'));
+  if (point.place) label.append(textElement('div', point.place, 'text-[10px] font-semibold text-slate-600'));
+  return label;
+};
+
 const popupFor = point => {
   const wrapper = document.createElement('div');
   wrapper.append(
     textElement('strong', point.name),
+    textElement('div', point.place ? `Now at: ${point.place}` : 'Now at: finding place name…'),
     textElement('div', point.statusText || (point.state === 'inside' ? 'Inside assigned area' : 'Outside assigned area')),
     textElement('div', `Assigned: ${point.areaLabel || 'Not recorded'}`),
     textElement('div', `Last GPS update: ${point.lastUpdateText}`)
@@ -85,7 +94,7 @@ const areaBoundsFor = area => {
 };
 
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside', stale,
-//            statusText?, area, areaLabel, lastUpdateText }]
+//            statusText?, place, area, areaLabel, lastUpdateText }]
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -167,7 +176,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
         fillColor: point.stale ? COLORS.stale : COLORS[point.state],
         fillOpacity: 0.95
       })
-        .bindTooltip(textElement('span', point.name), { permanent: true, direction: 'top', offset: [0, -10] })
+        .bindTooltip(labelFor(point), { permanent: true, direction: 'top', offset: [0, -10] })
         .bindPopup(popupFor(point))
         .on('click', () => onSelectRef.current?.(point.key))
         .addTo(layer);
