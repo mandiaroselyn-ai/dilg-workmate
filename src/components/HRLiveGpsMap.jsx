@@ -36,6 +36,9 @@ const COLORS = { inside: '#16a34a', outside: '#dc2626', stale: '#94a3b8' };
 // A light blue that stays visible on both satellite imagery and the street map.
 const AREA_STYLE = { color: '#38bdf8', weight: 3, dashArray: '8 5', fillColor: '#38bdf8', fillOpacity: 0.12 };
 const MARINDUQUE = [13.4, 121.95];
+// Areas up to this size across (a barangay is about 6 km) are shown whole when an
+// employee is picked.
+const SMALL_AREA_METERS = 7000;
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
 const textElement = (tag, text, className = '') => {
@@ -177,8 +180,10 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     }
   }, [points, selectedKey]);
 
-  // Zooms to the selected employee together with their assigned area, or back out to
-  // everyone when the selection is cleared.
+  // Zooms to the selected employee, or back out to everyone when the selection is cleared.
+  // A small assigned area (an office or a barangay) is shown whole with the employee. A
+  // large one, such as a whole town, whose map outline also covers its sea waters, would
+  // zoom far out, so the map centers on the employee close up instead.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -187,10 +192,14 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
       if (points.length) map.fitBounds(L.latLngBounds(points.map(point => [point.latitude, point.longitude])).pad(0.3), { maxZoom: 16 });
       return;
     }
-    const bounds = L.latLngBounds([[selected.latitude, selected.longitude]]);
+    const position = L.latLng(selected.latitude, selected.longitude);
     const areaBounds = areaBoundsFor(selected.area);
-    if (areaBounds) bounds.extend(areaBounds);
-    map.fitBounds(bounds.pad(0.15), { maxZoom: 17 });
+    const smallArea = areaBounds && areaBounds.getNorthWest().distanceTo(areaBounds.getSouthEast()) <= SMALL_AREA_METERS;
+    if (smallArea) {
+      map.fitBounds(L.latLngBounds([position]).extend(areaBounds).pad(0.15), { maxZoom: 17 });
+    } else {
+      map.setView(position, 16);
+    }
     fittedRef.current = true;
     // Only when HR picks a different employee, not on every refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
