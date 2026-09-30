@@ -1,11 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import GoogleMutant from 'leaflet.gridlayer.googlemutant';
-import polygonClipping from 'polygon-clipping';
 import 'leaflet/dist/leaflet.css';
-// Marinduque's land (the main island and its islets) from OpenStreetMap (ODbL),
-// simplified to about 20 m.
-import marinduqueLand from '../assets/marinduque-land.json';
 
 // With a Google Maps API key (VITE_GOOGLE_MAPS_API_KEY, set on Vercel), the map uses
 // Google's satellite view through Google's official Maps JavaScript API. Without one, or
@@ -33,16 +29,10 @@ const loadGoogleMaps = key => {
 
 // HR's live map of employees on duty. Each dot is where the employee's phone last reported
 // them: green inside their assigned area, red outside it, gray when there has been no
-// update for a while (their app is probably closed). The selected employee's assigned
-// area is outlined, so HR can see whether they are really there.
+// update for a while (their app is probably closed).
 
 const COLORS = { inside: '#16a34a', outside: '#dc2626', stale: '#94a3b8' };
-// A light blue that stays visible on both satellite imagery and the street map.
-const AREA_STYLE = { color: '#38bdf8', weight: 3, dashArray: '8 5', fillColor: '#38bdf8', fillOpacity: 0.12 };
 const MARINDUQUE = [13.4, 121.95];
-// Areas up to this size across (a barangay is about 6 km) are shown whole when an
-// employee is picked.
-const SMALL_AREA_METERS = 7000;
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
 const textElement = (tag, text, className = '') => {
@@ -73,51 +63,8 @@ const popupFor = point => {
   return wrapper;
 };
 
-// The land part of an area. Town outlines on OpenStreetMap include their municipal
-// waters, and a barangay that is only a point on the map gets a box that can reach into
-// the sea, so assigned areas looked like they were in the sea. Only what HR sees is
-// trimmed; the Time In check still uses the whole area. When nothing would be left, the
-// area is shown as it is.
-const landOnly = polygons => {
-  try {
-    const land = polygonClipping.intersection(polygons, marinduqueLand.coordinates);
-    return land.length ? { type: 'MultiPolygon', coordinates: land } : null;
-  } catch {
-    return null;
-  }
-};
-
-// The area chosen at Time In: a barangay or town outline, the extent of a barangay that
-// is only a point on the map, or 150 m around an office or home address.
-const areaLayerFor = area => {
-  if (!area) return null;
-  const type = area.geometry?.type;
-  if (type === 'Polygon' || type === 'MultiPolygon') {
-    const polygons = type === 'Polygon' ? [area.geometry.coordinates] : area.geometry.coordinates;
-    return L.geoJSON(landOnly(polygons) || area.geometry, { style: AREA_STYLE });
-  }
-  const { south, north, west, east } = area.bounds || {};
-  if (area.mode === 'field' && [south, north, west, east].every(Number.isFinite)) {
-    const box = [[[west, south], [east, south], [east, north], [west, north], [west, south]]];
-    const land = landOnly([box]);
-    return land ? L.geoJSON(land, { style: AREA_STYLE }) : L.rectangle([[south, west], [north, east]], AREA_STYLE);
-  }
-  if (Number.isFinite(area.latitude) && Number.isFinite(area.longitude)) {
-    return L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: 150 });
-  }
-  return null;
-};
-
-// The area's extent, measured without adding it to the map: a Leaflet circle can only
-// measure itself once it is on a map, so its extent is worked out from its radius.
-const areaBoundsFor = area => {
-  const layer = areaLayerFor(area);
-  if (!layer) return null;
-  return layer instanceof L.Circle ? layer.getLatLng().toBounds(layer.getRadius() * 2) : layer.getBounds();
-};
-
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside', stale,
-//            statusText?, place, area, areaLabel, lastUpdateText }]
+//            statusText?, place, areaLabel, lastUpdateText }]
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -179,16 +126,12 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     };
   }, []);
 
-  // Redraws the dots and the selected employee's area whenever the data changes.
+  // Redraws the dots whenever the data changes.
   useEffect(() => {
     const map = mapRef.current;
     const layer = layerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
-
-    const selected = points.find(point => point.key === selectedKey);
-    const area = selected ? areaLayerFor(selected.area) : null;
-    if (area) area.addTo(layer);
 
     points.forEach(point => {
       const isSelected = point.key === selectedKey;
@@ -212,10 +155,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     }
   }, [points, selectedKey]);
 
-  // Zooms to the selected employee, or back out to everyone when the selection is cleared.
-  // A small assigned area (an office or a barangay) is shown whole with the employee. A
-  // large one, such as a whole town, whose map outline also covers its sea waters, would
-  // zoom far out, so the map centers on the employee close up instead.
+  // Zooms in on the selected employee, or back out to everyone when the selection is cleared.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -224,14 +164,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
       if (points.length) map.fitBounds(L.latLngBounds(points.map(point => [point.latitude, point.longitude])).pad(0.3), { maxZoom: 16 });
       return;
     }
-    const position = L.latLng(selected.latitude, selected.longitude);
-    const areaBounds = areaBoundsFor(selected.area);
-    const smallArea = areaBounds && areaBounds.getNorthWest().distanceTo(areaBounds.getSouthEast()) <= SMALL_AREA_METERS;
-    if (smallArea) {
-      map.fitBounds(L.latLngBounds([position]).extend(areaBounds).pad(0.15), { maxZoom: 17 });
-    } else {
-      map.setView(position, 16);
-    }
+    map.setView([selected.latitude, selected.longitude], 16);
     fittedRef.current = true;
     // Only when HR picks a different employee, not on every refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,7 +177,6 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.stale }} />No update for 5+ minutes</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed border-sky-400" />Assigned area of the selected employee</span>
       </div>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
     </div>

@@ -463,13 +463,7 @@ export const DtrLog = {
         locationHistory: { $slice: -1 },
         lastLocationUpdate: 1,
         createdAt: 1,
-        'assignmentSite.mode': 1,
-        'assignmentSite.label': 1,
-        'assignmentSite.latitude': 1,
-        'assignmentSite.longitude': 1,
-        'assignmentSite.geometry': 1,
-        'assignmentSite.bounds': 1,
-        'assignmentSite.fallbackToRadius': 1
+        'assignmentSite.label': 1
       }
     ).sort({ lastLocationUpdate: -1, createdAt: -1 }).lean();
 
@@ -493,8 +487,8 @@ export const DtrLog = {
         gpsStatus: log.currentGpsStatus ?? log.gpsStatus,
         gpsAccuracy: latestPoint?.accuracy ?? null,
         lastLocationUpdate: log.lastLocationUpdate || latestPoint?.timestamp || log.createdAt,
-        // The area the employee chose at Time In, drawn on HR's live map.
-        assignmentArea: log.assignmentSite || null
+        // The name of the area the employee chose at Time In, shown on HR's live map.
+        assignmentArea: log.assignmentSite?.label ? { label: log.assignmentSite.label } : null
       };
     });
   }

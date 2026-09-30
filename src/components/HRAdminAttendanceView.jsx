@@ -213,7 +213,6 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
       state: row.gpsState === 'Inside Assigned Area' ? 'inside' : 'outside',
       stale: row.live ? row.stale : true,
       statusText: row.live ? undefined : 'Not on duty (last known position)',
-      area,
       areaLabel: area?.label || record.location || '',
       place: placeNames[placeKeyOf(latitude, longitude)] || '',
       lastUpdateText: row.live ? describeGpsUpdate(row) : record.timeOut ? `Timed out at ${record.timeOut}` : `Timed in at ${record.timeIn}`
