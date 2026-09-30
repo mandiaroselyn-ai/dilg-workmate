@@ -59,8 +59,29 @@ const buildQuery = assignment => {
   };
 };
 
-const geocode = async (query, includeBoundary) => {
-  const cacheKey = `${query}|${includeBoundary ? 'boundary' : 'point'}`;
+class LocationNotFoundError extends Error {}
+
+const isArea = item => ['Polygon', 'MultiPolygon'].includes(item.geojson?.type);
+const lower = value => String(value || '').trim().toLowerCase();
+
+// OpenStreetMap results that are the barangay itself (a village or barangay boundary in
+// the right municipality), not a river, bridge, or road that shares its name. A search
+// for "Libtangin, Gasan" once returned only the Libtangin River and Libtangin Bridge, and
+// the bridge became the assigned area. Exact name matches come first.
+export const barangayMatches = (results, { barangay, municipality }) => results
+  .filter(item => (item.category === 'place' || (item.category === 'boundary' && item.type === 'administrative'))
+    && Number(item.place_rank) >= 17
+    && lower(item.display_name).includes(lower(municipality)))
+  .sort((a, b) => Number(lower(b.name) === lower(barangay)) - Number(lower(a.name) === lower(barangay)));
+
+// The municipality's own boundary.
+export const municipalityMatches = (results, { municipality }) => results
+  .filter(item => item.category === 'boundary' && item.type === 'administrative' && lower(item.name) === lower(municipality));
+
+// Finds a place on OpenStreetMap. `boundary` asks for its outline; `pick` keeps and orders
+// the results that are the right kind of place (by default, all of them).
+const geocode = async (query, { boundary: includeBoundary = false, kind = 'any', pick = results => results } = {}) => {
+  const cacheKey = `${query}|${includeBoundary ? 'boundary' : 'point'}|${kind}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
@@ -77,7 +98,7 @@ const geocode = async (query, includeBoundary) => {
 
     const url = new URL('https://nominatim.openstreetmap.org/search');
     url.searchParams.set('format', 'jsonv2');
-    url.searchParams.set('limit', includeBoundary ? '5' : '1');
+    url.searchParams.set('limit', includeBoundary ? '10' : '1');
     url.searchParams.set('countrycodes', 'ph');
     url.searchParams.set('viewbox', '121.45,13.10,122.25,13.65');
     url.searchParams.set('bounded', '1');
@@ -94,11 +115,10 @@ const geocode = async (query, includeBoundary) => {
     if (!response.ok) throw new Error('Location service is temporarily unavailable. Retry in a moment.');
 
     const results = await response.json();
-    const validResults = results.filter(item => item.lat && item.lon);
-    const result = validResults.find(item => !includeBoundary
-      || ['Polygon', 'MultiPolygon'].includes(item.geojson?.type))
-      || (includeBoundary ? validResults[0] : null);
-    if (!result) throw new Error('Could not find coordinates for this address. Check the selected barangay/address and retry.');
+    const candidates = pick(results.filter(item => item.lat && item.lon));
+    const result = candidates.find(item => !includeBoundary || isArea(item))
+      || (includeBoundary ? candidates[0] : null);
+    if (!result) throw new LocationNotFoundError('Could not find coordinates for this address. Check the selected barangay/address and retry.');
 
     const [south, north, west, east] = (result.boundingbox || []).map(Number);
     const bounds = [south, north, west, east].every(Number.isFinite)
@@ -110,7 +130,7 @@ const geocode = async (query, includeBoundary) => {
       geometry: result.geojson || null,
       bounds,
       displayName: result.display_name,
-      fallbackToRadius: includeBoundary && !['Polygon', 'MultiPolygon'].includes(result.geojson?.type),
+      fallbackToRadius: includeBoundary && !isArea(result),
       source: 'OpenStreetMap'
     };
     cache.set(cacheKey, { value, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -123,6 +143,28 @@ const geocode = async (query, includeBoundary) => {
 
 export const resolveAssignedLocation = async assignment => {
   const normalized = buildQuery(assignment);
-  const point = await geocode(normalized.query, normalized.mode === 'field');
-  return { ...normalized, ...point };
+  if (normalized.mode !== 'field') return { ...normalized, ...(await geocode(normalized.query)) };
+
+  try {
+    const area = await geocode(normalized.query, {
+      boundary: true,
+      kind: 'barangay',
+      pick: results => barangayMatches(results, normalized)
+    });
+    return { ...normalized, ...area };
+  } catch (error) {
+    if (!(error instanceof LocationNotFoundError)) throw error;
+  }
+
+  // Some barangays are not on OpenStreetMap at all, so the whole municipality is used.
+  const town = await geocode(`${normalized.municipality}, Marinduque, Mimaropa, Philippines`, {
+    boundary: true,
+    kind: 'municipality',
+    pick: results => municipalityMatches(results, normalized)
+  });
+  return {
+    ...normalized,
+    ...town,
+    label: `${normalized.municipality}, Marinduque - Brgy. ${normalized.barangay} is not on the map, so the whole town is used`
+  };
 };
