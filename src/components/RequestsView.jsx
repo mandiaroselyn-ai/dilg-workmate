@@ -1144,8 +1144,8 @@ Reason (optional):`, '');
             </div>
 
             {/* Dynamic filter controls */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3.5 text-left">
-              <div className="relative flex-1">
+            <div className="flex flex-col gap-3.5 text-left">
+              <div className="relative">
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
@@ -1156,13 +1156,14 @@ Reason (optional):`, '');
                 />
               </div>
 
-              {/* Status categories with counts */}
-              <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-[10px] font-bold text-slate-500 shrink-0 self-start sm:self-auto">
+              {/* Status categories: three to a row on phones; on wider screens as many as fit,
+                  wrapping onto another row when the card is narrow. They stay inside the card. */}
+              <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 text-[10px] font-bold text-slate-500 sm:flex sm:flex-wrap">
                 {['All', 'Pending', 'Approved', 'Rejected', 'Draft', 'Withdrawn'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setStatusFilter(tab)}
-                    className={`px-2.5 py-1 rounded transition-all cursor-pointer border-0 font-semibold ${
+                    className={`whitespace-nowrap px-2.5 py-1.5 text-center rounded transition-all cursor-pointer border-0 font-semibold ${
                       statusFilter === tab ? 'bg-[#1e40af] text-white font-black shadow-xs font-bold' : 'hover:text-slate-850'
                     }`}
                   >
