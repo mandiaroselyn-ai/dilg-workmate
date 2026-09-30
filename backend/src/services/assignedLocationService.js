@@ -107,6 +107,14 @@ export const shortPlaceName = (result, area = null) => {
   return parts.filter((part, index) => parts.findIndex(other => lower(other) === lower(part)) === index).join(', ');
 };
 
+// The barangay and town at a GPS position from the PSA's map alone, such as
+// "Brgy. Pawa, Boac" ('' outside Marinduque). No request is made.
+export const barangayPlaceName = (latitude, longitude) => {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
+  const area = barangayAt(latitude, longitude);
+  return area ? shortPlaceName(null, area) : '';
+};
+
 // OpenStreetMap's address details at a GPS position. Positions about 100 m apart share a
 // cached answer.
 const reverseLookup = async (latitude, longitude) => {

@@ -1,9 +1,9 @@
-import { DtrLog } from '../models/dtrLogModel.js';
+import { DtrLog, MAX_TRACKING_ACCURACY_METERS } from '../models/dtrLogModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
-import { describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
+import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
@@ -341,6 +341,11 @@ export const updateLocationTracking = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Latitude and longitude must be valid numbers.' });
     }
 
+    const gpsAccuracy = Number(accuracy);
+    if (accuracy === undefined || accuracy === null || !Number.isFinite(gpsAccuracy) || gpsAccuracy < 0 || gpsAccuracy > MAX_TRACKING_ACCURACY_METERS) {
+      return res.status(422).json({ success: false, error: `Live tracking needs phone GPS accurate to ${MAX_TRACKING_ACCURACY_METERS} meters or better.` });
+    }
+
     const activeLog = await DtrLog.findActiveShift(employeeId);
 
     const assignedCoords = activeLog?.assignedLatitude && activeLog?.assignedLongitude
@@ -364,7 +369,7 @@ export const updateLocationTracking = async (req, res) => {
     const locationData = {
       latitude: Number(latitude),
       longitude: Number(longitude),
-      accuracy: Number(accuracy) || 0,
+      accuracy: gpsAccuracy,
       withinGeofence,
       distanceFromAssignment: distance
     };
@@ -423,7 +428,12 @@ export const getLocationTracking = async (req, res) => {
 
 export const getActiveLocationTracking = async (_req, res) => {
   try {
-    const locations = await DtrLog.getActiveLocationTracking();
+    // Each position's barangay comes from the PSA map on the server, so HR's screen does
+    // not have to ask for a place name every time an employee moves.
+    const locations = (await DtrLog.getActiveLocationTracking()).map(entry => ({
+      ...entry,
+      place: barangayPlaceName(Number(entry.latitude), Number(entry.longitude))
+    }));
     res.status(200).json({ success: true, locations });
   } catch (error) {
     console.error('Get active location tracking error:', error);

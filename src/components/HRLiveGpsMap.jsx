@@ -27,11 +27,12 @@ const loadGoogleMaps = key => {
   return googleMapsLoading;
 };
 
-// HR's map of employees on duty. Each dot is where the employee was when they timed in
-// (their phone's GPS, checked against their assigned area at Time In): green inside the
-// area, red outside it. Someone picked after timing out is gray.
+// HR's map of employees on duty. Each dot is the employee's latest phone GPS, which the app
+// sends every minute while it is open: green inside their assigned area, red outside it,
+// amber when no GPS has come for 5 minutes (app closed, phone locked, or weak GPS). Someone
+// picked after timing out is gray, at where they timed in.
 
-const COLORS = { inside: '#16a34a', outside: '#dc2626', stale: '#94a3b8' };
+const COLORS = { inside: '#16a34a', outside: '#dc2626', lost: '#f59e0b', done: '#94a3b8' };
 const MARINDUQUE = [13.4, 121.95];
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
@@ -52,18 +53,12 @@ const labelFor = point => {
 
 const popupFor = point => {
   const wrapper = document.createElement('div');
-  wrapper.append(
-    textElement('strong', point.name),
-    textElement('div', point.place ? `Place at Time In: ${point.place}` : 'Place at Time In: finding place name…'),
-    textElement('div', point.statusText || (point.state === 'inside' ? 'Inside assigned area' : 'Outside assigned area')),
-    textElement('div', `Assigned: ${point.areaLabel || 'Not recorded'}`),
-    textElement('div', point.lastUpdateText)
-  );
+  wrapper.append(textElement('strong', point.name), ...point.details.map(line => textElement('div', line)));
   return wrapper;
 };
 
-// points: [{ key, name, latitude, longitude, state: 'inside' | 'outside', stale,
-//            statusText?, place, areaLabel, lastUpdateText }]
+// points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'lost' | 'done',
+//            place, details: [lines for the popup] }]
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -138,7 +133,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
         radius: isSelected ? 11 : 8,
         color: '#ffffff',
         weight: isSelected ? 3 : 2,
-        fillColor: point.stale ? COLORS.stale : COLORS[point.state],
+        fillColor: COLORS[point.state],
         fillOpacity: 0.95
       })
         .bindTooltip(labelFor(point), { permanent: true, direction: 'top', offset: [0, -10] })
@@ -147,10 +142,15 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
         .addTo(layer);
     });
 
-    // First time: show everyone. Afterwards the view only moves when HR picks someone.
+    // First time: show everyone. Afterwards the view only moves when HR picks someone, or
+    // to keep the picked employee in view as they move.
     if (!fittedRef.current && points.length) {
       map.fitBounds(L.latLngBounds(points.map(point => [point.latitude, point.longitude])).pad(0.3), { maxZoom: 16 });
       fittedRef.current = true;
+    }
+    const selected = points.find(point => point.key === selectedKey);
+    if (selected && !map.getBounds().contains([selected.latitude, selected.longitude])) {
+      map.panTo([selected.latitude, selected.longitude]);
     }
   }, [points, selectedKey]);
 
@@ -175,9 +175,10 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
       <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-600">
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.stale }} />Timed out</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.lost }} />No live signal (5+ min)</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
       </div>
-      <p className="text-xs font-semibold text-slate-500">Each dot is where the employee was when they timed in (their phone's GPS at Time In).</p>
+      <p className="text-xs font-semibold text-slate-500">Each dot is the employee's latest phone GPS, sent every minute while WorkMate is open on their phone. Phones do not share location while the app is closed or the phone is locked, so those employees turn amber after 5 minutes.</p>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
     </div>
   );

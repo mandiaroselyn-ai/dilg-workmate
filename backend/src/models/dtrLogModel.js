@@ -110,7 +110,8 @@ const DtrLogSchema = new mongoose.Schema({
   currentLongitude: { type: Number },
   currentGpsStatus: { type: String },
   currentDistanceMeters: { type: Number },
-  currentWithinGeofence: { type: Boolean }
+  currentWithinGeofence: { type: Boolean },
+  currentAccuracy: { type: Number }
 }, { timestamps: true });
 
 const MongoDtrLog = mongoose.models.DtrLog || mongoose.model('DtrLog', DtrLogSchema);
@@ -354,6 +355,7 @@ export const DtrLog = {
       activeLog.currentGpsStatus = locationData.withinGeofence ? 'In Range' : 'Out of Range';
       activeLog.currentDistanceMeters = locationData.distanceFromAssignment;
       activeLog.currentWithinGeofence = Boolean(locationData.withinGeofence);
+      activeLog.currentAccuracy = locationData.accuracy;
 
       // Calculate distance traveled (basic haversine distance)
       if (previousPoint) {
@@ -455,24 +457,44 @@ export const DtrLog = {
         distanceToAssignmentMeters: 1,
         assignmentMatch: 1,
         gpsStatus: 1,
+        currentLatitude: 1,
+        currentLongitude: 1,
+        currentDistanceMeters: 1,
+        currentWithinGeofence: 1,
+        currentAccuracy: 1,
         date: 1,
         timeIn: 1,
         // The first point is the one recorded at Time In.
         locationHistory: { $slice: 1 },
+        // The latest time the employee left or came back to their assigned area.
+        geofenceEvents: { $slice: -1 },
         lastLocationUpdate: 1,
         createdAt: 1,
         'assignmentSite.label': 1
       }
     ).sort({ lastLocationUpdate: -1, createdAt: -1 }).lean();
 
-    return activeLogs.map(liveLocationFromLog);
+    const now = new Date();
+    return activeLogs.map(log => liveLocationFromLog(log, now));
   }
 };
 
-// One entry of HR's live map from an open attendance record (with its first location point,
-// the one recorded at Time In).
-export const liveLocationFromLog = log => {
+// Positions less precise than this are not used for live tracking: a laptop or desktop
+// browser only estimates its location from the internet connection, often kilometres off.
+export const MAX_TRACKING_ACCURACY_METERS = 100;
+
+// One entry of HR's live map from an open attendance record (with its first location
+// point, the one recorded at Time In, and its latest geofence event). The position is the
+// latest phone GPS the app sent while open; until one arrives, the GPS taken at Time In.
+export const liveLocationFromLog = (log, now = new Date()) => {
   const timeInPoint = log.locationHistory?.[0];
+  const tracked = Number.isFinite(log.currentLatitude)
+    && Number.isFinite(log.currentLongitude)
+    && Number.isFinite(log.currentAccuracy)
+    && log.currentAccuracy <= MAX_TRACKING_ACCURACY_METERS;
+  const inside = tracked ? log.currentWithinGeofence === true : /in range/i.test(log.gpsStatus || '');
+  const lastGpsAt = new Date((tracked && log.lastLocationUpdate) || timeInPoint?.timestamp || log.createdAt);
+  const lastEvent = log.geofenceEvents?.[0];
   return {
     id: log.customId,
     employeeId: log.employeeId,
@@ -481,21 +503,29 @@ export const liveLocationFromLog = log => {
     employeeOffice: log.employeeOffice,
     location: log.location,
     workAssignment: log.workAssignment,
-    // HR's map shows where the employee was when they timed in: the phone GPS that Time
-    // In checked (within 50 m accuracy) against the assigned area. Positions sent later
-    // while the app is open are not used, because a laptop or desktop browser only
-    // estimates its location from the internet connection, often kilometres away.
-    latitude: log.latitude,
-    longitude: log.longitude,
+    latitude: tracked ? log.currentLatitude : log.latitude,
+    longitude: tracked ? log.currentLongitude : log.longitude,
     assignedLatitude: log.assignedLatitude,
     assignedLongitude: log.assignedLongitude,
-    distanceToAssignmentMeters: log.distanceToAssignmentMeters,
-    assignmentMatch: log.assignmentMatch,
-    gpsStatus: log.gpsStatus,
-    gpsAccuracy: timeInPoint?.accuracy ?? null,
+    distanceToAssignmentMeters: tracked ? log.currentDistanceMeters : log.distanceToAssignmentMeters,
+    assignmentMatch: inside,
+    gpsStatus: inside ? 'In Range' : 'Out of Range',
+    gpsAccuracy: tracked ? log.currentAccuracy : timeInPoint?.accuracy ?? null,
+    // When that position was taken, and how many seconds before this answer (so HR's
+    // screen can tell a lost signal even if its clock is off).
+    lastGpsAt: lastGpsAt.toISOString(),
+    lastGpsAgeSeconds: Math.max(0, Math.round((now.getTime() - lastGpsAt.getTime()) / 1000)),
+    // When the employee left their assigned area, while they are still outside it.
+    leftAreaAt: !inside && lastEvent?.eventType === 'exit' ? new Date(lastEvent.timestamp).toISOString() : null,
+    // Where the employee was when they timed in, which Time In checked against the area.
+    timeInGps: {
+      latitude: log.latitude,
+      longitude: log.longitude,
+      gpsStatus: log.gpsStatus,
+      accuracy: timeInPoint?.accuracy ?? null
+    },
     date: log.date,
     timeIn: log.timeIn,
-    lastLocationUpdate: log.lastLocationUpdate || timeInPoint?.timestamp || log.createdAt,
     // The name of the area the employee chose at Time In, shown on HR's live map.
     assignmentArea: log.assignmentSite?.label ? { label: log.assignmentSite.label } : null
   };
