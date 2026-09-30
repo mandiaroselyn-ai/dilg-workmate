@@ -67,6 +67,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const fittedRef = useRef(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const fullScreenRef = useRef(null);
   const [fullScreen, setFullScreen] = useState(false);
 
   useEffect(() => {
@@ -171,28 +172,49 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedKey]);
 
+  // Full screen uses the browser's own full screen, which shows above the header and sidebar.
+  // Where the browser has none (iPhone), the map covers the page instead.
+  const toggleFullScreen = () => {
+    if (!fullScreen) fullScreenRef.current?.requestFullscreen?.().catch(() => {});
+    setFullScreen(!fullScreen);
+  };
+
   // Full screen changes the map's size, so Leaflet redraws it for the new size. Esc closes it.
   useEffect(() => {
     mapRef.current?.invalidateSize();
     if (!fullScreen) return;
+    const box = fullScreenRef.current;
     const closeOnEscape = event => {
       if (event.key === 'Escape') setFullScreen(false);
     };
+    // The browser's full screen takes Esc itself and only tells the page it has left.
+    const closeWhenBrowserLeaves = () => {
+      if (!document.fullscreenElement) setFullScreen(false);
+    };
     window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    document.addEventListener('fullscreenchange', closeWhenBrowserLeaves);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('fullscreenchange', closeWhenBrowserLeaves);
+      if (document.fullscreenElement === box) document.exitFullscreen().catch(() => {});
+    };
   }, [fullScreen]);
 
   return (
     <div className="space-y-2">
-      <div className={fullScreen ? 'fixed inset-0 z-[100] flex flex-col gap-2 bg-white p-3' : 'space-y-2'}>
+      <div ref={fullScreenRef} className={fullScreen ? 'fixed inset-0 z-[100] flex flex-col gap-2 bg-white p-3' : 'space-y-2'}>
         <div className="flex items-center justify-between gap-2">
           {fullScreen && <h3 className="text-base font-black text-slate-900">Live GPS Map</h3>}
-          <button type="button" onClick={() => setFullScreen(value => !value)} className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-700">
+          <button type="button" onClick={toggleFullScreen} className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-700">
             {fullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             {fullScreen ? 'Close full screen' : 'Full screen'}
           </button>
         </div>
-        <div ref={containerRef} className={`relative isolate z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${fullScreen ? 'min-h-0 flex-1' : 'h-[55vh] min-h-[22rem] sm:h-[70vh]'}`} />
+        <div className={`relative isolate z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${fullScreen ? 'min-h-0 flex-1' : 'h-[55vh] min-h-[22rem] sm:h-[70vh]'}`}>
+          {/* Leaflet adds its own classes to this div, so its className must never change:
+              React would wipe them and the map tiles would disappear. */}
+          <div ref={containerRef} className="h-full w-full" />
+        </div>
         <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-600">
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
