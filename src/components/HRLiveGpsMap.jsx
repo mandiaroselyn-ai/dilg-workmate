@@ -8,7 +8,8 @@ import 'leaflet/dist/leaflet.css';
 // area is outlined, so HR can see whether they are really there.
 
 const COLORS = { inside: '#16a34a', outside: '#dc2626', stale: '#94a3b8' };
-const AREA_STYLE = { color: '#2563eb', weight: 2, dashArray: '6 4', fillColor: '#3b82f6', fillOpacity: 0.08 };
+// A light blue that stays visible on both satellite imagery and the street map.
+const AREA_STYLE = { color: '#38bdf8', weight: 3, dashArray: '8 5', fillColor: '#38bdf8', fillOpacity: 0.12 };
 const MARINDUQUE = [13.4, 121.95];
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
@@ -67,10 +68,24 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
 
   useEffect(() => {
     const map = L.map(containerRef.current).setView(MARINDUQUE, 11);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Satellite imagery with place names on top, so HR can see the actual surroundings.
+    // The street map is one tap away in the top-right corner.
+    const satellite = L.layerGroup([
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        maxNativeZoom: 18,
+        attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics'
+      }),
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        maxNativeZoom: 18
+      })
+    ]).addTo(map);
+    const street = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    });
+    L.control.layers({ Satellite: satellite, Map: street }, null, { position: 'topright' }).addTo(map);
     layerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
     return () => {
@@ -139,7 +154,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
         <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.stale }} />No update for 5+ minutes</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed border-blue-600" />Assigned area of the selected employee</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed border-sky-400" />Assigned area of the selected employee</span>
       </div>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
     </div>
