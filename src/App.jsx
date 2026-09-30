@@ -10,7 +10,7 @@ import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
 import { queueAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
-import { apiFetch, parseApiResponse } from './utils/api';
+import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
 
 const DashboardView = lazy(() => import('./components/DashboardView'));
 const AttendanceView = lazy(() => import('./components/AttendanceView'));
@@ -52,7 +52,7 @@ const scopeMessagesToAccount = (items, role, account) => {
 };
 
 export default function App() {
-  const [authToken, setAuthToken] = useState(() => window.localStorage.getItem('dilg_auth_token') || '');
+  const [authToken, setAuthToken] = useState(() => readSessionToken());
   const [activeRole, setActiveRole] = useState(null);
   const isEmployeeMobileApp = new URLSearchParams(window.location.search).get('platform') === 'mobile'
     && new URLSearchParams(window.location.search).get('role') === 'employee';
@@ -369,7 +369,11 @@ export default function App() {
     }
   };
 
-  const handleLogin = (roleType, profile, token) => {
+  const homeViewFor = role => (role === 'supervisor' ? 'supervisor' : role === 'hr_admin' ? 'hr_dashboard' : 'dashboard');
+
+  // `remember` keeps the session after the browser is closed ("Remember me"); the WorkMate
+  // phone app always does.
+  const handleLogin = (roleType, profile, token, { remember = false } = {}) => {
     const normalizedRole = normalizeRole(roleType);
     if (isEmployeeMobileApp && normalizedRole !== 'employee') {
       return;
@@ -377,7 +381,7 @@ export default function App() {
     setActiveRole(normalizedRole);
     setUser(profile);
     if (token) {
-      window.localStorage.setItem('dilg_auth_token', token);
+      storeSessionToken(token, isEmployeeMobileApp || remember);
       setAuthToken(token);
     }
 
@@ -388,17 +392,43 @@ export default function App() {
       body: JSON.stringify(profile)
     });
 
-    // Redirect views automatically based on role
-    if (normalizedRole === 'employee') {
-      setCurrentView('dashboard');
-    } else if (normalizedRole === 'supervisor') {
-      setCurrentView('supervisor');
-    } else if (normalizedRole === 'hr_admin') {
-      setCurrentView('hr_dashboard');
-    } else {
-      setCurrentView('dashboard');
-    }
+    setCurrentView(homeViewFor(normalizedRole));
   };
+
+  // After a refresh or reopening the app, a session that is still valid (sessions last 8
+  // hours) signs the person back in instead of showing the login page.
+  const [restoringSession, setRestoringSession] = useState(() => Boolean(authToken));
+  useEffect(() => {
+    if (!authToken) {
+      setRestoringSession(false);
+      return undefined;
+    }
+    let cancelled = false;
+    apiFetch('/api/profile')
+      .then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.user) throw new Error('The saved session has ended.');
+        const role = normalizeRole(data.user.accessLevel);
+        if (isEmployeeMobileApp && role !== 'employee') throw new Error('Only employee accounts can use the mobile app.');
+        if (cancelled) return;
+        setUser(data.user);
+        setActiveRole(role);
+        setCurrentView(homeViewFor(role));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        clearSessionToken();
+        setAuthToken('');
+      })
+      .finally(() => {
+        if (!cancelled) setRestoringSession(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Only once, when the app opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Clears the signed-in user's data so the next person on a shared device never sees it.
   const clearSessionData = () => {
@@ -420,7 +450,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    window.localStorage.removeItem('dilg_auth_token');
+    clearSessionToken();
     clearSessionData();
   };
 
@@ -1243,6 +1273,10 @@ export default function App() {
         <PasswordResetView mode={resetToken ? 'apply' : 'request'} token={resetToken} onBackToLogin={() => { setShowResetPage(false); setResetToken(null); window.history.replaceState({}, '', window.location.pathname); }} />
       </Suspense>
     );
+  }
+
+  if (restoringSession && !activeRole) {
+    return <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6 text-sm font-semibold text-slate-600">Signing you in…</div>;
   }
 
   if (!activeRole) {

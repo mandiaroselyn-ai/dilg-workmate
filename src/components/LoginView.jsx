@@ -26,13 +26,33 @@ import {
   UserPlus
 } from 'lucide-react';
 
+// "Remember me" keeps the session after the browser is closed and fills in the email next
+// time. Google sign-in leaves the page, so the choice is kept in this tab while it does.
+const REMEMBERED_EMAIL_KEY = 'dilg_remembered_email';
+const GOOGLE_REMEMBER_KEY = 'dilg_google_remember';
+const readStored = (store, key) => {
+  try {
+    return window[store].getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+const writeStored = (store, key, value) => {
+  try {
+    if (value) window[store].setItem(key, value);
+    else window[store].removeItem(key);
+  } catch {
+    // Not remembered when storage is blocked.
+  }
+};
+
 export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly = false }) {
   const [isRegister, setIsRegister] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('supervisor');
-  const [emailInput, setEmailInput] = useState('');
+  const [emailInput, setEmailInput] = useState(() => readStored('localStorage', REMEMBERED_EMAIL_KEY));
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => Boolean(readStored('localStorage', REMEMBERED_EMAIL_KEY)));
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [successText, setSuccessText] = useState('');
@@ -49,7 +69,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
             setGoogleError('Only employee accounts can use the mobile app.');
             return;
           }
-          onLogin(user.accessLevel || 'employee', user, data.token);
+          const remember = readStored('sessionStorage', GOOGLE_REMEMBER_KEY) === '1';
+          writeStored('sessionStorage', GOOGLE_REMEMBER_KEY, '');
+          onLogin(user.accessLevel || 'employee', user, data.token, { remember });
         }
       }
 
@@ -77,6 +99,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
   const handleGoogleLogin = () => {
     setGoogleError('');
+    writeStored('sessionStorage', GOOGLE_REMEMBER_KEY, rememberMe ? '1' : '');
     if (mobileOnly && window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-google-auth' }));
       return;
@@ -174,7 +197,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       }
 
       const user = result.user || {};
-      onLogin(roleLabel, user, result.token);
+      writeStored('localStorage', REMEMBERED_EMAIL_KEY, rememberMe ? loginEmail : '');
+      onLogin(roleLabel, user, result.token, { remember: rememberMe });
     } catch (err) {
       setSubmitting(false);
       console.error('Login request failed:', err);
