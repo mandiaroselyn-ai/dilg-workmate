@@ -1,7 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import GoogleMutant from 'leaflet.gridlayer.googlemutant';
+import polygonClipping from 'polygon-clipping';
 import 'leaflet/dist/leaflet.css';
+// Marinduque's land (the main island and its islets) from OpenStreetMap (ODbL),
+// simplified to about 20 m.
+import marinduqueLand from '../assets/marinduque-land.json';
 
 // With a Google Maps API key (VITE_GOOGLE_MAPS_API_KEY, set on Vercel), the map uses
 // Google's satellite view through Google's official Maps JavaScript API. Without one, or
@@ -69,15 +73,34 @@ const popupFor = point => {
   return wrapper;
 };
 
+// The land part of an area. Town outlines on OpenStreetMap include their municipal
+// waters, and a barangay that is only a point on the map gets a box that can reach into
+// the sea, so assigned areas looked like they were in the sea. Only what HR sees is
+// trimmed; the Time In check still uses the whole area. When nothing would be left, the
+// area is shown as it is.
+const landOnly = polygons => {
+  try {
+    const land = polygonClipping.intersection(polygons, marinduqueLand.coordinates);
+    return land.length ? { type: 'MultiPolygon', coordinates: land } : null;
+  } catch {
+    return null;
+  }
+};
+
 // The area chosen at Time In: a barangay or town outline, the extent of a barangay that
 // is only a point on the map, or 150 m around an office or home address.
 const areaLayerFor = area => {
   if (!area) return null;
   const type = area.geometry?.type;
-  if (type === 'Polygon' || type === 'MultiPolygon') return L.geoJSON(area.geometry, { style: AREA_STYLE });
+  if (type === 'Polygon' || type === 'MultiPolygon') {
+    const polygons = type === 'Polygon' ? [area.geometry.coordinates] : area.geometry.coordinates;
+    return L.geoJSON(landOnly(polygons) || area.geometry, { style: AREA_STYLE });
+  }
   const { south, north, west, east } = area.bounds || {};
   if (area.mode === 'field' && [south, north, west, east].every(Number.isFinite)) {
-    return L.rectangle([[south, west], [north, east]], AREA_STYLE);
+    const box = [[[west, south], [east, south], [east, north], [west, north], [west, south]]];
+    const land = landOnly([box]);
+    return land ? L.geoJSON(land, { style: AREA_STYLE }) : L.rectangle([[south, west], [north, east]], AREA_STYLE);
   }
   if (Number.isFinite(area.latitude) && Number.isFinite(area.longitude)) {
     return L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: 150 });
