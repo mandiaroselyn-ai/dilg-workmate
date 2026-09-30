@@ -50,10 +50,11 @@ const distanceToRingMeters = (longitude, latitude, ring) => {
   return minimumDistance;
 };
 
-const polygonContainsOrNear = (longitude, latitude, polygon, bufferMeters) => {
-  if (pointInPolygon(longitude, latitude, polygon)) return true;
-  if (!bufferMeters) return false;
-  return polygon.some(ring => distanceToRingMeters(longitude, latitude, ring) <= bufferMeters);
+// How far a position is from a Polygon or MultiPolygon area, in meters (0 inside it).
+export const distanceToAreaMeters = (latitude, longitude, geometry) => {
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  if (polygons.some(polygon => pointInPolygon(longitude, latitude, polygon))) return 0;
+  return Math.min(...polygons.flat().map(ring => distanceToRingMeters(longitude, latitude, ring)));
 };
 
 const getValidBounds = bounds => {
@@ -87,6 +88,5 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
     }
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
   }
-  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
-  return polygons.some(polygon => polygonContainsOrNear(lon, lat, polygon, bufferMeters));
+  return distanceToAreaMeters(lat, lon, geometry) <= bufferMeters;
 };

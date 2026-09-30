@@ -99,46 +99,50 @@ test('field geofence ignores invalid geocoder extents and falls back to the assi
   assert.equal(isWithinAssignedLocation(13, 121, locationWithInvalidBounds), true);
   assert.equal(isWithinAssignedLocation(13.002, 121, locationWithInvalidBounds), false);
 });
-// Shaped like OpenStreetMap's real answers for "Libtangin, Gasan": the barangay itself is
-// not on the map, only a river, its delta, and a bridge that share its name.
-const libtanginResults = [
-  { category: 'waterway', type: 'river', name: 'Libtangin River', place_rank: 22, display_name: 'Libtangin River, Cabugao, Gasan, Marinduque, Philippines', lat: '13.3676722', lon: '121.8486156', boundingbox: ['13.3434201', '13.3835102', '121.8208526', '121.8648255'], geojson: { type: 'LineString' } },
-  { category: 'waterway', type: 'stream', name: 'Libtangin River Delta', place_rank: 22, display_name: 'Libtangin River Delta, Bangbang, Gasan, Marinduque, Philippines', lat: '13.3446117', lon: '121.8217486', boundingbox: ['13.3437485', '13.3458611', '121.8207668', '121.8220940'], geojson: { type: 'LineString' } },
-  { category: 'man_made', type: 'bridge', name: 'Libtangin Bridge', place_rank: 30, display_name: 'Libtangin Bridge, Bangbang, Gasan, Marinduque, Philippines', lat: '13.3500410', lon: '121.8323198', boundingbox: ['13.3494346', '13.3506473', '121.8319013', '121.8327383'], geojson: { type: 'Polygon', coordinates: [[[121.8319, 13.3494], [121.8327, 13.3494], [121.8327, 13.3506], [121.8319, 13.3506], [121.8319, 13.3494]]] } }
-];
-const bangbangResult = { category: 'place', type: 'village', name: 'Bangbang', place_rank: 19, display_name: 'Bangbang, Gasan, Marinduque, Philippines', lat: '13.3428773', lon: '121.8231', boundingbox: ['13.3228773', '13.3628773', '121.8031', '121.8431'], geojson: { type: 'Point', coordinates: [121.8231, 13.3428773] } };
-const gasanResult = { category: 'boundary', type: 'administrative', name: 'Gasan', place_rank: 12, display_name: 'Gasan, Marinduque, Philippines', lat: '13.32', lon: '121.85', boundingbox: ['13.25', '13.40', '121.78', '121.93'], geojson: { type: 'Polygon', coordinates: [[[121.78, 13.25], [121.93, 13.25], [121.93, 13.40], [121.78, 13.40], [121.78, 13.25]]] } };
+// Time In positions from the field: John Rey Sol in Libtangin, Gasan and Rimhelyn in Pawa,
+// Boac. OpenStreetMap has neither barangay and named them Bangbang and Mampaitan.
+const johnReyTimeIn = [13.344339, 121.82456];
+const rimhelynTimeIn = [13.452351, 121.880056];
+const provincialCapitol = [13.4474, 121.8344];
 
-test('a river or bridge that shares a barangay\'s name is never used as the barangay', async () => {
-  const { barangayMatches } = await import('./assignedLocationService.js');
-  assert.deepEqual(barangayMatches(libtanginResults, { barangay: 'Libtangin', municipality: 'Gasan' }), []);
-  assert.deepEqual(barangayMatches([gasanResult], { barangay: 'Libtangin', municipality: 'Gasan' }), [], 'the whole town is not a barangay');
-  assert.deepEqual(barangayMatches([...libtanginResults, bangbangResult], { barangay: 'Bangbang', municipality: 'Gasan' }), [bangbangResult]);
-  assert.deepEqual(barangayMatches([bangbangResult], { barangay: 'Bangbang', municipality: 'Boac' }), [], 'a barangay of another town');
+test('every barangay in the app has its boundary on the PSA map', async () => {
+  const { MARINDUQUE_MUNICIPALITIES } = await import('../../../shared/marinduqueLocations.js');
+  const { MARINDUQUE_BARANGAY_AREAS } = await import('../data/marinduqueBarangayAreas.js');
+  for (const [municipality, barangays] of Object.entries(MARINDUQUE_MUNICIPALITIES)) {
+    assert.deepEqual(Object.keys(MARINDUQUE_BARANGAY_AREAS[municipality]), barangays);
+    for (const barangay of barangays) {
+      const { center, geometry } = MARINDUQUE_BARANGAY_AREAS[municipality][barangay];
+      assert.ok(isWithinAssignedLocation(center[0], center[1], { mode: 'field', geometry }, 0), `the center of ${barangay}, ${municipality} is inside it`);
+    }
+  }
 });
 
-test('the municipality boundary is found by its name', async () => {
-  const { municipalityMatches } = await import('./assignedLocationService.js');
-  assert.deepEqual(municipalityMatches([...libtanginResults, bangbangResult, gasanResult], { municipality: 'Gasan' }), [gasanResult]);
-});
-
-test('a barangay that is not on the map uses its whole municipality', async t => {
+test('a field assignment uses its barangay\'s own boundary without asking OpenStreetMap', async t => {
   const { resolveAssignedLocation } = await import('./assignedLocationService.js');
-  const queries = [];
-  t.mock.method(globalThis, 'fetch', async url => {
-    queries.push(url.searchParams.get('q'));
-    const body = url.searchParams.get('q').startsWith('Libtangin') ? libtanginResults : [gasanResult];
-    return { ok: true, json: async () => body };
-  });
+  const lookup = t.mock.method(globalThis, 'fetch', async () => { throw new Error('OpenStreetMap should not be asked'); });
 
-  const site = await resolveAssignedLocation({ mode: 'field', municipality: 'Gasan', barangay: 'Libtangin' });
+  const libtangin = await resolveAssignedLocation({ mode: 'field', municipality: 'Gasan', barangay: 'Libtangin' });
+  assert.equal(libtangin.label, 'Brgy. Libtangin, Gasan, Marinduque, Philippines');
+  assert.equal(libtangin.geometry.type, 'Polygon');
+  assert.equal(libtangin.fallbackToRadius, false);
+  assert.equal(isWithinAssignedLocation(...johnReyTimeIn, libtangin), true);
+  assert.equal(isWithinAssignedLocation(...rimhelynTimeIn, libtangin), false);
 
-  assert.deepEqual(queries, ['Libtangin, Gasan, Marinduque, Mimaropa, Philippines', 'Gasan, Marinduque, Mimaropa, Philippines']);
-  assert.match(site.label, /Brgy\. Libtangin is not on the map, so the whole town is used/);
-  assert.equal(site.barangay, 'Libtangin');
-  // The employee's GPS from the report: 1052 m from the bridge, inside Gasan.
-  assert.equal(isWithinAssignedLocation(13.344325, 121.824574, site), true);
-  assert.equal(isWithinAssignedLocation(13.4474, 121.8344, site), false, 'Boac is still outside');
+  const pawa = await resolveAssignedLocation({ mode: 'field', municipality: 'Boac', barangay: 'Pawa' });
+  assert.equal(isWithinAssignedLocation(...rimhelynTimeIn, pawa), true);
+  assert.equal(isWithinAssignedLocation(...provincialCapitol, pawa), false, 'the Capitol in Santol is outside Pawa');
+
+  const bangbang = await resolveAssignedLocation({ mode: 'field', municipality: 'Gasan', barangay: 'Bangbang' });
+  assert.equal(isWithinAssignedLocation(...johnReyTimeIn, bangbang), false, 'the next barangay is not Libtangin');
+  assert.equal(lookup.mock.callCount(), 0);
+});
+
+test('the barangay at a position comes from the PSA map', async () => {
+  const { barangayAt } = await import('./assignedLocationService.js');
+  assert.deepEqual(barangayAt(...johnReyTimeIn), { municipality: 'Gasan', barangay: 'Libtangin' });
+  assert.deepEqual(barangayAt(...rimhelynTimeIn), { municipality: 'Boac', barangay: 'Pawa' });
+  assert.deepEqual(barangayAt(...provincialCapitol), { municipality: 'Boac', barangay: 'Santol' });
+  assert.equal(barangayAt(13.40, 121.80), null, 'out at sea');
 });
 
 test('a place name is built from the road, barangay, and town', async () => {
@@ -154,13 +158,32 @@ test('a place name is built from the road, barangay, and town', async () => {
   assert.equal(shortPlaceName({}), '');
 });
 
-test('place names are looked up once for positions about 100 m apart', async t => {
+test('the PSA barangay replaces the neighboring one OpenStreetMap names', async () => {
+  const { shortPlaceName } = await import('./assignedLocationService.js');
+  const area = { municipality: 'Gasan', barangay: 'Libtangin' };
+  assert.equal(shortPlaceName({ name: '', address: { village: 'Bangbang', town: 'Gasan' } }, area), 'Brgy. Libtangin, Gasan');
+  assert.equal(shortPlaceName({ name: 'Bangbang', address: { village: 'Bangbang', town: 'Gasan' } }, area), 'Brgy. Libtangin, Gasan');
+  assert.equal(
+    shortPlaceName({ name: '', address: { road: 'Marinduque Circumferential Road', village: 'Bangbang', town: 'Gasan' } }, area),
+    'Marinduque Circumferential Road, Brgy. Libtangin, Gasan'
+  );
+  assert.equal(shortPlaceName(null, area), 'Brgy. Libtangin, Gasan');
+});
+
+test('place names use the PSA barangay and look up the road once for positions about 100 m apart', async t => {
   const { describePlace } = await import('./assignedLocationService.js');
   const lookup = t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ address: { village: 'Bangbang', town: 'Gasan' } }) }));
-  assert.equal(await describePlace(13.3443, 121.8246), 'Brgy. Bangbang, Gasan');
-  assert.equal(await describePlace(13.3444, 121.8247), 'Brgy. Bangbang, Gasan');
+  assert.equal(await describePlace(13.3443, 121.8246), 'Brgy. Libtangin, Gasan');
+  assert.equal(await describePlace(13.3444, 121.8247), 'Brgy. Libtangin, Gasan');
   assert.equal(lookup.mock.callCount(), 1);
   const url = lookup.mock.calls[0].arguments[0];
   assert.equal(url.pathname, '/reverse');
   assert.equal(url.searchParams.get('lat'), '13.3443');
+});
+
+test('the barangay is still named when OpenStreetMap is unavailable', async t => {
+  const { describePlace } = await import('./assignedLocationService.js');
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: false, status: 503 }));
+  assert.equal(await describePlace(...rimhelynTimeIn), 'Brgy. Pawa, Boac');
+  await assert.rejects(describePlace(13.40, 121.80), /temporarily unavailable/, 'out at sea there is nothing to name');
 });
