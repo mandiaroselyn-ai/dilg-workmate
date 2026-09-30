@@ -462,7 +462,14 @@ export const DtrLog = {
         gpsStatus: 1,
         locationHistory: { $slice: -1 },
         lastLocationUpdate: 1,
-        createdAt: 1
+        createdAt: 1,
+        'assignmentSite.mode': 1,
+        'assignmentSite.label': 1,
+        'assignmentSite.latitude': 1,
+        'assignmentSite.longitude': 1,
+        'assignmentSite.geometry': 1,
+        'assignmentSite.bounds': 1,
+        'assignmentSite.fallbackToRadius': 1
       }
     ).sort({ lastLocationUpdate: -1, createdAt: -1 }).lean();
 
@@ -485,7 +492,9 @@ export const DtrLog = {
         assignmentMatch: log.currentWithinGeofence ?? log.assignmentMatch,
         gpsStatus: log.currentGpsStatus ?? log.gpsStatus,
         gpsAccuracy: latestPoint?.accuracy ?? null,
-        lastLocationUpdate: log.lastLocationUpdate || latestPoint?.timestamp || log.createdAt
+        lastLocationUpdate: log.lastLocationUpdate || latestPoint?.timestamp || log.createdAt,
+        // The area the employee chose at Time In, drawn on HR's live map.
+        assignmentArea: log.assignmentSite || null
       };
     });
   }
