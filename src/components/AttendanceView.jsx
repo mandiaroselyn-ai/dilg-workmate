@@ -6,6 +6,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
+import { hasSelfie } from '../utils/hrAttendance';
+import RecordSelfie from './RecordSelfie';
 
 import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 const fetch = apiFetch;
@@ -1034,7 +1036,7 @@ export default function AttendanceView({
         doc.text(log.gpsStatus === "In Range" ? "Verified" : "Unknown", 156, currentY);
         
         // Biometrics indicators check
-        const bioText = (log.selfieUrl ? "Selfie" : "No-Img") + " + " + (log.fingerprintVerified ? "Thumb" : "No-Fng");
+        const bioText = (hasSelfie(log) ? "Selfie" : "No-Img") + " + " + (log.fingerprintVerified ? "Thumb" : "No-Fng");
         doc.text(bioText, 172, currentY);
         
         doc.setDrawColor(241, 245, 249);
@@ -1982,12 +1984,12 @@ export default function AttendanceView({
                 </div>
 
                 <div className="mt-4 rounded-3xl overflow-hidden border border-slate-200 bg-slate-950">
-                  {log.selfieUrl ? (
-                    <img
-                      src={log.selfieUrl}
-                      alt="Logged selfie"
+                  {hasSelfie(log) ? (
+                    <RecordSelfie
+                      record={log}
                       className="w-full h-52 object-cover"
-                      referrerPolicy="no-referrer"
+                      placeholderClassName="w-full h-52 flex items-center justify-center bg-slate-900 text-[11px] text-slate-400 font-bold uppercase tracking-[0.3em]"
+                      placeholder="Loading selfie…"
                     />
                   ) : (
                     <div className="w-full h-52 flex items-center justify-center bg-slate-900 text-[11px] text-slate-400 font-bold uppercase tracking-[0.3em]">
@@ -1995,7 +1997,7 @@ export default function AttendanceView({
                     </div>
                   )}
                   <div className="px-3 py-2 bg-slate-950 text-[10px] text-slate-300 border-t border-slate-800">
-                    {log.selfieUrl ? 'Selfie verification image logged' : 'No selfie captured for this record'}
+                    {hasSelfie(log) ? 'Selfie verification image logged' : 'No selfie captured for this record'}
                   </div>
                 </div>
 
@@ -2111,9 +2113,9 @@ export default function AttendanceView({
                     <td className="p-3 text-center">
                       <div className="flex items-center justify-center gap-2">
                         {/* Selfie preview element */}
-                        {log.selfieUrl ? (
+                        {hasSelfie(log) ? (
                           <div className="relative w-7 h-7 rounded-full overflow-hidden border border-slate-200 bg-slate-100" title="Webcam photo logged">
-                            <img src={log.selfieUrl} alt="Logged selfie" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <RecordSelfie record={log} className="w-full h-full object-cover" placeholderClassName="block w-full h-full" />
                           </div>
                         ) : (
                           <span className="w-8 h-8 rounded-full border border-dashed border-slate-205 flex items-center justify-center text-[8px] text-slate-400 font-bold" title="Pre-system logging (No Photo)">

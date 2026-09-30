@@ -2,11 +2,140 @@ import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { dtrIssue, dtrRecordStatus, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { dtrIssue, dtrRecordStatus, hasSelfie, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
+import OlderAttendanceLoader from './OlderAttendanceLoader';
 
-export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], onBack }) {
+// "08:05 AM" (how Time In and Time Out are saved) as "08:05" for a time input, and back.
+const toInputTime = value => {
+  const match = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(value || '').trim());
+  if (!match) return '';
+  const hour = (Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+  return `${String(hour).padStart(2, '0')}:${match[2]}`;
+};
+const fromInputTime = value => {
+  const [hours, minutes] = value.split(':').map(Number);
+  return `${String(hours % 12 || 12).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${hours < 12 ? 'AM' : 'PM'}`;
+};
+const auditTime = value => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' });
+};
+
+const fieldClass = 'mt-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500';
+
+// HR's review of one DTR record: Mark Verified records that HR checked it, and a
+// correction changes its times, status, or location with a reason. The first recorded
+// times are kept in the audit. The server decides again whether a corrected Time In is late.
+function DtrReview({ record, reviewerName, onSave }) {
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState({ text: '', error: false });
+  const audit = record.verificationAudit || null;
+
+  const startCorrection = () => {
+    setResult({ text: '', error: false });
+    setForm({
+      timeIn: toInputTime(record.timeIn),
+      timeOut: toInputTime(record.timeOut),
+      status: record.status || 'Present',
+      location: record.location || record.workAssignment?.location || '',
+      task: record.workAssignment?.task || '',
+      reason: ''
+    });
+  };
+  const change = event => setForm(previous => ({ ...previous, [event.target.name]: event.target.value }));
+
+  const send = async (changes, auditChanges, doneText) => {
+    setSaving(true);
+    setResult({ text: '', error: false });
+    try {
+      await onSave({
+        id: record.id,
+        ...changes,
+        verificationAudit: { ...(audit || {}), ...auditChanges, verifiedBy: reviewerName, verifiedAt: new Date().toISOString() }
+      });
+      setForm(null);
+      setResult({ text: doneText, error: false });
+    } catch (saveError) {
+      setResult({ text: saveError.message || 'Unable to save this DTR record.', error: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveCorrection = event => {
+    event.preventDefault();
+    if (!form.timeIn) {
+      setResult({ text: 'Enter the Time In.', error: true });
+      return;
+    }
+    send({
+      timeIn: fromInputTime(form.timeIn),
+      timeOut: form.timeOut ? fromInputTime(form.timeOut) : null,
+      status: form.status,
+      location: form.location.trim(),
+      workAssignment: { ...(record.workAssignment || {}), location: form.location.trim(), task: form.task.trim() }
+    }, {
+      originalTimeIn: audit?.originalTimeIn ?? record.timeIn ?? null,
+      originalTimeOut: audit?.originalTimeOut ?? record.timeOut ?? null,
+      correctionReason: form.reason.trim(),
+      correctedBy: reviewerName,
+      correctedAt: new Date().toISOString()
+    }, 'Correction saved and marked verified by HR.');
+  };
+
+  if (!record.id) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-blue-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">HR Review</h4>
+        {!form && (
+          <div className="flex gap-2">
+            <button type="button" onClick={() => send({}, {}, 'Marked verified by HR.')} disabled={saving} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-60">Mark Verified</button>
+            <button type="button" onClick={startCorrection} disabled={saving} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-black text-blue-700 disabled:opacity-60">Correct Record</button>
+          </div>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-slate-600">
+        {audit?.verifiedAt ? <>Verified by <b>{audit.verifiedBy || 'HR'}</b> on {auditTime(audit.verifiedAt)}.</> : 'Not yet verified by HR.'}
+        {audit?.correctedAt && <> Corrected by <b>{audit.correctedBy || 'HR'}</b> on {auditTime(audit.correctedAt)}: {(audit.correctionReason || 'no reason given').replace(/[.\s]+$/, '')}. First recorded: Time In {audit.originalTimeIn || '-'}, Time Out {audit.originalTimeOut || '-'}.</>}
+      </p>
+      {form && (
+        <form onSubmit={saveCorrection} className="mt-3 grid gap-2 sm:grid-cols-2">
+          <label className="text-[11px] font-black text-slate-600">Time In
+            <input type="time" name="timeIn" value={form.timeIn} onChange={change} required className={fieldClass} />
+          </label>
+          <label className="text-[11px] font-black text-slate-600">Time Out (leave empty if none)
+            <input type="time" name="timeOut" value={form.timeOut} onChange={change} className={fieldClass} />
+          </label>
+          <label className="text-[11px] font-black text-slate-600">Status
+            <select name="status" value={form.status} onChange={change} className={fieldClass}>
+              {[...new Set(['Present', 'Absent', form.status])].map(status => <option key={status}>{status}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] font-black text-slate-600">Location
+            <input name="location" value={form.location} onChange={change} maxLength={200} className={fieldClass} />
+          </label>
+          <label className="text-[11px] font-black text-slate-600 sm:col-span-2">Task
+            <input name="task" value={form.task} onChange={change} maxLength={300} className={fieldClass} />
+          </label>
+          <label className="text-[11px] font-black text-slate-600 sm:col-span-2">Reason for the correction
+            <textarea name="reason" value={form.reason} onChange={change} required maxLength={500} rows={2} placeholder="For example: employee forgot to Time Out; confirmed with supervisor." className={fieldClass} />
+          </label>
+          <div className="flex justify-end gap-2 sm:col-span-2">
+            <button type="button" onClick={() => setForm(null)} disabled={saving} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Cancel</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save Correction'}</button>
+          </div>
+        </form>
+      )}
+      {result.text && <p role={result.error ? 'alert' : 'status'} className={`mt-2 text-xs font-bold ${result.error ? 'text-rose-700' : 'text-emerald-700'}`}>{result.text}</p>}
+    </div>
+  );
+}
+
+export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
@@ -57,7 +186,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <span>Time Out: <b>{selected.record.timeOut || '-'}</b></span>
         <span>Total Hours: <b>{totalHoursWorked(selected.record) || '-'}</b></span>
         <span>Attendance Status: <b>{selected.status}</b></span>
-        <span>Record Status: <b>{selected.record.selfieUrl && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
+        <span>Record Status: <b>{hasSelfie(selected.record) && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
         <span>Face liveness: <b>{selected.record.faceLivenessVerified ? `${Number(selected.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
         <span>Face match: <b>{selected.record.faceVerified ? `Matched · distance ${Number(selected.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
         <span>Fingerprint: <b>{describeFingerprintCheck(selected.record)}</b></span>
@@ -85,8 +214,11 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
           </a>
         )}
       </div>
+      {onSaveRecord && <DtrReview key={selected.id} record={selected.record} reviewerName={reviewerName} onSave={onSaveRecord} />}
       <HRFaceComparison
         employeeId={selected.employee?.employeeId || selected.record.employeeId}
+        recordId={selected.record.id}
+        hasAttendanceSelfie={hasSelfie(selected.record)}
         attendanceSelfie={selected.record.selfieUrl}
         faceVerified={selected.record.faceVerified}
         faceMatchDistance={selected.record.faceMatchDistance}
@@ -102,6 +234,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         </button>
         <h2 className="text-xl font-black text-slate-900">DTR Records</h2>
       </div>
+      <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ['Total Records', records.length, 'text-slate-900'],

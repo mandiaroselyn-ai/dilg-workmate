@@ -2,7 +2,7 @@ import { Leave } from '../models/leaveModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate } from '../utils/requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from '../utils/requestFields.js';
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 
@@ -42,16 +42,18 @@ const enrichRequestEmployees = async (requests) => Promise.all(requests.map(asyn
       ? await User.findByEmail(request.employeeEmail)
       : null;
   if (!employee) return request;
-  const safeProfile = toSafeUser(employee);
+  // The profile photo is left out: it would be repeated in every request.
+  const { profilePicture, ...safeProfile } = toSafeUser(employee);
   return { ...request, employee: safeProfile, employeeName: request.employeeName || safeProfile.name };
 }));
 
 export const getRequests = async (req, res) => {
   try {
     const list = await Leave.findAllRequests();
+    // A draft is the employee's own until they submit it.
     const visible = req.user?.accessLevel === 'employee'
       ? list.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
-      : list;
+      : list.filter(request => request.status !== 'Draft');
     res.status(200).json(await enrichRequestEmployees(visible));
   } catch (error) {
     sendServerError(res, error);
@@ -91,6 +93,8 @@ export const updateRequestStatus = async (req, res) => {
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);
+      const problem = reviewUpdateProblem(existing.status, update, role);
+      if (problem) return res.status(409).json({ success: false, error: problem });
     } else {
       return res.status(403).json({ success: false, error: 'You do not have permission to perform this action.' });
     }
@@ -122,6 +126,12 @@ export const updateRequestStatus = async (req, res) => {
 
 export const bulkUpdateRequests = async (req, res) => {
   try {
+    // The same review rules as for one request: nothing is saved if any update breaks them.
+    for (const update of Array.isArray(req.body) ? req.body : []) {
+      const existing = typeof update?.id === 'string' ? await Leave.findByCustomId(update.id) : null;
+      const problem = existing && reviewUpdateProblem(existing.status, pickReviewUpdate(update), req.user?.accessLevel);
+      if (problem) return res.status(409).json({ success: false, error: `${update.id}: ${problem}` });
+    }
     const updated = await Leave.bulkUpdate(req.body);
     res.status(200).json({ success: true, requests: updated });
   } catch (error) {

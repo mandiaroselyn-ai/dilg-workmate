@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
+import { clockTextMinutes, isLateTimeText } from '../utils/attendanceTime.js';
 
 const DtrLogSchema = new mongoose.Schema({
   customId: { type: String, required: true },
@@ -152,6 +153,34 @@ const toClientLog = item => {
   return obj;
 };
 
+// Lists of records (HR's, and an employee's own history) leave out what makes a record
+// large: the selfie (hasSelfie says whether there is one; it is loaded when the record is
+// shown), the minute-by-minute GPS history, and the outline of the assigned barangay.
+const LIST_OMITTED_FIELDS = ['selfieUrl', 'locationHistory', 'siteVisits', 'geofenceEvents', 'fingerprintHash', 'fingerprintProof'];
+
+const toListLog = item => {
+  const obj = typeof item.toObject === 'function' ? item.toObject() : { ...item };
+  obj.hasSelfie = Boolean(obj.selfieUrl);
+  for (const field of LIST_OMITTED_FIELDS) delete obj[field];
+  if (obj.assignmentSite) obj.assignmentSite = { ...obj.assignmentSite, geometry: undefined };
+  obj.id = obj.customId;
+  return obj;
+};
+
+// Records matching `match`, newest first, shaped for lists (see toListLog). The large fields
+// are dropped inside the database, before sorting, so they are never loaded here.
+const findListLogs = async match => {
+  ensureConnected();
+  const logs = await MongoDtrLog.aggregate([
+    { $match: match },
+    // True for a non-empty selfie; false when it is empty, null, or missing.
+    { $addFields: { hasSelfie: { $gt: ['$selfieUrl', ''] } } },
+    { $project: Object.fromEntries([...LIST_OMITTED_FIELDS, 'assignmentSite.geometry'].map(field => [field, 0])) },
+    { $sort: { createdAt: -1 } }
+  ]);
+  return logs.map(log => ({ ...log, id: log.customId }));
+};
+
 export const DtrLog = {
   // Changes on every Time In (a new record) and Time Out (a record closed). The location
   // updates sent every minute during a shift are left out, so HR's attendance list is
@@ -174,6 +203,32 @@ export const DtrLog = {
       .limit(limit)
       .lean();
     return mongoLogs.map(obj => ({ ...obj, id: obj.customId }));
+  },
+
+  // HR's records, newest first and shaped for lists (see toListLog): those dated from
+  // `since` (YYYY-MM-DD) on plus every shift still open, or those of one `month` (YYYY-MM).
+  findForHrList: async ({ since, month } = {}) => {
+    if (month) {
+      const [year, monthNumber] = month.split('-').map(Number);
+      const next = monthNumber === 12 ? `${year + 1}-01` : `${year}-${String(monthNumber + 1).padStart(2, '0')}`;
+      return findListLogs({ date: { $gte: `${month}-01`, $lt: `${next}-01` } });
+    }
+    return findListLogs(since ? { $or: [{ date: { $gte: since } }, { timeOut: null }] } : {});
+  },
+
+  // An employee's own records, newest first and shaped for lists (see toListLog).
+  findListForEmployee: async ({ employeeId, email }) => {
+    const owners = [
+      ...(employeeId ? [{ employeeId }] : []),
+      ...(email ? [{ employeeEmail: email }] : [])
+    ];
+    return owners.length ? findListLogs({ $or: owners }) : [];
+  },
+
+  // One record's selfie and whose record it is, for showing that record.
+  findSelfie: async id => {
+    ensureConnected();
+    return MongoDtrLog.findOne({ customId: id }).select('customId selfieUrl employeeId employeeEmail').lean();
   },
 
   find: async ({ includeEvidence = true } = {}) => {
@@ -321,6 +376,15 @@ export const DtrLog = {
       for (const field of HR_EDITABLE_FIELDS) {
         if (update[field] !== undefined) changes[field] = update[field];
       }
+      // A corrected Time In decides again whether the employee was late.
+      if (changes.timeIn !== undefined) {
+        const late = isLateTimeText(changes.timeIn);
+        if (late === null) throw new Error('Time In must be a time such as 08:05 AM.');
+        changes.late = late;
+      }
+      if (changes.timeOut != null && clockTextMinutes(changes.timeOut) === null) {
+        throw new Error('Time Out must be a time such as 05:00 PM, or left empty.');
+      }
       return { id: update.id, changes };
     }).filter(({ changes }) => Object.keys(changes).length > 0);
 
@@ -330,7 +394,7 @@ export const DtrLog = {
       })));
     }
     const updatedLogs = await MongoDtrLog.find({ customId: { $in: operations.map(({ id }) => id) } });
-    return updatedLogs.map(toClientLog);
+    return updatedLogs.map(toListLog);
   },
 
   // Add location tracking record to active DTR log

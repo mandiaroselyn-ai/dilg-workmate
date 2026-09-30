@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
+import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, getRecordSelfie, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
 import { authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -31,15 +31,17 @@ router.post('/action', (req, res) => {
   if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
   return handler(req, res);
 });
-// HR-only reads for the live map.
-const hrReadHandlers = {
-  'location-live': getActiveLocationTracking,
-  'place-name': getPlaceName
+// Reads: the live map and place names are HR's; a record's selfie is HR's or, for their
+// own records, the employee's.
+const readHandlers = {
+  'location-live': { roles: ['hr_admin'], handler: getActiveLocationTracking },
+  'place-name': { roles: ['hr_admin'], handler: getPlaceName },
+  'record-selfie': { roles: ['hr_admin', 'employee'], handler: getRecordSelfie }
 };
-router.get('/action', authorizeRoles('hr_admin'), (req, res) => {
-  const handler = hrReadHandlers[req.query.action];
-  if (!handler) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
-  return handler(req, res);
+router.get('/action', (req, res) => {
+  const read = readHandlers[req.query.action];
+  if (!read) return res.status(400).json({ success: false, error: 'Invalid attendance action.' });
+  return authorizeRoles(...read.roles)(req, res, () => read.handler(req, res));
 });
 
 export default router;

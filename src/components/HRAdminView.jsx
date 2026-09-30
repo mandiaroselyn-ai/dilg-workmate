@@ -49,12 +49,16 @@ import HRAdminRecordsView from './HRAdminRecordsView';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import HRFaceComparison from './HRFaceComparison';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
+import { hasSelfie } from '../utils/hrAttendance';
 
 export default function HRAdminView({
   section = 'hr_dashboard',
   user = {},
   employees = [],
   attendanceHistory = [],
+  attendanceFrom,
+  loadedAttendanceMonths = [],
+  onLoadAttendanceMonth,
   onUpdateAttendance,
   requests = [],
   onUpdateRequests,
@@ -286,7 +290,7 @@ export default function HRAdminView({
 
   const filteredDTRHistory = attendanceHistory.filter((rec) => {
     const matchesDate = dtrFilterDate ? rec.date === dtrFilterDate : true;
-    const hasIssue = !rec.timeIn || !rec.timeOut || !rec.selfieUrl || !rec.fingerprintVerified;
+    const hasIssue = !rec.timeIn || !rec.timeOut || !hasSelfie(rec) || !rec.fingerprintVerified;
     const matchesMode = dtrMode === 'issues' ? hasIssue : dtrMode === 'verified' ? !hasIssue : true;
     const matchesText = `${rec.location || rec.workAssignment?.location || ''} ${rec.workAssignment?.task || ''} ${rec.id}`
       .toLowerCase()
@@ -310,7 +314,7 @@ export default function HRAdminView({
 
   const presentCount = attendanceHistory.filter(record => record.status !== 'Absent').length;
   const absentCount = attendanceHistory.filter(record => record.status === 'Absent').length;
-  const dtrIssueRecords = attendanceHistory.filter(record => !record.timeIn || !record.timeOut || !record.selfieUrl || !record.fingerprintVerified);
+  const dtrIssueRecords = attendanceHistory.filter(record => !record.timeIn || !record.timeOut || !hasSelfie(record) || !record.fingerprintVerified);
   const pendingRequests = requests.filter(request => request.status === 'Pending');
   const leaveRecords = requests.filter(request => request.type === 'Leave Request');
   const today = getManilaDateString();
@@ -362,7 +366,6 @@ export default function HRAdminView({
           const route = tab === 'directory' ? 'hr_employees' : tab === 'dtr' ? 'hr_dtr' : tab === 'requests' ? 'hr_leave_records' : tab;
           onViewChange?.(route);
         }}
-        onViewAllActivities={() => triggerToast('All admin activities opened.')}
       />}
 
       {false && activeTab === 'dashboard' && (
@@ -452,6 +455,7 @@ export default function HRAdminView({
       {activeTab === 'dtr' && <HRAdminAttendanceView
         employees={employees}
         attendanceHistory={attendanceHistory}
+        attendanceFrom={attendanceFrom}
         requests={requests}
         onOpenTab={setActiveTab}
       />}
@@ -459,18 +463,29 @@ export default function HRAdminView({
       {activeTab === 'dtr_records' && <HRAdminDTRRecordsView
         employees={employees}
         attendanceHistory={attendanceHistory}
+        attendanceFrom={attendanceFrom}
+        loadedAttendanceMonths={loadedAttendanceMonths}
+        onLoadAttendanceMonth={onLoadAttendanceMonth}
+        reviewerName={user?.name || 'HR/Admin'}
+        onSaveRecord={onUpdateAttendance ? update => onUpdateAttendance([update]) : undefined}
         onBack={() => setActiveTab('dtr')}
       />}
 
       {activeTab === 'attendance_history' && <HRAdminAttendanceHistoryView
         employees={employees}
         attendanceHistory={attendanceHistory}
+        attendanceFrom={attendanceFrom}
+        loadedAttendanceMonths={loadedAttendanceMonths}
+        onLoadAttendanceMonth={onLoadAttendanceMonth}
         onBack={() => setActiveTab('dtr')}
       />}
 
       {activeTab === 'records' && <HRAdminRecordsView
         employees={employees}
         attendanceHistory={attendanceHistory}
+        attendanceFrom={attendanceFrom}
+        loadedAttendanceMonths={loadedAttendanceMonths}
+        onLoadAttendanceMonth={onLoadAttendanceMonth}
         requests={requests}
       />}
 

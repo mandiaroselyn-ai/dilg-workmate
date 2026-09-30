@@ -38,11 +38,15 @@ export const employeeDayStatus = (employee, { records = [], requests = [], date 
   return { status: 'Absent', record };
 };
 
+// Whether a record has a Time In selfie. HR's lists leave the selfie out and say so with
+// hasSelfie; an employee's own records carry the selfie itself.
+export const hasSelfie = record => Boolean(record?.hasSelfie || record?.selfieUrl);
+
 // Why a record needs HR review, or null. A shift that is still open today is not an issue;
 // it becomes "Missing Time Out" once its day is over.
 export const dtrIssue = (record, today) => {
   if (!record?.timeIn) return record?.status === 'Absent' ? null : 'Missing Time In';
-  if (!record.selfieUrl) return 'Missing Selfie Verification';
+  if (!hasSelfie(record)) return 'Missing Selfie Verification';
   if (!record.fingerprintVerified) return 'Missing Biometric Verification';
   if (!record.timeOut) return record.date && record.date < today ? 'Missing Time Out' : null;
   return null;
@@ -72,4 +76,26 @@ export const dtrRecordStatus = (record, today) => {
   if (record?.timeIn && !record.timeOut && record.date === today) return 'On Duty';
   if (!record?.timeIn || !record.timeOut) return 'Incomplete';
   return isLate(record) ? 'Late' : 'Complete';
+};
+
+// HR's attendance holds the records from `windowStart` (the first day of the previous
+// month) on, plus the earlier months HR loaded (`loadedMonths`, a Set of "YYYY-MM").
+const newestFirst = (a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''));
+
+// After the recent records are reloaded (`recent`): those, plus the loaded earlier
+// months' records that the reload does not include.
+export const mergeRecentAttendance = (previous = [], recent = [], loadedMonths = new Set(), windowStart = '') => {
+  const ids = new Set(recent.map(record => record.id));
+  const earlier = previous.filter(record => (
+    !ids.has(record.id)
+    && (record.date || '') < windowStart
+    && loadedMonths.has((record.date || '').slice(0, 7))
+  ));
+  return [...recent, ...earlier].sort(newestFirst);
+};
+
+// After an earlier month is loaded (`monthRecords`): its records replace any already there.
+export const mergeAttendanceMonth = (previous = [], monthRecords = []) => {
+  const ids = new Set(monthRecords.map(record => record.id));
+  return [...previous.filter(record => !ids.has(record.id)), ...monthRecords].sort(newestFirst);
 };

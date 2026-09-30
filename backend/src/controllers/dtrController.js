@@ -7,7 +7,7 @@ import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssi
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
-import { formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
+import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
 import {
   compareEnrollmentToAttendance,
   createFaceDescriptor,
@@ -83,10 +83,36 @@ export const getDtrLogs = async (req, res) => {
     if (!['employee', 'hr_admin'].includes(req.user?.accessLevel)) {
       return res.status(403).json({ success: false, error: 'You do not have permission to view attendance records.' });
     }
-    const logs = req.user.accessLevel === 'employee'
-      ? await DtrLog.findForEmployee(req.user, { includeEvidence: false })
-      : await DtrLog.find();
-    res.status(200).json(logs);
+    if (req.user.accessLevel === 'employee') {
+      return res.status(200).json(await DtrLog.findListForEmployee(req.user));
+    }
+    // HR gets the current and previous month (and every open shift), or one earlier month.
+    const { month } = req.query;
+    if (month !== undefined && !(typeof month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(month))) {
+      return res.status(400).json({ success: false, error: 'The month must be written like 2026-07.' });
+    }
+    res.status(200).json(await DtrLog.findForHrList(month ? { month } : { since: attendanceWindowStart() }));
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+// One attendance record's selfie, for HR or for the employee whose record it is. Lists
+// of records leave selfies out so they stay small.
+export const getRecordSelfie = async (req, res) => {
+  try {
+    const id = typeof req.query.id === 'string' ? req.query.id.trim() : '';
+    if (!id) return res.status(400).json({ success: false, error: 'Missing attendance record id.' });
+    const record = await DtrLog.findSelfie(id);
+    const isOwn = record && (
+      (record.employeeId && record.employeeId === req.user.employeeId)
+      || (record.employeeEmail && record.employeeEmail === req.user.email)
+    );
+    if (!record || (req.user.accessLevel !== 'hr_admin' && !isOwn)) {
+      return res.status(404).json({ success: false, error: 'Attendance record not found.' });
+    }
+    res.set('Cache-Control', 'no-store, private');
+    res.status(200).json({ success: true, id, selfieUrl: record.selfieUrl || '' });
   } catch (error) {
     sendServerError(res, error);
   }

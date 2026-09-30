@@ -4,7 +4,8 @@
  */
 
 import React, { lazy, Suspense, useCallback, useState, useEffect, useRef } from 'react';
-import { getManilaDateString } from '../shared/localDate';
+import { attendanceWindowStart, getManilaDateString } from '../shared/localDate';
+import { mergeAttendanceMonth, mergeRecentAttendance } from './utils/hrAttendance';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
@@ -60,12 +61,19 @@ export default function App() {
     && new URLSearchParams(window.location.search).get('role') === 'employee';
 
   const [currentView, setCurrentView] = useState('dashboard');
+  // Counts page picks, so picking the HR page already open starts it over (for example,
+  // Attendance goes back to monitoring from DTR Records).
+  const [viewVisit, setViewVisit] = useState(0);
   const [activeModal, setActiveModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // State initializes empty and is loaded from MongoDB-backed API state only
   const [user, setUser] = useState(null);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
+  // HR/Admins load attendance from the start of the previous month. Earlier months are
+  // loaded when HR asks (handleLoadAttendanceMonth) and kept when the recent ones reload.
+  const [loadedAttendanceMonths, setLoadedAttendanceMonths] = useState([]);
+  const loadedAttendanceMonthsRef = useRef(new Set());
   const [requests, setRequests] = useState([]);
   const [events, setEvents] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
@@ -150,7 +158,11 @@ export default function App() {
       .then(data => {
         if (isCurrentSession && data) {
           if (data.user) setUser(data.user);
-          if (data.attendanceHistory) setAttendanceHistory(data.attendanceHistory);
+          if (data.attendanceHistory) {
+            setAttendanceHistory(data.attendanceHistory);
+            loadedAttendanceMonthsRef.current = new Set();
+            setLoadedAttendanceMonths([]);
+          }
           if (data.requests) setRequests(data.requests);
           if (data.events) setEvents(data.events);
           if (data.announcements) setAnnouncements(data.announcements);
@@ -259,7 +271,10 @@ export default function App() {
       },
       attendance: async () => {
         const list = await readJson('/api/dtr/logs');
-        if (isCurrentSession && Array.isArray(list)) setAttendanceHistory(list);
+        if (!isCurrentSession || !Array.isArray(list)) return;
+        setAttendanceHistory(previous => (activeRole === 'hr_admin'
+          ? mergeRecentAttendance(previous, list, loadedAttendanceMonthsRef.current, attendanceWindowStart())
+          : list));
       }
     };
 
@@ -360,6 +375,7 @@ export default function App() {
     const normalizedRole = normalizeRole(activeRole);
     const allowedViews = roleAllowedViews[normalizedRole] || roleAllowedViews.employee;
     const targetView = roleViewAliases[normalizedRole]?.[view] || view;
+    setViewVisit(visit => visit + 1);
     if (allowedViews.includes(targetView)) {
       setCurrentView(targetView);
       return;
@@ -1191,6 +1207,18 @@ export default function App() {
       });
   };
 
+  // Loads one earlier month ("YYYY-MM") of attendance for HR and returns how many records
+  // it has.
+  const handleLoadAttendanceMonth = async month => {
+    const response = await apiFetch(`/api/dtr/logs?month=${encodeURIComponent(month)}`);
+    const list = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(list)) throw new Error(list?.error || 'Unable to load that month.');
+    loadedAttendanceMonthsRef.current.add(month);
+    setLoadedAttendanceMonths([...loadedAttendanceMonthsRef.current].sort().reverse());
+    setAttendanceHistory(previous => mergeAttendanceMonth(previous, list));
+    return list.length;
+  };
+
   // Administration Updates
   // Sends only the changed attendance records ({ id, ...changedFields }) and merges the
   // saved records back, so records HR did not touch are never overwritten.
@@ -1406,10 +1434,14 @@ export default function App() {
 
           {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
             <HRAdminView
+              key={viewVisit}
               section={currentView}
               user={user}
               employees={employees}
               attendanceHistory={attendanceHistory}
+              attendanceFrom={attendanceWindowStart()}
+              loadedAttendanceMonths={loadedAttendanceMonths}
+              onLoadAttendanceMonth={handleLoadAttendanceMonth}
               onUpdateAttendance={handleUpdateAllAttendance}
               requests={requests}
               onUpdateRequests={handleUpdateAllRequests}

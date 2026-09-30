@@ -31,3 +31,11 @@ export const formatManilaClockTime = (date = new Date()) => {
   const hour12 = hour24 % 12 || 12;
   return `${String(hour12).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')} ${hour24 < 12 ? 'AM' : 'PM'}`;
 };
+
+// The first day of the month before `date` (YYYY-MM-DD). HR's attendance lists start on
+// this day; HR loads an earlier month when it needs one.
+export const attendanceWindowStart = (date = getManilaDateString()) => {
+  const [year, month] = date.split('-').map(Number);
+  const [startYear, startMonth] = month === 1 ? [year - 1, 12] : [year, month - 1];
+  return `${startYear}-${String(startMonth).padStart(2, '0')}-01`;
+};

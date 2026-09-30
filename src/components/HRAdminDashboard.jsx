@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import {
   AlertCircle,
@@ -32,9 +32,9 @@ export default function HRAdminDashboard({
   employees = [],
   attendanceHistory = [],
   requests = [],
-  onOpenTab,
-  onViewAllActivities
+  onOpenTab
 }) {
+  const [showAllActivities, setShowAllActivities] = useState(false);
   const today = getManilaDateString();
   // Only current, active employee accounts and their own records and requests are counted.
   const staff = activeEmployees(employees);
@@ -66,8 +66,9 @@ export default function HRAdminDashboard({
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   };
-  // The latest Time Ins, Time Outs, and requests from current employees.
-  const activityItems = [
+  // The latest Time Ins, Time Outs, and requests from current employees: five, or all of
+  // them after View All.
+  const allActivityItems = [
     ...employeeHistory.map(record => ({
       at: record.updatedAt || record.createdAt || record.date,
       title: record.timeOut ? 'Time Out recorded' : 'Time In recorded',
@@ -83,8 +84,8 @@ export default function HRAdminDashboard({
       tone: request.type === 'Travel Order' ? 'text-violet-600 bg-violet-50' : 'text-blue-600 bg-blue-50'
     }))
   ]
-    .sort((a, b) => (new Date(b.at).getTime() || 0) - (new Date(a.at).getTime() || 0))
-    .slice(0, 5)
+    .sort((a, b) => (new Date(b.at).getTime() || 0) - (new Date(a.at).getTime() || 0));
+  const activityItems = (showAllActivities ? allActivityItems : allActivityItems.slice(0, 5))
     .map(item => [item.title, item.detail, item.icon, activityTime(item.at), item.tone]);
   const attendanceStatusTotal = Math.max(1, totalEmployees);
   const presentDegrees = (onTime / attendanceStatusTotal) * 360;
@@ -175,7 +176,7 @@ export default function HRAdminDashboard({
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Pending Requests</h3><button onClick={() => onOpenTab('requests')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4"><CalendarDays className="h-7 w-7 text-emerald-600" /><div><p className="text-sm font-bold text-slate-700">Leave Applications</p><strong className="text-2xl text-emerald-600">{pendingLeave}</strong><p className="text-[11px] text-slate-500">For Supervisor Review</p></div></div><div className="flex items-center gap-3 rounded-xl bg-blue-50 p-4"><Plane className="h-7 w-7 text-blue-600" /><div><p className="text-sm font-bold text-slate-700">Travel Orders</p><strong className="text-2xl text-blue-600">{pendingTravel}</strong><p className="text-[11px] text-slate-500">For Supervisor Review</p></div></div><div className="flex items-center gap-3 rounded-xl bg-amber-50 p-4"><FileCheck2 className="h-7 w-7 text-amber-600" /><div><p className="text-sm font-bold text-slate-700">Returned Requests</p><strong className="text-2xl text-amber-600">{returned}</strong><p className="text-[11px] text-slate-500">Needs employee action</p></div></div></div></section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 pb-3"><h3 className="text-lg font-black text-slate-900">Recent Activities</h3><button onClick={onViewAllActivities} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="divide-y divide-slate-100">{activityItems.length ? activityItems.map(([title, detail, Icon, time, tone], index) => <div key={`${title}-${index}`} className="flex items-center gap-3 py-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-800">{title}</p><p className="truncate text-xs text-slate-500">{detail}</p></div><span className="shrink-0 text-xs font-semibold text-slate-500">{time}</span></div>) : <p className="py-4 text-center text-xs font-semibold text-slate-500">No attendance or request activity from current employees yet.</p>}</div></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 pb-3"><h3 className="text-lg font-black text-slate-900">Recent Activities</h3>{allActivityItems.length > 5 && <button onClick={() => setShowAllActivities(value => !value)} aria-expanded={showAllActivities} className="text-xs font-black text-indigo-700">{showAllActivities ? 'Show Less' : `View All (${allActivityItems.length})`} <ArrowRight className={`inline h-3 w-3 ${showAllActivities ? '-rotate-90' : ''}`} /></button>}</div><div className={`divide-y divide-slate-100 ${showAllActivities ? 'max-h-[28rem] overflow-y-auto' : ''}`}>{activityItems.length ? activityItems.map(([title, detail, Icon, time, tone], index) => <div key={`${title}-${index}`} className="flex items-center gap-3 py-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-800">{title}</p><p className="truncate text-xs text-slate-500">{detail}</p></div><span className="shrink-0 text-xs font-semibold text-slate-500">{time}</span></div>) : <p className="py-4 text-center text-xs font-semibold text-slate-500">No attendance or request activity from current employees yet.</p>}</div></section>
     </div>
   );
 }

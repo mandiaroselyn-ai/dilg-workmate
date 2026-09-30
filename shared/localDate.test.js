@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatManilaClockTime, getManilaDateString } from './localDate.js';
+import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from './localDate.js';
 
 test('uses the Manila date for early-morning clock-ins', () => {
   // 7:45 AM on Sept 29 in Manila is still Sept 28 in UTC.
@@ -17,4 +17,10 @@ test('formats DTR clock times in Manila time', () => {
   assert.equal(formatManilaClockTime(new Date('2026-09-29T04:30:00Z')), '12:30 PM');
   assert.equal(formatManilaClockTime(new Date('2026-09-29T09:45:00Z')), '05:45 PM');
   assert.equal(formatManilaClockTime(new Date('2026-09-28T16:10:00Z')), '12:10 AM');
+});
+
+test("HR's attendance starts on the first day of the previous month", () => {
+  assert.equal(attendanceWindowStart('2026-10-01'), '2026-09-01');
+  assert.equal(attendanceWindowStart('2026-10-31'), '2026-09-01');
+  assert.equal(attendanceWindowStart('2027-01-15'), '2026-12-01');
 });

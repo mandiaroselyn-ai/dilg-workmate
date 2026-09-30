@@ -11,7 +11,8 @@ import {
   ShieldCheck,
   Users
 } from 'lucide-react';
-import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { activeEmployees, employeeDayStatus, hasSelfie, recordsForEmployees } from '../utils/hrAttendance';
+import OlderAttendanceLoader from './OlderAttendanceLoader';
 
 const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -26,9 +27,24 @@ const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
   </div>
 );
 
-export default function HRAdminRecordsView({ employees = [], attendanceHistory = [], requests = [] }) {
+// Long tables show this many rows at a time.
+const PAGE_SIZE = 50;
+
+const ShowMore = ({ shown, total, onMore }) => (total > shown ? (
+  <button type="button" onClick={onMore} className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-black text-indigo-700 hover:bg-slate-50">
+    Show more ({Math.min(PAGE_SIZE, total - shown)} of {total - shown} remaining)
+  </button>
+) : null);
+
+export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  const [shownCount, setShownCount] = useState(PAGE_SIZE);
+  const openTab = tab => {
+    setActiveTab(tab);
+    setShownCount(PAGE_SIZE);
+  };
+  const showMore = () => setShownCount(count => count + PAGE_SIZE);
   const today = getManilaDateString();
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -38,21 +54,15 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
     const monthName = new Date(value).toLocaleString('en-US', { month: 'long' });
     return searchText.includes(normalizedQuery) || monthName.toLowerCase().includes(normalizedQuery);
   };
-  const todayDtr = attendanceHistory.filter((record) => record.date === today);
-
-  const presentCount = employees.filter(employee => {
-    const record = todayDtr.find(item => matchesAttendanceEmployee(item, employee));
-    return record?.status !== 'Absent' && Boolean(record?.timeIn);
-  }).length;
-  const lateCount = employees.filter(employee => {
-    const record = todayDtr.find(item => matchesAttendanceEmployee(item, employee));
-    return Boolean(record?.late || /late/i.test(record?.status || ''));
-  }).length;
-  const tardyCount = employees.filter(employee => {
-    const record = todayDtr.find(item => matchesAttendanceEmployee(item, employee));
-    return /tardy|late/i.test(record?.status || '');
-  }).length;
-  const absentCount = Math.max(0, employees.length - presentCount);
+  // Counted like the Dashboard: only active employee accounts, and only records and
+  // requests that belong to a current employee account.
+  const staff = activeEmployees(employees);
+  const attendanceHistory = recordsForEmployees(allAttendance, employees);
+  const requests = recordsForEmployees(allRequests, employees);
+  const todayStatuses = staff.map(employee => employeeDayStatus(employee, { records: attendanceHistory, requests, date: today }).status);
+  const lateCount = todayStatuses.filter(status => status === 'Late').length;
+  const presentCount = lateCount + todayStatuses.filter(status => status === 'Present').length;
+  const absentCount = todayStatuses.filter(status => status === 'Absent').length;
 
   const leaveApplications = requests.filter((request) => request.type === 'Leave Request');
   const approvedLeaves = leaveApplications.filter((request) => request.status === 'Approved');
@@ -62,8 +72,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
   const approvedTravel = travelOrders.filter((request) => request.status === 'Approved');
   const pendingTravel = travelOrders.filter((request) => request.status === 'Pending');
 
-  const verifiedDtr = attendanceHistory.filter((record) => record.selfieUrl && record.fingerprintVerified).length;
-  const totalEmployees = employees.length || Math.max(1, attendanceHistory.length);
+  const verifiedDtr = attendanceHistory.filter((record) => hasSelfie(record) && record.fingerprintVerified).length;
+  const totalEmployees = staff.length;
 
   const dtrTable = useMemo(
     () =>
@@ -77,7 +87,6 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               .some((value) => String(value).toLowerCase().includes(normalizedQuery))
           );
         })
-        .slice(0, 8)
         .map((record) => ({
           id: record.id || record.employeeId || record.employeeName,
           employee: record.employeeName || 'Unassigned Employee',
@@ -102,7 +111,6 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               .some((value) => String(value).toLowerCase().includes(normalizedQuery))
           );
         })
-        .slice(0, 6)
         .map((request) => ({
           id: request.id || 'N/A',
           employee: request.employeeName || 'Unknown Employee',
@@ -125,7 +133,6 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               .some((value) => String(value).toLowerCase().includes(normalizedQuery))
           );
         })
-        .slice(0, 6)
         .map((request) => ({
           id: request.id || 'N/A',
           employee: request.employeeName || 'Unknown Employee',
@@ -138,7 +145,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
 
   const downloadCsv = (filename, headers, rows) => {
     const escape = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\n');
+    // The byte order mark makes Excel read the file as UTF-8, so names with ñ stay intact.
+    const csv = `\uFEFF${[headers, ...rows].map(row => row.map(escape).join(',')).join('\n')}`;
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
     const link = document.createElement('a');
     link.href = url;
@@ -151,21 +159,21 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
     {
       title: 'DTR Attendance Report',
       description: 'Time In, Time Out, status, and late records per employee.',
-      count: attendanceHistory.length,
+      count: dtrTable.length,
       accent: 'bg-indigo-50 text-indigo-700',
       download: () => downloadCsv('dtr-attendance-report.csv', ['Employee', 'Date', 'Time In', 'Time Out', 'Status'], dtrTable.map(row => [row.employee, row.date, row.timeIn, row.timeOut, row.status]))
     },
     {
       title: 'Leave Applications Report',
       description: 'Leave requests, leave type, submitted date, and status.',
-      count: leaveApplications.length,
+      count: leaveRows.length,
       accent: 'bg-violet-50 text-violet-700',
       download: () => downloadCsv('leave-applications-report.csv', ['Request ID', 'Employee', 'Leave Type', 'Date', 'Status'], leaveRows.map(row => [row.id, row.employee, row.type, row.date, row.status]))
     },
     {
       title: 'Travel Orders Report',
       description: 'Official travel requests, purpose, date, and approval status.',
-      count: travelOrders.length,
+      count: travelRows.length,
       accent: 'bg-blue-50 text-blue-700',
       download: () => downloadCsv('travel-orders-report.csv', ['Request ID', 'Employee', 'Purpose', 'Date', 'Status'], travelRows.map(row => [row.id, row.employee, row.purpose, row.date, row.status]))
     },
@@ -198,7 +206,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
           <input
             type="search"
             value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            onChange={(event) => { setSearchQuery(event.target.value); setShownCount(PAGE_SIZE); }}
             placeholder="Search employee, date, month, or status..."
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
@@ -209,7 +217,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => openTab(tab.id)}
               className={`rounded-xl border px-3 py-2 text-[11px] font-black transition ${
                 activeTab === tab.id
                   ? 'border-indigo-700 bg-indigo-700 text-white shadow-sm'
@@ -220,13 +228,14 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
             </button>
           ))}
         </div>
+        <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
       </header>
 
       {activeTab === 'overview' && (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatCard icon={CheckCircle2} label="Presents" value={presentCount} hint="Employees with valid attendance" accentClass="bg-emerald-50 text-emerald-600" />
-            <StatCard icon={AlarmClockCheck} label="Late / Tardiness" value={lateCount || tardyCount} hint="Detected late and tardy entries" accentClass="bg-amber-50 text-amber-600" />
+            <StatCard icon={AlarmClockCheck} label="Late / Tardiness" value={lateCount} hint="Detected late and tardy entries" accentClass="bg-amber-50 text-amber-600" />
             <StatCard icon={CalendarDays} label="Leave Records" value={`${approvedLeaves.length}/${leaveApplications.length}`} hint="Approved / total applications" accentClass="bg-violet-50 text-violet-600" />
             <StatCard icon={Plane} label="Travel Orders" value={`${approvedTravel.length}/${travelOrders.length}`} hint="Approved / total orders" accentClass="bg-blue-50 text-blue-600" />
           </div>
@@ -260,7 +269,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                     </tr>
                   </thead>
                   <tbody>
-                    {dtrTable.map((row) => (
+                    {dtrTable.slice(0, 8).map((row) => (
                       <tr key={row.id} className="border-b border-slate-100 last:border-none">
                         <td className="px-3 py-3 font-bold text-slate-800">{row.employee}</td>
                         <td className="px-3 py-3 text-slate-600">{row.date}</td>
@@ -276,6 +285,11 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                   </tbody>
                 </table>
               </div>
+              {dtrTable.length > 8 && (
+                <button type="button" onClick={() => openTab('dtr')} className="mt-3 text-xs font-black text-indigo-700">
+                  View all {dtrTable.length} DTR records
+                </button>
+              )}
             </section>
 
             <aside className="space-y-5">
@@ -290,7 +304,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                 </div>
                 <div className="mt-5 space-y-3 text-sm">
                   <div className="flex items-center justify-between"><span className="text-slate-600">Present</span><strong className="text-slate-900">{presentCount}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-slate-600">Late / Tardy</span><strong className="text-slate-900">{lateCount || tardyCount}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-slate-600">Late / Tardy</span><strong className="text-slate-900">{lateCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Absent</span><strong className="text-slate-900">{absentCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Employees</span><strong className="text-slate-900">{totalEmployees}</strong></div>
                 </div>
@@ -342,7 +356,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                   <AlarmClockCheck className="h-5 w-5 text-amber-600" />
                   <span className="text-base font-black text-amber-700">Late / Tardy</span>
                 </div>
-                <p className="mt-3 text-2xl font-black text-slate-900">{lateCount || tardyCount}</p>
+                <p className="mt-3 text-2xl font-black text-slate-900">{lateCount}</p>
                 <p className="text-xs text-slate-600">Attendance issues needing follow-up</p>
               </div>
 
@@ -366,7 +380,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               <p className="text-xs font-black uppercase tracking-[0.25em] text-indigo-600">DTR Repository</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Daily Time Record (DTR)</h3>
             </div>
-            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{attendanceHistory.length} total records</span>
+            <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{normalizedQuery ? `${dtrTable.length} of ${attendanceHistory.length}` : attendanceHistory.length} total records</span>
           </div>
 
           <div className="overflow-x-auto">
@@ -389,7 +403,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                     </td>
                   </tr>
                 ) : (
-                  dtrTable.map((record) => (
+                  dtrTable.slice(0, shownCount).map((record) => (
                     <tr key={record.id || `${record.employee}-${record.date}`} className="border-b border-slate-100 last:border-none">
                       <td className="px-3 py-3 font-bold text-slate-800">{record.employee}</td>
                       <td className="px-3 py-3 text-slate-600">{record.date}</td>
@@ -407,6 +421,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               </tbody>
             </table>
           </div>
+          <ShowMore shown={shownCount} total={dtrTable.length} onMore={showMore} />
         </section>
       )}
 
@@ -417,7 +432,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               <p className="text-xs font-black uppercase tracking-[0.25em] text-violet-600">Leave Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Leave Applications & Approved Leaves</h3>
             </div>
-            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">{leaveApplications.length} total</span>
+            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">{normalizedQuery ? `${leaveRows.length} of ${leaveApplications.length}` : leaveApplications.length} total</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
@@ -438,7 +453,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                     </td>
                   </tr>
                 ) : (
-                  leaveRows.map((record) => (
+                  leaveRows.slice(0, shownCount).map((record) => (
                     <tr key={record.id} className="border-b border-slate-100 last:border-none">
                       <td className="px-3 py-3 font-bold text-slate-800">{record.id}</td>
                       <td className="px-3 py-3 text-slate-700">{record.employee}</td>
@@ -455,6 +470,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               </tbody>
             </table>
           </div>
+          <ShowMore shown={shownCount} total={leaveRows.length} onMore={showMore} />
         </section>
       )}
 
@@ -465,7 +481,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-600">Travel Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Travel Order Records</h3>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{travelOrders.length} total</span>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{normalizedQuery ? `${travelRows.length} of ${travelOrders.length}` : travelOrders.length} total</span>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
@@ -486,7 +502,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
                     </td>
                   </tr>
                 ) : (
-                  travelRows.map((record) => (
+                  travelRows.slice(0, shownCount).map((record) => (
                     <tr key={record.id} className="border-b border-slate-100 last:border-none">
                       <td className="px-3 py-3 font-bold text-slate-800">{record.id}</td>
                       <td className="px-3 py-3 text-slate-700">{record.employee}</td>
@@ -503,6 +519,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
               </tbody>
             </table>
           </div>
+          <ShowMore shown={shownCount} total={travelRows.length} onMore={showMore} />
         </section>
       )}
 
@@ -511,7 +528,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory =
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-black uppercase tracking-[0.25em] text-indigo-600">HR/Admin Reports</p>
             <h3 className="mt-2 text-xl font-black text-slate-900">Records Reports</h3>
-            <p className="mt-1 text-xs font-semibold text-slate-500">Download filtered summaries for attendance, leave, travel, and employee records.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Each report has every matching record{normalizedQuery ? ` (only those matching “${searchQuery.trim()}”)` : ''}. The employee masterlist always has every account.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {reportCards.map(report => (

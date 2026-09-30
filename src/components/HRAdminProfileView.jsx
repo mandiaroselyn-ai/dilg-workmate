@@ -15,6 +15,7 @@ const InfoRow = ({ icon: Icon, label, value }) => (
 
 export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser, onToast, title = 'HR/Admin Profile' }) {
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [photoMenu, setPhotoMenu] = useState(false);
   const [showPhoto, setShowPhoto] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
@@ -52,12 +53,13 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
     videoRef.current.play?.().catch(() => {});
   }, [showCamera]);
 
-  const applyPhoto = (dataUrl) => {
-    setProfilePicture(dataUrl);
+  // Changes are confirmed only after the server saves them; when it cannot, App says why.
+  const applyPhoto = async (dataUrl) => {
     setPhotoMenu(false);
     setShowCamera(false);
     setCameraError('');
-    onUpdateUser?.({ ...user, profilePicture: dataUrl });
+    if (await onUpdateUser?.({ ...user, profilePicture: dataUrl }) === false) return;
+    setProfilePicture(dataUrl);
     notify('Profile photo updated.');
   };
 
@@ -111,9 +113,13 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
     stopCamera();
   };
 
-  const save = event => {
+  const save = async event => {
     event.preventDefault();
-    onUpdateUser?.({ ...user, ...form });
+    if (saving) return;
+    setSaving(true);
+    const saved = await onUpdateUser?.({ ...user, ...form });
+    setSaving(false);
+    if (saved === false) return;
     setEditing(false);
     notify('Profile information updated successfully.');
   };
@@ -296,8 +302,8 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
               <button type="button" onClick={() => setEditing(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50">
                 Cancel
               </button>
-              <button type="submit" className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white transition hover:bg-blue-800">
-                Save Changes
+              <button type="submit" disabled={saving} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white transition hover:bg-blue-800 disabled:opacity-60">
+                {saving ? 'Saving…' : 'Save Changes'}
               </button>
             </div>
           </form>

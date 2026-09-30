@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getManilaDateString } from '../../../shared/localDate.js';
+import { attendanceWindowStart, getManilaDateString } from '../../../shared/localDate.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { inactiveAccountMessage, notifyHrOfNewAccount } from '../services/accountNotifications.js';
 import { sendAccountApprovedSms, toPhilippineMobile } from '../services/smsService.js';
@@ -439,13 +439,14 @@ export const getFullState = async (req, res) => {
   try {
     ensureConnected();
 
-    // Employees only load their own attendance, filtered in the database rather than
-    // loading every record (with selfies) and filtering here. HR/Admins load everyone's.
+    // Employees only load their own attendance, filtered in the database. HR/Admins load
+    // everyone's from the start of the previous month (earlier months on request). Either
+    // way the lists leave out selfies and GPS history; a selfie loads with its record.
     // Supervisors only decide requests, so they get no attendance.
     const accessLevel = req.user?.accessLevel;
     const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements] = await Promise.all([
       req.user || User.get(),
-      accessLevel === 'employee' ? DtrLog.findForEmployee(req.user) : accessLevel === 'hr_admin' ? DtrLog.find() : [],
+      accessLevel === 'employee' ? DtrLog.findListForEmployee(req.user) : accessLevel === 'hr_admin' ? DtrLog.findForHrList({ since: attendanceWindowStart() }) : [],
       Leave.findAllRequests(),
       Announcement.findEvents(),
       Announcement.findNotificationsFor(req.user),
@@ -453,9 +454,10 @@ export const getFullState = async (req, res) => {
       Announcement.getAcknowledged(req.user),
       Announcement.findAnnouncementPosts()
     ]);
+    // A draft is the employee's own until they submit it.
     const visibleRawRequests = req.user?.accessLevel === 'employee'
       ? rawRequests.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
-      : rawRequests;
+      : rawRequests.filter(request => request.status !== 'Draft');
     const visibleNotifications = notifications;
     const visibleSmsAlerts = req.user?.accessLevel === 'employee'
       ? smsAlerts.filter(item => item.employeeId === req.user.employeeId || item.employeeEmail === req.user.email)
@@ -467,7 +469,8 @@ export const getFullState = async (req, res) => {
           ? await User.findByEmail(request.employeeEmail)
           : null;
       if (!employee) return request;
-      const safeProfile = toSafeUser(employee);
+      // The profile photo is left out: it would be repeated in every request.
+      const { profilePicture, ...safeProfile } = toSafeUser(employee);
       return { ...request, employee: safeProfile, employeeName: request.employeeName || safeProfile.name };
     }));
 

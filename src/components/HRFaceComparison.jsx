@@ -2,9 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { apiFetch, parseApiResponse } from '../utils/api';
 
+// HR's lists leave attendance selfies out, so a record's selfie is loaded here by its
+// `recordId` when `hasAttendanceSelfie` says there is one (unless `attendanceSelfie` is given).
 export default function HRFaceComparison({
   employeeId,
-  attendanceSelfie,
+  recordId,
+  hasAttendanceSelfie = false,
+  attendanceSelfie: givenAttendanceSelfie = '',
   faceVerified = false,
   faceMatchDistance
 }) {
@@ -12,6 +16,35 @@ export default function HRFaceComparison({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadedSelfie, setLoadedSelfie] = useState('');
+  const [selfieLoading, setSelfieLoading] = useState(false);
+  const [selfieError, setSelfieError] = useState('');
+  const [selfieReloadKey, setSelfieReloadKey] = useState(0);
+  const attendanceSelfie = givenAttendanceSelfie || loadedSelfie;
+
+  useEffect(() => {
+    let active = true;
+    setLoadedSelfie('');
+    setSelfieError('');
+    if (givenAttendanceSelfie || !hasAttendanceSelfie || !recordId) {
+      setSelfieLoading(false);
+      return () => { active = false; };
+    }
+    setSelfieLoading(true);
+    apiFetch(`/api/dtr/action?action=record-selfie&id=${encodeURIComponent(recordId)}`, { cache: 'no-store' })
+      .then(async response => {
+        const result = await parseApiResponse(response, 'Attendance selfie request');
+        if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load the attendance selfie.');
+        if (active) setLoadedSelfie(result.selfieUrl || '');
+      })
+      .catch(loadError => {
+        if (active) setSelfieError(loadError.message || 'Unable to load the attendance selfie.');
+      })
+      .finally(() => {
+        if (active) setSelfieLoading(false);
+      });
+    return () => { active = false; };
+  }, [recordId, hasAttendanceSelfie, givenAttendanceSelfie, selfieReloadKey]);
 
   useEffect(() => {
     let active = true;
@@ -59,8 +92,21 @@ export default function HRFaceComparison({
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-2">
           <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Attendance selfie</p>
-          {attendanceSelfie ? (
+          {selfieLoading ? (
+            <p role="status" className="rounded-lg bg-white p-4 text-xs font-semibold text-blue-800">Loading attendance selfie...</p>
+          ) : attendanceSelfie ? (
             <img src={attendanceSelfie} alt="Employee attendance selfie for HR manual comparison" className="max-h-64 min-h-36 w-full rounded-lg bg-white object-contain" referrerPolicy="no-referrer" />
+          ) : selfieError ? (
+            <div className="rounded-lg bg-white p-3">
+              <p role="alert" className="text-xs font-semibold text-rose-700">{selfieError}</p>
+              <button
+                type="button"
+                onClick={() => setSelfieReloadKey(previous => previous + 1)}
+                className="mt-2 inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-xs font-black text-rose-700"
+              >
+                <RefreshCw className="h-3 w-3" /> Retry
+              </button>
+            </div>
           ) : (
             <p className="rounded-lg bg-white p-4 text-xs font-semibold text-slate-500">No attendance selfie is attached to this record.</p>
           )}

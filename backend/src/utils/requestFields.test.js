@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate } from './requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from './requestFields.js';
 
 const employee = {
   employeeId: 'DILG-2026-1001',
@@ -109,4 +109,29 @@ test('employees cannot withdraw decided requests or other people\'s requests', (
   assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Approved' }, { status: 'Withdrawn' }, employee), null);
   assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Pending' }, { status: 'Approved' }, employee), null);
   assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Pending' }, { status: 'Withdrawn' }, { employeeId: 'X', email: 'x@dilg.gov.ph' }), null);
+});
+
+test('HR can only forward a request that is waiting for HR', () => {
+  const forward = { status: 'For Supervisor', remarks: 'Checked.' };
+  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin'), null);
+  assert.equal(reviewUpdateProblem('Pending Review', forward, 'hr_admin'), null);
+  assert.match(reviewUpdateProblem('For Supervisor', forward, 'hr_admin'), /already forwarded/);
+  assert.match(reviewUpdateProblem('Approved', forward, 'hr_admin'), /already Approved/);
+  assert.match(reviewUpdateProblem('Rejected', forward, 'hr_admin'), /already Rejected/);
+  assert.match(reviewUpdateProblem('Pending', { status: 'Approved' }, 'hr_admin'), /only forward/);
+});
+
+test('reviewers cannot act on drafts or withdrawn requests', () => {
+  for (const role of ['hr_admin', 'supervisor']) {
+    assert.match(reviewUpdateProblem('Draft', { status: 'For Supervisor' }, role), /draft/);
+    assert.match(reviewUpdateProblem('Withdrawn', { status: 'Approved' }, role), /withdrew/);
+    assert.match(reviewUpdateProblem('Withdrawn', { remarks: 'Note.' }, role), /withdrew/);
+  }
+});
+
+test('the supervisor approves or rejects, and remarks alone are allowed', () => {
+  assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Approved' }, 'supervisor'), null);
+  assert.equal(reviewUpdateProblem('Pending', { status: 'Rejected' }, 'supervisor'), null);
+  assert.match(reviewUpdateProblem('For Supervisor', { status: 'Pending' }, 'supervisor'), /approve or reject/);
+  assert.equal(reviewUpdateProblem('Approved', { remarks: 'Noted.' }, 'hr_admin'), null);
 });

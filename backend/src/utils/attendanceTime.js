@@ -16,6 +16,23 @@ export const isLateClockIn = (date = new Date(), officeStartTime = process.env.O
   return getManilaMinutesOfDay(date) > startMinutes;
 };
 
+// "08:05 AM" (how Time In and Time Out are saved) as minutes after midnight, or null.
+export const clockTextMinutes = value => {
+  const match = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(value || '').trim());
+  if (!match || Number(match[1]) < 1 || Number(match[1]) > 12 || Number(match[2]) > 59) return null;
+  const hour = (Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
+  return hour * 60 + Number(match[2]);
+};
+
+// Whether a saved Time In such as "08:05 AM" is late, by the same rule as isLateClockIn,
+// or null when it is not a time.
+export const isLateTimeText = (value, officeStartTime = process.env.OFFICE_START_TIME) => {
+  const minutes = clockTextMinutes(value);
+  if (minutes === null) return null;
+  const startMinutes = parseOfficeStart(officeStartTime) ?? parseOfficeStart(DEFAULT_OFFICE_START_TIME);
+  return minutes > startMinutes;
+};
+
 // When a Time Out happened. An online Time Out uses the server clock. A Time Out that was
 // saved offline and sent later keeps the time the phone recorded, but never earlier than
 // the Time In or later than now.

@@ -5,6 +5,8 @@ import {
   dtrIssue,
   dtrRecordStatus,
   employeeDayStatus,
+  mergeAttendanceMonth,
+  mergeRecentAttendance,
   recordsForEmployees,
   requestCoversDate,
   totalHoursWorked
@@ -60,6 +62,9 @@ test('flags records missing verification', () => {
   assert.equal(dtrIssue(complete, today), null);
   assert.equal(dtrRecordStatus(complete, today), 'Complete');
   assert.equal(dtrIssue({ ...complete, selfieUrl: '' }, today), 'Missing Selfie Verification');
+  // HR's lists carry hasSelfie instead of the selfie itself.
+  assert.equal(dtrIssue({ ...complete, selfieUrl: undefined, hasSelfie: true }, today), null);
+  assert.equal(dtrIssue({ ...complete, selfieUrl: undefined, hasSelfie: false }, today), 'Missing Selfie Verification');
   assert.equal(dtrIssue({ ...complete, fingerprintVerified: false }, today), 'Missing Biometric Verification');
   assert.equal(dtrIssue({ date: today, status: 'Absent' }, today), null);
   assert.equal(dtrRecordStatus({ ...complete, late: true }, today), 'Late');
@@ -84,4 +89,22 @@ test('total hours stay empty until both times are recorded', () => {
   assert.equal(totalHoursWorked({ timeIn: '8 in the morning', timeOut: '05:00 PM' }), '');
   assert.equal(totalHoursWorked({ timeIn: '13:00 PM', timeOut: '05:00 PM' }), '');
   assert.equal(totalHoursWorked(null), '');
+});
+
+test('reloading recent attendance keeps the earlier months HR loaded', () => {
+  const july = { id: 'jul', date: '2026-07-10', createdAt: '2026-07-10T00:00:00Z', timeOut: '05:00 PM' };
+  const juneNotLoaded = { id: 'jun', date: '2026-06-10', createdAt: '2026-06-10T00:00:00Z', timeOut: null };
+  const oldVersion = { id: 'sep', date: '2026-09-02', createdAt: '2026-09-02T00:00:00Z', timeOut: null };
+  const newVersion = { ...oldVersion, timeOut: '05:00 PM' };
+  const merged = mergeRecentAttendance([oldVersion, july, juneNotLoaded], [newVersion], new Set(['2026-07']), '2026-09-01');
+  assert.deepEqual(merged.map(record => record.id), ['sep', 'jul']);
+  assert.equal(merged[0].timeOut, '05:00 PM');
+});
+
+test('loading an earlier month replaces its records and keeps newest first', () => {
+  const recent = [{ id: 'oct', date: '2026-10-01', createdAt: '2026-10-01T00:00:00Z' }];
+  const july = [{ id: 'jul', date: '2026-07-10', createdAt: '2026-07-10T00:00:00Z' }];
+  const merged = mergeAttendanceMonth(mergeAttendanceMonth(recent, july), [{ ...july[0], status: 'Absent' }]);
+  assert.deepEqual(merged.map(record => record.id), ['oct', 'jul']);
+  assert.equal(merged[1].status, 'Absent');
 });

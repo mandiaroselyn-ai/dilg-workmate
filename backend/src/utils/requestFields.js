@@ -48,6 +48,30 @@ export const pickReviewUpdate = body => REVIEW_FIELDS.reduce((update, field) => 
   return update;
 }, {});
 
+const AWAITING_HR_STATUSES = ['Pending', 'Pending Review'];
+const SUPERVISOR_DECISIONS = ['Approved', 'Rejected'];
+
+// Why a reviewer may not apply `update` to a request whose status is `currentStatus`, or
+// null when they may. A draft the employee has not submitted and a request the employee
+// withdrew are theirs alone. HR/Admin validates and forwards: it may only move a request
+// that is waiting for HR to the supervisor. The supervisor approves or rejects.
+export const reviewUpdateProblem = (currentStatus, update, role) => {
+  if (currentStatus === 'Draft') return 'This request is still a draft. The employee has not submitted it.';
+  if (currentStatus === 'Withdrawn') return 'The employee withdrew this request.';
+  const nextStatus = update?.status;
+  if (nextStatus === undefined) return null;
+  if (role === 'hr_admin') {
+    if (nextStatus !== 'For Supervisor') return 'HR/Admin can only forward requests to the supervisor. The supervisor approves or rejects them.';
+    if (currentStatus === 'For Supervisor') return 'This request was already forwarded to the supervisor.';
+    if (!AWAITING_HR_STATUSES.includes(currentStatus)) return `This request is already ${currentStatus || 'decided'}, so it cannot be forwarded.`;
+    return null;
+  }
+  if (role === 'supervisor' && !SUPERVISOR_DECISIONS.includes(nextStatus)) {
+    return 'The supervisor can only approve or reject requests.';
+  }
+  return null;
+};
+
 // Fields an employee may change while a request is still their own draft.
 const DRAFT_CONTENT_FIELDS = [
   'type',
