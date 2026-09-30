@@ -13,5 +13,6 @@ coverage/
 # Local database backups (contain personal data)
 backups/
 
-# Output of scripts/preview-leave-form.mjs
+# Output of scripts/preview-leave-form.mjs and scripts/preview-travel-order.mjs
 leave-form-preview.pdf
+travel-order-preview.pdf

@@ -203,7 +203,7 @@ function fitText(text, font, maxWidth, maxLines) {
 }
 
 // Light gridlines every 10 points, labelled every 50, to read positions off the preview.
-function drawGrid(page, font) {
+export function drawGrid(page, font) {
   const { width, height } = page.getSize();
   const faint = rgb(0.2, 0.5, 1);
   for (let x = 0; x <= width; x += 10) {
