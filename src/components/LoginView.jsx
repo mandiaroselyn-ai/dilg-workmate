@@ -290,17 +290,17 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       <div className="w-full h-1.5 bg-yellow-400 z-10 shrink-0"></div>
 
       {/* Main Form Center Wrapper */}
-      <div className="w-full max-w-4xl px-4 py-8 flex-1 flex flex-col items-center gap-8 relative z-10">
+      <div className="w-full max-w-4xl px-4 py-5 md:py-8 flex-1 flex flex-col items-center gap-5 md:gap-8 relative z-10">
         
         {/* Emblem & Portal Label */}
         <div className="w-full max-w-3xl space-y-4">
           <div className="flex items-center justify-center gap-3.5">
-            <div className="w-18 h-18 rounded-full bg-white p-1 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="w-14 h-14 md:w-18 md:h-18 rounded-full bg-white p-1 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
               <img src={logoImage} alt="DILG logo" className="w-full h-full object-contain" />
             </div>
 
             <div className="text-left">
-              <span className="text-[10px] text-yellow-400 font-extrabold tracking-widest block uppercase">DEPARTMENT OF THE INTERIOR AND LOCAL GOVERNMENT</span>
+              <span className="text-[8px] md:text-[10px] text-yellow-400 font-extrabold tracking-widest block uppercase">DEPARTMENT OF THE INTERIOR AND LOCAL GOVERNMENT</span>
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase leading-none mt-1">
                 <span className="[text-shadow:1px_1px_2px_rgba(0,0,0,0.75)]">DILG</span> <span className="text-blue-600 font-black [text-shadow:1px_1px_2px_rgba(0,0,0,0.75)]">WORKMATE</span>
               </h1>
@@ -309,8 +309,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
           </div>
         </div>
 
-        {/* Mobile-only employee login flow. No role selection step on mobile. */}
-        <div className="md:hidden mt-8 mb-16 w-full max-w-sm self-center rounded-3xl bg-white p-5 text-slate-800 shadow-xl">
+        {/* Mobile-only employee login flow. No role selection step on mobile. Kept compact so
+            the whole card, down to "Sign up", fits on a phone screen without scrolling. */}
+        <div className="md:hidden mb-6 w-full max-w-sm self-center rounded-3xl bg-white p-5 text-slate-800 shadow-xl">
           {isRegister ? (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
               <button type="button" onClick={() => { setIsRegister(false); setErrorText(''); setSuccessText(''); }} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-indigo-600"><ArrowLeft className="h-4 w-4" /> Back to login</button>
@@ -329,9 +330,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
               <button type="button" onClick={() => { setIsRegister(false); setErrorText(''); setSuccessText(''); }} className="block w-full text-center text-[11px] font-bold text-indigo-600">Have an account? Log In here.</button>
             </form>
           ) : (
-            <form onSubmit={handleFormSubmit} className="space-y-5">
+            <form onSubmit={handleFormSubmit} className="space-y-4">
               <div>
-                <h2 className="flex items-center gap-2 whitespace-nowrap text-lg font-black text-slate-900"><Lock className="h-5 w-5 shrink-0 text-indigo-600" /> Official DILG Employee Log In</h2>
+                <h2 className="flex items-center gap-2 whitespace-nowrap text-lg font-black text-slate-900"><Lock className="h-5 w-5 shrink-0 text-indigo-600" /> Employee Log In</h2>
                 <p className="mt-1 text-xs text-slate-500">Log in using your official DILG Government Email credentials.</p>
               </div>
               <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">DILG Email Address</span><span className="relative block"><User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input name="email" type="email" autoComplete="username" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></span></label>
