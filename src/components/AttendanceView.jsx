@@ -322,6 +322,9 @@ export default function AttendanceView({
       setCameraError('Unable to process the camera photo. Please try again.');
       return;
     }
+    // Saved as the mirror image the employee saw in the preview.
+    context.translate(canvas.width, 0);
+    context.scale(-1, 1);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     setCapturedSelfie(canvas.toDataURL('image/jpeg', 0.85));
     setCameraError(null);

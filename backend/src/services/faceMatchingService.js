@@ -134,7 +134,8 @@ const decodeImage = (dataUrl, tf) => {
   return tf.tensor3d(rgb, [height, width, 3], 'int32');
 };
 
-export const createFaceDescriptor = async dataUrl => {
+// mirrored: reads the image flipped left to right.
+export const createFaceDescriptor = async (dataUrl, { mirrored = false } = {}) => {
   if (typeof dataUrl !== 'string') {
     throw new FaceImageError('A selfie image is required.');
   }
@@ -148,6 +149,11 @@ export const createFaceDescriptor = async dataUrl => {
   let image;
   try {
     image = decodeImage(dataUrl, faceApi.tf);
+    if (mirrored) {
+      const original = image;
+      image = faceApi.tf.reverse(original, 1);
+      original.dispose();
+    }
     const detections = await faceApi
       .detectAllFaces(image, new faceApi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
       .withFaceLandmarks()
@@ -173,6 +179,16 @@ export const compareEnrollmentToAttendance = async (enrollmentDescriptor, attend
   if (!isValidFaceDescriptor(enrollmentDescriptor)) {
     throw new FaceMatchingServiceError('No approved biometric face template is available. Please contact HR to complete or repeat enrollment.');
   }
-  const attendanceDescriptor = await createFaceDescriptor(attendanceImage);
-  return compareFaceDescriptors(enrollmentDescriptor, attendanceDescriptor);
+  const result = compareFaceDescriptors(enrollmentDescriptor, await createFaceDescriptor(attendanceImage));
+  if (result.matched) return result;
+  // Selfies are saved as the mirror image the employee saw on screen, but enrollment
+  // selfies saved before that were not, so a selfie that does not match is also compared
+  // flipped back.
+  try {
+    const mirrored = compareFaceDescriptors(enrollmentDescriptor, await createFaceDescriptor(attendanceImage, { mirrored: true }));
+    return mirrored.distance < result.distance ? mirrored : result;
+  } catch (error) {
+    if (error instanceof FaceImageError) return result;
+    throw error;
+  }
 };

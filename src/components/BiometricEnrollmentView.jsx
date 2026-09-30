@@ -227,6 +227,11 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setCameraError('Unable to process this image.');
       return;
     }
+    // A selfie is saved as the mirror image the employee saw in the preview; ID photos are not.
+    if (cameraTarget === 'selfie') {
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+    }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     try {
       const image = encodeFaceImage(canvas, 1280, 0.78);
@@ -540,7 +545,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                 </div>
               ) : cameraTarget === 'selfie' ? (
                 <div className="mt-4 space-y-2 rounded-xl bg-slate-950 p-3">
-                  <video ref={videoRef} autoPlay playsInline muted className="mx-auto max-h-56 w-full rounded-lg object-contain" />
+                  <video ref={videoRef} autoPlay playsInline muted className="mx-auto max-h-56 w-full scale-x-[-1] rounded-lg object-contain" />
                   <div className="flex gap-2">
                     <button type="button" onClick={captureImage} disabled={submitting} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">Capture Selfie</button>
                     <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50"><X className="h-3 w-3" /> Cancel</button>
