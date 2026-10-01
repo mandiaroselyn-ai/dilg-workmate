@@ -57,7 +57,9 @@ export const createRateLimits = () => {
     '/auth/google/exchange': [limit({ limit: 20, keyGenerator: clientIp, skipSuccessfulRequests: true })],
     '/face/enrollment': [signedInActionLimit()],
     '/face-enrollment': [signedInActionLimit()],
-    '/sms': [signedInActionLimit()]
+    '/sms': [signedInActionLimit()],
+    // Every certificate request notifies HR.
+    '/documents/requests': [signedInActionLimit()]
   };
   const enrollmentReviewLimit = signedInActionLimit();
   // Staff account changes can require the HR password; failed attempts are limited.

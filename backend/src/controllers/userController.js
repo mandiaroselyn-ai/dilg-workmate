@@ -17,6 +17,7 @@ import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
 import { DtrLog } from '../models/dtrLogModel.js';
 import { Leave } from '../models/leaveModel.js';
+import { EmployeeDocument } from '../models/employeeDocumentModel.js';
 import { isConnected } from '../config/db.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
@@ -457,13 +458,14 @@ export const getEmployees = async (req, res) => {
 export const getUpdateStamps = async (req, res) => {
   try {
     const isHr = req.user?.accessLevel === 'hr_admin';
-    const [bulletins, requests, attendance, sms] = await Promise.all([
+    const [bulletins, requests, documents, attendance, sms] = await Promise.all([
       Announcement.updateStamps(req.user),
       Leave.updateStamp(req.user),
+      EmployeeDocument.updateStamp(req.user),
       isHr ? DtrLog.updateStamp() : null,
       isHr ? Announcement.smsStamp() : null
     ]);
-    res.status(200).json({ success: true, stamps: { ...bulletins, requests, ...(attendance ? { attendance } : {}), ...(sms ? { sms } : {}) } });
+    res.status(200).json({ success: true, stamps: { ...bulletins, requests, documents, ...(attendance ? { attendance } : {}), ...(sms ? { sms } : {}) } });
   } catch (error) {
     sendServerError(res, error);
   }
