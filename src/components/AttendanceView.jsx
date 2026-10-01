@@ -1342,7 +1342,7 @@ export default function AttendanceView({
                             </span>
                             <span className="text-[10px] font-semibold text-slate-400">Live selfie</span>
                           </div>
-                          <div className="relative mx-auto aspect-[3/4] w-full overflow-hidden bg-slate-900">
+                          <div className="relative mx-auto aspect-[3/4] w-full max-h-[44vh] overflow-hidden bg-slate-900">
                             <video
                               ref={selfieVideoRef}
                               autoPlay
