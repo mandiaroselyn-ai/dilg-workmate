@@ -24,9 +24,15 @@ const NotificationSchema = new mongoose.Schema({
   recipientRole: { type: String, default: '' },
   employeeId: { type: String, default: '' },
   employeeEmail: { type: String, default: '' },
+  // What the reader can do about it (one of NOTIFICATION_ACTIONS) and whom it is about:
+  // an employee ID or email for account actions, a request ID for review_request.
+  action: { type: String, default: '' },
+  targetId: { type: String, default: '' },
   // People who read a notice meant for several readers (all employees or all HR/Admins).
   readBy: { type: [String], default: [] }
 }, { timestamps: true });
+
+export const NOTIFICATION_ACTIONS = ['review_account', 'reset_password', 'review_enrollment', 'review_request'];
 
 const SmsAlertSchema = new mongoose.Schema({
   customId: { type: String, required: true },
@@ -38,7 +44,12 @@ const SmsAlertSchema = new mongoose.Schema({
   direction: { type: String, enum: ['outbound', 'inbound'], default: 'outbound' },
   sender: { type: String, default: '' },
   employeeId: { type: String, default: '' },
-  employeeEmail: { type: String, default: '' }
+  employeeEmail: { type: String, default: '' },
+  // What the message was about: 'attendance', 'account' (approval), 'manual' (sent by
+  // staff), or 'reply' (received). Empty on messages saved before this was recorded.
+  kind: { type: String, default: '' },
+  // Why a message with status Failed was not delivered.
+  error: { type: String, default: '' }
 }, { timestamps: true });
 
 // Mini-settings schema to preserve acknowledged IDs
@@ -78,6 +89,13 @@ function ensureConnected() {
     throw new Error('MongoDB is not connected.');
   }
 }
+
+// A notification's action and target, kept only when the action is a known one.
+export const notificationActionFields = data => {
+  const action = NOTIFICATION_ACTIONS.includes(data?.action) ? data.action : '';
+  const targetId = action && typeof data.targetId === 'string' ? data.targetId.trim().slice(0, 254) : '';
+  return action && targetId ? { action, targetId } : { action: '', targetId: '' };
+};
 
 // Identifies a reader in a notice's readBy list.
 export const notificationReaderKey = user => String(user?.employeeId || user?.email || '').trim().toLowerCase();
@@ -234,7 +252,8 @@ export const Announcement = {
       type: notifData.type || 'system',
       recipientRole: notifData.recipientRole || '',
       employeeId: notifData.employeeId || '',
-      employeeEmail: notifData.employeeEmail?.toString().trim().toLowerCase() || ''
+      employeeEmail: notifData.employeeEmail?.toString().trim().toLowerCase() || '',
+      ...notificationActionFields(notifData)
     };
 
     const item = await MongoNotification.create(newNotifData);
@@ -262,6 +281,12 @@ export const Announcement = {
     return findVisibleNotifications(user);
   },
 
+  // A fingerprint of the SMS log, so HR's SMS list updates without a reload.
+  smsStamp: async () => {
+    ensureConnected();
+    return stampOf(MongoSmsAlert);
+  },
+
   findSmsAlerts: async () => {
     ensureConnected();
     const list = await MongoSmsAlert.find().sort({ createdAt: -1 });
@@ -285,7 +310,9 @@ export const Announcement = {
       direction: smsData.direction || 'outbound',
       sender: smsData.sender || '',
       employeeId: smsData.employeeId || '',
-      employeeEmail: smsData.employeeEmail?.toString().trim().toLowerCase() || ''
+      employeeEmail: smsData.employeeEmail?.toString().trim().toLowerCase() || '',
+      kind: smsData.kind || '',
+      error: smsData.error ? String(smsData.error).slice(0, 300) : ''
     };
 
     const item = await MongoSmsAlert.create(newSmsData);
@@ -303,6 +330,7 @@ export const Announcement = {
       message: smsData.message,
       timestamp: smsData.timestamp || new Date().toISOString(),
       status: 'Received',
+      kind: 'reply',
       providerMessageId: smsData.providerMessageId || '',
       direction: 'inbound',
       sender: smsData.sender || '',

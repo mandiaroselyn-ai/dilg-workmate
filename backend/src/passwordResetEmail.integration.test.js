@@ -147,6 +147,8 @@ test('asking HR for a reset notifies HR to confirm the person before resetting',
   assert.equal(notice.recipientRole, 'hr_admin');
   assert.match(notice.message, /Maria Santos \(maria\.santos@dilg\.gov\.ph, DILG-2026-100200\)/);
   assert.match(notice.message, /confirm it is really them/);
+  assert.equal(notice.action, 'reset_password');
+  assert.equal(notice.targetId, 'DILG-2026-100200');
 });
 
 test('asking HR for a reset answers the same for an unknown email and does not notify HR', async t => {

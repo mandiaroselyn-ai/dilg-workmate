@@ -32,7 +32,9 @@ export default function SupervisorView({
   requests,
   employees = [],
   activeEmployeeCount = null,
-  onUpdateRequestStatus
+  onUpdateRequestStatus,
+  // From a notification's button: { requestId } of the request to open.
+  focus = null
 }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [remarks, setRemarks] = useState('');
@@ -61,6 +63,16 @@ export default function SupervisorView({
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSavingDecision, setIsSavingDecision] = useState(false);
+
+  // A notification's Review request button opens that request.
+  useEffect(() => {
+    const request = focus?.requestId ? requests.find(item => item.id === focus.requestId) : null;
+    if (!request) return;
+    setActiveMainTab('requests');
+    setStatusFilter(request.status === 'For Supervisor' ? 'For Supervisor' : 'All');
+    setSelectedRequest(request);
+    setRemarks(['Pending', 'For Supervisor'].includes(request.status) ? '' : request.supervisorRemarks || '');
+  }, [focus]);
 
   const getRequester = (request) => request.employee || employees.find(employee => matchesAttendanceEmployee(request, employee));
   const requesterName = (request) => getRequester(request)?.name || request.employeeName || 'Employee name unavailable';

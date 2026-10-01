@@ -73,7 +73,9 @@ export const submitBiometricEnrollment = async (req, res) => {
         title: 'Biometric Enrollment Submitted',
         message: `${user.name || 'An employee'} submitted ${isDemoEnrollment ? 'DEMO ONLY sample ID images and ' : ''}a biometric selfie for HR review. ${isDemoEnrollment ? 'HR may approve for attendance matching tests only; this is not identity verification.' : 'Attendance face matching begins after HR approval.'} Liveness checks are not configured.`,
         type: 'biometric_enrollment',
-        recipientRole: 'hr_admin'
+        recipientRole: 'hr_admin',
+        action: 'review_enrollment',
+        targetId: user.employeeId || user.email
       });
     } catch (error) {
       console.error('Unable to notify HR about biometric enrollment submission:', error);

@@ -74,7 +74,9 @@ export default function HRAdminView({
   onDeleteAnnouncement,
   onCreateEvent,
   onUpdateEvent,
-  onDeleteEvent
+  onDeleteEvent,
+  // From a notification's button: the employee or request to open first.
+  focus = null
 }) {
   const sectionTabs = {
     hr_dashboard: 'dashboard',
@@ -427,6 +429,7 @@ export default function HRAdminView({
               currentUser={user}
               onEmployeesChange={onEmployeesChange}
               onAdminNotification={onAdminNotification}
+              focusEmployeeId={focus?.employeeId}
             />
           )}
         </div>
@@ -495,6 +498,7 @@ export default function HRAdminView({
         onUpdateRequests={onUpdateRequests}
         onUpdateRequestStatus={onUpdateRequestStatus}
         onBack={() => setActiveTab('dashboard')}
+        focusRequestId={focus?.requestId}
       /></div>}
 
       {false && activeTab === 'requests' && (

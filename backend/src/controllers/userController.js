@@ -10,7 +10,7 @@ import {
   notifyHrOfNewAccount
 } from '../services/accountNotifications.js';
 import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
-import { toPhilippineMobile } from '../services/smsService.js';
+import { isSmsConfigured, toPhilippineMobile } from '../services/smsService.js';
 import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -453,15 +453,17 @@ export const getEmployees = async (req, res) => {
 
 // Fingerprints of the lists this person sees. The app asks every few seconds and downloads
 // only the lists whose fingerprint changed, so updates show up quickly without reloading
-// everything. Attendance is included for HR/Admins only.
+// everything. Attendance and the SMS log are included for HR/Admins only.
 export const getUpdateStamps = async (req, res) => {
   try {
-    const [bulletins, requests, attendance] = await Promise.all([
+    const isHr = req.user?.accessLevel === 'hr_admin';
+    const [bulletins, requests, attendance, sms] = await Promise.all([
       Announcement.updateStamps(req.user),
       Leave.updateStamp(req.user),
-      req.user?.accessLevel === 'hr_admin' ? DtrLog.updateStamp() : null
+      isHr ? DtrLog.updateStamp() : null,
+      isHr ? Announcement.smsStamp() : null
     ]);
-    res.status(200).json({ success: true, stamps: { ...bulletins, requests, ...(attendance ? { attendance } : {}) } });
+    res.status(200).json({ success: true, stamps: { ...bulletins, requests, ...(attendance ? { attendance } : {}), ...(sms ? { sms } : {}) } });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -493,9 +495,11 @@ export const getFullState = async (req, res) => {
       ? rawRequests.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
       : rawRequests.filter(request => request.status !== 'Draft');
     const visibleNotifications = notifications;
-    const visibleSmsAlerts = req.user?.accessLevel === 'employee'
+    // Employees see their own messages and HR the whole log. Supervisors only decide
+    // requests, so they get no SMS log.
+    const visibleSmsAlerts = accessLevel === 'employee'
       ? smsAlerts.filter(item => item.employeeId === req.user.employeeId || item.employeeEmail === req.user.email)
-      : smsAlerts;
+      : accessLevel === 'hr_admin' ? smsAlerts : [];
     const requests = await Promise.all(visibleRawRequests.map(async request => {
       const employee = request.employeeId
         ? await User.findByEmployeeId(request.employeeId)
@@ -517,7 +521,9 @@ export const getFullState = async (req, res) => {
       smsAlerts: visibleSmsAlerts,
       acknowledged,
       announcements,
-      activeEmployeeCount
+      activeEmployeeCount,
+      // HR's SMS panel says whether texts can be sent at all.
+      ...(accessLevel === 'hr_admin' ? { smsConfigured: isSmsConfigured() } : {})
     });
   } catch (error) {
     sendServerError(res, error);
@@ -632,7 +638,9 @@ export const requestHrPasswordReset = async (req, res) => {
         title: 'Password Reset Requested',
         message: `${who} asked HR to reset their password. Before using Reset password on their profile, confirm it is really them, in person or by calling the number on file. Give the temporary password only to them, in person or by phone.`,
         type: 'employee_management',
-        recipientRole: 'hr_admin'
+        recipientRole: 'hr_admin',
+        action: 'reset_password',
+        targetId: user.employeeId || user.email
       });
     }
     res.status(200).json({ success: true, message: HR_RESET_REQUEST_MESSAGE });

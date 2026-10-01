@@ -71,7 +71,9 @@ export const createRateLimits = () => {
 
   const routeRateLimit = (req, res, next) => {
     const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
-    const limiters = routeLimits[apiPath]
+    // Sending a text is limited; HR's SMS list reloads it with GET whenever it changes.
+    const isSmsListRead = apiPath === '/sms' && req.method === 'GET';
+    const limiters = (isSmsListRead ? [] : routeLimits[apiPath])
       || (/^\/face\/enrollment\/[^/]+\/review$/.test(apiPath) ? [enrollmentReviewLimit] : []);
     const staffLimiters = apiPath.startsWith('/staff') && req.method !== 'GET' ? [staffChangeLimit] : [];
     return runLimiters([...limiters, ...staffLimiters], req, res, next);

@@ -22,6 +22,7 @@ import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
+import { findTargetEmployee } from '../utils/notifications';
 
 const emptyForm = {
   firstName: '',
@@ -136,15 +137,17 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
-export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification }) {
-  const [screen, setScreen] = useState('list');
+export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification, focusEmployeeId }) {
+  // A notification's button opens this employee's profile first.
+  const focusedEmployee = focusEmployeeId ? findTargetEmployee(employees, focusEmployeeId) : null;
+  const [screen, setScreen] = useState(() => (focusedEmployee ? 'profile' : 'list'));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [showBiometricPending, setShowBiometricPending] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [toast, setToast] = useState('');
   const [toastIsError, setToastIsError] = useState(false);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(() => (focusedEmployee ? employeeKey(focusedEmployee) : null));
   const [form, setForm] = useState(emptyForm);
   const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
   const [dilgIdPhoto, setDilgIdPhoto] = useState('');

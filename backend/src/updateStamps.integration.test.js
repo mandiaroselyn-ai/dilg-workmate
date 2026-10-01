@@ -22,10 +22,12 @@ const signIn = (t, account) => {
   t.mock.method(Announcement, 'updateStamps', async () => ({ announcements: 'a1', events: 'e1', notifications: 'n1' }));
   const requestStamp = t.mock.method(Leave, 'updateStamp', async () => 'r1');
   const attendanceStamp = t.mock.method(DtrLog, 'updateStamp', async () => 'd1');
+  const smsStamp = t.mock.method(Announcement, 'smsStamp', async () => 's1');
   return {
     get: path => request(app).get(path).set('Authorization', `Bearer ${createAuthToken(account)}`),
     requestStamp,
-    attendanceStamp
+    attendanceStamp,
+    smsStamp
   };
 };
 
@@ -36,13 +38,15 @@ test('employees get fingerprints of their lists, without attendance', async t =>
   assert.deepEqual(response.body.stamps, { announcements: 'a1', events: 'e1', notifications: 'n1', requests: 'r1' });
   assert.equal(session.requestStamp.mock.calls[0].arguments[0].email, employee.email);
   assert.equal(session.attendanceStamp.mock.callCount(), 0);
+  assert.equal(session.smsStamp.mock.callCount(), 0);
 });
 
-test('HR/Admins also get the attendance fingerprint', async t => {
+test('HR/Admins also get the attendance and SMS fingerprints', async t => {
   const session = signIn(t, hr);
   const response = await session.get('/api/updates');
   assert.equal(response.status, 200);
   assert.equal(response.body.stamps.attendance, 'd1');
+  assert.equal(response.body.stamps.sms, 's1');
 });
 
 test('checking for updates often never uses up the request limit', async t => {

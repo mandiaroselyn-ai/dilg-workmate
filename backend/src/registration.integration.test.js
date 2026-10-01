@@ -50,6 +50,9 @@ test('HR is told a new account is waiting for approval', async t => {
   assert.equal(notice.title, 'New Account Awaiting Approval');
   assert.equal(notice.recipientRole, 'hr_admin');
   assert.match(notice.message, /waiting for HR activation/);
+  // HR's notification has a Review account button that opens this employee.
+  assert.equal(notice.action, 'review_account');
+  assert.equal(notice.targetId, 'DILG-2026-654321');
 });
 
 test('an email that already has an account cannot sign up again', async t => {

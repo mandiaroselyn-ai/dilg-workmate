@@ -176,10 +176,19 @@ export const readNotification = async (req, res) => {
   }
 };
 
+// The whole SMS log, newest first, for HR's SMS list and SMS Log page.
+export const getSmsAlerts = async (req, res) => {
+  try {
+    res.status(200).json(await Announcement.findSmsAlerts());
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const createSmsAlert = async (req, res) => {
   try {
     const { recipient, message, employeeId, employeeEmail, timestamp } = req.body;
-    const sms = await sendSms({ recipient, message, employeeId, employeeEmail, timestamp });
+    const sms = await sendSms({ recipient, message, employeeId, employeeEmail, timestamp, kind: 'manual' });
     res.status(201).json({ success: true, sms });
   } catch (error) {
     if (error instanceof SmsError) {

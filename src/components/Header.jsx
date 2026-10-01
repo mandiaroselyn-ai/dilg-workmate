@@ -3,11 +3,28 @@
  * SPDX-License-Identifier: Apache-2.5
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Bell, Mail, MessageSquare, ShieldAlert, CircleDot, Info, Calendar as CalendarIcon, Clock, Settings, User, Menu } from 'lucide-react';
 import logoImage from '../assets/dilg-logo.png';
 import MobileNotificationsPanel from './MobileNotificationsPanel';
 import MobileSmsPanel from './MobileSmsPanel';
+import NotificationCenter from './NotificationCenter';
+import SmsCenter from './SmsCenter';
+import { unseenSmsCount } from '../utils/smsLog';
+
+// When HR last opened the SMS list, remembered per account in this browser. The first
+// visit starts from now, so the badge counts only what arrives afterwards.
+const readSmsSeenAt = key => {
+  try {
+    const saved = Number(window.localStorage.getItem(key));
+    if (saved > 0) return saved;
+    const now = Date.now();
+    window.localStorage.setItem(key, String(now));
+    return now;
+  } catch {
+    return Date.now();
+  }
+};
 
 export default function Header({
   currentView,
@@ -15,9 +32,13 @@ export default function Header({
   activeRole,
   notifications,
   smsAlerts,
+  employees = [],
+  requests = [],
+  smsConfigured,
   onMarkNotificationRead,
   onClearNotifications,
   onDismissNotifications,
+  onNotificationAction,
   onSendSms,
   onViewChange,
   onToggleSidebar,
@@ -26,6 +47,19 @@ export default function Header({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSMSLogs, setShowSMSLogs] = useState(false);
   const [mobilePanel, setMobilePanel] = useState(null);
+  const smsSeenKey = `dilg_sms_seen:${String(user?.email || '').trim().toLowerCase()}`;
+  const [smsSeenAt, setSmsSeenAt] = useState(() => readSmsSeenAt(smsSeenKey));
+  useEffect(() => setSmsSeenAt(readSmsSeenAt(smsSeenKey)), [smsSeenKey]);
+  const markSmsSeen = () => {
+    const now = Date.now();
+    setSmsSeenAt(now);
+    try {
+      window.localStorage.setItem(smsSeenKey, String(now));
+    } catch {
+      // Not remembered when storage is blocked.
+    }
+  };
+  const notificationContext = useMemo(() => ({ role: activeRole, employees, requests }), [activeRole, employees, requests]);
   
   const notificationRef = useRef(null);
   const smsRef = useRef(null);
@@ -99,7 +133,18 @@ export default function Header({
     hr_records: 'Record Management System',
     hr_announcements: 'Announcements',
     hr_directory: 'Employee Records',
-    hr_profile: 'HR/Admin Profile'
+    hr_profile: 'HR/Admin Profile',
+    notifications: 'Notifications',
+    sms_log: 'SMS Log'
+  };
+  // HR/Admins and Supervisors use the web panels; supervisors only decide requests, so
+  // they have no SMS list.
+  const showSmsButton = !isWebOnlyRole || activeRole === 'hr_admin';
+  const smsBadgeCount = isWebOnlyRole ? unseenSmsCount(smsAlerts, smsSeenAt) : smsAlerts.length;
+  const goTo = view => {
+    setShowNotifications(false);
+    setShowSMSLogs(false);
+    onViewChange(view);
   };
 
   return (
@@ -143,6 +188,7 @@ export default function Header({
       <div className="flex items-center gap-2">
         <>
         {/* SMS Alerts Log Icon */}
+        {showSmsButton && (
         <div className="relative" ref={smsRef}>
           <button
             id="btn-header-sms"
@@ -153,22 +199,36 @@ export default function Header({
                 setShowNotifications(false);
                 return;
               }
+              if (isWebOnlyRole && !showSMSLogs) markSmsSeen();
               setShowSMSLogs(previous => !previous);
               setShowNotifications(false);
             }}
             className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all relative border border-white/30 bg-white/10 hover:bg-white/20 cursor-pointer"
-            title="SMS Alerts Activity Feed"
+            title={isWebOnlyRole ? 'SMS' : 'SMS Alerts Activity Feed'}
+            aria-label={isWebOnlyRole && smsBadgeCount > 0 ? `SMS, ${smsBadgeCount} new failed text${smsBadgeCount === 1 ? '' : 's'} or replies` : 'SMS'}
           >
             <Mail className="w-5 h-5 text-white" />
-            {smsAlerts.length > 0 && (
+            {smsBadgeCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[#f43f5e] text-[9px] text-white font-bold rounded-full flex items-center justify-center shadow-lg">
-                {smsAlerts.length}
+                {smsBadgeCount}
               </span>
             )}
           </button>
 
+          {showSMSLogs && isWebOnlyRole && (
+            <div className="absolute right-0 mt-2 z-30 animate-in fade-in slide-in-from-top-3 duration-200">
+              <SmsCenter
+                variant="panel"
+                smsAlerts={smsAlerts}
+                employees={employees}
+                smsConfigured={smsConfigured}
+                onViewAll={() => goTo('sms_log')}
+              />
+            </div>
+          )}
+
           {/* SMS Dropdown */}
-          {showSMSLogs && (
+          {showSMSLogs && !isWebOnlyRole && (
             <div className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 z-30 animate-in fade-in slide-in-from-top-3 duration-200 text-slate-800">
               <div className="p-4 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -207,6 +267,7 @@ export default function Header({
             </div>
           )}
         </div>
+        )}
 
         {/* System Notifications Bell Icon */}
         <div className="relative" ref={notificationRef}>
@@ -223,7 +284,8 @@ export default function Header({
               setShowSMSLogs(false);
             }}
             className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all relative border border-white/30 bg-white/10 hover:bg-white/20 cursor-pointer"
-            title="System Inbox"
+            title={isWebOnlyRole ? 'Notifications' : 'System Inbox'}
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
           >
             <Bell className="w-5 h-5 text-white" />
             {unreadCount > 0 && (
@@ -233,8 +295,26 @@ export default function Header({
             )}
           </button>
 
+          {showNotifications && isWebOnlyRole && (
+            <div className="absolute right-0 mt-2 z-30 animate-in fade-in slide-in-from-top-3 duration-200">
+              <NotificationCenter
+                variant="panel"
+                notifications={notifications}
+                context={notificationContext}
+                onMarkRead={onMarkNotificationRead}
+                onMarkAllRead={onClearNotifications}
+                onClearAll={onDismissNotifications}
+                onAction={(notification, target) => {
+                  setShowNotifications(false);
+                  onNotificationAction?.(notification, target);
+                }}
+                onViewAll={() => goTo('notifications')}
+              />
+            </div>
+          )}
+
           {/* Notifications Dropdown */}
-          {showNotifications && (
+          {showNotifications && !isWebOnlyRole && (
             <div className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 z-30 animate-in fade-in slide-in-from-top-3 duration-200 text-slate-800">
               <div className="p-4 bg-gradient-to-r from-[#1e40af] to-[#0c348a] text-white flex items-center justify-between">
                 <div className="flex items-center gap-2">

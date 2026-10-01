@@ -14,7 +14,9 @@ const notifyHrOfSubmission = async (request, employee) => {
       title: 'New Request Submitted',
       message: `${employee.name || 'An employee'} submitted a ${request.type} (Ref ${request.id}) for HR review.`,
       type: 'request',
-      recipientRole: 'hr_admin'
+      recipientRole: 'hr_admin',
+      action: 'review_request',
+      targetId: request.id
     });
   } catch (error) {
     console.error('Unable to notify HR about a submitted request:', error);

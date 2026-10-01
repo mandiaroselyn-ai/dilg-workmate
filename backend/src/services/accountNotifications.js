@@ -83,7 +83,9 @@ export const notifyHrOfNewAccount = async (user, source) => {
       title: 'New Account Awaiting Approval',
       message: `${who} signed up through ${source} and is waiting for HR activation.`,
       type: 'employee_management',
-      recipientRole: 'hr_admin'
+      recipientRole: 'hr_admin',
+      action: 'review_account',
+      targetId: user.employeeId || user.email
     });
   } catch (error) {
     console.error('Unable to notify HR about a new account:', error);

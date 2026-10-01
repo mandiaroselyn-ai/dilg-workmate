@@ -9,6 +9,8 @@ import { mergeAttendanceMonth, mergeRecentAttendance } from './utils/hrAttendanc
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
+import NotificationCenter from './components/NotificationCenter';
+import SmsCenter from './components/SmsCenter';
 import { queueAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
@@ -64,6 +66,9 @@ export default function App() {
   // Counts page picks, so picking the HR page already open starts it over (for example,
   // Attendance goes back to monitoring from DTR Records).
   const [viewVisit, setViewVisit] = useState(0);
+  // What a notification's button opens on the next page ({ employeeId } or { requestId }),
+  // for that one visit only.
+  const [viewFocus, setViewFocus] = useState(null);
   const [activeModal, setActiveModal] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -79,6 +84,8 @@ export default function App() {
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [smsAlerts, setSmsAlerts] = useState([]);
+  // Whether the server can send texts; HR only (undefined for everyone else).
+  const [smsConfigured, setSmsConfigured] = useState(undefined);
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminSmsAlerts, setAdminSmsAlerts] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -174,6 +181,7 @@ export default function App() {
             if (activeRole === 'hr_admin') setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', data.user));
           }
           if (data.smsAlerts) setSmsAlerts(data.smsAlerts);
+          setSmsConfigured(typeof data.smsConfigured === 'boolean' ? data.smsConfigured : undefined);
           if (data.adminNotifications) setAdminNotifications(data.adminNotifications);
           if (data.adminSmsAlerts) setAdminSmsAlerts(data.adminSmsAlerts);
           if (data.acknowledged) setAcknowledgedAnnouncements(data.acknowledged);
@@ -278,6 +286,11 @@ export default function App() {
         setAttendanceHistory(previous => (activeRole === 'hr_admin'
           ? mergeRecentAttendance(previous, list, loadedAttendanceMonthsRef.current, attendanceWindowStart())
           : list));
+      },
+      // HR only: texts sent at Time In or Time Out, failed texts, and replies.
+      sms: async () => {
+        const list = await readJson('/api/sms');
+        if (isCurrentSession && Array.isArray(list)) setSmsAlerts(list);
       }
     };
 
@@ -366,8 +379,8 @@ export default function App() {
 
   const roleAllowedViews = {
     employee: ['dashboard', 'attendance', 'requests', 'announcements', 'documents', 'office_directory', 'calendar', 'profile', 'settings', 'help'],
-    supervisor: ['supervisor', 'announcements', 'calendar', 'profile'],
-    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile']
+    supervisor: ['supervisor', 'announcements', 'calendar', 'profile', 'notifications'],
+    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log']
   };
   // Shared links (such as the profile picture in the header) open HR's own version.
   const roleViewAliases = {
@@ -464,10 +477,12 @@ export default function App() {
     setAnnouncements([]);
     setNotifications([]);
     setSmsAlerts([]);
+    setSmsConfigured(undefined);
     setAdminNotifications([]);
     setAdminSmsAlerts([]);
     setEmployees([]);
     setAcknowledgedAnnouncements([]);
+    setViewFocus(null);
     setCurrentView('dashboard');
     setSidebarOpen(false);
   };
@@ -493,7 +508,9 @@ export default function App() {
       type: notification.type || 'system',
       recipientRole: notification.recipientRole || (admin ? 'hr_admin' : ''),
       employeeId: notification.employeeId || (employee && activeRole !== 'hr_admin' && activeRole !== 'supervisor' ? user?.employeeId || '' : ''),
-      employeeEmail: notification.employeeEmail || (employee && activeRole !== 'hr_admin' && activeRole !== 'supervisor' ? user?.email || '' : '')
+      employeeEmail: notification.employeeEmail || (employee && activeRole !== 'hr_admin' && activeRole !== 'supervisor' ? user?.email || '' : ''),
+      // A button on the notification that opens what it is about.
+      ...(notification.action ? { action: notification.action, targetId: notification.targetId } : {})
     };
 
     return fetch('/api/notifications', {
@@ -1037,7 +1054,9 @@ export default function App() {
         message: `${label} ${id} was validated by HR/Admin and is ready for your review.`,
         time: 'Just now',
         type: 'request',
-        recipientRole: 'supervisor'
+        recipientRole: 'supervisor',
+        action: 'review_request',
+        targetId: id
       });
     } else {
       pushSystemNotification(newNotif, { admin: false, employee: true });
@@ -1188,6 +1207,16 @@ export default function App() {
           }
         }
       });
+  };
+
+  // A notification's button: marks it read and opens the employee's profile (accounts,
+  // password resets, enrollments) or the request it is about.
+  const handleNotificationAction = (notification, target) => {
+    if (!notification.read) handleMarkNotificationRead(notification.id);
+    const isRequest = target.action === 'review_request';
+    // handleViewChange counts this as the next visit; the focus is for that visit only.
+    setViewFocus({ visit: viewVisit + 1, ...(isRequest ? { requestId: target.targetId } : { employeeId: target.targetId }) });
+    handleViewChange(isRequest ? (activeRole === 'supervisor' ? 'supervisor' : 'hr_leave_records') : 'hr_employees');
   };
 
   // Hides every current notification; only newer ones appear afterwards.
@@ -1345,6 +1374,7 @@ export default function App() {
     ? requests.filter(request => (request.employeeId || request.employeeEmail || request.employeeName) && matchesAttendanceEmployee(request, user))
     : requests;
   const isWebOnlyRole = activeRole === 'supervisor' || activeRole === 'hr_admin';
+  const focus = viewFocus?.visit === viewVisit ? viewFocus : null;
 
   if (isWebOnlyRole && isSmallViewport) {
     return (
@@ -1392,9 +1422,13 @@ export default function App() {
           activeRole={activeRole}
           notifications={headerNotifications}
           smsAlerts={headerSmsAlerts}
+          employees={employees}
+          requests={requests}
+          smsConfigured={smsConfigured}
           onMarkNotificationRead={handleMarkNotificationRead}
           onClearNotifications={handleClearNotifications}
           onDismissNotifications={handleDismissNotifications}
+          onNotificationAction={handleNotificationAction}
           onSendSms={handleSendSms}
           onViewChange={handleViewChange}
           onToggleSidebar={handleToggleSidebar}
@@ -1443,7 +1477,28 @@ export default function App() {
               employees={employees}
               activeEmployeeCount={activeEmployeeCount}
               onUpdateRequestStatus={handleUpdateRequestStatus}
+              focus={focus}
             />
+          )}
+
+          {currentView === 'notifications' && isWebOnlyRole && (
+            <div className="mx-auto w-full max-w-4xl p-4 sm:p-6">
+              <NotificationCenter
+                variant="page"
+                notifications={headerNotifications}
+                context={{ role: activeRole, employees, requests }}
+                onMarkRead={handleMarkNotificationRead}
+                onMarkAllRead={handleClearNotifications}
+                onClearAll={handleDismissNotifications}
+                onAction={handleNotificationAction}
+              />
+            </div>
+          )}
+
+          {currentView === 'sms_log' && activeRole === 'hr_admin' && (
+            <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
+              <SmsCenter variant="page" smsAlerts={headerSmsAlerts} employees={employees} smsConfigured={smsConfigured} />
+            </div>
           )}
 
           {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
@@ -1472,6 +1527,7 @@ export default function App() {
               onCreateEvent={handleAddEvent}
               onUpdateEvent={handleUpdateEvent}
               onDeleteEvent={handleDeleteEvent}
+              focus={focus}
             />
           )}
 
