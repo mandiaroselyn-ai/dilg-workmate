@@ -1342,7 +1342,7 @@ export default function AttendanceView({
                             </span>
                             <span className="text-[10px] font-semibold text-slate-400">Live selfie</span>
                           </div>
-                          <div className="relative mx-auto aspect-[3/4] w-full max-h-[44vh] overflow-hidden bg-slate-900">
+                          <div className="relative mx-auto aspect-square sm:aspect-[3/4] w-full overflow-hidden bg-slate-900">
                             <video
                               ref={selfieVideoRef}
                               autoPlay
@@ -1357,26 +1357,23 @@ export default function AttendanceView({
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center justify-center gap-7 px-4 py-4">
+                          <div className="flex items-center justify-center gap-7 px-4 py-2.5">
                             <button
                               type="button"
                               onClick={captureAttendanceSelfie}
                               aria-label="Capture selfie"
-                              className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg transition hover:scale-105 hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300"
+                              className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg transition hover:scale-105 hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300"
                             >
-                              <Camera className="h-6 w-6" />
+                              <Camera className="h-5 w-5" />
                             </button>
                             <button
                               type="button"
                               onClick={stopSelfieCamera}
-                              className="rounded-xl border border-white/20 px-4 py-3 text-xs font-bold text-white transition hover:bg-white/10"
+                              className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/10"
                             >
                               Cancel
                             </button>
                           </div>
-                          <p className="px-4 pb-4 text-center text-[10px] leading-relaxed text-slate-400">
-                            Center your face clearly; the server will compare this selfie with your HR-approved enrollment photo. Liveness is not checked.
-                          </p>
                         </div>
                       ) : (
                         <div className="flex min-h-[210px] flex-col items-center justify-center px-2 py-5 text-center">
