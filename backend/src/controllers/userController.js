@@ -561,7 +561,7 @@ export const requestPasswordReset = async (req, res) => {
     // DILG email accounts reset their password through HR, who sets a temporary one. The
     // answer depends only on the email's domain, not on whether the account exists.
     if (isAgencyEmailAddress(email)) {
-      return res.status(200).json({ success: true, contactHr: true, message: 'Please contact your HR Administrator to reset your password.' });
+      return res.status(200).json({ success: true, contactHr: true, message: 'DILG email accounts are reset by HR. Please contact your HR Administrator, or tap "Request password reset from HR" below to let them know.' });
     }
 
     // Check the email service first, so the response does not differ between known and
@@ -609,6 +609,36 @@ export const requestPasswordReset = async (req, res) => {
   } catch (error) {
     console.error('Password reset request error:', error);
     res.status(500).json({ success: false, error: 'Unable to process reset request at this time.' });
+  }
+};
+
+// The same answer whether or not the email has an account, so the form does not reveal it.
+const HR_RESET_REQUEST_MESSAGE = 'Your request was sent to the HR Administrator. Visit or call the HR office so they can confirm it is you. HR will give you a temporary password in person or by phone; change it in Settings after you log in.';
+
+// Lets someone who cannot use an emailed reset link (such as a DILG email account, or
+// someone who cannot open their inbox) ask HR for help from the Forgot Password page. HR
+// is notified only about an existing account, and must confirm the person before setting
+// a temporary password, since anyone can type someone else's email here.
+export const requestHrPasswordReset = async (req, res) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: 'Enter the email address of your account.' });
+    }
+    const user = await User.findByEmail(email);
+    if (user) {
+      const who = `${user.name || user.email} (${user.email}${user.employeeId ? `, ${user.employeeId}` : ''})`;
+      await Announcement.createNotification({
+        title: 'Password Reset Requested',
+        message: `${who} asked HR to reset their password. Before using Reset password on their profile, confirm it is really them, in person or by calling the number on file. Give the temporary password only to them, in person or by phone.`,
+        type: 'employee_management',
+        recipientRole: 'hr_admin'
+      });
+    }
+    res.status(200).json({ success: true, message: HR_RESET_REQUEST_MESSAGE });
+  } catch (error) {
+    console.error('HR password reset request error:', error);
+    res.status(500).json({ success: false, error: 'Your request could not be sent. Please visit or call the HR office.' });
   }
 };
 

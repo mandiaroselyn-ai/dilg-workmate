@@ -17,6 +17,7 @@ import {
   getUpdateStamps,
   resetDatabase,
   requestPasswordReset,
+  requestHrPasswordReset,
   completePasswordReset
 } from '../controllers/userController.js';
 import {
@@ -102,6 +103,7 @@ router.patch('/employees/:identifier/leave-credits', requireAdmin, updateEmploye
 router.post('/login', loginUser);
 router.post('/account-status', checkAccountStatus);
 router.post('/password-reset-request', requestPasswordReset);
+router.post('/password-reset-hr-request', requestHrPasswordReset);
 router.post('/password-reset', completePasswordReset);
 router.post('/change-password', changePassword);
 router.post('/seed-default-users', requireAdmin, seedDefaultUsers);

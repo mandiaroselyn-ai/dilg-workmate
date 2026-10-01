@@ -69,7 +69,7 @@ export function createApiApp() {
   app.use('/api', (req, res, next) => {
     const apiPath = new URL(req.originalUrl, 'http://localhost').pathname.replace(/^\/api/, '');
     const publicRoutes = [
-      req.method === 'POST' && ['/login', '/account-status', '/register', '/password-reset-request', '/password-reset', '/auth/google/exchange'].includes(apiPath),
+      req.method === 'POST' && ['/login', '/account-status', '/register', '/password-reset-request', '/password-reset-hr-request', '/password-reset', '/auth/google/exchange'].includes(apiPath),
       req.method === 'GET' && apiPath.startsWith('/auth/google'),
       req.method === 'POST' && apiPath === '/sms/webhook'
     ];

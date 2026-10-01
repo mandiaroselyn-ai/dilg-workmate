@@ -46,6 +46,11 @@ export const createRateLimits = () => {
     '/account-status': passwordCheckLimits,
     // Every reset request sends an email, so all requests count, per email address.
     '/password-reset-request': [limit({ limit: 5, keyGenerator: ipAndEmail })],
+    // Every request notifies HR, so a few per email, and 20 across all emails per connection.
+    '/password-reset-hr-request': [
+      limit({ limit: 20, keyGenerator: clientIp }),
+      limit({ limit: 3, keyGenerator: ipAndEmail })
+    ],
     '/register': [limit({ limit: 20, keyGenerator: clientIp })],
     '/change-password': [limit({ limit: 10, keyGenerator: sessionOrIp, skipSuccessfulRequests: true })],
     '/password-reset': [limit({ limit: 20, keyGenerator: clientIp, skipSuccessfulRequests: true })],

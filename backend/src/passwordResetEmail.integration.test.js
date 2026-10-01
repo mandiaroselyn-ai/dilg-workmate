@@ -14,6 +14,7 @@ process.env.EMAIL_FROM = 'DILG WorkMate <reset@example.com>';
 
 const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
+const { Announcement } = await import('./models/announcementModel.js');
 
 const app = createApiApp();
 
@@ -33,6 +34,7 @@ test('DILG email accounts are told to contact HR, whether or not the account exi
     assert.equal(response.status, 200, email);
     assert.equal(response.body.contactHr, true, email);
     assert.match(response.body.message, /contact your HR Administrator/);
+    assert.match(response.body.message, /Request password reset from HR/);
   }
   assert.equal(lookup.mock.callCount(), 0);
 });
@@ -130,4 +132,43 @@ test('a valid reset token sets the new password so the employee can log in with 
   const tooShort = await request(app).post('/api/password-reset').send({ token: 'b'.repeat(64), password: 'short' });
   assert.equal(tooShort.status, 400);
   assert.equal(reset.mock.callCount(), 1);
+});
+
+test('asking HR for a reset notifies HR to confirm the person before resetting', async t => {
+  t.mock.method(User, 'findByEmail', async () => ({ name: 'Maria Santos', email: 'maria.santos@dilg.gov.ph', employeeId: 'DILG-2026-100200' }));
+  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+
+  const response = await request(app).post('/api/password-reset-hr-request').send({ email: 'Maria.Santos@dilg.gov.ph' });
+
+  assert.equal(response.status, 200);
+  assert.match(response.body.message, /sent to the HR Administrator/);
+  const notice = notify.mock.calls[0].arguments[0];
+  assert.equal(notice.title, 'Password Reset Requested');
+  assert.equal(notice.recipientRole, 'hr_admin');
+  assert.match(notice.message, /Maria Santos \(maria\.santos@dilg\.gov\.ph, DILG-2026-100200\)/);
+  assert.match(notice.message, /confirm it is really them/);
+});
+
+test('asking HR for a reset answers the same for an unknown email and does not notify HR', async t => {
+  const findByEmail = t.mock.method(User, 'findByEmail', async () => null);
+  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+  const unknown = await request(app).post('/api/password-reset-hr-request').send({ email: 'nobody@gmail.com' });
+  findByEmail.mock.mockImplementation(async () => ({ name: 'Juan', email: 'juan@gmail.com' }));
+  const known = await request(app).post('/api/password-reset-hr-request').send({ email: 'juan@gmail.com' });
+
+  assert.equal(unknown.status, 200);
+  assert.deepEqual(unknown.body, known.body);
+  assert.equal(notify.mock.callCount(), 1);
+});
+
+test('asking HR for a reset needs a valid email and is limited per email', async t => {
+  t.mock.method(User, 'findByEmail', async () => null);
+  const invalid = await request(app).post('/api/password-reset-hr-request').send({ email: 'not-an-email' });
+  assert.equal(invalid.status, 400);
+
+  const statuses = [];
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    statuses.push((await request(app).post('/api/password-reset-hr-request').send({ email: 'limit.check@gmail.com' })).status);
+  }
+  assert.deepEqual(statuses, [200, 200, 200, 429]);
 });

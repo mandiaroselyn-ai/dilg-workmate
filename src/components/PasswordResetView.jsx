@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import backgroundImage from '../assets/login-bg.jpg';
 import logoImage from '../assets/dilg-logo.png';
 import { FcGoogle } from 'react-icons/fc';
-import { KeyRound, Eye, EyeOff, Mail, ArrowLeft, Lock, ExternalLink } from 'lucide-react';
+import { KeyRound, Eye, EyeOff, Mail, ArrowLeft, Lock, ExternalLink, UserCog } from 'lucide-react';
 
 // Google's own page for recovering a Google account. WorkMate never resets a Google password.
 // In the phone app, links to other sites open in the phone's browser.
@@ -17,10 +17,40 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [successText, setSuccessText] = useState('');
-  // DILG email accounts are reset by HR instead of by email.
+  // DILG email accounts are reset by HR instead of by email (see "Request password reset from HR").
   const [contactHrText, setContactHrText] = useState('');
+  const [hrRequesting, setHrRequesting] = useState(false);
+  const [hrMessage, setHrMessage] = useState(null); // { text, error }
 
   const isApplyMode = mode === 'apply';
+
+  // Asks HR to reset the password, for someone who cannot use an emailed reset link. HR
+  // confirms who they are before giving them a temporary password.
+  const handleHrRequest = async () => {
+    setHrMessage(null);
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setHrMessage({ text: 'Enter your email address above first.', error: true });
+      return;
+    }
+    setHrRequesting(true);
+    try {
+      const response = await fetch('/api/password-reset-hr-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Your request could not be sent. Please visit or call the HR office.');
+      }
+      setHrMessage({ text: result.message || 'Your request was sent to the HR Administrator.' });
+    } catch (error) {
+      setHrMessage({ text: error.message || 'Your request could not be sent. Please visit or call the HR office.', error: true });
+    } finally {
+      setHrRequesting(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -217,6 +247,28 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
                   <p className="mt-2 text-[11px] font-semibold text-slate-500">
                     After recovering your Google account, come back and choose Continue with Google to log in.
                   </p>
+                </div>
+              )}
+
+              {!isApplyMode && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="flex items-center gap-2 text-xs font-black text-slate-800"><UserCog className="h-4 w-4 shrink-0 text-indigo-600" /> Can't open your email, or have a DILG (@dilg.gov.ph) account?</p>
+                  <p className="mt-1.5 text-xs font-semibold text-slate-600">
+                    Ask HR to reset your password. Enter your email address above, then tap the button. HR will confirm it is you and give you a temporary password in person or by phone.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleHrRequest}
+                    disabled={hrRequesting}
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-extrabold text-slate-800 hover:bg-slate-100 disabled:opacity-60"
+                  >
+                    {hrRequesting ? 'Sending...' : 'Request password reset from HR'}
+                  </button>
+                  {hrMessage && (
+                    <p role={hrMessage.error ? 'alert' : 'status'} className={`mt-3 rounded-lg border p-3 text-xs font-bold ${hrMessage.error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                      {hrMessage.text}
+                    </p>
+                  )}
                 </div>
               )}
 
