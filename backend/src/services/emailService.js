@@ -27,6 +27,20 @@ export const createTransporter = () => {
   });
 };
 
+// Google's own page for recovering a Google account, where its password is reset.
+export const GOOGLE_ACCOUNT_RECOVERY_URL = 'https://accounts.google.com/signin/recovery';
+
+// Answers a password reset request for an account that signs in only with Google. Its
+// password belongs to Google, so the email points to Google Account Recovery instead of
+// sending a WorkMate reset link.
+export const sendGoogleAccountRecoveryEmail = (transporter, email) => transporter.sendMail({
+  from: process.env.EMAIL_FROM,
+  to: email,
+  subject: 'DILG WorkMate: your account uses Google Sign-In',
+  text: `You asked to reset your DILG WorkMate password.\n\nThis account uses Google Sign-In. Your password is managed by Google. Please use Google Account Recovery to reset your Google password:\n\n${GOOGLE_ACCOUNT_RECOVERY_URL}\n\nAfter recovering your Google account, return to DILG WorkMate and choose "Continue with Google" to log in.\n\nIf you did not ask for this, you can ignore this message.`,
+  html: `<p>You asked to reset your DILG WorkMate password.</p><p>This account uses Google Sign-In. Your password is managed by Google. Please use Google Account Recovery to reset your Google password.</p><p><a href="${GOOGLE_ACCOUNT_RECOVERY_URL}">Recover Google Account</a></p><p>After recovering your Google account, return to DILG WorkMate and choose <strong>Continue with Google</strong> to log in.</p><p>If you did not ask for this, you can ignore this message.</p>`
+});
+
 const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[character]));

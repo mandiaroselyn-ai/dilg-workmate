@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import backgroundImage from '../assets/login-bg.jpg';
 import logoImage from '../assets/dilg-logo.png';
-import { KeyRound, Eye, EyeOff, Mail, ArrowLeft, Lock } from 'lucide-react';
+import { FcGoogle } from 'react-icons/fc';
+import { KeyRound, Eye, EyeOff, Mail, ArrowLeft, Lock, ExternalLink } from 'lucide-react';
+
+// Google's own page for recovering a Google account. WorkMate never resets a Google password.
+// In the phone app, links to other sites open in the phone's browser.
+const GOOGLE_ACCOUNT_RECOVERY_URL = 'https://accounts.google.com/signin/recovery';
 
 export default function PasswordResetView({ mode, token, onBackToLogin }) {
   const [email, setEmail] = useState('');
@@ -44,7 +49,7 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
           throw new Error(result.error || result.message || 'Unable to reset password.');
         }
 
-        setSuccessText(result.message || 'Your password has been reset successfully.');
+        setSuccessText(result.message || 'Your password has been reset. You can now log in with your new password.');
         setPassword('');
         setConfirmPassword('');
       } else {
@@ -67,7 +72,7 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
         if (result.contactHr) {
           setContactHrText(result.message || 'Please contact your HR Administrator to reset your password.');
         } else {
-          setSuccessText(result.message || 'If that email exists, a reset link has been sent.');
+          setSuccessText(result.message || 'If that email has an account, we sent it an email with what to do next.');
           setEmail('');
         }
       }
@@ -105,7 +110,7 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
             <p className="text-sm text-slate-600 mb-6">
               {isApplyMode
                 ? 'Enter your new password below to complete the reset process.'
-                : 'Enter your email address. Gmail and other personal email accounts get a reset link in their inbox. DILG (@dilg.gov.ph) accounts are reset by your HR Administrator.'}
+                : 'Signed up with the form? Enter your account\'s email address and we will email you a link to set a new password. DILG (@dilg.gov.ph) accounts are reset by your HR Administrator.'}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -192,6 +197,28 @@ export default function PasswordResetView({ mode, token, onBackToLogin }) {
               >
                 {submitting ? 'Processing...' : isApplyMode ? 'Update Password' : 'Send Reset Link'}
               </button>
+
+              {/* Shown to everyone, so the page never reveals which emails use Google sign-in.
+                  A Google-only account that asks for a reset is also emailed this link. */}
+              {!isApplyMode && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="flex items-center gap-2 text-xs font-black text-slate-800"><FcGoogle className="h-4 w-4 shrink-0" /> Signed up with Continue with Google?</p>
+                  <p className="mt-1.5 text-xs font-semibold text-slate-600">
+                    This account uses Google Sign-In. Your password is managed by Google. Please use Google Account Recovery to reset your Google password.
+                  </p>
+                  <a
+                    href={GOOGLE_ACCOUNT_RECOVERY_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-extrabold text-slate-800 hover:bg-slate-100"
+                  >
+                    Recover Google Account <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                  <p className="mt-2 text-[11px] font-semibold text-slate-500">
+                    After recovering your Google account, come back and choose Continue with Google to log in.
+                  </p>
+                </div>
+              )}
 
               <div className="text-center pt-2">
                 <button

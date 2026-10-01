@@ -765,16 +765,22 @@ export const User = {
     return user.toObject();
   },
 
+  // Sets a new password with an emailed reset token. The token is cleared in the same step
+  // that finds it, so one link can never set the password twice, even if opened twice at
+  // once. An account without a password (Google sign-in only) is never reset this way,
+  // since that would add a password to it.
   resetPasswordByToken: async (token, password) => {
     ensureConnected();
     if (!token || !password) return null;
     if (typeof token !== 'string') return null;
-    const user = await MongoUser.findOne({ resetToken: hashResetToken(token), resetTokenExpiry: { $gt: new Date() } });
+    const user = await MongoUser.findOneAndUpdate(
+      { resetToken: hashResetToken(token), resetTokenExpiry: { $gt: new Date() }, password: { $nin: ['', null] } },
+      { $set: { resetToken: '', resetTokenExpiry: null } },
+      { new: true }
+    );
     if (!user) return null;
     user.password = password;
     user.passwordChangedAt = passwordChangeTime();
-    user.resetToken = '';
-    user.resetTokenExpiry = null;
     await user.save();
     return user.toObject();
   },

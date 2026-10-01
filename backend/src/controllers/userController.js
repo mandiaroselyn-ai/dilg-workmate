@@ -9,7 +9,7 @@ import {
   isAccountApproval,
   notifyHrOfNewAccount
 } from '../services/accountNotifications.js';
-import { createTransporter } from '../services/emailService.js';
+import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
 import { toPhilippineMobile } from '../services/smsService.js';
 import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
 import mongoose from 'mongoose';
@@ -539,13 +539,17 @@ const sendPasswordResetEmail = async (transporter, email, token) => {
     from: process.env.EMAIL_FROM,
     to: email,
     subject: 'DILG WorkMate Password Reset',
-    text: `You requested a password reset. Click here to reset your password:\n\n${resetUrl}\n\nIf you did not request this, please ignore this message.`,
-    html: `<p>You requested a password reset.</p><p><a href="${resetUrl}">Reset your password</a></p><p>If you did not request this, please ignore this message.</p>`
+    text: `You requested a password reset. Click here to reset your password:\n\n${resetUrl}\n\nThis link works once and expires in 1 hour. If you did not request this, please ignore this message.`,
+    html: `<p>You requested a password reset.</p><p><a href="${resetUrl}">Reset your password</a></p><p>This link works once and expires in 1 hour. If you did not request this, please ignore this message.</p>`
   };
 
   const info = await transporter.sendMail(message);
   console.log('Password reset email sent:', info.messageId, 'to', email);
 };
+
+// The same answer for every email, whether it has no account, an account with a password,
+// or one that uses Google sign-in, so the form cannot be used to find out which it is.
+const RESET_REQUEST_MESSAGE = 'If that email has an account, we sent it an email. An account with a password gets a reset link that works once and expires in 1 hour. An account that uses Google Sign-In gets a link to Google Account Recovery instead.';
 
 export const requestPasswordReset = async (req, res) => {
   try {
@@ -577,7 +581,18 @@ export const requestPasswordReset = async (req, res) => {
 
     const user = await User.findByEmail(email);
     if (!user) {
-      return res.status(200).json({ success: true, message: 'If that email exists, the reset link has been sent.' });
+      return res.status(200).json({ success: true, message: RESET_REQUEST_MESSAGE });
+    }
+
+    // An account made with Google sign-in has no WorkMate password; Google manages it. It
+    // gets Google's account recovery page instead of a reset link, so no password is added.
+    if (!user.password) {
+      try {
+        await sendGoogleAccountRecoveryEmail(transporter, email);
+      } catch (err) {
+        console.error('Google account recovery email send failed:', err);
+      }
+      return res.status(200).json({ success: true, message: RESET_REQUEST_MESSAGE });
     }
 
     const token = crypto.randomBytes(32).toString('hex');
@@ -590,7 +605,7 @@ export const requestPasswordReset = async (req, res) => {
       console.error('Password reset email send failed:', err);
     }
 
-    res.status(200).json({ success: true, message: 'If that email exists, the reset link has been sent.' });
+    res.status(200).json({ success: true, message: RESET_REQUEST_MESSAGE });
   } catch (error) {
     console.error('Password reset request error:', error);
     res.status(500).json({ success: false, error: 'Unable to process reset request at this time.' });
@@ -599,8 +614,8 @@ export const requestPasswordReset = async (req, res) => {
 
 export const completePasswordReset = async (req, res) => {
   try {
-    const token = req.body.token?.toString?.().trim();
-    const password = req.body.password?.toString?.trim();
+    const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
 
     if (!token || !password) {
       return res.status(400).json({ success: false, error: 'Reset token and password are required.' });
@@ -614,7 +629,7 @@ export const completePasswordReset = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Token has expired or is invalid.' });
     }
 
-    res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
+    res.status(200).json({ success: true, message: 'Your password has been reset. You can now log in with your new password.' });
   } catch (error) {
     console.error('Complete password reset error:', error);
     res.status(500).json({ success: false, error: 'Unable to reset password at this time.' });
