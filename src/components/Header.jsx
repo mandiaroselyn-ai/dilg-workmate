@@ -50,6 +50,14 @@ export default function Header({
   const smsSeenKey = `dilg_sms_seen:${String(user?.email || '').trim().toLowerCase()}`;
   const [smsSeenAt, setSmsSeenAt] = useState(() => readSmsSeenAt(smsSeenKey));
   useEffect(() => setSmsSeenAt(readSmsSeenAt(smsSeenKey)), [smsSeenKey]);
+  const [isMobileBrowser, setIsMobileBrowser] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 768
+  );
+  useEffect(() => {
+    const check = () => setIsMobileBrowser(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
   const markSmsSeen = () => {
     const now = Date.now();
     setSmsSeenAt(now);
@@ -94,6 +102,8 @@ export default function Header({
     && activeRole === 'employee'
     && user?.accessLevel !== 'supervisor'
     && user?.accessLevel !== 'hr_admin';
+  const showFullScreenPanels = !isWebOnlyRole && activeRole === 'employee'
+    && (isEmployeeMobileApp || isMobileBrowser);
 
   useEffect(() => {
     if (isWebOnlyRole) {
@@ -193,7 +203,7 @@ export default function Header({
           <button
             id="btn-header-sms"
             onClick={() => {
-              if (isEmployeeMobileApp) {
+              if (showFullScreenPanels) {
                 setMobilePanel('sms');
                 setShowSMSLogs(false);
                 setShowNotifications(false);
@@ -274,7 +284,7 @@ export default function Header({
           <button
             id="btn-header-bell"
             onClick={() => {
-              if (isEmployeeMobileApp) {
+              if (showFullScreenPanels) {
                 setMobilePanel('notifications');
                 setShowSMSLogs(false);
                 setShowNotifications(false);
@@ -313,74 +323,80 @@ export default function Header({
             </div>
           )}
 
-          {/* Notifications Dropdown */}
+          {/* Notifications Dropdown — desktop employees only */}
           {showNotifications && !isWebOnlyRole && (
-            <div className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 z-30 animate-in fade-in slide-in-from-top-3 duration-200 text-slate-800">
-              <div className="p-4 bg-gradient-to-r from-[#1e40af] to-[#0c348a] text-white flex items-center justify-between">
+            <div className="absolute right-0 mt-2 w-[min(20rem,calc(100vw-1rem))] bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden z-30 animate-in fade-in slide-in-from-top-3 duration-200 text-slate-800">
+              <div className="px-3.5 py-3 bg-gradient-to-r from-[#1e40af] to-[#0c348a] text-white flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-indigo-200" />
-                  <span className="font-semibold text-[11px]">System Alerts</span>
-                </div>
-                <div className="flex items-center gap-3">
+                  <Bell className="w-4 h-4 text-indigo-200" />
+                  <span className="font-semibold text-[12px]">Notifications</span>
                   {unreadCount > 0 && (
-                    <button
-                      onClick={onClearNotifications}
-                      className="text-[11px] text-indigo-200 hover:text-white underline font-semibold transition-colors cursor-pointer"
-                    >
+                    <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full min-w-[16px] text-center leading-none">
+                      {unreadCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  {unreadCount > 0 && (
+                    <button onClick={onClearNotifications} className="text-[10px] text-indigo-200 hover:text-white font-semibold transition-colors cursor-pointer">
                       Mark all read
                     </button>
                   )}
                   {notifications.length > 0 && onDismissNotifications && (
-                    <button
-                      onClick={onDismissNotifications}
-                      title="Hide these notifications. Only new ones will show."
-                      className="text-[11px] text-indigo-200 hover:text-white underline font-semibold transition-colors cursor-pointer"
-                    >
-                      Clear all
+                    <button onClick={onDismissNotifications} title="Hide these notifications. Only new ones will show." className="text-[10px] text-indigo-200 hover:text-white font-semibold transition-colors cursor-pointer">
+                      Clear
                     </button>
                   )}
                 </div>
               </div>
-              
-              <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
                 {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500 text-xs font-semibold">
+                  <div className="p-8 text-center text-slate-400 text-xs font-medium">
                     All clear! No pending notifications.
                   </div>
                 ) : (
-                  notifications.map(notif => (
-                    <div
-                      key={notif.id}
-                      onClick={() => !notif.read && onMarkNotificationRead(notif.id)}
-                      className={`p-2.5 hover:bg-slate-50 transition-colors cursor-pointer flex gap-2.5 text-[10px] text-left ${
-                        !notif.read ? 'bg-indigo-50/40 border-l-2 border-[#1e40af]' : ''
-                      }`}
-                    >
-                      <div className="mt-0.5 shrink-0">
-                        {notif.type === 'attendance' && <Clock className="w-4 h-4 text-[#1e40af]" />}
-                        {notif.type === 'request' && <CircleDot className="w-4 h-4 text-emerald-600" />}
-                        {notif.type === 'announcement' && <Info className="w-4 h-4 text-rose-600" />}
-                        {notif.type === 'system' && <Info className="w-4 h-4 text-slate-500" />}
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center justify-between font-bold text-slate-800">
-                          <span>{notif.title}</span>
-                          <span className="text-[10px] text-slate-500 font-normal">{notif.time}</span>
+                  notifications.map(notif => {
+                    const typeInfo = {
+                      attendance:   { label: 'Attendance',   bg: 'bg-blue-100',  icon: <Clock className="w-3.5 h-3.5 text-blue-600" />,       chip: 'bg-blue-50 text-blue-700' },
+                      request:      { label: 'Request',      bg: 'bg-amber-100', icon: <CircleDot className="w-3.5 h-3.5 text-amber-600" />,   chip: 'bg-amber-50 text-amber-700' },
+                      announcement: { label: 'Announcement', bg: 'bg-green-100', icon: <Info className="w-3.5 h-3.5 text-green-600" />,         chip: 'bg-green-50 text-green-700' },
+                      system:       { label: 'System',       bg: 'bg-slate-100', icon: <ShieldAlert className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' },
+                    }[notif.type] || { label: notif.type || 'System', bg: 'bg-slate-100', icon: <Info className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' };
+                    return (
+                      <div
+                        key={notif.id}
+                        onClick={() => !notif.read && onMarkNotificationRead(notif.id)}
+                        className={`px-3 py-3 hover:bg-slate-50 transition-colors cursor-pointer flex gap-2.5 ${
+                          !notif.read ? 'border-l-[3px] border-[#1e40af] bg-indigo-50/25' : 'border-l-[3px] border-transparent'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${typeInfo.bg}`}>
+                          {typeInfo.icon}
                         </div>
-                        <p className="text-slate-650 leading-snug font-semibold">{notif.message}</p>
-                        {!notif.read && (
-                          <div className="text-[10px] text-[#1e40af] font-semibold flex items-center gap-1.5 pt-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#1e40af] animate-ping"></span>
-                            Unread - Click to read
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${typeInfo.chip}`}>
+                              {typeInfo.label}
+                            </span>
+                            <time className="text-[9px] text-slate-400 whitespace-nowrap shrink-0">{notif.time}</time>
                           </div>
-                        )}
+                          <p className="text-[12px] font-semibold text-slate-800 leading-snug">{notif.title}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
+                          {!notif.read && (
+                            <div className="mt-1 flex items-center gap-1 text-[9px] text-[#1e40af] font-semibold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#1e40af] animate-ping" />
+                              Click to mark read
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
-              
-              <div className="p-2 text-center bg-slate-50 text-[9px] text-slate-500 border-t border-slate-100" aria-hidden="true" />
+              <div className="px-3 py-2 text-center bg-slate-50 text-[9px] text-slate-400 border-t border-slate-100">
+                Your notifications
+              </div>
             </div>
           )}
         </div>
@@ -400,14 +416,14 @@ export default function Header({
           )}
         </button>
       </div>
-      {!isWebOnlyRole && isEmployeeMobileApp && mobilePanel === 'sms' && (
+      {showFullScreenPanels && mobilePanel === 'sms' && (
         <MobileSmsPanel
           smsAlerts={smsAlerts}
           onClose={() => setMobilePanel(null)}
           onSwitchToNotifications={() => setMobilePanel('notifications')}
         />
       )}
-      {!isWebOnlyRole && isEmployeeMobileApp && mobilePanel === 'notifications' && (
+      {showFullScreenPanels && mobilePanel === 'notifications' && (
         <MobileNotificationsPanel
           notifications={notifications}
           onClose={() => setMobilePanel(null)}
