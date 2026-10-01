@@ -1,81 +1,163 @@
-import React, { useState } from 'react';
-import { Clock, ShieldAlert, Info, CircleDot, ChevronLeft } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Clock, ShieldAlert, Info, CircleDot, ChevronLeft, CheckCheck } from 'lucide-react';
+
+const TYPE_CONFIG = {
+  attendance:   { label: 'Attendance',   chip: 'bg-blue-50 text-blue-700',   icon: <Clock    className="w-4 h-4 text-blue-600" />,   dot: 'bg-blue-100' },
+  request:      { label: 'Request',      chip: 'bg-amber-50 text-amber-700', icon: <CircleDot className="w-4 h-4 text-amber-600" />, dot: 'bg-amber-100' },
+  announcement: { label: 'Announcement', chip: 'bg-green-50 text-green-700', icon: <Info      className="w-4 h-4 text-green-600" />,  dot: 'bg-green-100' },
+  system:       { label: 'System',       chip: 'bg-red-50 text-red-700',     icon: <ShieldAlert className="w-4 h-4 text-red-600" />, dot: 'bg-red-100' },
+};
+
+const FILTERS = [
+  { id: 'all',          label: 'All' },
+  { id: 'unread',       label: 'Unread' },
+  { id: 'attendance',   label: 'Attendance' },
+  { id: 'request',      label: 'Requests' },
+  { id: 'announcement', label: 'Announcements' },
+];
 
 export default function MobileNotificationsPanel({ notifications = [], onClose, onSwitchToSms, onMarkNotificationRead }) {
   const [selectedNotification, setSelectedNotification] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('all');
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  const filtered = useMemo(() => {
+    if (activeFilter === 'all')    return notifications;
+    if (activeFilter === 'unread') return notifications.filter(n => !n.read);
+    return notifications.filter(n => n.type === activeFilter);
+  }, [notifications, activeFilter]);
+
+  function handleMarkAll() {
+    notifications.filter(n => !n.read).forEach(n => onMarkNotificationRead(n.id));
+  }
+
+  function openNotif(notif) {
+    setSelectedNotification(notif);
+    if (!notif.read) onMarkNotificationRead(notif.id);
+  }
 
   return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-white text-slate-900">
-      <header className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white">
-        <div className="flex items-center gap-2">
-          <button onClick={onClose} aria-label="Close notifications" className="bg-white/12 text-white p-2 rounded hover:bg-white/20">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <h2 className="text-base font-semibold">Notifications</h2>
-        </div>
-      </header>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex flex-col bg-slate-50 text-slate-900">
 
-      {selectedNotification ? (
-        <div className="h-[calc(100vh-50px)] overflow-y-auto bg-slate-50">
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-200 bg-white">
-            <button onClick={() => setSelectedNotification(null)} aria-label="Back to list" className="bg-slate-100 text-slate-700 p-2 rounded-full hover:bg-slate-200">
+      {/* Header */}
+      <header className="flex-shrink-0 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white">
+        <div className="flex items-center justify-between px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={selectedNotification ? () => setSelectedNotification(null) : onClose}
+              aria-label="Back"
+              className="bg-white/15 p-1.5 rounded-lg hover:bg-white/25 active:bg-white/30"
+            >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 truncate">{selectedNotification.title}</p>
-              <p className="text-xs text-slate-500">Full notification view</p>
-            </div>
+            <h2 className="text-[15px] font-bold tracking-tight">Notifications</h2>
+            {unreadCount > 0 && (
+              <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+                {unreadCount}
+              </span>
+            )}
           </div>
-          <div className="px-4 py-5 bg-white">
-            <p className="text-[11px] text-slate-500">{selectedNotification.time}</p>
-            <div className="mt-4 text-sm text-slate-800 leading-7 whitespace-pre-line">{selectedNotification.message}</div>
+          {!selectedNotification && unreadCount > 0 && (
+            <button
+              onClick={handleMarkAll}
+              className="flex items-center gap-1 bg-white/15 hover:bg-white/25 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"
+            >
+              <CheckCheck className="w-3 h-3" />
+              Mark all read
+            </button>
+          )}
+        </div>
+
+        {/* Filter tabs — hidden on detail view */}
+        {!selectedNotification && (
+          <div className="flex overflow-x-auto scrollbar-none px-1 pb-0">
+            {FILTERS.map(f => (
+              <button
+                key={f.id}
+                onClick={() => setActiveFilter(f.id)}
+                className={`flex-shrink-0 text-[12px] font-semibold px-3 py-2 border-b-2 transition-colors ${
+                  activeFilter === f.id
+                    ? 'text-white border-white'
+                    : 'text-white/60 border-transparent hover:text-white/85'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </header>
+
+      {/* Detail view */}
+      {selectedNotification ? (
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-4 pt-5 pb-2 bg-white border-b border-slate-100">
+            {(() => {
+              const cfg = TYPE_CONFIG[selectedNotification.type] || TYPE_CONFIG.system;
+              return (
+                <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md ${cfg.chip}`}>
+                  {cfg.label}
+                </span>
+              );
+            })()}
+            <h3 className="mt-2 text-[15px] font-bold text-slate-900">{selectedNotification.title}</h3>
+            <time className="text-[11px] text-slate-400 mt-0.5 block">{selectedNotification.time}</time>
+          </div>
+          <div className="px-4 py-5 bg-white mt-2 mx-0">
+            <p className="text-sm text-slate-800 leading-7 whitespace-pre-line">{selectedNotification.message}</p>
           </div>
         </div>
       ) : (
-        <div className="h-[calc(100vh-50px)] overflow-y-auto bg-slate-50">
-          {notifications.length === 0 ? (
-            <div className="text-center text-slate-500 mt-6 text-sm">No notifications</div>
+        /* List view */
+        <div className="flex-1 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-3 text-slate-400">
+              <Info className="w-8 h-8 opacity-30" />
+              <p className="text-sm font-medium">No notifications here</p>
+            </div>
           ) : (
-            <div className="space-y-0 bg-white">
-              {notifications.map((notif, index) => (
-                <article
-                  key={notif.id}
-                  role="button"
-                  onClick={() => setSelectedNotification(notif)}
-                  className={`w-full px-4 py-4 border-b border-slate-200 text-left hover:bg-slate-50 cursor-pointer ${!notif.read ? 'border-l-4 border-[#1e40af]' : ''}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-start gap-2 min-w-0">
-                      <span className="shrink-0 mt-0.5">
-                        {notif.type === 'attendance' && <Clock className="w-4 h-4 text-[#1e40af]" />}
-                        {notif.type === 'request' && <CircleDot className="w-4 h-4 text-[#1e40af]" />}
-                        {notif.type === 'announcement' && <Info className="w-4 h-4 text-[#1e40af]" />}
-                        {notif.type === 'system' && <ShieldAlert className="w-4 h-4 text-[#1e40af]" />}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-medium text-slate-800 text-sm truncate">{notif.title}</h3>
-                          <time className="text-[11px] text-slate-500 ml-2">{notif.time}</time>
+            <div className="bg-white divide-y divide-slate-100">
+              {filtered.map(notif => {
+                const cfg = TYPE_CONFIG[notif.type] || TYPE_CONFIG.system;
+                return (
+                  <article
+                    key={notif.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openNotif(notif)}
+                    onKeyDown={e => e.key === 'Enter' && openNotif(notif)}
+                    className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${
+                      !notif.read ? 'border-l-[3px] border-[#1e40af]' : 'border-l-[3px] border-transparent'
+                    }`}
+                  >
+                    {/* Icon bubble */}
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${cfg.dot}`}>
+                      {cfg.icon}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${cfg.chip}`}>
+                              {cfg.label}
+                            </span>
+                          </div>
+                          <p className="text-[13px] font-semibold text-slate-900 leading-snug">{notif.title}</p>
+                          <p className="text-[12px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
                         </div>
-                        <p className="mt-1 text-sm text-slate-700 leading-snug truncate" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {notif.message}
-                        </p>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <time className="text-[10px] text-slate-400 whitespace-nowrap">{notif.time}</time>
+                          {!notif.read && (
+                            <span className="w-2 h-2 rounded-full bg-[#1e40af]" />
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="ml-1 flex-shrink-0">
-                      {!notif.read && (
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); onMarkNotificationRead(notif.id); }}
-                          className="text-xs text-[#1e40af] font-semibold"
-                        >
-                          Mark
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
