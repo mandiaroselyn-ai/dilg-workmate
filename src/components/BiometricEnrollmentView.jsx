@@ -558,14 +558,10 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               </div>
               <p className="mt-2 text-xs text-slate-600">Take a fresh selfie using the camera. Liveness detection is not currently active and will not be claimed as passed.</p>
               {!cameraActive ? (
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4">
                   <button type="button" onClick={() => startCamera('selfie')} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
                     <Camera className="h-4 w-4" /> {selfieImage ? 'Retake Selfie' : 'Open Camera'}
                   </button>
-                  <button type="button" onClick={() => selfieInputRef.current?.click()} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">
-                    <Camera className="h-4 w-4" /> Use Device Camera / Choose Selfie
-                  </button>
-                  <input ref={selfieInputRef} type="file" accept="image/*" capture="user" disabled={submitting} className="sr-only" onChange={event => handleImageSelection(event, 'selfie')} />
                 </div>
               ) : cameraTarget === 'selfie' ? (
                 <div className="mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-lg">
