@@ -16,6 +16,24 @@ const FILTERS = [
   { id: 'announcement', label: 'Announcements' },
 ];
 
+const GROUP_ORDER = ['Today', 'Yesterday', 'This Week', 'Older'];
+
+function getDateGroup(createdAt) {
+  if (!createdAt) return 'Older';
+  const notifDate = new Date(createdAt);
+  if (isNaN(notifDate)) return 'Older';
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const weekStart = new Date(todayStart);
+  weekStart.setDate(weekStart.getDate() - 6);
+  if (notifDate >= todayStart)     return 'Today';
+  if (notifDate >= yesterdayStart) return 'Yesterday';
+  if (notifDate >= weekStart)      return 'This Week';
+  return 'Older';
+}
+
 export default function MobileNotificationsPanel({ notifications = [], onClose, onSwitchToSms, onMarkNotificationRead }) {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -27,6 +45,16 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
     if (activeFilter === 'unread') return notifications.filter(n => !n.read);
     return notifications.filter(n => n.type === activeFilter);
   }, [notifications, activeFilter]);
+
+  const grouped = useMemo(() => {
+    const map = {};
+    filtered.forEach(n => {
+      const g = getDateGroup(n.createdAt);
+      if (!map[g]) map[g] = [];
+      map[g].push(n);
+    });
+    return GROUP_ORDER.filter(g => map[g]?.length).map(g => ({ label: g, items: map[g] }));
+  }, [filtered]);
 
   function handleMarkAll() {
     notifications.filter(n => !n.read).forEach(n => onMarkNotificationRead(n.id));
@@ -111,54 +139,59 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
       ) : (
         /* List view */
         <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
+          {grouped.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 gap-3 text-slate-400">
               <Info className="w-8 h-8 opacity-30" />
               <p className="text-sm font-medium">No notifications here</p>
             </div>
           ) : (
-            <div className="bg-white divide-y divide-slate-100">
-              {filtered.map(notif => {
-                const cfg = TYPE_CONFIG[notif.type] || TYPE_CONFIG.system;
-                return (
-                  <article
-                    key={notif.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openNotif(notif)}
-                    onKeyDown={e => e.key === 'Enter' && openNotif(notif)}
-                    className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${
-                      !notif.read ? 'border-l-[3px] border-[#1e40af]' : 'border-l-[3px] border-transparent'
-                    }`}
-                  >
-                    {/* Icon bubble */}
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${cfg.dot}`}>
-                      {cfg.icon}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${cfg.chip}`}>
-                              {cfg.label}
-                            </span>
+            grouped.map(group => (
+              <div key={group.label}>
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400 bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+                  {group.label}
+                </div>
+                <div className="bg-white divide-y divide-slate-100">
+                  {group.items.map(notif => {
+                    const cfg = TYPE_CONFIG[notif.type] || TYPE_CONFIG.system;
+                    return (
+                      <article
+                        key={notif.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openNotif(notif)}
+                        onKeyDown={e => e.key === 'Enter' && openNotif(notif)}
+                        className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${
+                          !notif.read ? 'border-l-[3px] border-[#1e40af]' : 'border-l-[3px] border-transparent'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${cfg.dot}`}>
+                          {cfg.icon}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${cfg.chip}`}>
+                                  {cfg.label}
+                                </span>
+                              </div>
+                              <p className="text-[13px] font-semibold text-slate-900 leading-snug">{notif.title}</p>
+                              <p className="text-[12px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                              <time className="text-[10px] text-slate-400 whitespace-nowrap">{notif.time}</time>
+                              {!notif.read && (
+                                <span className="w-2 h-2 rounded-full bg-[#1e40af]" />
+                              )}
+                            </div>
                           </div>
-                          <p className="text-[13px] font-semibold text-slate-900 leading-snug">{notif.title}</p>
-                          <p className="text-[12px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          <time className="text-[10px] text-slate-400 whitespace-nowrap">{notif.time}</time>
-                          {!notif.read && (
-                            <span className="w-2 h-2 rounded-full bg-[#1e40af]" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
