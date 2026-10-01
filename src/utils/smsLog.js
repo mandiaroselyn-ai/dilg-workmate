@@ -15,7 +15,8 @@ export const formatMobile = value => {
   return /^9\d{9}$/.test(key) ? `0${key.slice(0, 3)} ${key.slice(3, 6)} ${key.slice(6)}` : String(value || '');
 };
 
-// What a message was about: 'attendance', 'account', 'manual', 'reply', or 'other'.
+// What a message was about: 'attendance', 'account', 'review' (a request forwarded to the
+// supervisor), 'manual', 'reply', or 'other'.
 // Messages saved before this was recorded are recognized by their text.
 export const smsKind = (sms = {}) => {
   if (sms.kind) return sms.kind;
@@ -29,6 +30,7 @@ export const smsKind = (sms = {}) => {
 export const SMS_KIND_LABELS = {
   attendance: 'Attendance',
   account: 'Account approved',
+  review: 'For supervisor review',
   manual: 'Sent by staff',
   reply: 'Reply',
   other: 'Other'

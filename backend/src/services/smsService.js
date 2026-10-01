@@ -120,3 +120,25 @@ export const sendAccountApprovedSms = async employee => {
     return 'failed';
   }
 };
+
+// Tells each supervisor with a mobile number that HR forwarded a request for their decision,
+// so it does not wait until they next open WorkMate. Supervisors without a number get only
+// the bell notification. Returns how many texts were sent; it never fails the forward.
+export const sendSupervisorReviewSms = async (request, supervisors = []) => {
+  if (!isSmsConfigured()) return 0;
+  const message = `DILG WorkMate: ${request?.employeeName || 'An employee'}'s ${request?.type || 'request'} is waiting for your approval. Please review it in WorkMate.`;
+  const results = await Promise.all(supervisors
+    .filter(supervisor => toPhilippineMobile(supervisor?.phoneNumber))
+    .map(supervisor => sendSms({
+      recipient: supervisor.phoneNumber,
+      message,
+      employeeId: supervisor.employeeId || '',
+      employeeEmail: supervisor.email || '',
+      timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }),
+      kind: 'review'
+    }).then(() => true, error => {
+      console.error('Supervisor review SMS failed:', error.message);
+      return false;
+    })));
+  return results.filter(Boolean).length;
+};

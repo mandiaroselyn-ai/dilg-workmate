@@ -202,7 +202,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             <label className={labelClass}>Email<input name="email" type="email" required maxLength={254} value={form.email} onChange={updateFormField} className={inputClass} /></label>
             <label className={labelClass}>Job designation<input name="role" required maxLength={120} value={form.role} onChange={updateFormField} placeholder="e.g. Provincial Director" className={inputClass} /></label>
             <label className={labelClass}>Office<input name="office" required maxLength={160} value={form.office} onChange={updateFormField} className={inputClass} /></label>
-            <label className={labelClass}>Phone (optional)<input name="phoneNumber" maxLength={250} value={form.phoneNumber} onChange={updateFormField} className={inputClass} /></label>
+            <label className={labelClass}>Mobile number (optional)<input name="phoneNumber" maxLength={250} value={form.phoneNumber} onChange={updateFormField} placeholder="Supervisors get an SMS when a request is forwarded" className={inputClass} /></label>
             <label className={labelClass}>Employee ID (optional)<input name="employeeId" maxLength={64} value={form.employeeId} onChange={updateFormField} placeholder="Generated if blank" className={inputClass} /></label>
             <label className={labelClass}>Access
               <select name="accessLevel" value={form.accessLevel} onChange={updateFormField} className={inputClass}>
@@ -229,7 +229,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             <label className={labelClass}>Full name<input name="name" required maxLength={160} value={editing.fields.name} onChange={updateEditField} className={inputClass} /></label>
             <label className={labelClass}>Job designation<input name="role" required maxLength={120} value={editing.fields.role} onChange={updateEditField} className={inputClass} /></label>
             <label className={labelClass}>Office<input name="office" required maxLength={160} value={editing.fields.office} onChange={updateEditField} className={inputClass} /></label>
-            <label className={labelClass}>Phone<input name="phoneNumber" maxLength={250} value={editing.fields.phoneNumber} onChange={updateEditField} className={inputClass} /></label>
+            <label className={labelClass}>Mobile number<input name="phoneNumber" maxLength={250} value={editing.fields.phoneNumber} onChange={updateEditField} placeholder="Supervisors get an SMS when a request is forwarded" className={inputClass} /></label>
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
           <div className="flex gap-2">

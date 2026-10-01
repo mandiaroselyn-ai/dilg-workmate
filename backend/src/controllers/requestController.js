@@ -5,6 +5,20 @@ import { toSafeUser } from '../utils/passwordSecurity.js';
 import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from '../utils/requestFields.js';
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
+import { sendSupervisorReviewSms } from '../services/smsService.js';
+
+// Texts the active supervisors when HR forwards a request to them. A failed text never
+// fails the forward.
+const textSupervisorsAboutForward = async (previous, updated) => {
+  if (previous?.status === 'For Supervisor' || updated?.status !== 'For Supervisor') return;
+  try {
+    const supervisors = (await User.findByAccessLevel('supervisor'))
+      .filter(account => (account.accountStatus || 'Active').toString().toLowerCase() === 'active');
+    await sendSupervisorReviewSms(updated, supervisors);
+  } catch (error) {
+    console.error('Unable to text supervisors about a forwarded request:', error);
+  }
+};
 
 // Employees cannot address notifications to HR themselves, so the server tells HR when an
 // employee submits a request. A failed notification never fails the submission.
@@ -115,6 +129,9 @@ export const updateRequestStatus = async (req, res) => {
     if (updated && role === 'employee' && updated.status === 'Withdrawn') {
       await notifyReviewersOfWithdrawal(updated, req.user, existing.status);
     }
+    if (updated && role === 'hr_admin') {
+      await textSupervisorsAboutForward(existing, updated);
+    }
 
     if (updated) {
       res.status(200).json({ success: true, request: updated });
@@ -129,12 +146,17 @@ export const updateRequestStatus = async (req, res) => {
 export const bulkUpdateRequests = async (req, res) => {
   try {
     // The same review rules as for one request: nothing is saved if any update breaks them.
+    const previousById = new Map();
     for (const update of Array.isArray(req.body) ? req.body : []) {
       const existing = typeof update?.id === 'string' ? await Leave.findByCustomId(update.id) : null;
       const problem = existing && reviewUpdateProblem(existing.status, pickReviewUpdate(update), req.user?.accessLevel);
       if (problem) return res.status(409).json({ success: false, error: `${update.id}: ${problem}` });
+      if (existing) previousById.set(update.id, existing);
     }
     const updated = await Leave.bulkUpdate(req.body);
+    for (const request of updated) {
+      await textSupervisorsAboutForward(previousById.get(request.id), request);
+    }
     res.status(200).json({ success: true, requests: updated });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
