@@ -1,10 +1,17 @@
 import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString } from '../../../shared/localDate.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
-import { inactiveAccountMessage, notifyHrOfNewAccount } from '../services/accountNotifications.js';
-import { sendAccountApprovedSms, toPhilippineMobile } from '../services/smsService.js';
+import {
+  accountStatusLabel,
+  announceAccountApproved,
+  approvalNoticeDestination,
+  inactiveAccountMessage,
+  isAccountApproval,
+  notifyHrOfNewAccount
+} from '../services/accountNotifications.js';
+import { createTransporter } from '../services/emailService.js';
+import { toPhilippineMobile } from '../services/smsService.js';
 import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
-import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
@@ -97,6 +104,10 @@ export const registerUser = async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
       return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
     }
+    // The approval SMS goes to this number, so it must be a Philippine mobile number.
+    if (!toPhilippineMobile(profile.phoneNumber)) {
+      return res.status(400).json({ success: false, error: 'Enter your mobile number, such as 0917 123 4567. HR will text you there when your account is approved.' });
+    }
     const password = typeof body.password === 'string' ? body.password.trim() : '';
     if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
       return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
@@ -105,16 +116,15 @@ export const registerUser = async (req, res) => {
       return res.status(409).json({ success: false, error: 'An account already uses this email address.' });
     }
 
-    const created = await User.createSelfServiceEmployee({ ...profile, password, accountStatus: 'Pending' });
+    const created = await User.createSelfServiceEmployee({ ...profile, password, accountStatus: 'Pending', signUpMethod: 'form' });
     if (!created) {
       return res.status(409).json({ success: false, error: 'Unable to register this account. Contact the HR Administrator.' });
     }
     await notifyHrOfNewAccount(created, 'the sign-up form');
+    const destination = approvalNoticeDestination(created);
     res.status(201).json({
       success: true,
-      message: toPhilippineMobile(created.phoneNumber)
-        ? 'Account created. The HR Administrator must activate it before you can log in. You will get an SMS at your contact number once it is approved.'
-        : 'Account created. The HR Administrator must activate it before you can log in.',
+      message: `Account created. The HR Administrator must activate it before you can log in.${destination ? ` You will get ${destination} once it is approved.` : ''}`,
       user: toSafeUser(created)
     });
   } catch (error) {
@@ -122,6 +132,10 @@ export const registerUser = async (req, res) => {
     res.status(500).json({ success: false, error: 'Unable to register this account.' });
   }
 };
+
+// Only Active accounts can log in. Self-service sign-ups start Pending until HR approves
+// (Active) or rejects (Rejected) them; HR deactivates an account with Inactive or Suspended.
+const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Pending', 'Suspended', 'Rejected'];
 
 const normalizeEmployeeInput = (body, reviewer) => {
   const stringFields = [
@@ -161,7 +175,7 @@ const normalizeEmployeeInput = (body, reviewer) => {
   if (employee.employeeId.length > 64 || employee.name.length > 160 || employee.role.length > 120 || employee.office.length > 160) {
     return { error: 'One or more employee fields exceed the maximum length.' };
   }
-  if (!['Active', 'Inactive', 'Pending', 'Suspended'].includes(employee.accountStatus)) {
+  if (!ACCOUNT_STATUSES.includes(employee.accountStatus)) {
     return { error: 'Invalid employee account status.' };
   }
   if (!['ACTIVE', 'INACTIVE', 'ON LEAVE'].includes(employee.employmentStatus)) {
@@ -230,12 +244,15 @@ export const updateEmployee = async (req, res) => {
     const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
     const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
     if (error) return res.status(400).json({ success: false, error });
+    const before = await User.findAccount(req.params.identifier);
     const updated = await User.updateEmployee(req.params.identifier, employee);
     if (updated?.conflict) {
       return res.status(409).json({ success: false, error: 'An employee already uses this email address or employee ID.' });
     }
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
-    res.status(200).json({ success: true, employee: employeeResponse(updated) });
+    // HR can also approve an account by saving it as Active from the edit form.
+    const approvalNotice = isAccountApproval(before, employee.accountStatus) ? await announceAccountApproved(updated) : undefined;
+    res.status(200).json({ success: true, employee: employeeResponse(updated), ...(approvalNotice ? { approvalNotice } : {}) });
   } catch (error) {
     console.error('Unable to update employee account:', error);
     res.status(500).json({ success: false, error: 'Unable to update employee account.' });
@@ -287,26 +304,16 @@ export const updateEmployeeAccountStatus = async (req, res) => {
   try {
     const { identifier } = req.params;
     const { accountStatus } = req.body;
-    if (!['Active', 'Inactive', 'Pending', 'Suspended'].includes(accountStatus)) {
+    if (!ACCOUNT_STATUSES.includes(accountStatus)) {
       return res.status(400).json({ success: false, error: 'Invalid account status.' });
     }
     const before = await User.findAccount(identifier);
     const updated = await User.updateAccountStatus(identifier, accountStatus);
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
-    // When an account becomes active, the employee gets an SMS so they know they can log
-    // in, and a notice they see after logging in. Neither ever fails the approval.
-    let approvalSms;
-    if (accountStatus === 'Active' && String(before?.accountStatus || '').toLowerCase() !== 'active') {
-      await Announcement.createNotification({
-        title: 'Account Approved',
-        message: 'Your DILG WorkMate account is now active. Complete your profile and biometric enrollment before your first Time In.',
-        type: 'system',
-        employeeId: updated.employeeId || '',
-        employeeEmail: updated.email || ''
-      }).catch(error => console.error('Unable to notify the employee about account approval:', error));
-      approvalSms = await sendAccountApprovedSms(updated);
-    }
-    res.status(200).json({ success: true, user: toSafeUser(updated), ...(approvalSms ? { approvalSms } : {}) });
+    // When an account becomes active, the employee is told by SMS or email that they can
+    // log in. HR's response says whether that worked.
+    const approvalNotice = isAccountApproval(before, accountStatus) ? await announceAccountApproved(updated) : undefined;
+    res.status(200).json({ success: true, user: toSafeUser(updated), ...(approvalNotice ? { approvalNotice } : {}) });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -376,6 +383,31 @@ export const loginUser = async (req, res) => {
     }
 
     res.status(200).json({ success: true, token: createAuthToken(user), user: toSafeUser(user) });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+// Lets someone who signed up with the form see whether HR approved their account without
+// logging in. Like logging in, it needs the password, so nobody can look up someone else's
+// account by email, and failed attempts count toward the same limit as failed logins.
+export const checkAccountStatus = async (req, res) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required.' });
+    }
+    const user = await User.findByEmail(email);
+    if (!(await User.verifyPassword(user, password))) {
+      return res.status(401).json({ success: false, error: INVALID_LOGIN_MESSAGE });
+    }
+    const status = accountStatusLabel(user);
+    res.status(200).json({
+      success: true,
+      status,
+      message: status === 'Approved' ? 'Your account has been approved. You can now log in.' : inactiveAccountMessage(user)
+    });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -499,34 +531,6 @@ export const seedDefaultUsers = async (req, res) => {
   } catch (error) {
     sendServerError(res, error);
   }
-};
-
-const createTransporter = () => {
-  const missing = [
-    'SMTP_HOST',
-    'SMTP_PORT',
-    'SMTP_USER',
-    'SMTP_PASS',
-    'EMAIL_FROM'
-  ].filter((key) => !process.env[key]);
-
-  if (missing.length > 0) {
-    throw new Error(`SMTP configuration incomplete: missing ${missing.join(', ')}`);
-  }
-
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    },
-    // Give up on an unreachable mail server well before the 30-second function limit.
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000
-  });
 };
 
 const sendPasswordResetEmail = async (transporter, email, token) => {

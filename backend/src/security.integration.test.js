@@ -129,9 +129,15 @@ test('rejects a mobile Google sign-in exchange without a valid hand-off code', a
 test('validates self-registration before touching the database', async () => {
   const shortPassword = await request(app)
     .post('/api/register')
-    .send({ name: 'Test User', email: 'test@example.com', role: 'Clerk', office: 'Boac', password: 'short' });
+    .send({ name: 'Test User', email: 'test@example.com', role: 'Clerk', office: 'Boac', phoneNumber: '09171234567', password: 'short' });
   assert.equal(shortPassword.status, 400);
   assert.match(shortPassword.body.error, /Password must be 10/);
+
+  const noMobile = await request(app)
+    .post('/api/register')
+    .send({ name: 'Test User', email: 'test@example.com', role: 'Clerk', office: 'Boac', phoneNumber: '(042) 332 1234', password: 'long-enough-password' });
+  assert.equal(noMobile.status, 400);
+  assert.match(noMobile.body.error, /mobile number/);
 
   const objectField = await request(app)
     .post('/api/register')

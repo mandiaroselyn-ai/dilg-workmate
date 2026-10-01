@@ -96,8 +96,8 @@ const normalizeEmployee = (employee = {}) => {
   };
 };
 
-// Account status decides whether the employee can log in (Active, Pending, Inactive,
-// Suspended); employment status (ACTIVE, INACTIVE, ON LEAVE) is shown separately.
+// Account status decides whether the employee can log in (Active, Pending, Rejected,
+// Inactive, Suspended); employment status (ACTIVE, INACTIVE, ON LEAVE) is shown separately.
 const accountStatusOf = (employee = {}) => (employee.accountStatus || 'Pending').toString().trim().toLowerCase();
 
 // Shown in the employee list only when employment is something other than the usual ACTIVE.
@@ -109,9 +109,26 @@ const employmentNote = (employee = {}) => {
 // True when the employee has a Philippine mobile number the approval SMS can go to
 // (09XXXXXXXXX or +639XXXXXXXXX), matching the server's check.
 const mobileNumberOf = (employee = {}) => /^(09|\+?639)\d{9}$/.test(String(employee.phoneNumber || '').replace(/[\s()-]/g, ''));
-const STATUS_FILTERS = ['All', 'Active', 'Pending', 'Inactive'];
+// Matches the server: Google sign-ups are told about approval by email, at the address
+// Google verified; everyone else by SMS.
+const signedUpWithGoogle = (employee = {}) => employee.signUpMethod === 'google' || (!employee.signUpMethod && Boolean(employee.googleId));
+const STATUS_FILTERS = ['All', 'Active', 'Pending', 'Rejected', 'Inactive'];
+
+// What HR is told about the SMS or email that lets an approved employee know they can log in.
+const approvalNoticeNote = (notice, name) => {
+  if (!notice) return '';
+  const service = notice.channel === 'email' ? 'email' : 'SMS';
+  return {
+    sent: `${name} was sent ${notice.channel === 'email' ? 'an email' : 'an SMS'} and can now log in.`,
+    'no-phone': `${name} has no mobile number on file, so let them know they can now log in.`,
+    'no-email': `${name} has no email address on file, so let them know they can now log in.`,
+    'not-configured': `${service === 'email' ? 'Email' : 'SMS'} is not set up, so let ${name} know they can now log in.`,
+    failed: `The ${service} could not be sent, so let ${name} know they can now log in.`
+  }[notice.result] || '';
+};
 
 const statusStyle = (status = '') => {
+  if (/rejected/i.test(status)) return 'bg-rose-50 text-rose-700';
   // Check inactive first: 'Inactive' also contains 'active'.
   if (/inactive|disabled|suspended/i.test(status)) return 'bg-slate-100 text-slate-600';
   if (/active/i.test(status)) return 'bg-emerald-50 text-emerald-700';
@@ -407,7 +424,10 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         notificationFailed = true;
         notify('Employee record saved, but its notification could not be delivered.', true);
       }
-      if (!notificationFailed) notify(editingId ? 'Employee account updated.' : 'Employee account created.');
+      if (!notificationFailed) {
+        const noticeNote = approvalNoticeNote(data.approvalNotice, fullName);
+        notify(editingId ? `Employee account updated.${noticeNote ? ` ${noticeNote}` : ''}` : 'Employee account created.');
+      }
       setScreen('list');
       setSelectedId(null);
       setForm(emptyForm);
@@ -458,18 +478,13 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       }
       if (!notificationFailed) {
         const name = employeeName(targetEmployee);
-        // Whether the employee was told by SMS that they can now log in.
-        const smsNote = {
-          sent: `${name} was sent an SMS and can now log in.`,
-          'no-phone': `${name} has no mobile number on file, so let them know they can now log in.`,
-          'not-configured': `SMS is not set up, so let ${name} know they can now log in.`,
-          failed: `The SMS could not be sent, so let ${name} know they can now log in.`
-        }[data.approvalSms];
+        // Whether the employee was told by SMS or email that they can now log in.
+        const noticeNote = approvalNoticeNote(data.approvalNotice, name);
         notify(wasPending && accountStatus === 'Active'
-          ? `Account approved. ${smsNote || `${name} can now log in.`}`
-          : wasPending && accountStatus === 'Inactive'
-            ? `Account declined. ${name} cannot log in.`
-            : `Account status updated to ${accountStatus}.${smsNote ? ` ${smsNote}` : ''}`);
+          ? `Account approved. ${noticeNote || `${name} can now log in.`}`
+          : wasPending && accountStatus === 'Rejected'
+            ? `Account rejected. ${name} cannot log in and will see "Rejected" when they check their account status.`
+            : `Account status updated to ${accountStatus}.${noticeNote ? ` ${noticeNote}` : ''}`);
       }
       if (openProfile) setScreen('profile');
     } catch (error) {
@@ -650,6 +665,7 @@ This cannot be undone.`
                 <select name="accountStatus" value={form.accountStatus} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
                   <option value="Active">Active</option>
                   <option value="Pending">Pending</option>
+                  <option value="Rejected">Rejected</option>
                   <option value="Inactive">Inactive</option>
                 </select>
               </label>
@@ -746,7 +762,7 @@ This cannot be undone.`
             {accountStatusOf(selectedEmployee) === 'active' ? (
               <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Deactivate'}</button>
             ) : accountStatusOf(selectedEmployee) !== 'pending' && (
-              <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Reactivate'}</button>
+              <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : accountStatusOf(selectedEmployee) === 'rejected' ? 'Approve account' : 'Reactivate'}</button>
             )}
             {accountStatusOf(selectedEmployee) !== 'active' && (
               <button type="button" onClick={handleDeleteEmployee} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Delete account'}</button>
@@ -791,13 +807,15 @@ This cannot be undone.`
                 Check that {selectedEmployee.email || 'this email'} belongs to a DILG employee. After approval, they can log in; set their office and job designation with Edit.
               </p>
               <p className="mt-1 text-xs font-semibold text-amber-800">
-                {mobileNumberOf(selectedEmployee)
-                  ? `They will get an SMS at ${selectedEmployee.phoneNumber} when you approve.`
-                  : 'No mobile number on file, so no SMS will be sent. Add one with Edit before approving, or let them know yourself.'}
+                {signedUpWithGoogle(selectedEmployee)
+                  ? `Signed up with Google. They will get an email at ${selectedEmployee.email} when you approve.`
+                  : mobileNumberOf(selectedEmployee)
+                    ? `They will get an SMS at ${selectedEmployee.phoneNumber} when you approve.`
+                    : 'No mobile number on file, so no SMS will be sent. Add one with Edit before approving, or let them know yourself.'}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Approve account'}</button>
-                <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Decline'}</button>
+                <button type="button" onClick={() => handleAccountStatus('Rejected')} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Reject'}</button>
               </div>
             </div>
           )}

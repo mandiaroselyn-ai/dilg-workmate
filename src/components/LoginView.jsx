@@ -46,6 +46,18 @@ const writeStored = (store, key, value) => {
   }
 };
 
+// Colors for the result of "Check account status". Inactive and Suspended (accounts HR
+// deactivated) use the plain style.
+const STATUS_RESULT_STYLES = {
+  Pending: 'border-amber-200 bg-amber-50 text-amber-800',
+  Approved: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  Rejected: 'border-rose-200 bg-rose-50 text-rose-800'
+};
+
+// A Philippine mobile number (09XXXXXXXXX or +639XXXXXXXXX), as the server requires for
+// the SMS that tells a new employee HR approved their account.
+const isPhilippineMobile = value => /^(09|\+?639)\d{9}$/.test(String(value).replace(/[\s()-]/g, ''));
+
 export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly = false }) {
   const [isRegister, setIsRegister] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('supervisor');
@@ -119,6 +131,51 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [regRegion, setRegRegion] = useState('DILG Region IV-B - MIMAROPA');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState('');
+
+  // "Check account status" lets someone who signed up see whether HR approved them before
+  // they can log in. It uses the login form's email and password fields.
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [statusResult, setStatusResult] = useState(null); // { status, message }
+
+  const openStatusCheck = () => {
+    setIsCheckingStatus(true);
+    setStatusResult(null);
+    setErrorText('');
+    setSuccessText('');
+    setGoogleError('');
+  };
+
+  const closeStatusCheck = () => {
+    setIsCheckingStatus(false);
+    setStatusResult(null);
+    setErrorText('');
+    setGoogleError('');
+  };
+
+  const handleStatusCheck = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setErrorText('');
+    setStatusResult(null);
+    try {
+      const response = await fetch('/api/account-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailInput.trim().toLowerCase(), password: passwordInput })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setErrorText(result.error || 'Unable to check your account status. Please try again.');
+        return;
+      }
+      setStatusResult({ status: result.status, message: result.message });
+    } catch (err) {
+      console.error('Account status check failed:', err);
+      setErrorText('Unable to check your account status. Please check your network connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // Preset configuration structures
   const PRESET_PROFILES = {
@@ -210,6 +267,10 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
     e.preventDefault();
     if (!regName || !regEmail || !regPassword || !regRole || !regOffice || !regRegion || !regPhone) {
       setErrorText('Please fill out all registration fields.');
+      return;
+    }
+    if (!isPhilippineMobile(regPhone)) {
+      setErrorText('Enter your mobile number, such as 0917 123 4567. HR will text you there when your account is approved.');
       return;
     }
     if (regPassword.trim().length < 10) {
@@ -322,12 +383,38 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Select Position<select required value={regRole} onChange={(e) => setRegRole(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Position</option><option>Local Government Operations Officer II</option><option>Local Government Operations Officer V</option><option>Administrative Officer V</option><option>Administrative Assistant III</option><option>Program Manager</option></select></label>
                 <div className="grid grid-cols-2 gap-3"><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Account Role<input readOnly value="Employee" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Region<input readOnly value={regRegion} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label></div>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Enter your email<input type="email" required value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Enter your email" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="text" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="tel" inputMode="tel" autoComplete="tel" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<span className="relative mt-1 block"><input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pr-10 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowRegPassword(!showRegPassword)} aria-label={showRegPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>
               </div>
               {errorText && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">{errorText}</div>}
               <button type="submit" disabled={submitting} className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-xs font-extrabold text-white shadow-lg disabled:opacity-60">{submitting ? 'Registering...' : 'Sign Up'}</button>
               <button type="button" onClick={() => { setIsRegister(false); setErrorText(''); setSuccessText(''); }} className="block w-full text-center text-[11px] font-bold text-indigo-600">Have an account? Log In here.</button>
+            </form>
+          ) : isCheckingStatus ? (
+            <form onSubmit={handleStatusCheck} className="space-y-4">
+              <button type="button" onClick={closeStatusCheck} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-indigo-600"><ArrowLeft className="h-4 w-4" /> Back to login</button>
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-black text-slate-900"><ShieldCheck className="h-5 w-5 shrink-0 text-indigo-600" /> Check Account Status</h2>
+                <p className="mt-1 text-xs text-slate-500">See whether HR has approved your account. Enter the email and password you signed up with.</p>
+              </div>
+              <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">Email Address</span><span className="relative block"><User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input name="email" type="email" autoComplete="username" required value={emailInput} onChange={(e) => setEmailInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></span></label>
+              <label className="block space-y-1.5 text-xs font-bold text-slate-600"><span className="text-[10px] uppercase tracking-widest text-slate-500">Password</span><span className="relative block"><Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pl-10 pr-10 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+              {statusResult && (
+                <div role="status" className={`rounded-xl border p-3 ${STATUS_RESULT_STYLES[statusResult.status] || 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest">Account status</p>
+                  <p className="mt-0.5 text-base font-black">{statusResult.status}</p>
+                  <p className="mt-1 text-xs font-semibold">{statusResult.message}</p>
+                  {statusResult.status === 'Approved' && (
+                    <button type="button" onClick={closeStatusCheck} className="mt-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-extrabold text-white">Go to Log In</button>
+                  )}
+                </div>
+              )}
+              {errorText && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">{errorText}</div>}
+              <button type="submit" disabled={submitting} className="flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3.5 text-xs font-extrabold text-white shadow-lg disabled:opacity-60">{submitting ? 'Checking...' : 'Check Status'}</button>
+              <div className="flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><span className="text-[10px] font-bold uppercase text-slate-400">signed up with Google?</span><span className="h-px flex-1 bg-slate-200" /></div>
+              <button type="button" onClick={handleGoogleLogin} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700"><FcGoogle className="h-4 w-4" /> Check with Google</button>
+              <p className="text-center text-[10px] font-semibold text-slate-500">If your account is approved, this logs you in.</p>
+              {googleError && <div role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-700">{googleError}</div>}
             </form>
           ) : (
             <form onSubmit={handleFormSubmit} className="space-y-4">
@@ -350,7 +437,12 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
               <div className="flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><span className="text-[10px] font-bold uppercase text-slate-400">or</span><span className="h-px flex-1 bg-slate-200" /></div>
               <button type="button" onClick={handleGoogleLogin} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700"><FcGoogle className="h-4 w-4" /> Continue with Google</button>
               {googleError && <p className="text-center text-[10px] font-semibold text-red-600">{googleError}</p>}
-              <button type="button" onClick={() => { setIsRegister(true); setErrorText(''); setSuccessText(''); }} className="block w-full text-center text-[11px] font-bold text-slate-500">Don't have an account? <span className="text-indigo-600">Sign up</span></button>
+              {/* One line, so the card still fits on a phone screen without scrolling. */}
+              <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] font-bold text-slate-500">
+                <button type="button" onClick={() => { setIsRegister(true); setErrorText(''); setSuccessText(''); }}>No account? <span className="text-indigo-600">Sign up</span></button>
+                <span aria-hidden="true">·</span>
+                <button type="button" onClick={openStatusCheck} className="text-indigo-600">Check account status</button>
+              </div>
             </form>
           )}
         </div>
@@ -712,7 +804,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       <div className="relative">
                         <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
-                          type="text"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
                           required
                           value={regPhone}
                           onChange={(e) => setRegPhone(e.target.value)}

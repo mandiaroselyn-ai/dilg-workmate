@@ -19,6 +19,9 @@ const UserSchema = new mongoose.Schema({
   accessLevel: { type: String, default: 'employee' },
   accountStatus: { type: String, default: 'Active' },
   googleId: { type: String, default: '' },
+  // How a self-service account was made: 'form' (the sign-up form) or 'google' (Google
+  // sign-in). Empty for accounts HR created.
+  signUpMethod: { type: String, default: '' },
   profilePicture: { type: String, default: '' },
   address: { type: String, default: '' },
   dateOfBirth: { type: String, default: '' },

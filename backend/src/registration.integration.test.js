@@ -30,6 +30,8 @@ test('a sign-up form account waits for HR approval and is not signed in', async 
   assert.equal(response.status, 201);
   const saved = create.mock.calls[0].arguments[0];
   assert.equal(saved.accountStatus, 'Pending');
+  assert.equal(saved.signUpMethod, 'form');
+  assert.equal(saved.phoneNumber, '09171234567');
   assert.equal(saved.email, 'juan.delacruz@dilg.gov.ph');
   // Only the sign-up fields are used, so nobody can sign themselves up as HR/Admin or active.
   assert.equal(saved.accessLevel, undefined);
