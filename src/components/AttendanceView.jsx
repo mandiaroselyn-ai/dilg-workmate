@@ -35,8 +35,9 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { jsPDF } from 'jspdf';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import dtrTemplate from '../assets/template/dtr-template.pdf';
+import { fillDTR, dtrFilename } from '../utils/dtrForm';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import { isWithinAssignedLocation } from '../../shared/assignmentGeofence';
 
@@ -189,6 +190,13 @@ export default function AttendanceView({
   const today = getManilaDateString();
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user));
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
+
+  // DTR export states
+  const [dtrExportMonth, setDtrExportMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [dtrExporting, setDtrExporting] = useState(false);
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -917,171 +925,29 @@ export default function AttendanceView({
     return matchesSearch;
   });
 
-  // Official PDF Report Export Function using jsPDF
-  const handleExportPDF = () => {
-    const doc = new jsPDF();
-    
-    // Header letterhead with deep official agency blue
-    doc.setFillColor(30, 64, 175); // Dark DILG Blue
-    doc.rect(0, 0, 210, 42, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.text("DEPARTMENT OF THE INTERIOR AND LOCAL GOVERNMENT", 105, 15, { align: "center" });
-    
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.text("REPUBLIC OF THE PHILIPPINES  •  PROVINCE OF MARINDUQUE", 105, 22, { align: "center" });
-    doc.setFont("helvetica", "italic");
-    doc.text("WorkMate Personnel Biometric Verification Portal", 105, 28, { align: "center" });
-    
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("OFFICIAL PERSONNEL ATTENDANCE & BIOMETRIC RECORD REPORT", 105, 36, { align: "center" });
-    
-    // Personnel Meta Details card block
-    doc.setFillColor(248, 250, 252);
-    doc.rect(15, 48, 180, 36, 'F');
-    doc.setDrawColor(226, 232, 240);
-    doc.rect(15, 48, 180, 36, 'S');
-    
-    doc.setTextColor(15, 23, 42);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("PERSONNEL IDENTITY:", 20, 54);
-    doc.text("SYSTEM DISPATCH LOGS:", 110, 54);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
-    doc.setTextColor(71, 85, 105);
-    const leftColX = 20;
-    const rightColX = 118;
-    const leftColWidth = 82;
-    const rightColWidth = 75;
-    const leftLines = doc.splitTextToSize(`Authorized Representative Name: ${fillName || user.name || "Authorized User"}`, leftColWidth);
-    doc.text(leftLines, leftColX, 60);
-    const leftDesignation = doc.splitTextToSize(`Designation & ID: ${fillRole || user.role || "Employee"} (ID: ${fillId || user.employeeId || "N/A"})`, leftColWidth);
-    doc.text(leftDesignation, leftColX, 65);
-    doc.text(doc.splitTextToSize(`Office Station: ${fillOffice || user.office || "DILG Office"}`, leftColWidth), leftColX, 74);
-    doc.text(doc.splitTextToSize("Province Division: Region IV-B (MARINDUQUE)", leftColWidth), leftColX, 82);
-    
-    const rightDate = doc.splitTextToSize(`Document Export Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, rightColWidth);
-    doc.text(rightDate, rightColX, 60);
-    doc.text(doc.splitTextToSize(`Total Attested Records Count: ${filteredLogs.length} Registered Signings`, rightColWidth), rightColX, 68);
-    doc.text(doc.splitTextToSize("Verification Security Standard: SHA-256 GeoTag & Thumb biometrics", rightColWidth), rightColX, 76);
-    doc.text(doc.splitTextToSize("Audit Status: Compliant & Verified Secure", rightColWidth), rightColX, 84);
-    
-    // Draw table horizontal boundary dividing header
-    doc.setDrawColor(30, 64, 175);
-    doc.setLineWidth(0.4);
-    doc.line(15, 90, 195, 90);
-    
-    // Table Headers
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.setTextColor(30, 64, 175);
-    doc.text("Date", 15, 95);
-    doc.text("Assigned Mun.", 35, 95);
-    doc.text("Barangay / LGU", 78, 95);
-    doc.text("Time In", 118, 95);
-    doc.text("Time Out", 138, 95);
-    doc.text("GPS", 156, 95);
-    doc.text("Biometrics", 172, 95);
-    
-    doc.line(15, 98, 195, 98);
-    
-    // Reset weights
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.5);
-    doc.setTextColor(51, 65, 85);
-    
-    let currentY = 104;
-    
-    if (filteredLogs.length === 0) {
-      doc.setFont("helvetica", "italic");
-      doc.text("No active attendance entries registered for this agent identity inside standard local cache databases.", 105, currentY + 10, { align: "center" });
-    } else {
-      filteredLogs.forEach((log) => {
-        // Page overflow protection
-        if (currentY > 265) {
-          doc.addPage();
-          currentY = 25;
-          // Redraw lightweight header for next page
-          doc.setFillColor(30, 64, 175);
-          doc.rect(0, 0, 210, 12, 'F');
-          doc.setTextColor(255, 255, 255);
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(7.5);
-          doc.text("DILG WORKMATE BIOMETRICS ATTENDANCE SYSTEM REPORT  •  PAGE OVERFLOW", 105, 8, { align: "center" });
-          
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor(51, 65, 85);
-        }
-        
-        doc.setFont("helvetica", "bold");
-        doc.text(log.date, 15, currentY);
-        doc.setFont("helvetica", "normal");
-        
-        doc.text(log.location.substring(0, 18), 35, currentY);
-        doc.text(String(log.workAssignment?.barangayLgu || '-').substring(0, 20), 75, currentY);
-        
-        doc.setFont("helvetica", "bold");
-        doc.text(log.timeIn, 118, currentY);
-        doc.setFont("helvetica", "normal");
-        
-        doc.text(log.timeOut || "ON DUTY", 138, currentY);
-        
-        // GPS verified badge represent
-        doc.text(log.gpsStatus === "In Range" ? "Verified" : "Unknown", 156, currentY);
-        
-        // Biometrics indicators check
-        const bioText = (hasSelfie(log) ? "Selfie" : "No-Img") + " + " + (log.fingerprintVerified ? "Thumb" : "No-Fng");
-        doc.text(bioText, 172, currentY);
-        
-        doc.setDrawColor(241, 245, 249);
-        doc.line(15, currentY + 3, 195, currentY + 3);
-        currentY += 8;
-      });
+  // Generates the employee's Civil Service Form No. 48 (Daily Time Record) for the
+  // selected month and triggers a browser download.
+  const handleExportDTR = async () => {
+    setDtrExporting(true);
+    try {
+      const [year, month] = dtrExportMonth.split('-').map(Number);
+      const response = await fetch(dtrTemplate);
+      const templateBytes = await response.arrayBuffer();
+      const pdfBytes = await fillDTR(templateBytes, user || { name: fillName, role: fillRole, office: fillOffice, employeeId: fillId }, year, month, attendanceHistory);
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = dtrFilename(user?.name || fillName, year, month);
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('DTR export failed:', err);
+    } finally {
+      setDtrExporting(false);
     }
-    
-    // Bottom verification seals and security markers
-    if (currentY > 240) {
-      doc.addPage();
-      currentY = 25;
-    }
-    
-    doc.setDrawColor(226, 232, 240);
-    doc.line(15, currentY + 10, 195, currentY + 10);
-    
-    doc.setTextColor(30, 64, 175);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("SECURITY AUDIT COMPLIANCE SEAL", 15, currentY + 16);
-    
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text("This official database record is securely encrypted, hashed and reported directly to local government units database portals.", 15, currentY + 22);
-    doc.text("Tampering with digital clock stamps falls under Republic Act 10175 and is subject to immediate personnel disbarment.", 15, currentY + 26);
-    doc.text(`Seal Verification ID: VERIFY-SECURE-STAMP-${Date.now()}`, 15, currentY + 30);
-    
-    // Signatures blocks
-    const signatureX = 130;
-    const signatureY = currentY + 35;
-    doc.setDrawColor(148, 163, 184);
-    doc.line(signatureX, signatureY, signatureX + 55, signatureY);
-    doc.setTextColor(71, 85, 105);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.text("Personnel Attested Signature", signatureX, signatureY + 8);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.text("Self-Certified biometrics via mobile device", signatureX, signatureY + 13);
-    
-    // Save generated file!
-    doc.save(`Personnel_Attendance_Logs_${new Date().toISOString().substring(0, 10)}.pdf`);
   };
+
 
   return (
     <div className="p-4 sm:p-8 pb-24 md:pb-8 space-y-8 overflow-y-auto flex-1 id-attendance-view">
@@ -1902,16 +1768,26 @@ export default function AttendanceView({
 
           {/* Filter, Search & Export Buttons */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Export Official PDF Document button */}
-            <button
-              id="btn-export-pdf"
-              onClick={handleExportPDF}
-              className="text-white bg-slate-900 hover:bg-slate-800 font-bold text-xs py-2 px-3.5 rounded-lg flex items-center gap-2 cursor-pointer shadow-sm active:scale-95 transition-all outline-none"
-              title="Generate and Download official DILG PDF Attendance Report"
-            >
-              <Download className="w-3.5 h-3.5 text-white" />
-              <span>Export PDF Report</span>
-            </button>
+            {/* DTR Export — Civil Service Form No. 48 */}
+            <div className="flex items-center gap-2">
+              <input
+                type="month"
+                value={dtrExportMonth}
+                onChange={e => setDtrExportMonth(e.target.value)}
+                className="text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 px-2 py-2 outline-none focus:border-blue-500"
+                title="Select the month for the DTR"
+              />
+              <button
+                id="btn-export-dtr"
+                onClick={handleExportDTR}
+                disabled={dtrExporting}
+                className="text-white bg-slate-900 hover:bg-slate-800 font-bold text-xs py-2 px-3.5 rounded-lg flex items-center gap-2 cursor-pointer shadow-sm active:scale-95 transition-all outline-none disabled:opacity-60"
+                title="Download Civil Service Form No. 48 Daily Time Record"
+              >
+                <Download className="w-3.5 h-3.5 text-white" />
+                <span>{dtrExporting ? 'Generating…' : 'Export DTR'}</span>
+              </button>
+            </div>
 
             {/* Find Search Input */}
             <div className="relative">
