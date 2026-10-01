@@ -20,7 +20,7 @@ const contentsOf = async bytes => {
   return refs.map(ref => Buffer.from(decodePDFRawStream(pdf.context.lookup(ref)).decode()).toString('latin1'));
 };
 
-const template = fs.readFileSync(new URL('../assets/travelorder-template.pdf', import.meta.url));
+const template = fs.readFileSync(new URL('../assets/template/travelorder-template.pdf', import.meta.url));
 
 test('activity dates read like the order: one day, or a range', () => {
   assert.equal(activityDates('2026-10-05'), 'October 5, 2026');

@@ -4,7 +4,7 @@ import { drawGrid } from './leaveForm.js';
 // Makes the Provincial Order (travel order) for one travel request, laid out like the
 // Provincial Director's own orders: the answers are written in bold into the text, a long
 // subject runs onto more lines, and everything under it (the date, the paragraph, and the
-// Director's signature) moves down to make room. The page is src/assets/travelorder-template.pdf:
+// Director's signature) moves down to make room. The page is src/assets/template/travelorder-template.pdf:
 // its letterhead and footer stay, its signature is moved, and its fixed text is replaced.
 // Every position is in PDF points from the bottom-left corner of the A4 page (595.5 x 842),
 // measured from the template and from a signed order. To check a change, run

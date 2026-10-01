@@ -4,7 +4,7 @@ import test from 'node:test';
 import { PDFDocument } from 'pdf-lib';
 import { LEAVE_FORM_LAYOUT, fillLeaveForm, leaveTypeKey, splitApplicantName } from './leaveForm.js';
 
-const template = fs.readFileSync(new URL('../assets/csc-form-6-template.pdf', import.meta.url));
+const template = fs.readFileSync(new URL('../assets/template/csc-form-6-template.pdf', import.meta.url));
 
 test('names are split into last, first, and middle', () => {
   assert.deepEqual(splitApplicantName({ name: 'Juan A. Dela Cruz' }), { first: 'Juan', middle: 'A.', last: 'Dela Cruz' });

@@ -9,7 +9,7 @@ import { fillTravelOrder } from '../src/utils/travelOrderForm.js';
 
 const grid = process.argv.includes('--grid');
 const long = process.argv.includes('--long');
-const template = fs.readFileSync(new URL('../src/assets/travelorder-template.pdf', import.meta.url));
+const template = fs.readFileSync(new URL('../src/assets/template/travelorder-template.pdf', import.meta.url));
 
 const person = { name: 'Juan A. Dela Cruz', role: 'LGOO II' };
 const request = long

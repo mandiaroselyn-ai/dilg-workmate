@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-// Fills the CSC Form No. 6 template (src/assets/csc-form-6-template.pdf) for one leave
+// Fills the CSC Form No. 6 template (src/assets/template/csc-form-6-template.pdf) for one leave
 // request. Every position below is in PDF points measured from the bottom-left corner of
 // the template's page (612 x 792, US Letter), and was taken from the template's own labels
 // and lines. To move an answer, change its numbers here, then run

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Download, Printer, X } from 'lucide-react';
-import cscForm6Template from '../assets/csc-form-6-template.pdf';
+import cscForm6Template from '../assets/template/csc-form-6-template.pdf';
 import { fillLeaveForm } from '../utils/leaveForm';
 import PdfPreview from './PdfPreview';
 

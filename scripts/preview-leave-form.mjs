@@ -7,7 +7,7 @@ import { fillLeaveForm } from '../src/utils/leaveForm.js';
 
 const grid = process.argv.includes('--grid');
 const type = process.argv.find(arg => arg.startsWith('--type='))?.slice('--type='.length) || 'Vacation Leave';
-const template = fs.readFileSync(new URL('../src/assets/csc-form-6-template.pdf', import.meta.url));
+const template = fs.readFileSync(new URL('../src/assets/template/csc-form-6-template.pdf', import.meta.url));
 
 const applicant = {
   name: 'Juan A. Dela Cruz',

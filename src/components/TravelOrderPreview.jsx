@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Download, Printer, X } from 'lucide-react';
-import travelOrderTemplate from '../assets/travelorder-template.pdf';
+import travelOrderTemplate from '../assets/template/travelorder-template.pdf';
 import { fillTravelOrder, travelOrderNumber } from '../utils/travelOrderForm';
 import PdfPreview from './PdfPreview';
 
