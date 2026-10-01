@@ -373,18 +373,42 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         </button>
       </div>
       {cameraActive && cameraTarget === target && (
-        <div className="mt-4 space-y-2 rounded-xl bg-slate-950 p-3">
-          <div className="relative overflow-hidden rounded-lg border-2 border-dashed border-white/70">
-            <video ref={videoRef} autoPlay playsInline muted className="mx-auto max-h-56 w-full rounded-lg object-contain" />
-            <span className="pointer-events-none absolute inset-3 rounded-lg border border-white/70" />
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-lg">
+          <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+            <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+              Scanning ID
+            </span>
+            <span className="text-[10px] font-semibold text-slate-400">{target === 'id-front' ? 'Front side' : 'Back side'}</span>
           </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={captureImage} disabled={submitting} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">Scan {title}</button>
-            <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50"><X className="h-3 w-3" /> Cancel</button>
+          <div className="relative aspect-[4/3] overflow-hidden bg-slate-900">
+            <video ref={videoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+              <div className="h-[54%] w-[86%] rounded-xl border-2 border-white/90 shadow-[0_0_0_9999px_rgba(2,6,23,0.52)]" />
+              <span className="absolute bottom-4 rounded-full bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-sm">
+                Align ID inside the frame
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-2 px-3 py-3">
+            <button type="button" onClick={captureImage} disabled={submitting} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">
+              Capture — Scan {title}
+            </button>
+            <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">
+              <X className="h-3 w-3" /> Cancel
+            </button>
           </div>
         </div>
       )}
-      {image && <img src={image} alt={`Government ID ${target === 'id-front' ? 'front' : 'back'} preview`} className="mt-4 max-h-48 w-full rounded-xl border border-slate-200 object-contain" />}
+      {cameraError && cameraTarget === target && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
+      {image && !cameraActive && (
+        <div className="mt-4 space-y-2">
+          <img src={image} alt={`Government ID ${target === 'id-front' ? 'front' : 'back'} preview`} className="max-h-48 w-full rounded-xl border border-slate-200 object-contain" />
+          <button type="button" onClick={() => startCamera(target)} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
+            <RefreshCw className="h-3.5 w-3.5" /> Try Again — Retake Photo
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -544,16 +568,38 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                   <input ref={selfieInputRef} type="file" accept="image/*" capture="user" disabled={submitting} className="sr-only" onChange={event => handleImageSelection(event, 'selfie')} />
                 </div>
               ) : cameraTarget === 'selfie' ? (
-                <div className="mt-4 space-y-2 rounded-xl bg-slate-950 p-3">
-                  <video ref={videoRef} autoPlay playsInline muted className="mx-auto max-h-56 w-full scale-x-[-1] rounded-lg object-contain" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={captureImage} disabled={submitting} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">Capture Selfie</button>
-                    <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50"><X className="h-3 w-3" /> Cancel</button>
+                <div className="mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-lg">
+                  <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+                    <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white">
+                      <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+                      Camera Preview
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">Enrollment selfie</span>
+                  </div>
+                  <div className="relative aspect-square sm:aspect-[3/4] overflow-hidden bg-slate-900">
+                    <video ref={videoRef} autoPlay playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <div className="h-[60%] w-[55%] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_9999px_rgba(2,6,23,0.48)]" />
+                      <span className="absolute bottom-4 rounded-full bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-sm">
+                        Center your face in the frame
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 px-3 py-3">
+                    <button type="button" onClick={captureImage} disabled={submitting} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">Capture Selfie</button>
+                    <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"><X className="h-3 w-3" /> Cancel</button>
                   </div>
                 </div>
               ) : null}
-              {cameraError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
-              {selfieImage && <img src={selfieImage} alt="Enrollment selfie preview" className="mt-4 max-h-48 w-full rounded-xl border border-slate-200 object-contain" />}
+              {cameraError && cameraTarget === 'selfie' && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
+              {selfieImage && !cameraActive && (
+                <div className="mt-4 space-y-2">
+                  <img src={selfieImage} alt="Enrollment selfie preview" className="max-h-48 w-full rounded-xl border border-slate-200 object-contain" />
+                  <button type="button" onClick={() => startCamera('selfie')} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
+                    <RefreshCw className="h-3.5 w-3.5" /> Try Again — Retake Selfie
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 
