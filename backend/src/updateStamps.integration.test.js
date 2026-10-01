@@ -9,7 +9,6 @@ const { User } = await import('./models/User.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { DtrLog } = await import('./models/dtrLogModel.js');
 const { Leave, visibleRequestFilter } = await import('./models/leaveModel.js');
-const { EmployeeDocument, visibleDocumentFilter } = await import('./models/employeeDocumentModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 
 const app = createApiApp();
@@ -22,7 +21,6 @@ const signIn = (t, account) => {
   t.mock.method(User, 'findByEmail', async () => account);
   t.mock.method(Announcement, 'updateStamps', async () => ({ announcements: 'a1', events: 'e1', notifications: 'n1' }));
   const requestStamp = t.mock.method(Leave, 'updateStamp', async () => 'r1');
-  t.mock.method(EmployeeDocument, 'updateStamp', async () => 'doc1');
   const attendanceStamp = t.mock.method(DtrLog, 'updateStamp', async () => 'd1');
   const smsStamp = t.mock.method(Announcement, 'smsStamp', async () => 's1');
   return {
@@ -37,7 +35,7 @@ test('employees get fingerprints of their lists, without attendance', async t =>
   const session = signIn(t, employee);
   const response = await session.get('/api/updates');
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.stamps, { announcements: 'a1', events: 'e1', notifications: 'n1', requests: 'r1', documents: 'doc1' });
+  assert.deepEqual(response.body.stamps, { announcements: 'a1', events: 'e1', notifications: 'n1', requests: 'r1' });
   assert.equal(session.requestStamp.mock.calls[0].arguments[0].email, employee.email);
   assert.equal(session.attendanceStamp.mock.callCount(), 0);
   assert.equal(session.smsStamp.mock.callCount(), 0);
@@ -69,11 +67,4 @@ test('employees are matched to their own requests only', () => {
   assert.equal(visibleRequestFilter({ accessLevel: 'employee' }), null);
   assert.deepEqual(visibleRequestFilter(hr), {});
   assert.deepEqual(visibleRequestFilter({ accessLevel: 'supervisor' }), {});
-});
-
-test('employees are matched to their own documents only, and supervisors to none', () => {
-  assert.deepEqual(visibleDocumentFilter(employee), { $or: [{ employeeId: 'DILG-2026-1' }, { employeeEmail: 'juan@dilg.gov.ph' }] });
-  assert.equal(visibleDocumentFilter({ accessLevel: 'employee' }), null);
-  assert.deepEqual(visibleDocumentFilter(hr), {});
-  assert.equal(visibleDocumentFilter({ accessLevel: 'supervisor' }), null);
 });

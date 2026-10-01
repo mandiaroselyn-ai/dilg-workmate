@@ -46,7 +46,6 @@ import HRAdminProfileView from './HRAdminProfileView';
 import HRAnnouncementsManager from './HRAnnouncementsManager';
 import HRStaffAccountsView from './HRStaffAccountsView';
 import HRAdminRecordsView from './HRAdminRecordsView';
-import HRAdminDocumentsView from './HRAdminDocumentsView';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import HRFaceComparison from './HRFaceComparison';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
@@ -76,10 +75,6 @@ export default function HRAdminView({
   onCreateEvent,
   onUpdateEvent,
   onDeleteEvent,
-  documents = [],
-  onUploadDocument,
-  onAnswerCertificate,
-  onDeleteDocument,
   // From a notification's button: the employee or request to open first.
   focus = null
 }) {
@@ -92,7 +87,6 @@ export default function HRAdminView({
     hr_announcements: 'announcements',
     hr_directory: 'directory',
     hr_records: 'records',
-    hr_documents: 'documents',
     hr_profile: 'profile'
   };
   const [activeTab, setActiveTab] = useState(sectionTabs[section] || 'dashboard');
@@ -496,14 +490,6 @@ export default function HRAdminView({
         loadedAttendanceMonths={loadedAttendanceMonths}
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         requests={requests}
-      />}
-
-      {activeTab === 'documents' && <HRAdminDocumentsView
-        employees={employees}
-        documents={documents}
-        onUploadDocument={onUploadDocument}
-        onAnswerCertificate={onAnswerCertificate}
-        onDeleteDocument={onDeleteDocument}
       />}
 
       {activeTab === 'requests' && <div className="hr-admin-requests-screen"><HRAdminRequestsView

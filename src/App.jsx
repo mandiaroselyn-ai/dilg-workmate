@@ -80,8 +80,6 @@ export default function App() {
   const [loadedAttendanceMonths, setLoadedAttendanceMonths] = useState([]);
   const loadedAttendanceMonthsRef = useRef(new Set());
   const [requests, setRequests] = useState([]);
-  // Employees' own documents, or every employee's for HR (without the files themselves).
-  const [documents, setDocuments] = useState([]);
   const [events, setEvents] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -215,22 +213,6 @@ export default function App() {
         if (isCurrentSession) console.error('Failed to load request history:', err);
       });
 
-    if (activeRole === 'employee' || activeRole === 'hr_admin') {
-      apiFetch('/api/documents')
-        .then(res => {
-          if (!res.ok) throw new Error('Documents API unavailable');
-          return res.json();
-        })
-        .then(list => {
-          if (isCurrentSession && Array.isArray(list)) setDocuments(list);
-        })
-        .catch(err => {
-          if (isCurrentSession) console.error('Failed to load documents:', err);
-        });
-    } else {
-      setDocuments([]);
-    }
-
     if (activeRole === 'hr_admin') {
       apiFetch('/api/employees')
         .then(async response => {
@@ -297,11 +279,6 @@ export default function App() {
         if (!isCurrentSession) return;
         if (Array.isArray(list)) setRequests(list);
         if (profile?.user) setUser(profile.user);
-      },
-      // New 201 files, certificate requests, and released certificates.
-      documents: async () => {
-        const list = await readJson('/api/documents');
-        if (isCurrentSession && Array.isArray(list)) setDocuments(list);
       },
       attendance: async () => {
         const list = await readJson('/api/dtr/logs');
@@ -403,7 +380,7 @@ export default function App() {
   const roleAllowedViews = {
     employee: ['dashboard', 'attendance', 'requests', 'announcements', 'documents', 'office_directory', 'calendar', 'profile', 'settings', 'help'],
     supervisor: ['supervisor', 'announcements', 'calendar', 'profile', 'notifications'],
-    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_documents', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log']
+    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log']
   };
   // Shared links (such as the profile picture in the header) open HR's own version.
   const roleViewAliases = {
@@ -496,7 +473,6 @@ export default function App() {
     setUser(null);
     setAttendanceHistory([]);
     setRequests([]);
-    setDocuments([]);
     setEvents([]);
     setAnnouncements([]);
     setNotifications([]);
@@ -1177,32 +1153,6 @@ export default function App() {
     setEvents(previous => previous.filter(item => item.id !== id));
   };
 
-  // Employee documents, saved the same way. HR files 201, performance, and training
-  // documents and answers certificate requests; employees add their training certificates
-  // and request certificates. The server notifies the other side.
-  const handleUploadDocument = async fields => {
-    const { document: saved } = await sendBulletinChange('/api/documents', 'POST', fields);
-    setDocuments(previous => [saved, ...previous]);
-    return saved;
-  };
-
-  const handleRequestCertificate = async fields => {
-    const { document: saved } = await sendBulletinChange('/api/documents/requests', 'POST', fields);
-    setDocuments(previous => [saved, ...previous]);
-    return saved;
-  };
-
-  const handleAnswerCertificate = async (id, answer) => {
-    const { document: saved } = await sendBulletinChange(`/api/documents/${encodeURIComponent(id)}`, 'PATCH', answer);
-    setDocuments(previous => previous.map(item => item.id === id ? saved : item));
-    return saved;
-  };
-
-  const handleDeleteDocument = async id => {
-    await sendBulletinChange(`/api/documents/${encodeURIComponent(id)}`, 'DELETE');
-    setDocuments(previous => previous.filter(item => item.id !== id));
-  };
-
   // Acknowledge announcement
   const handleAcknowledgeAnnouncement = (id) => {
     fetch('/api/announcements/acknowledge', {
@@ -1551,7 +1501,7 @@ export default function App() {
             </div>
           )}
 
-          {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_documents', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
+          {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
             <HRAdminView
               key={viewVisit}
               section={currentView}
@@ -1577,10 +1527,6 @@ export default function App() {
               onCreateEvent={handleAddEvent}
               onUpdateEvent={handleUpdateEvent}
               onDeleteEvent={handleDeleteEvent}
-              documents={documents}
-              onUploadDocument={handleUploadDocument}
-              onAnswerCertificate={handleAnswerCertificate}
-              onDeleteDocument={handleDeleteDocument}
               focus={focus}
             />
           )}
@@ -1598,10 +1544,6 @@ export default function App() {
               user={user}
               requests={visibleEmployeeRequests}
               attendanceHistory={visibleEmployeeRecords}
-              documents={documents}
-              onUploadDocument={handleUploadDocument}
-              onRequestCertificate={handleRequestCertificate}
-              onDeleteDocument={handleDeleteDocument}
             />
           )}
           {currentView === 'office_directory' && <OfficeDirectoryView />}

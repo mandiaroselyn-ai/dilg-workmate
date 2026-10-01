@@ -141,7 +141,6 @@ export default function Header({
     hr_service_records: 'Service Records',
     hr_leave_records: 'Request Management',
     hr_records: 'Record Management System',
-    hr_documents: 'Employee Documents',
     hr_announcements: 'Announcements',
     hr_directory: 'Employee Records',
     hr_profile: 'HR/Admin Profile',

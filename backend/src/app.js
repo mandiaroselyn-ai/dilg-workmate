@@ -5,7 +5,6 @@ import dtrRoutes from './routes/dtrRoutes.js';
 import leaveRoutes from './routes/leaveRoutes.js';
 import travelRoutes from './routes/travelRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
-import documentRoutes from './routes/documentRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
@@ -85,7 +84,6 @@ export function createApiApp() {
   app.use('/api', leaveRoutes);
   app.use('/api', travelRoutes);
   app.use('/api', announcementRoutes);
-  app.use('/api', documentRoutes);
   app.use('/api/auth', googleAuthRoutes);
   app.use('/api', apiNotFound);
   app.use(apiErrorHandler);
