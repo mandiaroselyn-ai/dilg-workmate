@@ -1,7 +1,7 @@
 import { Leave } from '../models/leaveModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
-import { toSafeUser } from '../utils/passwordSecurity.js';
+import { toRequesterProfile } from '../utils/passwordSecurity.js';
 import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from '../utils/requestFields.js';
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
@@ -58,9 +58,8 @@ const enrichRequestEmployees = async (requests) => Promise.all(requests.map(asyn
       ? await User.findByEmail(request.employeeEmail)
       : null;
   if (!employee) return request;
-  // The profile photo is left out: it would be repeated in every request.
-  const { profilePicture, ...safeProfile } = toSafeUser(employee);
-  return { ...request, employee: safeProfile, employeeName: request.employeeName || safeProfile.name };
+  const requester = toRequesterProfile(employee);
+  return { ...request, employee: requester, employeeName: request.employeeName || requester.name };
 }));
 
 export const getRequests = async (req, res) => {

@@ -2,13 +2,26 @@ import React, { useEffect, useState } from 'react';
 import { Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../utils/api.js';
 import HRResetPasswordCard from './HRResetPasswordCard';
+import { EMPLOYMENT_FIELDS, profileFieldValues } from '../../shared/profileFields';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold normal-case text-slate-800 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'block text-xs font-black uppercase tracking-wide text-slate-500';
 
-const emptyForm = { name: '', email: '', role: '', office: '', phoneNumber: '', employeeId: '', accessLevel: 'supervisor', password: '' };
+// HR keeps a staff member's employment details; their personal details are their own
+// to fill in on their profile.
+const STAFF_EMPLOYMENT_FIELDS = [
+  { key: 'region', label: 'Region' },
+  { key: 'dateHired', label: 'Date hired', type: 'date', max: 40 },
+  ...EMPLOYMENT_FIELDS
+];
+
+const emptyForm = {
+  name: '', email: '', role: '', office: '', phoneNumber: '', employeeId: '', accessLevel: 'supervisor', password: '',
+  ...profileFieldValues({}, STAFF_EMPLOYMENT_FIELDS),
+  region: 'DILG Region IV-B - MIMAROPA'
+};
 const isActive = account => !account.accountStatus || account.accountStatus.toLowerCase() === 'active';
 const identifierOf = account => account.employeeId || account.email;
 
@@ -213,6 +226,11 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             <label className={labelClass}>Initial password (at least {MIN_PASSWORD_LENGTH} characters)
               <input name="password" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} maxLength={256} value={form.password} onChange={updateFormField} className={inputClass} />
             </label>
+            {STAFF_EMPLOYMENT_FIELDS.map(field => (
+              <label key={field.key} className={labelClass}>{field.label}
+                <input name={field.key} type={field.type || 'text'} maxLength={field.max || 250} placeholder={field.placeholder} value={form[field.key]} onChange={updateFormField} className={inputClass} />
+              </label>
+            ))}
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
           <div className="flex gap-2">
@@ -230,6 +248,11 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             <label className={labelClass}>Job designation<input name="role" required maxLength={120} value={editing.fields.role} onChange={updateEditField} className={inputClass} /></label>
             <label className={labelClass}>Office<input name="office" required maxLength={160} value={editing.fields.office} onChange={updateEditField} className={inputClass} /></label>
             <label className={labelClass}>Mobile number<input name="phoneNumber" maxLength={250} value={editing.fields.phoneNumber} onChange={updateEditField} placeholder="Supervisors get an SMS when a request is forwarded" className={inputClass} /></label>
+            {STAFF_EMPLOYMENT_FIELDS.map(field => (
+              <label key={field.key} className={labelClass}>{field.label}
+                <input name={field.key} type={field.type || 'text'} maxLength={field.max || 250} placeholder={field.placeholder} value={editing.fields[field.key]} onChange={updateEditField} className={inputClass} />
+              </label>
+            ))}
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
           <div className="flex gap-2">
@@ -267,7 +290,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                 <p className="max-w-[220px] text-right text-xs font-semibold text-slate-500">Another HR/Admin must change your own access or status. Edit your details under Profile.</p>
               ) : (
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { name: account.name || '', role: account.role || '', office: account.office || '', phoneNumber: account.phoneNumber || '' } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
+                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { name: account.name || '', role: account.role || '', office: account.office || '', phoneNumber: account.phoneNumber || '', ...profileFieldValues(account, STAFF_EMPLOYMENT_FIELDS) } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
                   <select
                     aria-label={`Change access for ${account.name}`}
                     value=""

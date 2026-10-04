@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString } from '../../../shared/localDate.js';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
   accountStatusLabel,
@@ -18,7 +19,7 @@ import { Announcement } from '../models/announcementModel.js';
 import { DtrLog } from '../models/dtrLogModel.js';
 import { Leave } from '../models/leaveModel.js';
 import { isConnected } from '../config/db.js';
-import { toSafeUser } from '../utils/passwordSecurity.js';
+import { toRequesterProfile, toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
@@ -52,13 +53,30 @@ export const isValidProfilePicture = value => typeof value === 'string' && (
   || (/^https:\/\//.test(value) && value.length <= 2048)
 );
 
+// Everyone keeps their own name, contact number, photo, personal details, and government
+// ID numbers up to date. HR keeps the position, office, region, and employment details,
+// so only an HR/Admin changes their own here; everyone else's are changed in HR's forms.
+const SELF_PROFILE_FIELDS = ['name', 'phoneNumber', 'profilePicture'];
+const HR_PROFILE_FIELDS = ['role', 'office', 'region', 'dateHired'];
+
 export const updateUserProfile = async (req, res) => {
   try {
-    const allowedFields = ['name', 'role', 'office', 'region', 'phoneNumber', 'profilePicture'];
+    const isHrAdmin = req.user.accessLevel === 'hr_admin';
+    const allowedFields = isHrAdmin ? [...SELF_PROFILE_FIELDS, ...HR_PROFILE_FIELDS] : SELF_PROFILE_FIELDS;
     const profileData = allowedFields.reduce((data, field) => {
       if (req.body[field] !== undefined) data[field] = req.body[field];
       return data;
     }, { lookupEmail: req.user.email });
+    for (const [field, label] of [['name', 'full name'], ['role', 'position'], ['office', 'office']]) {
+      if (profileData[field] !== undefined && (typeof profileData[field] !== 'string' || !profileData[field].trim())) {
+        return res.status(400).json({ success: false, error: `Enter your ${label}.` });
+      }
+    }
+    const details = readProfileFields(req.body, isHrAdmin
+      ? [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS]
+      : [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS]);
+    if (details.error) return res.status(400).json({ success: false, error: details.error });
+    Object.assign(profileData, details.value);
     // Only a new photo is checked; the app re-sends the current photo with every profile save.
     if (profileData.profilePicture !== undefined
       && profileData.profilePicture !== req.user.profilePicture
@@ -186,6 +204,11 @@ const normalizeEmployeeInput = (body, reviewer) => {
       return { error: `${field} exceeds the maximum length.` };
     }
   }
+  // The rest of the profile changes only when sent, so a save that leaves a field out
+  // keeps what the employee entered.
+  const details = readProfileFields(body, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS]);
+  if (details.error) return { error: details.error };
+  Object.assign(employee, details.value);
   if (body.approvedWfhLocation !== undefined) {
     try {
       employee.approvedWfhLocation = normalizeApprovedWfhLocation(body.approvedWfhLocation, reviewer);
@@ -507,9 +530,8 @@ export const getFullState = async (req, res) => {
           ? await User.findByEmail(request.employeeEmail)
           : null;
       if (!employee) return request;
-      // The profile photo is left out: it would be repeated in every request.
-      const { profilePicture, ...safeProfile } = toSafeUser(employee);
-      return { ...request, employee: safeProfile, employeeName: request.employeeName || safeProfile.name };
+      const requester = toRequesterProfile(employee);
+      return { ...request, employee: requester, employeeName: request.employeeName || requester.name };
     }));
 
     res.status(200).json({

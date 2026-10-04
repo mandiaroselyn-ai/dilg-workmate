@@ -39,3 +39,9 @@ test('validates new staff accounts', () => {
   assert.match(normalizeStaffInput({ name: 'A', email: 'not-an-email', role: 'R', office: 'O', accessLevel: 'supervisor' }).error, /valid email/);
   assert.equal(normalizeStaffInput({ email: 'x@y.z', office: 'New office' }, { partial: true }).value.email, undefined);
 });
+
+test('HR keeps a staff member\'s region and employment details, not their personal details', () => {
+  const { value } = normalizeStaffInput({ region: ' MIMAROPA ', dateHired: '2019-02-01', salaryGrade: 'SG 26', immediateSupervisor: 'Regional Director', gsisNumber: '123' }, { partial: true });
+  assert.deepEqual(value, { region: 'MIMAROPA', dateHired: '2019-02-01', salaryGrade: 'SG 26', immediateSupervisor: 'Regional Director' });
+  assert.match(normalizeStaffInput({ division: 42 }, { partial: true }).error, /must be text/);
+});

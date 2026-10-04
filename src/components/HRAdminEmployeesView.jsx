@@ -1,20 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
-  Building2,
   CalendarDays,
   FileText,
   Filter,
   Fingerprint,
-  Mail,
-  MapPin,
   Pencil,
-  Phone,
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
-  UserRound,
   Users,
   X
 } from 'lucide-react';
@@ -23,8 +17,17 @@ import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
 import { findTargetEmployee } from '../utils/notifications';
+import ProfileDetails, { ProfileFieldInput } from './ProfileDetails';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
+
+// Profile details the form below shows in sections of their own; the name parts, birthday,
+// gender, and address already have their own inputs.
+const OWN_INPUT_KEYS = ['firstName', 'middleName', 'lastName', 'dateOfBirth', 'gender', 'address'];
+const MORE_PERSONAL_FIELDS = PERSONAL_FIELDS.filter(field => !OWN_INPUT_KEYS.includes(field.key));
+const PROFILE_FORM_FIELDS = [...MORE_PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS];
 
 const emptyForm = {
+  ...profileFieldValues({}, PROFILE_FORM_FIELDS),
   firstName: '',
   middleName: '',
   lastName: '',
@@ -70,6 +73,7 @@ const normalizeEmployee = (employee = {}) => {
   const parts = name.split(' ');
 
   return {
+    ...profileFieldValues(employee, PROFILE_FORM_FIELDS),
     id: employee.id || employee._id || employee.employeeId || `emp-${Date.now()}`,
     firstName: employee.firstName || parts[0] || '',
     middleName: employee.middleName || '',
@@ -351,7 +355,16 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     event.preventDefault();
     setEmployeeSaving(true);
 
-    const fullName = [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ');
+    const existingEmployee = editingId
+      ? employeeAccounts.find(employee => employeeKey(employee) === editingId)
+      : null;
+    // Attendance records are matched by the full name, so an edit keeps it unless HR
+    // changed the name parts.
+    const original = existingEmployee ? normalizeEmployee(existingEmployee) : null;
+    const nameChanged = !original || ['firstName', 'middleName', 'lastName'].some(key => (form[key] || '').trim() !== (original[key] || '').trim());
+    const fullName = nameChanged || !existingEmployee.name
+      ? [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ')
+      : existingEmployee.name;
     const employeeId = form.employeeId.trim() || `DILG-${Date.now().toString().slice(-6)}`;
     const normalized = {
       ...normalizeEmployee({
@@ -382,9 +395,6 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     };
 
     try {
-      const existingEmployee = editingId
-        ? employeeAccounts.find(employee => employeeKey(employee) === editingId)
-        : null;
       if (editingId && !existingEmployee) {
         throw new Error('Employee record is no longer available. Refresh the employee list and try again.');
       }
@@ -684,6 +694,19 @@ This cannot be undone.`
               <label className="text-[11px] font-black text-slate-600">Assigned LGU
                 <input name="assignedLGU" value={form.assignedLGU} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
+
+              {[
+                ['More Personal Details', MORE_PERSONAL_FIELDS],
+                ['Government ID Numbers', GOVERNMENT_ID_FIELDS],
+                ['Employment Details', EMPLOYMENT_FIELDS]
+              ].map(([title, fields]) => (
+                <div key={title} className="sm:col-span-2 xl:col-span-4">
+                  <p className="text-[11px] font-black text-slate-700">{title}</p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {fields.map(field => <ProfileFieldInput key={field.key} item={field} value={form[field.key]} onChange={handleChange} />)}
+                  </div>
+                </div>
+              ))}
 
               <div className="sm:col-span-2 xl:col-span-4">
                 <p className="text-[11px] font-black text-slate-700">Approved Work-From-Home Location</p>
@@ -1054,23 +1077,10 @@ This cannot be undone.`
           )}
         </section>
 
-        <section className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Employee Information</p>
-            <div className="mt-4 space-y-3">
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><UserRound className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Full Name</p><p className="mt-1 text-xs font-bold text-slate-800">{employeeName(selectedEmployee)}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Mail className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Email</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.email || '-'}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Phone className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Phone</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.phoneNumber || '-'}</p></div></div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Assignment Details</p>
-            <div className="mt-4 space-y-3">
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><Building2 className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Office</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.office || '-'}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><ShieldCheck className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Role</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.role || '-'}</p></div></div>
-              <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3"><MapPin className="mt-0.5 h-4 w-4 text-blue-600" /><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Assigned LGU / Station</p><p className="mt-1 text-xs font-bold text-slate-800">{selectedEmployee.assignedLGU || selectedEmployee.assignedStation || '-'}</p></div></div>
-            </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Employee Information</p>
+          <div className="mt-4">
+            <ProfileDetails person={selectedEmployee} attendanceAssignment />
           </div>
         </section>
       </div>

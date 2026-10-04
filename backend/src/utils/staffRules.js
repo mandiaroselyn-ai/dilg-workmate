@@ -1,11 +1,13 @@
 // Rules for HR managing Supervisor and HR/Admin accounts. They keep the system from
 // ending up without an active HR/Admin and stop HR from locking themselves out.
 
+import { EMPLOYMENT_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
+
 export const ACCESS_LEVELS = ['employee', 'supervisor', 'hr_admin'];
 export const STAFF_ACCESS_LEVELS = ['supervisor', 'hr_admin'];
 export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Suspended'];
 
-const FIELD_LIMITS = { name: 160, email: 254, role: 120, office: 160, phoneNumber: 250, employeeId: 64 };
+const FIELD_LIMITS = { name: 160, email: 254, role: 120, office: 160, phoneNumber: 250, employeeId: 64, region: 250, dateHired: 40 };
 
 const isActive = account => !account?.accountStatus || account.accountStatus.toString().toLowerCase() === 'active';
 export const isActiveAdmin = account => account?.accessLevel === 'hr_admin' && isActive(account);
@@ -24,6 +26,11 @@ export const normalizeStaffInput = (body, { partial = false } = {}) => {
     if (text.length > limit) return { error: `${field} exceeds the maximum length.` };
     value[field] = field === 'email' ? text.toLowerCase() : text;
   }
+  // HR also keeps the staff member's employment details; their personal details are
+  // their own to fill in on their profile.
+  const details = readProfileFields(body, EMPLOYMENT_FIELDS);
+  if (details.error) return { error: details.error };
+  Object.assign(value, details.value);
   if (!partial) {
     if (!value.name || !value.email || !value.role || !value.office) {
       return { error: 'Name, email, job designation, and office are required.' };

@@ -1,17 +1,24 @@
 ﻿import React, { useRef, useState, useEffect } from 'react';
-import { Building2, Camera, CheckCircle2, IdCard, Mail, MapPin, Pencil, Phone, ShieldAlert } from 'lucide-react';
+import { Building2, Camera, CheckCircle2, Pencil } from 'lucide-react';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import ChangePasswordCard from './ChangePasswordCard';
+import ProfileDetails from './ProfileDetails';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
 
-const InfoRow = ({ icon: Icon, label, value }) => (
-  <div className="flex items-center gap-3 border-b border-slate-100 py-4 last:border-0">
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1551b5]">
-      <Icon className="h-5 w-5" />
-    </div>
-    <span className="min-w-0 flex-1 text-xs text-slate-700">{label}</span>
-    <span className="min-w-0 max-w-[54%] break-words text-right text-xs font-bold text-slate-800">{value || '-'}</span>
-  </div>
-);
+// What the person can change on their profile. An HR/Admin also keeps their own
+// position, office, region, and employment details; a supervisor's are kept by HR.
+const editableValues = (person, isHrAdmin) => ({
+  name: person?.name || '',
+  phoneNumber: person?.phoneNumber || '',
+  ...profileFieldValues(person, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS]),
+  ...(isHrAdmin ? {
+    role: person?.role || '',
+    office: person?.office || '',
+    region: person?.region || '',
+    dateHired: person?.dateHired || '',
+    ...profileFieldValues(person, EMPLOYMENT_FIELDS)
+  } : {})
+});
 
 export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser, onToast, title = 'HR/Admin Profile' }) {
   const [editing, setEditing] = useState(false);
@@ -27,13 +34,8 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
   const streamRef = useRef(null);
 
   const user = { ...sourceUser, profilePicture };
-  const [form, setForm] = useState({
-    name: user.name || '',
-    email: user.email || '',
-    role: user.role || '',
-    office: user.office || '',
-    phoneNumber: user.phoneNumber || '',
-  });
+  const isHrAdmin = sourceUser.accessLevel === 'hr_admin';
+  const [form, setForm] = useState(() => editableValues(sourceUser, isHrAdmin));
 
   const initials = (user.name || 'HR').split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
   const notify = message => onToast?.(message);
@@ -219,7 +221,7 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-600">Government Profile</p>
             <h3 className="mt-2 text-lg font-black text-slate-900">Official Information</h3>
-            <p className="mt-1 text-xs text-slate-500">Current office assignment and official administrative details.</p>
+            <p className="mt-1 text-xs text-slate-500">{isHrAdmin ? 'Your personal, government ID, and employment details.' : 'Your personal and government ID details. HR keeps your employment details.'}</p>
           </div>
 
           {!editing && (
@@ -227,13 +229,7 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
               type="button"
               onClick={() => {
                 setEditing(true);
-                setForm({
-                  name: user.name || '',
-                  email: user.email || '',
-                  role: user.role || '',
-                  office: user.office || '',
-                  phoneNumber: user.phoneNumber || '',
-                });
+                setForm(editableValues(user, isHrAdmin));
               }}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
             >
@@ -244,59 +240,7 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
 
         {editing ? (
           <form onSubmit={save} className="mt-5 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Full Name
-                <input
-                  name="name"
-                  value={form.name}
-                  onChange={update}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
-                />
-              </label>
-
-              <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Official Email
-                <input
-                  name="email"
-                  type="email"
-                  value={form.email}
-                  readOnly
-                  title="Account emails are managed in the employee records."
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
-                />
-              </label>
-
-              <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Designation
-                <input
-                  name="role"
-                  value={form.role}
-                  onChange={update}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
-                />
-              </label>
-
-              <label className="text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Office / Unit
-                <input
-                  name="office"
-                  value={form.office}
-                  onChange={update}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
-                />
-              </label>
-
-              <label className="text-[11px] font-black uppercase tracking-wide text-slate-500 sm:col-span-2">
-                Contact Number
-                <input
-                  name="phoneNumber"
-                  value={form.phoneNumber}
-                  onChange={update}
-                  className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-bold text-slate-800 outline-none transition focus:border-blue-500 focus:bg-white"
-                />
-              </label>
-            </div>
+            <ProfileDetails person={user} form={form} onChange={update} editing employmentEditable={isHrAdmin} />
 
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={() => setEditing(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50">
@@ -308,13 +252,8 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
             </div>
           </form>
         ) : (
-          <div className="mt-5 space-y-2 rounded-2xl border border-slate-100 bg-slate-50 p-2">
-            <InfoRow icon={Mail} label="Official Government Email" value={user.email} />
-            <InfoRow icon={Phone} label="Official Contact Number" value={user.phoneNumber} />
-            <InfoRow icon={ShieldAlert} label="Designation / Position" value={user.role} />
-            <InfoRow icon={Building2} label="Office / Agency Unit" value={user.office} />
-            <InfoRow icon={MapPin} label="Assigned Government Office" value={user.location || 'Provincial Office'} />
-            <InfoRow icon={IdCard} label="Employee / Admin ID" value={user.employeeId || 'HR-ADMIN-001'} />
+          <div className="mt-5">
+            <ProfileDetails person={user} employmentEditable={isHrAdmin} />
           </div>
         )}
       </section>

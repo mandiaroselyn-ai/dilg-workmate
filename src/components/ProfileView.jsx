@@ -6,14 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
-  Shield,
-  Phone,
-  Mail,
-  Building,
-  Key,
   CheckCircle,
-  FileText,
-  BadgeAlert,
   IdCard,
   Camera,
   MapPin,
@@ -25,16 +18,23 @@ import {
   RefreshCw
 } from 'lucide-react';
 import BiometricEnrollmentView from './BiometricEnrollmentView';
+import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
+import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
+
+// What the employee can change on their profile. HR keeps the position, office, region,
+// and other employment details.
+const editableValues = person => ({
+  name: person?.name || '',
+  phoneNumber: person?.phoneNumber || '',
+  ...profileFieldValues(person, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS])
+});
 
 export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
-  const [name, setName] = useState(user.name);
-  const [role, setRole] = useState(user.role);
-  const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber);
-  const [email, setEmail] = useState(user.email);
-  const [office, setOffice] = useState(user.office);
-  const [region, setRegion] = useState(user.region);
-  const [employeeId, setEmployeeId] = useState(user.employeeId);
+  const [form, setForm] = useState(() => editableValues(user));
+  const { name } = form;
+  const { role, office, employeeId } = user;
+  const badge = employmentBadge(user);
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -71,13 +71,7 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
 
   useEffect(() => {
     if (!user) return;
-    setName(user.name || '');
-    setRole(user.role || '');
-    setPhoneNumber(user.phoneNumber || '');
-    setEmail(user.email || '');
-    setOffice(user.office || '');
-    setRegion(user.region || '');
-    setEmployeeId(user.employeeId || '');
+    setForm(editableValues(user));
     setProfilePicture(user.profilePicture || '');
     setTempPhoto(user.profilePicture || '');
   }, [user]);
@@ -180,15 +174,14 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
 
   const buildUserPayload = (picture) => ({
     ...user,
-    name,
-    role,
-    phoneNumber,
-    email,
-    office,
-    region,
-    employeeId,
+    ...form,
     profilePicture: picture
   });
+
+  const handleChange = event => {
+    const { name: field, value } = event.target;
+    setForm(previous => ({ ...previous, [field]: value }));
+  };
 
   const handleSavePhoto = () => {
     setProfilePicture(tempPhoto);
@@ -227,11 +220,7 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
   };
 
   const cancelMobileEdit = () => {
-    setName(user.name || '');
-    setRole(user.role || '');
-    setPhoneNumber(user.phoneNumber || '');
-    setOffice(user.office || '');
-    setRegion(user.region || '');
+    setForm(editableValues(user));
     setEditingInfo(false);
   };
 
@@ -300,8 +289,8 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
             </div>
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-black leading-tight">{name}</h2>
-              <span className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3 py-1 text-xs font-black uppercase">
-                <span className="h-2 w-2 rounded-full bg-emerald-200" /> ACTIVE EMPLOYEE
+              <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
+                <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
               </span>
               <p className="mt-3 text-xs font-extrabold leading-snug text-white">{role}</p>
             </div>
@@ -316,53 +305,13 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#1551b5] text-white"><User className="h-6 w-6" /></div>
-              <div><h3 className="text-base font-black text-slate-800">Employment Information</h3><p className="mt-1 text-[11px] text-slate-500">{editingInfo ? 'Update your personal and employment information.' : 'View your personal and employment information.'}</p></div>
+              <div><h3 className="text-base font-black text-slate-800">Personnel Information</h3><p className="mt-1 text-[11px] text-slate-500">{editingInfo ? 'Update your personal details and government ID numbers.' : 'View your personal and employment information.'}</p></div>
             </div>
             <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 sm:flex"><Database className="h-6 w-6" /> Personnel<br />Record</div>
           </div>
-          {editingInfo ? (
-            <div className="space-y-3 pt-4">
-              {[
-                ['Full Name', name, setName, 'text'],
-                ['Position Title', role, setRole, 'text'],
-                ['Contact Number', phoneNumber, setPhoneNumber, 'tel'],
-                ['Office Assignment', office, setOffice, 'text'],
-                ['Regional Assignment', region, setRegion, 'text']
-              ].map(([label, value, setValue, type]) => (
-                <label key={label} className="block text-[11px] font-bold text-slate-600">
-                  {label}
-                  <input
-                    type={type}
-                    required
-                    value={value || ''}
-                    onChange={(e) => setValue(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#1551b5] focus:bg-white"
-                  />
-                </label>
-              ))}
-              <p className="rounded-xl bg-slate-50 p-3 text-[11px] text-slate-500">
-                Government Email ({email || 'none'}) and Employee ID ({employeeId || 'not assigned'}) are managed by the HR Administrator.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {[
-                ['Full Name', name, User],
-                ['Government Email', email, Mail],
-                ['Position Title', role, Shield],
-                ['Contact Number', phoneNumber, Phone],
-                ['Office Assignment', office, Building],
-                ['Regional Assignment', region, MapPin],
-                ['Employee ID', employeeId, BadgeAlert]
-              ].map(([label, value, Icon]) => (
-                <div key={label} className="flex items-center gap-3 py-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1551b5]"><Icon className="h-5 w-5" /></div>
-                  <span className="min-w-0 flex-1 text-xs text-slate-700">{label}</span>
-                  <span className="min-w-0 max-w-[52%] break-words text-right text-xs font-bold leading-snug text-slate-800">{value || '-'}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="pt-4">
+            <ProfileDetails person={user} form={form} onChange={handleChange} editing={editingInfo} attendanceAssignment />
+          </div>
           {editingInfo ? (
             <div className="mt-5 flex gap-2">
               <button type="submit" disabled={savingInfo} className="flex-1 rounded-2xl bg-[#0645ad] px-4 py-3 text-xs font-bold text-white shadow-md disabled:opacity-60">
@@ -455,8 +404,8 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
         <div className="space-y-2 text-center md:text-left">
           <div className="flex items-center justify-center md:justify-start gap-2.5">
             <h2 id="txt-profile-top-name" className="text-2xl font-black tracking-tight text-white">{name}</h2>
-            <span className="text-[10px] uppercase font-mono tracking-widest bg-emerald-500/80 text-white font-bold px-2 py-0.5 rounded border border-emerald-400 shadow-sm">
-              ACTIVE EMPLOYEE
+            <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm`}>
+              {badge.label}
             </span>
           </div>
           <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
@@ -473,127 +422,13 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="border-b border-slate-100 pb-3 flex items-center justify-between">
             <div>
-              <h3 className="font-bold text-slate-800 text-md">Employment Information</h3>
-              <p className="text-xs text-slate-500 mt-1">View your personal and employment information.</p>
+              <h3 className="font-bold text-slate-800 text-md">Personnel Information</h3>
+              <p className="text-xs text-slate-500 mt-1">Update your personal details and government ID numbers. HR keeps your employment information.</p>
             </div>
             <span className="text-xs font-mono text-slate-650 font-extrabold bg-slate-50 border border-slate-200 px-2.5 py-1 rounded">DILG Core Server V4</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs font-bold text-slate-600">
-            {/* Name Input */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500">Full Name</label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-name"
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Email Input */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500">Government Email</label>
-              <div className="relative border-transparent">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-email"
-                  type="email"
-                  required
-                  value={email}
-                  readOnly
-                  title="Your email is managed by the HR Administrator."
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Designation Input */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500">Position Title</label>
-              <div className="relative">
-                <Shield className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-role"
-                  type="text"
-                  required
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-550/10 focus:border-[#1e40af] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Cell Phone Number */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500">Contact Number</label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-phone"
-                  type="text"
-                  required
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-550/10 focus:border-[#1e40af] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Office provincial */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500">Office Assignment</label>
-              <div className="relative">
-                <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-office"
-                  type="text"
-                  required
-                  value={office}
-                  onChange={(e) => setOffice(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-550/10 focus:border-[#1e40af] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Region field */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500">Regional Assignment</label>
-              <div className="relative">
-                <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-region"
-                  type="text"
-                  required
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-550/10 focus:border-[#1e40af] transition-all"
-                />
-              </div>
-            </div>
-
-            {/* Employee ID (Readonly or Editable) */}
-            <div className="space-y-1.5 md:col-span-2">
-              <label className="text-[11px] uppercase tracking-wider text-slate-500 block">Employee ID</label>
-              <div className="relative">
-                <Key className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  id="input-prof-id"
-                  type="text"
-                  value={employeeId}
-                  readOnly
-                  title="Your employee ID is managed by the HR Administrator."
-                  placeholder="Official ID code sequence"
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 p-3.5 focus:outline-none focus:ring-2 focus:ring-blue-550/10 focus:border-[#1e40af] transition-all font-mono"
-                />
-              </div>
-            </div>
-          </div>
+          <ProfileDetails person={user} form={form} onChange={handleChange} editing attendanceAssignment />
 
           {profileSuccess && (
             <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-4 rounded-xl text-xs font-semibold flex items-center gap-2">
