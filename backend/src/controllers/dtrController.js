@@ -8,6 +8,7 @@ import { checkOfflineTimeIn, checkOfflineTimeOut } from '../utils/offlineTimeIn.
 import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
+import { attendanceReviewNotices, noticeEmployee } from '../services/employeeNotices.js';
 import { isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
 import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
 import {
@@ -440,6 +441,10 @@ export const clockInOut = async (req, res) => {
 export const bulkUpdateDtrHistory = async (req, res) => {
   try {
     const updated = await DtrLog.bulkUpdate(req.body, { reviewer: req.user?.name || req.user?.email || 'HR/Admin' });
+    // Each employee hears once about what HR did to their records.
+    for (const { person, title, message } of attendanceReviewNotices(req.body, updated)) {
+      await noticeEmployee(person, { title, message, type: 'attendance', view: 'attendance' });
+    }
     res.status(200).json({ success: true, attendanceHistory: updated });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });

@@ -15,10 +15,12 @@ export const formatMobile = value => {
   return /^9\d{9}$/.test(key) ? `0${key.slice(0, 3)} ${key.slice(3, 6)} ${key.slice(6)}` : String(value || '');
 };
 
-// What a message was about: 'attendance', 'account', 'review' (a request forwarded to the
-// supervisor), 'manual', 'reply', or 'other'.
-// Messages saved before this was recorded are recognized by their text.
+// What a message was about: 'attendance', 'account', 'request' (a decision on the
+// employee's request), 'review' (a request forwarded to the supervisor), 'manual',
+// 'reply', or 'other'. Messages saved before this was recorded are recognized by their
+// text, as are request decisions that were saved as staff messages.
 export const smsKind = (sms = {}) => {
+  if (sms.kind === 'manual' && /^\[DILG WorkMate\] ALERT: Your /.test(String(sms.message || ''))) return 'request';
   if (sms.kind) return sms.kind;
   if (sms.direction === 'inbound') return 'reply';
   const message = String(sms.message || '');
@@ -29,7 +31,8 @@ export const smsKind = (sms = {}) => {
 
 export const SMS_KIND_LABELS = {
   attendance: 'Attendance',
-  account: 'Account approved',
+  account: 'Account',
+  request: 'Request decision',
   review: 'For supervisor review',
   manual: 'Sent by staff',
   reply: 'Reply',

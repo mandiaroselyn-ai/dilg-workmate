@@ -28,11 +28,14 @@ const NotificationSchema = new mongoose.Schema({
   // an employee ID or email for account actions, a request ID for review_request.
   action: { type: String, default: '' },
   targetId: { type: String, default: '' },
+  // The page an employee's notification opens (one of NOTIFICATION_VIEWS).
+  view: { type: String, default: '' },
   // People who read a notice meant for several readers (all employees or all HR/Admins).
   readBy: { type: [String], default: [] }
 }, { timestamps: true });
 
 export const NOTIFICATION_ACTIONS = ['review_account', 'reset_password', 'review_enrollment', 'review_request'];
+export const NOTIFICATION_VIEWS = ['dashboard', 'attendance', 'requests', 'announcements', 'calendar', 'profile', 'settings'];
 
 const SmsAlertSchema = new mongoose.Schema({
   customId: { type: String, required: true },
@@ -253,7 +256,8 @@ export const Announcement = {
       recipientRole: notifData.recipientRole || '',
       employeeId: notifData.employeeId || '',
       employeeEmail: notifData.employeeEmail?.toString().trim().toLowerCase() || '',
-      ...notificationActionFields(notifData)
+      ...notificationActionFields(notifData),
+      view: NOTIFICATION_VIEWS.includes(notifData.view) ? notifData.view : ''
     };
 
     const item = await MongoNotification.create(newNotifData);

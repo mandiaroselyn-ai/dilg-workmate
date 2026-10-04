@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Clock, ShieldAlert, Info, CircleDot, ChevronLeft, CheckCheck } from 'lucide-react';
+import { Clock, ShieldAlert, Info, CircleDot, ChevronLeft, CheckCheck, ArrowRight } from 'lucide-react';
+import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 
 const TYPE_CONFIG = {
   attendance:   { label: 'Attendance',   chip: 'bg-blue-50 text-blue-700',   icon: <Clock    className="w-4 h-4 text-blue-600" />,   dot: 'bg-blue-100' },
   request:      { label: 'Request',      chip: 'bg-amber-50 text-amber-700', icon: <CircleDot className="w-4 h-4 text-amber-600" />, dot: 'bg-amber-100' },
   announcement: { label: 'Announcement', chip: 'bg-green-50 text-green-700', icon: <Info      className="w-4 h-4 text-green-600" />,  dot: 'bg-green-100' },
-  system:       { label: 'System',       chip: 'bg-red-50 text-red-700',     icon: <ShieldAlert className="w-4 h-4 text-red-600" />, dot: 'bg-red-100' },
+  system:       { label: 'Account',      chip: 'bg-red-50 text-red-700',     icon: <ShieldAlert className="w-4 h-4 text-red-600" />, dot: 'bg-red-100' },
 };
 
 const FILTERS = [
@@ -14,7 +15,22 @@ const FILTERS = [
   { id: 'attendance',   label: 'Attendance' },
   { id: 'request',      label: 'Requests' },
   { id: 'announcement', label: 'Announcements' },
+  { id: 'account',      label: 'Account' },
 ];
+
+// Account notices (approval, leave credits, biometric review, password, profile changes)
+// are the ones of no other kind.
+const isAccountNotice = n => !['attendance', 'request', 'announcement'].includes(n.type);
+
+const VIEW_LABELS = {
+  dashboard: 'Dashboard',
+  attendance: 'Attendance',
+  requests: 'My Requests',
+  announcements: 'Announcements',
+  calendar: 'Calendar',
+  profile: 'Profile',
+  settings: 'Settings'
+};
 
 const GROUP_ORDER = ['Today', 'Yesterday', 'This Week', 'Older'];
 
@@ -34,7 +50,7 @@ function getDateGroup(createdAt) {
   return 'Older';
 }
 
-export default function MobileNotificationsPanel({ notifications = [], onClose, onSwitchToSms, onMarkNotificationRead }) {
+export default function MobileNotificationsPanel({ notifications = [], onClose, onMarkNotificationRead, onMarkAllRead, onOpenView }) {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
 
@@ -43,6 +59,7 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
   const filtered = useMemo(() => {
     if (activeFilter === 'all')    return notifications;
     if (activeFilter === 'unread') return notifications.filter(n => !n.read);
+    if (activeFilter === 'account') return notifications.filter(isAccountNotice);
     return notifications.filter(n => n.type === activeFilter);
   }, [notifications, activeFilter]);
 
@@ -56,8 +73,16 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
     return GROUP_ORDER.filter(g => map[g]?.length).map(g => ({ label: g, items: map[g] }));
   }, [filtered]);
 
+  // One request marks them all read.
   function handleMarkAll() {
-    notifications.filter(n => !n.read).forEach(n => onMarkNotificationRead(n.id));
+    if (onMarkAllRead) onMarkAllRead();
+    else notifications.filter(n => !n.read).forEach(n => onMarkNotificationRead(n.id));
+  }
+
+  const selectedView = selectedNotification ? employeeNotificationView(selectedNotification) : '';
+  function openView() {
+    onOpenView?.(selectedView);
+    onClose();
   }
 
   function openNotif(notif) {
@@ -130,10 +155,19 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
               );
             })()}
             <h3 className="mt-2 text-[15px] font-bold text-slate-900">{selectedNotification.title}</h3>
-            <time className="text-[11px] text-slate-400 mt-0.5 block">{selectedNotification.time}</time>
+            <time className="text-[11px] text-slate-400 mt-0.5 block">{notificationWhen(selectedNotification)}</time>
           </div>
           <div className="px-4 py-5 bg-white mt-2 mx-0">
             <p className="text-sm text-slate-800 leading-7 whitespace-pre-line">{selectedNotification.message}</p>
+            {selectedView && VIEW_LABELS[selectedView] && onOpenView && (
+              <button
+                type="button"
+                onClick={openView}
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#1e40af] px-4 py-2.5 text-[13px] font-semibold text-white active:bg-blue-900"
+              >
+                Open {VIEW_LABELS[selectedView]} <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -179,7 +213,7 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
                               <p className="text-[12px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
                             </div>
                             <div className="flex flex-col items-end gap-1.5 shrink-0">
-                              <time className="text-[10px] text-slate-400 whitespace-nowrap">{notif.time}</time>
+                              <time className="text-[10px] text-slate-400 whitespace-nowrap">{notificationWhen(notif)}</time>
                               {!notif.read && (
                                 <span className="w-2 h-2 rounded-full bg-[#1e40af]" />
                               )}

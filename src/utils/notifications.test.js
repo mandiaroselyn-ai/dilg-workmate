@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   actionLabel,
   dayGroup,
+  employeeNotificationView,
   isActionPending,
   notificationAction,
   notificationCounts,
@@ -96,4 +97,12 @@ test('notifications are grouped with the ones needing action first', () => {
   assert.deepEqual(notificationSections(list, { tab: 'action', context, now }).flatMap(s => s.items.map(i => i.notification.id)), ['n1', 'n2']);
   assert.deepEqual(notificationSections(list, { query: 'flag', context, now }).flatMap(s => s.items.map(i => i.notification.id)), ['n3']);
   assert.deepEqual(notificationCounts(list, context), { all: 4, unread: 2, action: 2 });
+});
+
+test("an employee's notification opens its saved page, or its kind's page", () => {
+  assert.equal(employeeNotificationView({ type: 'system', view: 'settings' }), 'settings');
+  assert.equal(employeeNotificationView({ type: 'request' }), 'requests');
+  assert.equal(employeeNotificationView({ type: 'attendance' }), 'attendance');
+  assert.equal(employeeNotificationView({ type: 'biometric_enrollment' }), 'profile');
+  assert.equal(employeeNotificationView({ type: 'system' }), '');
 });

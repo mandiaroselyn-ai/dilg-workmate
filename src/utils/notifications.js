@@ -1,4 +1,4 @@
-// Helpers for the HR/Admin and Supervisor notification panel and Notifications page.
+// Helpers for the notification panels: HR/Admin and Supervisor, and the employee's.
 
 const lower = value => String(value || '').trim().toLowerCase();
 
@@ -64,6 +64,12 @@ export const actionLabel = (action, pending) => ({
   review_enrollment: pending ? 'Review enrollment' : 'Open profile',
   review_request: pending ? 'Review request' : 'View request'
 }[action] || '');
+
+// The page an employee's notification opens: the one saved with it, or for older ones
+// the page of their kind. Empty when there is none.
+export const employeeNotificationView = (notification = {}) => notification.view
+  || { request: 'requests', attendance: 'attendance', announcement: 'announcements', biometric_enrollment: 'profile' }[notification.type]
+  || '';
 
 // Which icon and color a notification gets.
 export const notificationKind = (notification = {}) => {

@@ -12,6 +12,7 @@ import {
 } from '../services/accountNotifications.js';
 import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
 import { isSmsConfigured, toPhilippineMobile } from '../services/smsService.js';
+import { changedRecordFields, noticeEmployee } from '../services/employeeNotices.js';
 import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -275,6 +276,16 @@ export const updateEmployee = async (req, res) => {
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     // HR can also approve an account by saving it as Active from the edit form.
     const approvalNotice = isAccountApproval(before, employee.accountStatus) ? await announceAccountApproved(updated) : undefined;
+    // An active employee hears what HR changed in their record, since they can no longer
+    // change HR-kept details themselves.
+    const changed = (before?.accountStatus || '').toString().toLowerCase() === 'active' ? changedRecordFields(before, updated) : [];
+    if (changed.length) {
+      await noticeEmployee(updated, {
+        title: 'Profile Updated by HR',
+        message: `HR updated your profile: ${changed.join(', ')}. See your Profile for the details.`,
+        view: 'profile'
+      });
+    }
     res.status(200).json({ success: true, employee: employeeResponse(updated), ...(approvalNotice ? { approvalNotice } : {}) });
   } catch (error) {
     console.error('Unable to update employee account:', error);
@@ -293,6 +304,7 @@ export const updateEmployeeLeaveCredits = async (req, res) => {
       title: 'Leave Credits Updated',
       message: `HR updated your leave credits: ${value.vacationLeaveCredits} days vacation leave and ${value.sickLeaveCredits} days sick leave. Reason: ${reason}`,
       type: 'system',
+      view: 'dashboard',
       employeeId: updated.employeeId || '',
       employeeEmail: updated.email || ''
     }).catch(notifyError => console.error('Unable to notify the employee about leave credits:', notifyError));

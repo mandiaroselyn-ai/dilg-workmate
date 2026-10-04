@@ -30,7 +30,8 @@ export const createEvent = async (req, res) => {
     await Announcement.createNotification({
       title: 'New Event',
       message: `${created.title} is scheduled on ${created.date}${created.time ? ` at ${created.time}` : ''}. See the Calendar for details.`,
-      type: 'announcement'
+      type: 'announcement',
+      view: 'calendar'
     }).catch(notifyError => console.error('Unable to notify employees about an event:', notifyError));
     res.status(201).json({ success: true, event: created });
   } catch (error) {
@@ -78,7 +79,8 @@ export const createAnnouncementPost = async (req, res) => {
     await Announcement.createNotification({
       title: created.important ? 'Important Announcement' : 'New Announcement',
       message: `${created.category}: ${created.title}`,
-      type: 'announcement'
+      type: 'announcement',
+      view: 'announcements'
     }).catch(notifyError => console.error('Unable to notify employees about an announcement:', notifyError));
     res.status(201).json({ success: true, announcement: created });
   } catch (error) {
@@ -230,16 +232,13 @@ export const receiveSmsWebhook = async (req, res) => {
       timestamp: message.created || new Date().toISOString()
     });
 
-    if (employee) {
-      await Announcement.createNotification({
-        title: 'New SMS Reply',
-        message: `You received a reply by SMS: ${content}`,
-        type: 'system',
-        employeeId: employee.employeeId,
-        employeeEmail: employee.email,
-        time: 'Just now'
-      });
-    }
+    // The reply is from the employee, so HR is the one told about it.
+    await Announcement.createNotification({
+      title: 'New SMS Reply',
+      message: `${employee ? `${employee.name || employee.email} (${sender})` : sender} replied by SMS: ${content}`,
+      type: 'system',
+      recipientRole: 'hr_admin'
+    });
 
     res.status(200).json({ success: true, sms });
   } catch (error) {

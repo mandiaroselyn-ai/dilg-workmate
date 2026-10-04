@@ -11,6 +11,7 @@ import MobileSmsPanel from './MobileSmsPanel';
 import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
 import { unseenSmsCount } from '../utils/smsLog';
+import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 
 // When HR last opened the SMS list, remembered per account in this browser. The first
 // visit starts from now, so the badge counts only what arrives afterwards.
@@ -360,12 +361,20 @@ export default function Header({
                       attendance:   { label: 'Attendance',   bg: 'bg-blue-100',  icon: <Clock className="w-3.5 h-3.5 text-blue-600" />,       chip: 'bg-blue-50 text-blue-700' },
                       request:      { label: 'Request',      bg: 'bg-amber-100', icon: <CircleDot className="w-3.5 h-3.5 text-amber-600" />,   chip: 'bg-amber-50 text-amber-700' },
                       announcement: { label: 'Announcement', bg: 'bg-green-100', icon: <Info className="w-3.5 h-3.5 text-green-600" />,         chip: 'bg-green-50 text-green-700' },
-                      system:       { label: 'System',       bg: 'bg-slate-100', icon: <ShieldAlert className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' },
-                    }[notif.type] || { label: notif.type || 'System', bg: 'bg-slate-100', icon: <Info className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' };
+                      system:       { label: 'Account',      bg: 'bg-slate-100', icon: <ShieldAlert className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' },
+                    }[notif.type] || { label: 'Account', bg: 'bg-slate-100', icon: <Info className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' };
+                    // Opening a notification marks it read and goes to the page it is about.
+                    const view = employeeNotificationView(notif);
                     return (
                       <div
                         key={notif.id}
-                        onClick={() => !notif.read && onMarkNotificationRead(notif.id)}
+                        onClick={() => {
+                          if (!notif.read) onMarkNotificationRead(notif.id);
+                          if (view) {
+                            setShowNotifications(false);
+                            onViewChange(view);
+                          }
+                        }}
                         className={`px-3 py-3 hover:bg-slate-50 transition-colors cursor-pointer flex gap-2.5 ${
                           !notif.read ? 'border-l-[3px] border-[#1e40af] bg-indigo-50/25' : 'border-l-[3px] border-transparent'
                         }`}
@@ -378,14 +387,14 @@ export default function Header({
                             <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${typeInfo.chip}`}>
                               {typeInfo.label}
                             </span>
-                            <time className="text-[9px] text-slate-400 whitespace-nowrap shrink-0">{notif.time}</time>
+                            <time className="text-[9px] text-slate-400 whitespace-nowrap shrink-0">{notificationWhen(notif)}</time>
                           </div>
                           <p className="text-[12px] font-semibold text-slate-800 leading-snug">{notif.title}</p>
                           <p className="text-[11px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
                           {!notif.read && (
                             <div className="mt-1 flex items-center gap-1 text-[9px] text-[#1e40af] font-semibold">
                               <span className="w-1.5 h-1.5 rounded-full bg-[#1e40af] animate-ping" />
-                              Click to mark read
+                              {view ? 'Click to open' : 'Click to mark read'}
                             </div>
                           )}
                         </div>
@@ -420,15 +429,15 @@ export default function Header({
         <MobileSmsPanel
           smsAlerts={smsAlerts}
           onClose={() => setMobilePanel(null)}
-          onSwitchToNotifications={() => setMobilePanel('notifications')}
         />
       )}
       {showFullScreenPanels && mobilePanel === 'notifications' && (
         <MobileNotificationsPanel
           notifications={notifications}
           onClose={() => setMobilePanel(null)}
-          onSwitchToSms={() => setMobilePanel('sms')}
           onMarkNotificationRead={onMarkNotificationRead}
+          onMarkAllRead={onClearNotifications}
+          onOpenView={onViewChange}
         />
       )}
     </header>

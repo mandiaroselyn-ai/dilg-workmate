@@ -22,7 +22,7 @@ const STATUS_STYLES = {
   Received: 'bg-blue-100 text-blue-800'
 };
 
-const FILTER_LABELS = { all: 'All', failed: 'Failed', reply: 'Replies', attendance: 'Attendance', account: 'Account approved' };
+const FILTER_LABELS = { all: 'All', failed: 'Failed', reply: 'Replies', attendance: 'Attendance', account: 'Account' };
 
 const initials = name => String(name || '?').split(/\s+/).filter(Boolean).map(word => word[0]).join('').slice(0, 2).toUpperCase();
 

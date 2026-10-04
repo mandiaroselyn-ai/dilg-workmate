@@ -1133,14 +1133,7 @@ export default function App() {
 
     const label = data.request.type;
 
-    const newNotif = {
-      title: `${label} ${status}`,
-      message: `Ref ${id} is marked as ${status} by ${approver}. Remarks: ${remarks}`,
-      time: 'Just now',
-      type: 'request',
-      employeeId: data.request.employeeId || '',
-      employeeEmail: data.request.employeeEmail || ''
-    };
+    // The server tells the employee, by notification and SMS. The reviewers are told here.
     if (status === 'For Supervisor') {
       pushSystemNotification({
         title: 'Request Ready for Review',
@@ -1151,8 +1144,6 @@ export default function App() {
         action: 'review_request',
         targetId: id
       });
-    } else {
-      pushSystemNotification(newNotif, { admin: false, employee: true });
     }
     // HR follows each request to the end, so it hears about the supervisor's decision too.
     if (activeRole === 'supervisor' && ['Approved', 'Rejected'].includes(status)) {
@@ -1164,37 +1155,6 @@ export default function App() {
         recipientRole: 'hr_admin'
       }).catch(error => console.error('Unable to notify HR about the supervisor decision:', error));
     }
-
-    const timeString = new Date().toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-    const formatSmsTime = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }) + ' ' + timeString;
-    const requestEmployee = employees.find(employee => matchesAttendanceEmployee(data.request, employee));
-
-    const newSms = {
-      recipient: data.request.employeePhoneNumber || data.request.phoneNumber || requestEmployee?.phoneNumber || '',
-      employeeId: data.request.employeeId || '',
-      employeeEmail: data.request.employeeEmail || '',
-      message: `[DILG WorkMate] ALERT: Your ${label} (${id}) has been ${status.toUpperCase()} by ${approver}. Notes: ${remarks}`,
-      timestamp: formatSmsTime
-    };
-
-    apiFetch('/api/sms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newSms)
-    })
-      .then(res => res.json())
-      .then(smsData => {
-        if (smsData.success) setSmsAlerts(prev => [smsData.sms, ...prev]);
-      })
-      .catch(error => console.error('Failed to send request status SMS:', error));
 
     return data.request;
   };

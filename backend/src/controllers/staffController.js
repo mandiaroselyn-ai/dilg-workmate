@@ -1,6 +1,7 @@
 import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
+import { noticeEmployee } from '../services/employeeNotices.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import {
   ACCESS_LEVELS,
@@ -187,6 +188,13 @@ export const resetAccountPassword = async (req, res) => {
     if (target.accessLevel === 'hr_admin' && !(await confirmAdminPassword(req, res))) return;
     await User.changePassword(target, newPassword);
     await recordChange(`${actorName(req)} reset the password of ${target.name || target.email}.`);
+    // The person learns of it even before they next log in. The password itself is never sent.
+    await noticeEmployee(target, {
+      title: 'Password Reset by HR',
+      message: 'HR reset your WorkMate password. Log in with the temporary password HR gave you, then change it in Settings. If you did not ask for this, contact HR right away.',
+      view: 'settings',
+      sms: 'DILG WorkMate: HR reset your password. Log in with the temporary password HR gives you, then change it. If you did not ask for this, contact HR right away.'
+    });
     res.status(200).json({ success: true });
   } catch (error) {
     sendServerError(res, error);

@@ -7,6 +7,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'profile-fields-test-secret';
 const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { Leave } = await import('./models/leaveModel.js');
+const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 
 const app = createApiApp();
@@ -122,8 +123,9 @@ test('supervisors get only what reviewing a request needs about the requester', 
 
 test('HR saving an employee changes only the profile details the form sent', async t => {
   t.mock.method(User, 'findByEmail', async () => hr);
-  t.mock.method(User, 'findAccount', async () => ({ ...employee }));
+  t.mock.method(User, 'findAccount', async () => ({ ...employee, employmentStatus: 'ACTIVE' }));
   const update = t.mock.method(User, 'updateEmployee', async (_identifier, data) => ({ ...employee, ...data }));
+  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
   const response = await request(app)
     .patch(`/api/employees/${employee.employeeId}`)
     .set('Authorization', `Bearer ${createAuthToken(hr)}`)
@@ -144,4 +146,9 @@ test('HR saving an employee changes only the profile details the form sent', asy
   assert.equal(saved.salary, 'PHP 36,619');
   assert.equal('gsisNumber' in saved, false);
   assert.equal(response.body.employee.salary, 'PHP 36,619');
+  // The employee is told what HR changed.
+  const notice = notify.mock.calls[0].arguments[0];
+  assert.equal(notice.title, 'Profile Updated by HR');
+  assert.equal(notice.message, 'HR updated your profile: Monthly salary. See your Profile for the details.');
+  assert.equal(notice.view, 'profile');
 });

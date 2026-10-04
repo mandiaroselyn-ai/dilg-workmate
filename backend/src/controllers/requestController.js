@@ -6,6 +6,10 @@ import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
+import { noticeRequestDecision } from '../services/employeeNotices.js';
+
+const reviewerName = req => req.user?.name || (req.user?.accessLevel === 'supervisor' ? 'your supervisor' : 'HR');
+const reviewRemarks = update => update?.supervisorRemarks || update?.remarks || '';
 
 // Texts the active supervisors when HR forwards a request to them. A failed text never
 // fails the forward.
@@ -131,6 +135,9 @@ export const updateRequestStatus = async (req, res) => {
     if (updated && role === 'hr_admin') {
       await textSupervisorsAboutForward(existing, updated);
     }
+    if (updated && (role === 'hr_admin' || role === 'supervisor')) {
+      await noticeRequestDecision(existing, updated, { reviewer: reviewerName(req), remarks: reviewRemarks(update) });
+    }
 
     if (updated) {
       res.status(200).json({ success: true, request: updated });
@@ -155,6 +162,8 @@ export const bulkUpdateRequests = async (req, res) => {
     const updated = await Leave.bulkUpdate(req.body);
     for (const request of updated) {
       await textSupervisorsAboutForward(previousById.get(request.id), request);
+      const sent = req.body.find(update => update?.id === request.id);
+      await noticeRequestDecision(previousById.get(request.id), request, { reviewer: reviewerName(req), remarks: reviewRemarks(sent) });
     }
     res.status(200).json({ success: true, requests: updated });
   } catch (error) {

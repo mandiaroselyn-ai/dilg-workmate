@@ -32,6 +32,10 @@ test('older messages are sorted into attendance, account, and replies by their t
   assert.equal(smsKind(reply), 'reply');
   assert.equal(smsKind({ message: 'Your account has been approved by HR.' }), 'account');
   assert.equal(smsKind({ message: 'Meeting at 3 PM' }), 'other');
+  // Request decisions were once saved as staff messages.
+  assert.equal(smsKind({ kind: 'manual', message: '[DILG WorkMate] ALERT: Your Leave Request (LV-1) has been APPROVED by Ana. Notes: ' }), 'request');
+  assert.equal(smsKind({ kind: 'manual', message: 'Please call the office.' }), 'manual');
+  assert.equal(smsKind({ kind: 'request', message: 'DILG WorkMate: Your Leave Request LV-1 was approved by Ana.' }), 'request');
   assert.equal(smsStatus(approvalFailed), 'Failed');
   assert.equal(smsStatus(reply), 'Received');
   assert.equal(smsStatus(timeIn), 'Sent');
@@ -68,7 +72,7 @@ test('the CSV export has one row per message', () => {
   const [row] = smsCsvRows([approvalFailed], employees);
   assert.equal(row[1], 'Juan Dela Cruz');
   assert.equal(row[2], '0917 123 4567');
-  assert.equal(row[3], 'Account approved');
+  assert.equal(row[3], 'Account');
   assert.equal(row[4], 'Failed');
   assert.equal(row[6], 'Invalid number');
 });

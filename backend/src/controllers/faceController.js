@@ -169,6 +169,7 @@ export const reviewBiometricEnrollment = async (req, res) => {
             : 'HR approved your ID and face enrollment. Attendance selfies will now be compared with the approved enrollment selfie. Liveness is not checked.'
           : `HR did not approve your ID and selfie submission. Reason: ${note.trim()} You may upload corrected images in Profile > Biometric Enrollment.`,
         type: 'biometric_enrollment',
+        view: 'profile',
         employeeId: updated.employeeId,
         employeeEmail: updated.email
       });
