@@ -30,9 +30,9 @@ const DAY_Y = [
 const COLS = [
   {
     nameCenter: 187, nameY: 658.4, nameMaxWidth: 208,
-    monthCenter: 215.5, monthY: 643, // blank line x 136.4–294.4, y 637.3
+    monthCenter: 215.5, monthY: 638.6, // sits on the blank line x 136.4–294.4, y 637.2
     dayNameX: 91,                   // x where day abbreviation text is placed
-    dayNameW: 20,                   // width of the day-name cell (to overwrite with white)
+    dayCell: [86.9, 101.81],        // inside of the day-name cell, between its grid lines
     amArr: 127, amDep: 162, pmArr: 197, pmDep: 230,
     utHrs: 258, utMin: 282,
     totalY: 184,
@@ -40,9 +40,9 @@ const COLS = [
   },
   {
     nameCenter: 420, nameY: 658.4, nameMaxWidth: 208,
-    monthCenter: 450.5, monthY: 643, // blank line x 372.9–528.0, y 637.3
+    monthCenter: 450.5, monthY: 638.6, // sits on the blank line x 372.9–528.0, y 637.2
     dayNameX: 323,
-    dayNameW: 20,
+    dayCell: [320.28, 338.28],
     amArr: 359, amDep: 394, pmArr: 429, pmDep: 462,
     utHrs: 490, utMin: 514,
     totalY: 184,
@@ -157,10 +157,12 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
       const rowY = DAY_Y[d];
       if (!rowY) continue;
 
-      // Overwrite the template's pre-printed day abbreviation with the correct one.
+      // Overwrite the template's pre-printed day abbreviation with the correct one. The white
+      // box stays inside the cell so the grid lines around it are not covered.
       const isInMonth = d <= totalDays;
       const dayAbbr = isInMonth ? DAY_ABBR[dowByDay[d - 1]] : '';
-      page.drawRectangle({ x: col.dayNameX - 1, y: rowY - 3, width: col.dayNameW + 2, height: 9, color: white });
+      const [cellLeft, cellRight] = col.dayCell;
+      page.drawRectangle({ x: cellLeft + 0.3, y: rowY - 3, width: cellRight - cellLeft - 0.6, height: 9, color: white });
       if (dayAbbr) {
         page.drawText(dayAbbr, { x: col.dayNameX, y: rowY, size: TIME_SIZE, font, color: black });
       }
