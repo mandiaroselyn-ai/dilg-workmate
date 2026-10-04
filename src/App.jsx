@@ -1231,13 +1231,6 @@ export default function App() {
     handleViewChange(isRequest ? (activeRole === 'supervisor' ? 'supervisor' : 'hr_leave_records') : 'hr_employees');
   };
 
-  // Opens the employee's Profile on one tab ('profile' or 'biometric'), for the links in
-  // Settings.
-  const handleOpenProfileTab = tab => {
-    setViewFocus({ visit: viewVisit + 1, profileTab: tab });
-    handleViewChange('profile');
-  };
-
   // Hides every current notification; only newer ones appear afterwards.
   const handleDismissNotifications = () => {
     fetch('/api/notifications/dismiss', { method: 'POST' })
@@ -1591,18 +1584,14 @@ export default function App() {
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}
               onRefreshEnrollmentStatus={handleRefreshBiometricStatus}
-              initialTab={focus?.profileTab}
             />
           )}
 
           {currentView === 'settings' && (
             <SettingsView
               user={user}
-              onUpdateUser={handleUpdateUser}
-              onOpenProfileTab={handleOpenProfileTab}
               onViewChange={handleViewChange}
               onSyncOfflineAttendance={() => syncOfflineAttendance({ employeeId: user.employeeId, email: user.email })}
-              onLogout={handleLogout}
             />
           )}
 

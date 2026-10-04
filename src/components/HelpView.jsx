@@ -18,7 +18,7 @@ const faqs = [
   {
     topic: 'Getting started',
     question: 'What do I need before my first Time In?',
-    answer: 'Two things: (1) Biometric Enrollment approved by HR. Open Profile, then Biometric Enrollment, upload the front and back of your government ID, and take a selfie. (2) Your fingerprint or face unlock registered on your phone. Settings, under Time In setup, shows whether both are done.'
+    answer: 'Two things: (1) Biometric Enrollment approved by HR. Open Profile, then Biometric Enrollment, upload the front and back of your government ID, and take a selfie. The same tab shows whether HR has approved it. (2) Your fingerprint or face unlock registered on your phone. In a browser, tap Register this phone on the Biometric Enrollment tab. In the WorkMate app, your phone is registered the first time you verify your fingerprint on the Attendance page.'
   },
   {
     topic: 'Attendance',
@@ -63,12 +63,12 @@ const faqs = [
   {
     topic: 'SMS and notifications',
     question: 'What updates do I get by SMS?',
-    answer: 'A confirmation when you Time In and Time Out, and an update when your leave or travel request changes status. The SMS goes to the mobile number in Settings. The bell icon shows the same updates inside the app.'
+    answer: 'A confirmation when you Time In and Time Out, and an update when your leave or travel request changes status. The SMS goes to the contact number in your Profile. The bell icon shows the same updates inside the app.'
   },
   {
     topic: 'SMS and notifications',
     question: 'Why am I not getting SMS?',
-    answer: 'Check that your mobile number in Settings is correct (for example, 0917 123 4567). If it is correct and you still get no SMS, tell HR, who can see whether each message was sent or failed.'
+    answer: 'Check that the contact number in your Profile is correct (for example, 0917 123 4567). If it is correct and you still get no SMS, tell HR, who can see whether each message was sent or failed.'
   },
   {
     topic: 'Account and password',

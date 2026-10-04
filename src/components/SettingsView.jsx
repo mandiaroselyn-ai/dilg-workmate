@@ -9,22 +9,18 @@ import {
   CheckCircle2,
   CircleAlert,
   CloudUpload,
-  Fingerprint,
   HelpCircle,
   Info,
-  LogOut,
   MapPin,
-  MessageSquare,
   RefreshCw,
-  ScanFace,
-  Settings,
-  UserRound
+  Settings
 } from 'lucide-react';
 import ChangePasswordCard from './ChangePasswordCard';
 import { countQueuedAttendance } from '../utils/offlineAttendance';
 
-// The same rule as the sign-up form: 09XXXXXXXXX or +639XXXXXXXXX.
-const isPhilippineMobile = value => /^(09|\+?639)\d{9}$/.test(String(value).replace(/[\s()-]/g, ''));
+// Account details, the SMS number, biometric enrollment, and logging out live in Profile and
+// the menu; Settings has only what is about this phone and the app.
+
 // Time In needs a GPS fix this accurate (the server checks it too).
 const TIME_IN_ACCURACY_METERS = 50;
 const BUILD_DATE = typeof __APP_BUILD_DATE__ === 'string' ? __APP_BUILD_DATE__ : '';
@@ -32,13 +28,6 @@ const BUILD_DATE = typeof __APP_BUILD_DATE__ === 'string' ? __APP_BUILD_DATE__ :
 const formatDate = value => {
   const date = value ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-};
-
-const ENROLLMENT_STATUS = {
-  'not-submitted': { label: 'Not submitted', ok: false },
-  pending: { label: 'Waiting for HR review', ok: false },
-  'hr-approved': { label: 'Approved by HR', ok: true },
-  rejected: { label: 'Rejected by HR', ok: false }
 };
 
 const PERMISSION_LABELS = { granted: 'Allowed', denied: 'Blocked', prompt: 'Not yet allowed', unknown: 'Checked when you use it' };
@@ -58,7 +47,7 @@ const Card = ({ icon: Icon, title, description, children }) => (
   </section>
 );
 
-const StatusRow = ({ icon: Icon, label, value, ok, note, children }) => (
+const StatusRow = ({ icon: Icon, label, value, ok, children }) => (
   <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <span className="flex items-center gap-2 text-xs font-bold text-slate-700"><Icon className="h-4 w-4 text-slate-500" />{label}</span>
@@ -66,21 +55,16 @@ const StatusRow = ({ icon: Icon, label, value, ok, note, children }) => (
         {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}{value}
       </span>
     </div>
-    {note && <p className="mt-1.5 text-[11px] leading-4 text-slate-500">{note}</p>}
     {children && <div className="mt-2 flex flex-wrap gap-2">{children}</div>}
   </div>
 );
 
-const Button = ({ children, onClick, disabled, primary = false, danger = false, type = 'button' }) => (
+const Button = ({ children, onClick, disabled }) => (
   <button
-    type={type}
+    type="button"
     onClick={onClick}
     disabled={disabled}
-    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-      primary ? 'bg-[#1e40af] text-white hover:bg-blue-800'
-        : danger ? 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
-          : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'
-    }`}
+    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
   >
     {children}
   </button>
@@ -101,36 +85,8 @@ const queryPermission = async name => {
   }
 };
 
-export default function SettingsView({ user = {}, onUpdateUser, onOpenProfileTab, onViewChange, onSyncOfflineAttendance, onLogout }) {
+export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAttendance }) {
   const owner = { employeeId: user.employeeId, email: user.email };
-
-  // SMS number
-  const [mobile, setMobile] = useState(user.phoneNumber || '');
-  const [savingMobile, setSavingMobile] = useState(false);
-  const [mobileMessage, setMobileMessage] = useState(null);
-  useEffect(() => setMobile(user.phoneNumber || ''), [user.phoneNumber]);
-
-  const saveMobile = async event => {
-    event.preventDefault();
-    const next = mobile.trim();
-    if (next && !isPhilippineMobile(next)) {
-      setMobileMessage({ error: true, text: 'Enter a Philippine mobile number, such as 0917 123 4567.' });
-      return;
-    }
-    setSavingMobile(true);
-    setMobileMessage(null);
-    const saved = await onUpdateUser({ phoneNumber: next });
-    setSavingMobile(false);
-    if (saved) {
-      setMobileMessage({ text: next ? 'Saved. WorkMate will text this number.' : 'Saved. You will not get SMS until you add a number.' });
-    }
-  };
-
-  // Time In readiness
-  const enrollment = ENROLLMENT_STATUS[user.biometricEnrollmentStatus] || ENROLLMENT_STATUS['not-submitted'];
-  const inPhoneApp = typeof window !== 'undefined' && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
-  const fingerprintRegistered = inPhoneApp ? Boolean(user.hasPhoneFingerprint) : Boolean(user.hasBrowserFingerprint);
-  const fingerprintDate = formatDate(inPhoneApp ? user.nativeBiometricRegisteredAt : user.webauthnRegisteredAt);
 
   // Phone permissions
   const [permissions, setPermissions] = useState({ geolocation: 'unknown', camera: 'unknown' });
@@ -251,8 +207,6 @@ export default function SettingsView({ user = {}, onUpdateUser, onOpenProfileTab
     }
   };
 
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
-
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 pb-32 font-sans sm:p-6 sm:pb-8 lg:p-8">
       <div className="mx-auto w-full max-w-2xl space-y-4">
@@ -262,74 +216,9 @@ export default function SettingsView({ user = {}, onUpdateUser, onOpenProfileTab
           </div>
           <div>
             <h1 className="text-lg font-extrabold text-slate-900">Settings</h1>
-            <p className="text-xs text-slate-500">Your account, Time In setup, and app information.</p>
+            <p className="text-xs text-slate-500">This phone's setup, offline records, your password, and app updates.</p>
           </div>
         </div>
-
-        <Card icon={UserRound} title="Account" description="To change these details, edit your profile or ask HR.">
-          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-100 bg-slate-100 text-xs">
-            {[
-              ['Name', user.name],
-              ['Employee ID', user.employeeId],
-              ['Position', user.role],
-              ['Office', user.office],
-              ['Email', user.email]
-            ].map(([label, value]) => (
-              <div key={label} className={`bg-white p-2.5 ${label === 'Email' ? 'col-span-2' : ''}`}>
-                <dt className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</dt>
-                <dd className="mt-0.5 break-words font-bold text-slate-800">{value || 'Not recorded'}</dd>
-              </div>
-            ))}
-          </dl>
-          <Button onClick={() => onOpenProfileTab('profile')}><UserRound className="h-3.5 w-3.5" />Edit profile</Button>
-        </Card>
-
-        <Card icon={MessageSquare} title="SMS number" description="WorkMate texts this number when you Time In or Time Out and when your leave or travel request is updated.">
-          <form onSubmit={saveMobile} className="space-y-2">
-            <label htmlFor="settings-mobile" className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Mobile number</label>
-            <div className="flex flex-wrap gap-2">
-              <input
-                id="settings-mobile"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                value={mobile}
-                onChange={event => setMobile(event.target.value)}
-                placeholder="0917 123 4567"
-                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-800 focus:border-[#1e40af] focus:outline-none focus:ring-2 focus:ring-blue-500/10"
-              />
-              <Button type="submit" primary disabled={savingMobile || mobile.trim() === (user.phoneNumber || '')}>{savingMobile ? 'Saving...' : 'Save'}</Button>
-            </div>
-            <Message message={mobileMessage} />
-          </form>
-        </Card>
-
-        <Card icon={Fingerprint} title="Time In setup" description="You need all of these before your first Time In.">
-          <StatusRow
-            icon={ScanFace}
-            label="Biometric enrollment (ID and selfie)"
-            value={enrollment.label}
-            ok={enrollment.ok}
-            note={user.biometricEnrollmentStatus === 'rejected' && user.biometricEnrollmentReviewNote ? `HR's note: ${user.biometricEnrollmentReviewNote}` : enrollment.ok ? '' : 'Your Time In selfie is compared with the selfie HR approves here.'}
-          >
-            {!enrollment.ok && <Button onClick={() => onOpenProfileTab('biometric')}>Open Biometric Enrollment</Button>}
-          </StatusRow>
-          <StatusRow
-            icon={Fingerprint}
-            label="Fingerprint or face unlock on this phone"
-            value={fingerprintRegistered ? 'Registered' : 'Not registered'}
-            ok={fingerprintRegistered}
-            note={inPhoneApp
-              ? (fingerprintRegistered
-                ? `Registered${fingerprintDate ? ` on ${fingerprintDate}` : ''}. If you change phones, the Attendance page asks you to register the new one.`
-                : 'The WorkMate app registers this phone the first time you verify your fingerprint on the Attendance page.')
-              : (fingerprintRegistered
-                ? `Registered${fingerprintDate ? ` on ${fingerprintDate}` : ''}. Register again only if you changed phones.`
-                : 'Register your phone in Biometric Enrollment. Your fingerprint stays on your phone.')}
-          >
-            {!inPhoneApp && <Button onClick={() => onOpenProfileTab('biometric')}>{fingerprintRegistered ? 'Changed phones?' : 'Register this phone'}</Button>}
-          </StatusRow>
-        </Card>
 
         <Card icon={MapPin} title="Phone permissions" description="Time In needs your location and camera. Test them here if Time In does not work.">
           <StatusRow icon={MapPin} label="Location" value={PERMISSION_LABELS[permissions.geolocation] || PERMISSION_LABELS.unknown} ok={permissions.geolocation === 'granted'}>
@@ -364,18 +253,6 @@ export default function SettingsView({ user = {}, onUpdateUser, onOpenProfileTab
             <Button onClick={() => onViewChange('help')}><HelpCircle className="h-3.5 w-3.5" />Help, FAQ, and privacy notice</Button>
           </div>
           <Message message={updateMessage} />
-        </Card>
-
-        <Card icon={LogOut} title="Log out" description="Log out when you are done on a shared phone or computer.">
-          {confirmingLogout ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Log out of WorkMate on this device?</span>
-              <Button danger onClick={onLogout}><LogOut className="h-3.5 w-3.5" />Log out</Button>
-              <Button onClick={() => setConfirmingLogout(false)}>Cancel</Button>
-            </div>
-          ) : (
-            <Button danger onClick={() => setConfirmingLogout(true)}><LogOut className="h-3.5 w-3.5" />Log out of this device</Button>
-          )}
         </Card>
       </div>
     </div>
