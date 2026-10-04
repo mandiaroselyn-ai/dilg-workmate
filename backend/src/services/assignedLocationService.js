@@ -1,6 +1,7 @@
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../../shared/marinduqueLocations.js';
 import { distanceToAreaMeters } from '../../../shared/assignmentGeofence.js';
-import { MARINDUQUE_BARANGAY_AREAS } from '../data/marinduqueBarangayAreas.js';
+import { MARINDUQUE_BARANGAY_AREAS } from '../../../shared/marinduqueBarangayAreas.js';
+import { resolveFieldAssignment } from '../../../shared/fieldAssignmentArea.js';
 
 export { isWithinAssignedLocation } from '../../../shared/assignmentGeofence.js';
 
@@ -36,15 +37,7 @@ const buildQuery = assignment => {
     throw new Error('Choose a barangay from the selected municipality.');
   }
 
-  if (mode === 'field') {
-    return {
-      mode,
-      municipality,
-      barangay,
-      label: `Brgy. ${barangay}, ${municipality}, Marinduque, Philippines`,
-      query: `${barangay}, ${municipality}, Marinduque, Mimaropa, Philippines`
-    };
-  }
+  if (mode === 'field') return { mode, municipality, barangay };
 
   const street = normalize(assignment.street).slice(0, 120);
   const landmark = normalize(assignment.landmark).slice(0, 120);
@@ -205,23 +198,10 @@ const geocode = async query => {
   return promise;
 };
 
-// A field assignment's area is its barangay's boundary on the PSA's map, which has every
-// barangay in Marinduque. Offices and WFH addresses are points found on OpenStreetMap.
+// A field assignment's area is its barangay's boundary on the PSA's map (see
+// shared/fieldAssignmentArea.js). Offices and WFH addresses are points found on OpenStreetMap.
 export const resolveAssignedLocation = async assignment => {
   const normalized = buildQuery(assignment);
   if (normalized.mode !== 'field') return { ...normalized, ...(await geocode(normalized.query)) };
-
-  const area = MARINDUQUE_BARANGAY_AREAS[normalized.municipality][normalized.barangay];
-  const [latitude, longitude] = area.center;
-  const [south, north, west, east] = area.bounds;
-  return {
-    ...normalized,
-    latitude,
-    longitude,
-    geometry: area.geometry,
-    bounds: { south, north, west, east },
-    displayName: `Brgy. ${normalized.barangay}, ${normalized.municipality}, Marinduque (PSA barangay boundary)`,
-    fallbackToRadius: false,
-    source: 'PSA barangay boundaries'
-  };
+  return resolveFieldAssignment(normalized);
 };

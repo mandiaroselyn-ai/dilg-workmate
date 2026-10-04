@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activeEmployees,
+  countsInDtr,
   dtrIssue,
   dtrRecordStatus,
+  dtrTimeOut,
   employeeDayStatus,
+  isOfflineReviewPending,
+  isOfflineTimeOutPending,
   mergeAttendanceMonth,
   mergeRecentAttendance,
   recordsForEmployees,
@@ -68,6 +72,41 @@ test('flags records missing verification', () => {
   assert.equal(dtrIssue({ ...complete, fingerprintVerified: false }, today), 'Missing Biometric Verification');
   assert.equal(dtrIssue({ date: today, status: 'Absent' }, today), null);
   assert.equal(dtrRecordStatus({ ...complete, late: true }, today), 'Late');
+});
+
+test('an offline Time In that failed a check counts in the DTR only once HR approves it', () => {
+  const complete = { employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', date: '2026-09-28', timeIn: '08:00 AM', timeOut: '05:00 PM', selfieUrl: 'data:', fingerprintVerified: true };
+  const passed = { ...complete, offlineTimeIn: { recordedAt: '2026-09-28T00:00:00Z', reviewReasons: [], decision: '' } };
+  const pending = { ...complete, offlineTimeIn: { recordedAt: '2026-09-28T00:00:00Z', reviewReasons: ['The selfie did not match.'], decision: '' } };
+  const approved = { ...pending, offlineTimeIn: { ...pending.offlineTimeIn, decision: 'approved' } };
+  const rejected = { ...pending, offlineTimeIn: { ...pending.offlineTimeIn, decision: 'rejected' } };
+
+  assert.deepEqual([complete, passed, pending, approved, rejected].map(countsInDtr), [true, true, false, true, false]);
+  assert.deepEqual([passed, pending, approved, rejected].map(isOfflineReviewPending), [false, true, false, false]);
+  assert.equal(dtrIssue(pending, today), 'Offline Time In for Review');
+  assert.equal(dtrIssue(approved, today), null);
+  // Approved although the phone's fingerprint key was not registered.
+  assert.equal(dtrIssue({ ...approved, fingerprintVerified: false }, today), null);
+  assert.equal(dtrIssue({ ...approved, timeOut: null }, today), 'Missing Time Out');
+  assert.equal(dtrIssue(rejected, today), null);
+  assert.equal(employeeDayStatus(rimhelyn, { records: [rejected], date: '2026-09-28' }).status, 'Absent');
+  assert.equal(employeeDayStatus(rimhelyn, { records: [pending], date: '2026-09-28' }).status, 'Present');
+});
+
+test('an offline Time Out with a doubtful phone clock counts once HR approves or corrects it', () => {
+  const record = { date: '2026-09-28', timeIn: '08:00 AM', timeOut: '05:00 PM', selfieUrl: 'data:', fingerprintVerified: true };
+  const pending = { ...record, offlineTimeOut: { recordedAt: '2026-09-28T09:00:00Z', reviewReasons: ['The phone clock was 40 minutes behind.'], decision: '' } };
+  const approved = { ...pending, offlineTimeOut: { ...pending.offlineTimeOut, decision: 'approved' } };
+  const corrected = { ...pending, timeOut: '04:30 PM', offlineTimeOut: { ...pending.offlineTimeOut, decision: 'corrected' } };
+  const passed = { ...record, offlineTimeOut: { recordedAt: '2026-09-28T09:00:00Z', reviewReasons: [], decision: '' } };
+
+  assert.deepEqual([record, pending, approved, corrected, passed].map(dtrTimeOut), ['05:00 PM', null, '05:00 PM', '04:30 PM', '05:00 PM']);
+  assert.deepEqual([pending, approved, corrected].map(isOfflineTimeOutPending), [true, false, false]);
+  assert.equal(dtrIssue(pending, today), 'Offline Time Out for Review');
+  assert.equal(dtrIssue(approved, today), null);
+  assert.equal(dtrIssue(corrected, today), null);
+  // The Time In still counts while its Time Out waits.
+  assert.equal(countsInDtr(pending), true);
 });
 
 test('total hours run from Time In to Time Out', () => {

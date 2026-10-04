@@ -11,7 +11,8 @@ import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
 import NotificationCenter from './components/NotificationCenter';
 import SmsCenter from './components/SmsCenter';
-import { queueAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
+import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueuedAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
+import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
 
@@ -111,26 +112,52 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Time Ins and Time Outs still waiting on the phone stay on screen when the employee's
+  // attendance is reloaded from the server, so the employee never looks timed out (or not
+  // timed in) until they are sent.
+  const showQueuedAttendance = useCallback(owner => {
+    readQueuedAttendance({ employeeId: owner?.employeeId, email: owner?.email })
+      .then(items => {
+        if (items.length) setAttendanceHistory(previous => applyQueuedAttendance(previous, items));
+      })
+      .catch(() => {});
+  }, []);
+
   const applySyncedRecord = useCallback((action, record) => {
     setAttendanceHistory(previous => {
       if (action === 'clock-out') {
         return previous.map(item => item.id === record.id || (item.employeeId === record.employeeId && !item.timeOut && item.date === record.date) ? record : item);
       }
-      return [record, ...previous];
+      // The Time In shown while it was saved on the phone is replaced by the saved one.
+      const shownOffline = item => String(item.id).startsWith('offline-att-')
+        && item.employeeId === record.employeeId && item.date === record.date;
+      return [record, ...previous.filter(item => !shownOffline(item) && item.id !== record.id)];
     });
-  }, []);
+    // A Time Out still waiting behind this Time In stays on screen.
+    if (action === 'clock-in') showQueuedAttendance({ employeeId: record.employeeId, email: record.employeeEmail });
+  }, [showQueuedAttendance]);
 
   // Sends the owner's attendance records saved on this device. A sync already running is
   // reused, so the timer and the Settings "Sync now" button never send a record twice.
   const offlineSyncRef = useRef(null);
+  // A Time In saved on the phone that the server refused is taken off the screen, and the
+  // employee is told why, since they believed they had timed in.
+  const handleRefusedOfflineRecord = useCallback((payload, error) => {
+    if (payload?.action !== 'clock-in') return;
+    const { employeeId, date } = payload.record || {};
+    setAttendanceHistory(previous => previous.filter(item => !(
+      String(item.id).startsWith('offline-att-') && item.employeeId === employeeId && item.date === date
+    )));
+    window.alert(`Your Time In saved offline on ${date || 'this phone'} was not accepted: ${error || 'the server refused it.'}`);
+  }, []);
   const syncOfflineAttendance = useCallback(owner => {
     if (!offlineSyncRef.current) {
-      offlineSyncRef.current = syncQueuedAttendance(applySyncedRecord, owner).finally(() => {
+      offlineSyncRef.current = syncQueuedAttendance(applySyncedRecord, owner, handleRefusedOfflineRecord).finally(() => {
         offlineSyncRef.current = null;
       });
     }
     return offlineSyncRef.current;
-  }, [applySyncedRecord]);
+  }, [applySyncedRecord, handleRefusedOfflineRecord]);
 
   useEffect(() => {
     // Only sync while someone is signed in, and only their own queued records, so a
@@ -163,7 +190,9 @@ export default function App() {
     return () => window.clearTimeout(timeoutId);
   }, [profileToast]);
 
-  // Load persistent database dataset from Real Express Server on launch
+  // Load persistent database dataset from Real Express Server on launch. When the app was
+  // opened without internet, it loads again once the connection is back.
+  const [stateLoadAttempt, setStateLoadAttempt] = useState(0);
   useEffect(() => {
     if (!authToken || !activeRole) {
       setLoading(false);
@@ -171,6 +200,8 @@ export default function App() {
     }
 
     let isCurrentSession = true;
+    let retryId = null;
+    const loadAgain = () => setStateLoadAttempt(attempt => attempt + 1);
     apiFetch('/api/state')
       .then(res => {
         if (!res.ok) throw new Error('API server unreachable');
@@ -183,6 +214,7 @@ export default function App() {
             setAttendanceHistory(data.attendanceHistory);
             loadedAttendanceMonthsRef.current = new Set();
             setLoadedAttendanceMonths([]);
+            if (activeRole === 'employee') showQueuedAttendance(data.user || userRef.current);
           }
           if (data.requests) setRequests(data.requests);
           if (data.events) setEvents(data.events);
@@ -205,6 +237,10 @@ export default function App() {
         if (isCurrentSession) {
           console.error('Failed to load backend state:', err);
           setLoading(false);
+          if (err instanceof TypeError) {
+            window.addEventListener('online', loadAgain);
+            retryId = window.setTimeout(loadAgain, 30000);
+          }
         }
       });
 
@@ -246,8 +282,18 @@ export default function App() {
 
     return () => {
       isCurrentSession = false;
+      window.removeEventListener('online', loadAgain);
+      window.clearTimeout(retryId);
     };
-  }, [authToken, activeRole]);
+  }, [authToken, activeRole, stateLoadAttempt, showQueuedAttendance]);
+
+  // The phone app keeps a copy of the employee's profile and recent attendance, so it can
+  // open without internet (see the session restore below).
+  useEffect(() => {
+    if (isEmployeeMobileApp && authToken && activeRole === 'employee' && user) {
+      saveOfflineSession(user, attendanceHistory.filter(record => matchesAttendanceEmployee(record, user)));
+    }
+  }, [isEmployeeMobileApp, authToken, activeRole, user, attendanceHistory]);
 
   // Every 15 seconds while the app is on screen, and right away when the person comes back
   // to it, the app asks the server which lists changed and downloads only those. New
@@ -298,6 +344,7 @@ export default function App() {
         setAttendanceHistory(previous => (activeRole === 'hr_admin'
           ? mergeRecentAttendance(previous, list, loadedAttendanceMonthsRef.current, attendanceWindowStart())
           : list));
+        if (activeRole === 'employee') showQueuedAttendance(userRef.current);
       },
       // HR only: texts sent at Time In or Time Out, failed texts, and replies.
       sms: async () => {
@@ -339,7 +386,7 @@ export default function App() {
       window.clearInterval(checkId);
       document.removeEventListener('visibilitychange', checkForUpdates);
     };
-  }, [authToken, activeRole]);
+  }, [authToken, activeRole, showQueuedAttendance]);
 
   // While an employee's shift is open, their position is sent right away, every minute,
   // and whenever they come back to the app, from any page, so HR's Live GPS Map shows
@@ -463,8 +510,19 @@ export default function App() {
         setActiveRole(role);
         setCurrentView(homeViewFor(role));
       })
-      .catch(() => {
+      .catch(error => {
         if (cancelled) return;
+        // Without internet, the phone app opens with the copy it saved, so the employee can
+        // still record attendance. The session is checked again once the app is online.
+        const saved = isEmployeeMobileApp && error instanceof TypeError ? readOfflineSession() : null;
+        if (saved) {
+          setUser(saved.user);
+          setAttendanceHistory(saved.attendance);
+          setActiveRole('employee');
+          setCurrentView(homeViewFor('employee'));
+          return;
+        }
+        clearOfflineSession();
         clearSessionToken();
         setAuthToken('');
       })
@@ -480,6 +538,7 @@ export default function App() {
 
   // Clears the signed-in user's data so the next person on a shared device never sees it.
   const clearSessionData = () => {
+    clearOfflineSession();
     setAuthToken('');
     setActiveRole(null);
     setUser(null);
@@ -608,25 +667,45 @@ export default function App() {
   // A Time Out saved offline keeps the time it was made; online ones use the server clock.
   const markRecordedOffline = payload => ({ ...payload, record: { ...payload.record, recordedOfflineAt: new Date().toISOString() } });
 
+  // A Time In can be saved on the phone only when the phone signed it with its fingerprint
+  // key (an offline Time In); any other Time In needs the server to check the fingerprint.
+  const canSaveOnPhone = payload => payload.action !== 'clock-in' || Boolean(payload.record?.offlineTimeIn);
+
   const submitAttendance = async (payload, optimisticRecord) => {
-    if (!navigator.onLine) {
-      if (payload.action === 'clock-in') {
-        throw new Error('An internet connection is required to verify your fingerprint and submit Time In. Reconnect and try again.');
-      }
+    const saveOnPhone = async (details = {}) => {
       await queueAttendance({ payload: markRecordedOffline(payload) });
       if (optimisticRecord) {
         setAttendanceHistory(previous => payload.action === 'clock-out'
           ? previous.map(item => item.employeeId === optimisticRecord.employeeId && !item.timeOut ? optimisticRecord : item)
           : [optimisticRecord, ...previous]);
       }
-      return { queued: true, record: optimisticRecord };
+      return { queued: true, record: optimisticRecord, ...details };
+    };
+
+    if (!navigator.onLine) {
+      if (!canSaveOnPhone(payload)) {
+        throw new Error('An internet connection is required to verify your fingerprint and submit Time In. Reconnect and try again.');
+      }
+      return saveOnPhone();
+    }
+
+    // A Time Out made while a Time In is still waiting on the phone goes after it, since the
+    // server cannot close a shift it has not received yet. Both are sent right away.
+    const owner = { employeeId: user?.employeeId, email: user?.email };
+    if (payload.action === 'clock-out' && await countQueuedAttendance(owner).catch(() => 0) > 0) {
+      const saved = await saveOnPhone({ afterQueuedTimeIn: true });
+      // A sync already running read the queue before this Time Out was added, so another
+      // one follows it.
+      syncOfflineAttendance(owner).catch(() => {}).finally(() => syncOfflineAttendance(owner).catch(() => {}));
+      return saved;
     }
 
     try {
       const response = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        // The phone's clock when it sent this, so the server can tell how far off it is.
+        body: JSON.stringify({ ...payload, sentAt: new Date().toISOString() })
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -639,14 +718,8 @@ export default function App() {
       if (error?.isAttendanceValidationError) {
         throw error;
       }
-      if (payload.action === 'clock-in') throw error;
-      await queueAttendance({ payload: markRecordedOffline(payload) });
-      if (optimisticRecord) {
-        setAttendanceHistory(previous => payload.action === 'clock-out'
-          ? previous.map(item => item.employeeId === optimisticRecord.employeeId && !item.timeOut ? optimisticRecord : item)
-          : [optimisticRecord, ...previous]);
-      }
-      return { queued: true, record: optimisticRecord, error };
+      if (!canSaveOnPhone(payload)) throw error;
+      return saveOnPhone({ error });
     }
   };
 
@@ -723,7 +796,9 @@ export default function App() {
     assignmentMatch,
     employeeEmail,
     assignmentSite = null,
-    gpsAccuracy = null
+    gpsAccuracy = null,
+    // The phone's signed record of a Time In made without internet (utils/offlineTimeIn.js).
+    offlineTimeIn = null
   ) => {
     const today = getManilaDateString();
     const timeString = new Date().toLocaleTimeString('en-US', {
@@ -780,7 +855,8 @@ export default function App() {
       employeeRole: user?.role || employeeRole || 'Employee',
       employeeOffice: user?.office || employeeOffice || 'Office',
       employeeId: user?.employeeId || user?.email || employeeId || null,
-      employeeEmail: user?.email || employeeEmail || null
+      employeeEmail: user?.email || employeeEmail || null,
+      ...(offlineTimeIn ? { offlineTimeIn } : {})
     };
 
     submitAttendance({ action: 'clock-in', record: newRecord }, { ...newRecord, id: `offline-att-${Date.now()}` })
@@ -788,7 +864,8 @@ export default function App() {
         if (data.record) {
           if (!data.queued) setAttendanceHistory(prev => [data.record, ...prev]);
           if (data.queued) {
-            window.alert('No connection. Attendance saved offline and will sync automatically when internet returns.');
+            window.alert('No connection. Time In saved on this phone and will be sent automatically when internet returns.');
+            return;
           }
 
           // Create system notification
@@ -869,7 +946,11 @@ export default function App() {
           if (!data.queued) {
             setAttendanceHistory(prev => prev.map(record => record.id === data.record.id || (record.employeeId === data.record.employeeId && !record.timeOut && record.date === data.record.date) ? data.record : record));
           }
-          if (data.queued) window.alert('No connection. Time Out saved offline and will sync automatically when internet returns.');
+          if (data.queued) {
+            window.alert(data.afterQueuedTimeIn
+              ? 'Your Time In saved offline is still being sent. Your Time Out was saved on this phone and will be sent right after it.'
+              : 'No connection. Time Out saved offline and will sync automatically when internet returns.');
+          }
 
           // Create notification
           const newNotif = {

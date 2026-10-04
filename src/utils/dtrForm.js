@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { countsInDtr, dtrTimeOut } from './hrAttendance.js';
 
 // Fills both duplicates on each page of the CSC Form No. 48 DTR template
 // (src/assets/template/dtr-template.pdf) with one employee's monthly attendance data.
@@ -225,13 +226,14 @@ export async function fillDTR(templateBytes, employee = {}, year, month, attenda
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  // Index records by day-of-month for quick lookup.
+  // Index records by day-of-month for quick lookup. An offline Time In that HR has not
+  // approved (or rejected) is left out, and so is an offline Time Out waiting for HR.
   const recordsByDay = {};
   for (const rec of attendanceRecords) {
-    if (!rec.date) continue;
+    if (!rec.date || !countsInDtr(rec)) continue;
     const date = new Date(`${rec.date}T00:00:00`);
     if (date.getFullYear() === year && date.getMonth() + 1 === month) {
-      recordsByDay[date.getDate()] = rec;
+      recordsByDay[date.getDate()] = { ...rec, timeOut: dtrTimeOut(rec) };
     }
   }
 

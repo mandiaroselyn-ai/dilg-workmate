@@ -92,23 +92,47 @@ export const isQueuedForOwner = (item, owner) => {
   );
 };
 
-// How many of the signed-in employee's records are saved on this device, waiting to sync.
-export const countQueuedAttendance = async owner => (await readQueue()).filter(item => isQueuedForOwner(item, owner)).length;
+// The signed-in employee's records saved on this device, waiting to sync, oldest first.
+export const readQueuedAttendance = async owner => (await readQueue()).filter(item => isQueuedForOwner(item, owner));
 
-export const syncQueuedAttendance = async (onRecord, owner) => {
-  const queuedItems = (await readQueue()).filter(item => isQueuedForOwner(item, owner));
+// How many of the signed-in employee's records are saved on this device, waiting to sync.
+export const countQueuedAttendance = async owner => (await readQueuedAttendance(owner)).length;
+
+const sameDay = (a, b) => normalizeIdentity(a.employeeId) === normalizeIdentity(b.employeeId) && a.date === b.date;
+
+// The attendance list with the Time Ins and Time Outs still waiting on this device shown in
+// it, so a list reloaded from the server does not hide them until they are sent.
+export const applyQueuedAttendance = (list = [], queuedItems = []) => queuedItems.reduce((records, item) => {
+  const record = item?.payload?.record || {};
+  if (item.payload.action === 'clock-in') {
+    // Already shown, or already on the server (sent, but the answer did not arrive).
+    const nonce = record.offlineTimeIn?.nonce;
+    if (!nonce || records.some(shown => shown.offlineTimeIn?.nonce === nonce)) return records;
+    return [{ ...record, id: `offline-att-${item.id}` }, ...records];
+  }
+  if (item.payload.action === 'clock-out') {
+    return records.map(shown => (sameDay(shown, record) && !shown.timeOut ? { ...shown, ...record } : shown));
+  }
+  return records;
+}, list);
+
+// `onDiscard(payload, error)` is told about a record the server refused.
+export const syncQueuedAttendance = async (onRecord, owner, onDiscard) => {
+  const queuedItems = await readQueuedAttendance(owner);
   for (const item of queuedItems) {
     try {
       const response = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item.payload)
+        // The phone's clock when it sent this, so the server can tell how far off it is.
+        body: JSON.stringify({ ...item.payload, sentAt: new Date().toISOString() })
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
         if (shouldDiscardQueuedAttendance(response.status)) {
           await removeQueuedAttendance(item.id);
           console.warn('Discarding invalid queued attendance record:', data?.error || response.statusText);
+          onDiscard?.(item.payload, data?.error || response.statusText);
           continue;
         }
         break;

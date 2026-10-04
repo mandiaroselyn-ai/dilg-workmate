@@ -24,9 +24,21 @@ export const requestCoversDate = (request, date) => {
 
 const isLate = record => Boolean(record?.late || /late/i.test(record?.status || ''));
 
+// A Time In or Time Out made in the phone app without internet that failed a check when it
+// was sent waits for HR: it counts in the DTR only once HR decides it (a Time Out can also
+// be corrected by HR).
+const awaitsDecision = entry => Boolean(entry?.reviewReasons?.length && !entry.decision);
+const isAccepted = entry => !entry?.reviewReasons?.length || ['approved', 'corrected'].includes(entry.decision);
+export const isOfflineReviewPending = record => awaitsDecision(record?.offlineTimeIn);
+export const isOfflineTimeOutPending = record => awaitsDecision(record?.offlineTimeOut);
+export const countsInDtr = record => isAccepted(record?.offlineTimeIn);
+// The Time Out the DTR shows: none while an offline Time Out waits for HR.
+export const dtrTimeOut = record => (isAccepted(record?.offlineTimeOut) ? record?.timeOut || null : null);
+const isRejectedOffline = record => record?.offlineTimeIn?.decision === 'rejected';
+
 // An employee's attendance on `date`: Present, Late, On Leave, On Travel, or Absent.
 export const employeeDayStatus = (employee, { records = [], requests = [], date }) => {
-  const record = records.find(item => item.date === date && matchesAttendanceEmployee(item, employee)) || null;
+  const record = records.find(item => item.date === date && matchesAttendanceEmployee(item, employee) && !isRejectedOffline(item)) || null;
   if (record?.timeIn && record.status !== 'Absent') return { status: isLate(record) ? 'Late' : 'Present', record };
   const approved = requests.filter(request => (
     /approved/i.test(request?.status || '')
@@ -46,8 +58,14 @@ export const hasSelfie = record => Boolean(record?.hasSelfie || record?.selfieUr
 // it becomes "Missing Time Out" once its day is over.
 export const dtrIssue = (record, today) => {
   if (!record?.timeIn) return record?.status === 'Absent' ? null : 'Missing Time In';
-  if (!hasSelfie(record)) return 'Missing Selfie Verification';
-  if (!record.fingerprintVerified) return 'Missing Biometric Verification';
+  if (isOfflineReviewPending(record)) return 'Offline Time In for Review';
+  // HR already decided this one.
+  if (isRejectedOffline(record)) return null;
+  if (isOfflineTimeOutPending(record)) return 'Offline Time Out for Review';
+  // HR approved this Time In after checking its selfie and fingerprint.
+  const approvedOffline = record.offlineTimeIn?.decision === 'approved';
+  if (!approvedOffline && !hasSelfie(record)) return 'Missing Selfie Verification';
+  if (!approvedOffline && !record.fingerprintVerified) return 'Missing Biometric Verification';
   if (!record.timeOut) return record.date && record.date < today ? 'Missing Time Out' : null;
   return null;
 };

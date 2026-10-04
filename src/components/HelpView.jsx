@@ -42,8 +42,8 @@ const faqs = [
   },
   {
     topic: 'Attendance',
-    question: 'Can I Time Out without internet?',
-    answer: 'Yes. Your Time Out is saved on your phone and sent automatically when you are back online. Settings, under Offline records, shows anything still waiting and has a Sync now button.'
+    question: 'Can I Time In or Time Out without internet?',
+    answer: 'Yes, in the WorkMate phone app, once your phone has verified your fingerprint online at least once. Without internet, tap the fingerprint step, then Time In, and scan your fingerprint: your Time In is saved on your phone with your selfie and GPS, and sent automatically when you are back online. If a check fails then (for example, your selfie does not match or your phone clock was wrong), HR reviews it before it counts in your DTR. A Time Out works the same way, without the fingerprint; if your phone clock looked wrong when it was sent, HR checks the Time Out before it counts. Settings, under Offline records, shows anything still waiting and has a Sync now button.'
   },
   {
     topic: 'Attendance',

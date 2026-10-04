@@ -20,6 +20,9 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         workbox: {
           navigateFallbackDenylist: [/^\/api\//],
+          // The phone app opens from these files when there is no internet, so the logo
+          // and icons are kept with the code.
+          globPatterns: ['**/*.{js,css,html,png,svg}'],
         },
         manifest: {
           name: 'DILG WorkMate',

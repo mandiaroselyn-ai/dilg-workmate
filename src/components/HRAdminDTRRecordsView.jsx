@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { dtrIssue, dtrRecordStatus, hasSelfie, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
@@ -135,6 +135,99 @@ function DtrReview({ record, reviewerName, onSave }) {
   );
 }
 
+// A Time In or Time Out (`entry`) made in the phone app without internet: when the phone
+// recorded it and when it reached the server, and, when a check failed then, why, with HR's
+// decision. A Time In is approved or rejected; a Time Out is approved, or replaced with
+// Correct Record. Until then it does not count in the DTR.
+function OfflineEntryReview({ record, entry, onSave }) {
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState({ text: '', error: false });
+  const isTimeIn = entry === 'timeIn';
+  const label = isTimeIn ? 'Time In' : 'Time Out';
+  const offline = isTimeIn ? record.offlineTimeIn : record.offlineTimeOut;
+  if (!offline?.recordedAt || !record.id) return null;
+  const reasons = offline.reviewReasons || [];
+  const offsetSeconds = Number(offline.phoneClockOffsetSeconds);
+  const phoneClock = offline.phoneClockOffsetSeconds == null || !Number.isFinite(offsetSeconds)
+    ? 'not sent'
+    : Math.abs(offsetSeconds) < 60
+      ? 'within a minute of the server'
+      : `${Math.round(Math.abs(offsetSeconds) / 60)} min ${offsetSeconds > 0 ? 'ahead of' : 'behind'} the server`;
+
+  const decide = async decision => {
+    setSaving(true);
+    setResult({ text: '', error: false });
+    try {
+      await onSave({ id: record.id, [isTimeIn ? 'offlineDecision' : 'offlineTimeOutDecision']: decision });
+      setResult({ text: decision === 'approved' ? 'Approved. It now counts in the DTR.' : 'Rejected. It is left out of the DTR.', error: false });
+    } catch (saveError) {
+      setResult({ text: saveError.message || 'Unable to save the decision.', error: true });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const decisionText = {
+    approved: 'Approved',
+    rejected: 'Rejected',
+    corrected: 'Replaced with the Time Out entered'
+  }[offline.decision];
+
+  return (
+    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+      <h4 className="font-black uppercase tracking-wide">Offline {label}</h4>
+      <p className="mt-2">
+        Recorded on the phone without internet at <b>{auditTime(offline.recordedAt)}</b>
+        {offline.syncedAt && <>, received by the server at <b>{auditTime(offline.syncedAt)}</b></>}. Phone clock when sent: <b>{phoneClock}</b>.
+      </p>
+      {reasons.length ? (
+        <>
+          <p className="mt-2 font-black">Why it needs your review:</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {reasons.map(reason => <li key={reason}>{reason}</li>)}
+          </ul>
+          {offline.decision ? (
+            <p className="mt-2">
+              {decisionText} by <b>{offline.decidedBy || 'HR'}</b>
+              {offline.decidedAt && <> on {auditTime(offline.decidedAt)}</>}.
+              {offline.decision === 'rejected' ? ' It is left out of the DTR.' : ' It counts in the DTR.'}
+            </p>
+          ) : isTimeIn ? (
+            <>
+              <p className="mt-2">It does not count in the DTR until you approve it. Check the selfie comparison and the GPS location first.</p>
+              {onSave && (
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={() => decide('approved')} disabled={saving} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-60">Approve</button>
+                  <button type="button" onClick={() => decide('rejected')} disabled={saving} className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-black text-rose-700 disabled:opacity-60">Reject</button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="mt-2">The Time Out is left out of the DTR until you approve it, or until you enter the right Time Out with Correct Record below.</p>
+              {onSave && (
+                <div className="mt-2 flex gap-2">
+                  <button type="button" onClick={() => decide('approved')} disabled={saving} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-60">Approve Time Out</button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        <p className="mt-2">Every check passed when it reached the server, so it counts in the DTR.</p>
+      )}
+      {result.text && <p role={result.error ? 'alert' : 'status'} className={`mt-2 font-bold ${result.error ? 'text-rose-700' : 'text-emerald-700'}`}>{result.text}</p>}
+    </div>
+  );
+}
+
+// How an offline Time In and Time Out stand, shown on the record's row (none for other records).
+const offlineRowLabels = record => [
+  record?.offlineTimeIn?.recordedAt && (isOfflineReviewPending(record)
+    ? 'Offline Time In · needs your review'
+    : record.offlineTimeIn.decision === 'rejected' ? 'Offline Time In · rejected, not in the DTR' : 'Offline Time In'),
+  record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
+].filter(Boolean);
+
 export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
@@ -214,6 +307,8 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
           </a>
         )}
       </div>
+      <OfflineEntryReview key={`offline-in-${selected.id}`} record={selected.record} entry="timeIn" onSave={onSaveRecord} />
+      <OfflineEntryReview key={`offline-out-${selected.id}`} record={selected.record} entry="timeOut" onSave={onSaveRecord} />
       {onSaveRecord && <DtrReview key={selected.id} record={selected.record} reviewerName={reviewerName} onSave={onSaveRecord} />}
       <HRFaceComparison
         employeeId={selected.employee?.employeeId || selected.record.employeeId}
@@ -276,6 +371,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
                       <p className="font-black text-slate-800">{row.name}</p>
                       <p className="mt-1 text-xs text-slate-500">Employee ID: {row.employeeId}</p>
                       <p className="text-xs text-slate-500">Date: {row.record.date || '-'}</p>
+                      {offlineRowLabels(row.record).map(label => <p key={label} className="mt-1 text-xs font-black text-amber-700">{label}</p>)}
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
                       {row.status === 'Incomplete' ? (row.record.timeIn ? 'Missing Time Out' : 'Missing Time In') : row.status}

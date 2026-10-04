@@ -3,11 +3,33 @@ import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
 import { clockTextMinutes, isLateTimeText } from '../utils/attendanceTime.js';
 
+// A Time In or Time Out made in the phone app without internet and sent later.
+const OfflineEntrySchema = new mongoose.Schema({
+  // The phone's clock when it was made, and when it reached the server.
+  recordedAt: Date,
+  syncedAt: Date,
+  // How far the phone's clock was from the server's when it was sent.
+  phoneClockOffsetSeconds: Number,
+  // Time In only: the signed Time In's unique value.
+  nonce: String,
+  // Why HR must check it; empty when every check passed.
+  reviewReasons: { type: [String], default: [] },
+  // HR's decision on one with review reasons. A Time In is approved or rejected; a Time Out
+  // is approved, or corrected when HR enters the right Time Out.
+  decision: { type: String, enum: ['', 'approved', 'rejected', 'corrected'], default: '' },
+  decidedBy: String,
+  decidedAt: Date
+}, { _id: false });
+
 const DtrLogSchema = new mongoose.Schema({
   customId: { type: String, required: true },
   date: { type: String, required: true },
   timeIn: { type: String, required: true },
+  // When the Time In happened (for an offline Time In, the phone's clock at the time).
+  timeInAt: { type: Date, default: null },
+  offlineTimeIn: { type: OfflineEntrySchema, default: null },
   timeOut: { type: String, default: null },
+  offlineTimeOut: { type: OfflineEntrySchema, default: null },
   location: { type: String, required: true },
   dutyType: { type: String, enum: ['office', 'wfh', 'field'], default: null },
   assignmentSite: {
@@ -256,6 +278,8 @@ export const DtrLog = {
       customId,
       date: logData.date,
       timeIn: logData.timeIn,
+      timeInAt: logData.timeInAt || null,
+      offlineTimeIn: logData.offlineTimeIn || null,
       timeOut: logData.timeOut || null,
       location: logData.location,
       dutyType: logData.dutyType || null,
@@ -316,6 +340,13 @@ export const DtrLog = {
     return obj;
   },
 
+  // The employee's saved offline Time In with this nonce, shaped for lists, or null.
+  findOfflineTimeIn: async (employeeId, nonce) => {
+    ensureConnected();
+    const log = await MongoDtrLog.findOne({ employeeId, 'offlineTimeIn.nonce': nonce }).lean();
+    return log ? toListLog(log) : null;
+  },
+
   findActiveByEmployee: async (employeeId, date) => {
     ensureConnected();
     return MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
@@ -346,7 +377,8 @@ export const DtrLog = {
     return logs.map(toClientLog);
   },
 
-  closeActiveLog: async (timeOut, employeeId, date, location = {}) => {
+  // `offlineTimeOut` describes a Time Out saved on the phone without internet.
+  closeActiveLog: async (timeOut, employeeId, date, location = {}, offlineTimeOut = null) => {
     ensureConnected();
     const activeLog = await MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
     if (activeLog) {
@@ -354,6 +386,7 @@ export const DtrLog = {
       activeLog.timeOutLatitude = location.latitude ?? null;
       activeLog.timeOutLongitude = location.longitude ?? null;
       activeLog.timeOutGpsAccuracy = location.accuracy ?? null;
+      activeLog.offlineTimeOut = offlineTimeOut;
       await activeLog.save();
       const obj = activeLog.toObject();
       obj.id = obj.customId;
@@ -362,38 +395,16 @@ export const DtrLog = {
     return null;
   },
 
-  // Applies HR corrections and verifications. Each update names one existing record by
-  // `id` and only the HR-editable fields it changes, so fields HR did not touch (such as a
-  // Time Out recorded after HR loaded the page) are never overwritten.
-  bulkUpdate: async (updates) => {
+  // Applies HR corrections, verifications, and decisions (see hrUpdateOperations).
+  bulkUpdate: async (updates, { reviewer = '' } = {}) => {
     ensureConnected();
-    if (!Array.isArray(updates) || updates.some(update => typeof update?.id !== 'string' || !update.id)) {
-      throw new Error('Each attendance update must include a record id.');
-    }
-
-    const operations = updates.map(update => {
-      const changes = {};
-      for (const field of HR_EDITABLE_FIELDS) {
-        if (update[field] !== undefined) changes[field] = update[field];
-      }
-      // A corrected Time In decides again whether the employee was late.
-      if (changes.timeIn !== undefined) {
-        const late = isLateTimeText(changes.timeIn);
-        if (late === null) throw new Error('Time In must be a time such as 08:05 AM.');
-        changes.late = late;
-      }
-      if (changes.timeOut != null && clockTextMinutes(changes.timeOut) === null) {
-        throw new Error('Time Out must be a time such as 05:00 PM, or left empty.');
-      }
-      return { id: update.id, changes };
-    }).filter(({ changes }) => Object.keys(changes).length > 0);
-
+    const operations = hrUpdateOperations(updates, reviewer);
     if (operations.length) {
-      await MongoDtrLog.bulkWrite(operations.map(({ id, changes }) => ({
-        updateOne: { filter: { customId: id }, update: { $set: changes } }
+      await MongoDtrLog.bulkWrite(operations.map(({ filter, changes }) => ({
+        updateOne: { filter, update: { $set: changes } }
       })));
     }
-    const updatedLogs = await MongoDtrLog.find({ customId: { $in: operations.map(({ id }) => id) } });
+    const updatedLogs = await MongoDtrLog.find({ customId: { $in: [...new Set(operations.map(({ id }) => id))] } });
     return updatedLogs.map(toListLog);
   },
 
@@ -541,6 +552,65 @@ export const DtrLog = {
     const now = new Date();
     return activeLogs.map(log => liveLocationFromLog(log, now));
   }
+};
+
+// The database changes for HR's updates to attendance records, as { id, filter, changes }.
+// Each update names one existing record by `id` and only the HR-editable fields it changes,
+// so fields HR did not touch (such as a Time Out recorded after HR loaded the page) are
+// never overwritten. `offlineDecision` ('approved' or 'rejected') decides an offline Time In
+// that needs review, and `offlineTimeOutDecision` ('approved') an offline Time Out; both
+// are signed by `reviewer`.
+export const hrUpdateOperations = (updates, reviewer = '', now = new Date()) => {
+  if (!Array.isArray(updates) || updates.some(update => typeof update?.id !== 'string' || !update.id)) {
+    throw new Error('Each attendance update must include a record id.');
+  }
+  const decided = (entry, decision) => ({
+    [`${entry}.decision`]: decision,
+    [`${entry}.decidedBy`]: reviewer,
+    [`${entry}.decidedAt`]: now
+  });
+  // Only an offline Time In or Time Out that needed review can be decided.
+  const needingReview = (id, entry) => ({ customId: id, [`${entry}.reviewReasons.0`]: { $exists: true } });
+
+  return updates.flatMap(update => {
+    const { id } = update;
+    const changes = {};
+    for (const field of HR_EDITABLE_FIELDS) {
+      if (update[field] !== undefined) changes[field] = update[field];
+    }
+    // A corrected Time In decides again whether the employee was late.
+    if (changes.timeIn !== undefined) {
+      const late = isLateTimeText(changes.timeIn);
+      if (late === null) throw new Error('Time In must be a time such as 08:05 AM.');
+      changes.late = late;
+    }
+    if (changes.timeOut != null && clockTextMinutes(changes.timeOut) === null) {
+      throw new Error('Time Out must be a time such as 05:00 PM, or left empty.');
+    }
+
+    const operations = Object.keys(changes).length ? [{ id, filter: { customId: id }, changes }] : [];
+    if (update.offlineDecision !== undefined) {
+      if (!['approved', 'rejected'].includes(update.offlineDecision)) {
+        throw new Error('An offline Time In can only be approved or rejected.');
+      }
+      operations.push({ id, filter: needingReview(id, 'offlineTimeIn'), changes: decided('offlineTimeIn', update.offlineDecision) });
+    }
+    if (update.offlineTimeOutDecision !== undefined) {
+      if (update.offlineTimeOutDecision !== 'approved') {
+        throw new Error('An offline Time Out can only be approved, or corrected with the right Time Out.');
+      }
+      operations.push({ id, filter: needingReview(id, 'offlineTimeOut'), changes: decided('offlineTimeOut', 'approved') });
+    }
+    // A Time Out HR corrects replaces an offline one still waiting for review.
+    if (changes.timeOut !== undefined) {
+      operations.push({
+        id,
+        filter: { ...needingReview(id, 'offlineTimeOut'), 'offlineTimeOut.decision': '' },
+        changes: decided('offlineTimeOut', 'corrected')
+      });
+    }
+    return operations;
+  });
 };
 
 // Positions less precise than this are not used for live tracking: a laptop or desktop

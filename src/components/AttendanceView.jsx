@@ -40,6 +40,31 @@ import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import { isWithinAssignedLocation } from '../../shared/assignmentGeofence';
+import {
+  canSignOffline,
+  isNetworkError,
+  readPhoneKey,
+  rememberPhoneKey,
+  rememberSiteLocation,
+  resolveSiteOffline,
+  signOfflineTimeIn,
+  timeoutSignal
+} from '../utils/offlineTimeIn';
+
+// Where a Time In or Time Out made without internet stands ('' when it was made online).
+const offlineEntryStatus = (entry, label) => {
+  if (!entry?.recordedAt) return '';
+  if (!entry.reviewReasons?.length) return `Offline ${label}`;
+  if (entry.decision === 'approved') return `Offline ${label} · approved by HR`;
+  if (entry.decision === 'corrected') return `Offline ${label} · corrected by HR`;
+  if (entry.decision === 'rejected') return `Offline ${label} · rejected by HR, not in your DTR`;
+  return `Offline ${label} · waiting for HR review before it counts in your DTR`;
+};
+
+// How the parts of a record made without internet stand, for the employee's history.
+const offlineStatuses = log => (String(log?.id).startsWith('offline-att-') && log.offlineTimeIn
+  ? ['Time In saved on this phone · not sent yet']
+  : [offlineEntryStatus(log?.offlineTimeIn, 'Time In'), offlineEntryStatus(log?.offlineTimeOut, 'Time Out')].filter(Boolean));
 
 export default function AttendanceView({
   user,
@@ -167,18 +192,28 @@ export default function AttendanceView({
     setGeofenceStatus({ inRange: false, canAutoClockIn: false, eventType: null, message: '' });
     setGpsVerdict('Out of Range');
 
+    const site = buildAssignmentSite();
     fetch('/api/dtr/action?action=geofence-resolve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assignmentSite: buildAssignmentSite() })
+      body: JSON.stringify({ assignmentSite: site }),
+      signal: timeoutSignal(20000)
     })
       .then(async response => {
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.error || 'Could not locate the selected assignment.');
+        rememberSiteLocation(site, result.location);
         if (active) setSiteLocation(result.location);
       })
-      .catch(error => {
-        if (active) setSiteLocationError(error.message || 'Could not locate the selected assignment.');
+      .catch(async error => {
+        // Without internet, the area comes from the barangay map in the app, or from the
+        // last time this office or WFH address was found online.
+        const offlineLocation = isNetworkError(error) ? await resolveSiteOffline(site).catch(() => null) : null;
+        if (!active) return;
+        if (offlineLocation) setSiteLocation(offlineLocation);
+        else setSiteLocationError(isNetworkError(error)
+          ? 'No internet. This office or WFH address has not been located on this phone before, so it needs internet once.'
+          : error.message || 'Could not locate the selected assignment.');
       })
       .finally(() => {
         if (active) setSiteLocationLoading(false);
@@ -223,6 +258,9 @@ export default function AttendanceView({
   const [fingerprintError, setFingerprintError] = useState(null);
   // True when the WorkMate app's fingerprint key no longer matches the registered one.
   const [phoneKeyChanged, setPhoneKeyChanged] = useState(false);
+  // True when there is no internet and this Time In will be saved on the phone; the
+  // fingerprint is then asked when the employee taps Time In (see executeClockIn).
+  const [offlineTimeIn, setOfflineTimeIn] = useState(false);
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
@@ -427,6 +465,22 @@ export default function AttendanceView({
     return json;
   };
 
+  // Without internet, the phone app saves the Time In on the phone, signed with the
+  // fingerprint key this phone registered the last time it verified online. The fingerprint
+  // is asked when the employee taps Time In, so the signature also covers the GPS taken then.
+  const prepareOfflineTimeIn = () => {
+    if (!readPhoneKey(user?.employeeId)) {
+      setFingerprintError('No internet. To time in without internet, this phone must have verified your fingerprint online at least once. Connect to the internet and time in once with your fingerprint; after that you can time in offline.');
+      return;
+    }
+    if (!canSignOffline()) {
+      setFingerprintError('No internet, and this app cannot save a Time In offline. Connect to the internet and try again.');
+      return;
+    }
+    setFingerprintError(null);
+    setOfflineTimeIn(true);
+  };
+
   // The server creates and verifies the WebAuthn challenge and assertion.
   // `replacePhoneKey` registers this phone's app fingerprint in place of the old one.
   const handleStartFingerprintScan = async ({ replacePhoneKey = false } = {}) => {
@@ -435,6 +489,10 @@ export default function AttendanceView({
       return;
     }
     if (fingerprintVerified) return;
+    if (hasNativeBridge && !navigator.onLine) {
+      prepareOfflineTimeIn();
+      return;
+    }
     if (fingerprintScanInFlightRef.current || webAuthnAbortRef.current) {
       setFingerprintError(PROMPT_STILL_OPEN_MESSAGE);
       return;
@@ -461,7 +519,8 @@ export default function AttendanceView({
         const optionsResponse = await fetch('/api/biometric/native/options', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ replaceRegisteredKey: replacePhoneKey === true })
+          body: JSON.stringify({ replaceRegisteredKey: replacePhoneKey === true }),
+          signal: timeoutSignal(20000)
         });
         const options = await optionsResponse.json();
         if (!optionsResponse.ok || !options.challenge) {
@@ -484,6 +543,8 @@ export default function AttendanceView({
           error.phoneKeyChanged = verification.code === 'phone-key-changed';
           throw error;
         }
+        // This phone's registered key can now sign a Time In made without internet.
+        rememberPhoneKey(user?.employeeId, options.keyId);
         if (!isCurrentAttempt()) return;
 
         setFingerprintProof(verification.verificationProof);
@@ -561,6 +622,11 @@ export default function AttendanceView({
       setFingerprintScanning(false);
       setFingerprintProgress(0);
       fingerprintScanInFlightRef.current = false;
+      // The server could not be reached: the phone app can save the Time In on the phone.
+      if (hasNativeBridge && isNetworkError(error)) {
+        prepareOfflineTimeIn();
+        return;
+      }
       setPhoneKeyChanged(error?.phoneKeyChanged === true);
       setFingerprintError(describeTimeInFingerprintError(error, abortReason));
     }
@@ -582,6 +648,7 @@ export default function AttendanceView({
     setFingerprintProgress(0);
     setFingerprintError(null);
     setPhoneKeyChanged(false);
+    setOfflineTimeIn(false);
   };
 
   // Cancel an open fingerprint prompt when leaving the attendance screen.
@@ -812,33 +879,59 @@ export default function AttendanceView({
           return;
         }
 
-        onTimeIn(
-          effectiveLocation,
-          effectiveBarangay,
-          effectiveTask,
-          verdict,
-          lat,
-          lon,
-          capturedSelfie,
-          fingerprintVerified,
-          fingerprintProof,
-          fillName,
-          fillRole,
-          fillOffice,
-          fillId,
-          assignedCoords.lat,
-          assignedCoords.lon,
-          distance,
-          true,
-          user?.email || '',
-          assignmentSite,
-          accuracy
-        );
-        setCapturedSelfie(null);
-        setFingerprintVerified(false);
-        setFingerprintProof('');
-        setFingerprintProgress(0);
+        const timeIn = offlineProof => {
+          onTimeIn(
+            effectiveLocation,
+            effectiveBarangay,
+            effectiveTask,
+            verdict,
+            lat,
+            lon,
+            capturedSelfie,
+            fingerprintVerified || Boolean(offlineProof),
+            fingerprintProof,
+            fillName,
+            fillRole,
+            fillOffice,
+            fillId,
+            assignedCoords.lat,
+            assignedCoords.lon,
+            distance,
+            true,
+            user?.email || '',
+            assignmentSite,
+            accuracy,
+            offlineProof
+          );
+          setCapturedSelfie(null);
+          setFingerprintVerified(false);
+          setFingerprintProof('');
+          setFingerprintProgress(0);
+          setOfflineTimeIn(false);
+        };
         autoClockInRef.current = false;
+        if (!offlineTimeIn) {
+          timeIn(null);
+          return;
+        }
+
+        // No internet: the phone signs this exact Time In (with this GPS and selfie) with
+        // its fingerprint key, and it is saved on the phone until it can be sent.
+        setFingerprintScanning(true);
+        setFingerprintError(null);
+        signOfflineTimeIn({
+          employeeId: user?.employeeId,
+          keyId: readPhoneKey(user?.employeeId),
+          latitude: lat,
+          longitude: lon,
+          gpsAccuracy: accuracy,
+          assignmentSite,
+          selfie: capturedSelfie,
+          sign: requestNativeBiometricSignature
+        })
+          .then(timeIn)
+          .catch(error => setFingerprintError(describeTimeInFingerprintError(error)))
+          .finally(() => setFingerprintScanning(false));
       })
       .catch(error => {
         setGpsChecked(true);
@@ -1278,6 +1371,10 @@ export default function AttendanceView({
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">
                           ✓ THUMB VERIFIED
                         </span>
+                      ) : offlineTimeIn ? (
+                        <span className="text-[10px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full font-black border border-amber-200">
+                          OFFLINE
+                        </span>
                       ) : (
                         <span className="text-[10px] text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full font-black border border-amber-200 animate-pulse">
                           REQUIRED
@@ -1315,6 +1412,20 @@ export default function AttendanceView({
                           <span className="font-mono text-[10px] text-cyan-400 mt-4 font-black uppercase tracking-widest animate-pulse">
                             WAITING FOR DEVICE BIOMETRIC...
                           </span>
+                        </div>
+                      ) : offlineTimeIn ? (
+                        <div className="text-center space-y-3 flex flex-col items-center justify-center max-w-xs">
+                          <Fingerprint className="w-12 h-12 text-amber-400" />
+                          <p className="text-xs font-black text-amber-300 uppercase tracking-wider">No internet: Offline Time In</p>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">
+                            Tap Time In, then scan your fingerprint. Your Time In is saved on this phone and sent when you are back online. If a check fails then, HR reviews it before it counts in your DTR.
+                          </p>
+                          <button
+                            onClick={handleResetFingerprint}
+                            className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline font-black cursor-pointer"
+                          >
+                            Cancel
+                          </button>
                         </div>
                       ) : (
                         <div className="text-center space-y-4 flex flex-col items-center justify-center max-w-xs">
@@ -1381,7 +1492,7 @@ export default function AttendanceView({
                 <button
                   id="btn-punch-in"
                   onClick={executeClockIn}
-                  disabled={isCurrentlyActive || !capturedSelfie || !fingerprintVerified || gpsLoading}
+                  disabled={isCurrentlyActive || !capturedSelfie || !(fingerprintVerified || offlineTimeIn) || gpsLoading || fingerprintScanning}
                   className="flex-1 min-w-[42%] max-w-[48%] px-4 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
                 >
                   <Play className="w-4 h-4 fill-white shrink-0" />
@@ -1420,8 +1531,8 @@ export default function AttendanceView({
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${capturedSelfie ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
                   {capturedSelfie ? '✓ Selfie Recorded' : '✗ Selfie Required'}
                 </span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${fingerprintVerified ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
-                  {fingerprintVerified ? '✓ Fingerprint Authenticated' : '✗ Fingerprint Required'}
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${fingerprintVerified ? 'text-emerald-700 bg-emerald-50' : offlineTimeIn ? 'text-amber-700 bg-amber-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
+                  {fingerprintVerified ? '✓ Fingerprint Authenticated' : offlineTimeIn ? 'Fingerprint at Time In (offline)' : '✗ Fingerprint Required'}
                 </span>
               </div>
             )}
@@ -1910,6 +2021,11 @@ export default function AttendanceView({
                     {log.fingerprintVerified ? 'Fingerprint OK' : 'No Fingerprint'}
                   </span>
                 </div>
+                {offlineStatuses(log).map(status => (
+                  <p key={status} className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-center text-[10px] font-semibold text-amber-800">
+                    {status}
+                  </p>
+                ))}
               </div>
             ))
           )}
@@ -2025,6 +2141,9 @@ export default function AttendanceView({
                       }`}>
                         {log.status}
                       </span>
+                      {offlineStatuses(log).map(status => (
+                        <span key={status} className="mt-1 block text-[9px] font-semibold text-amber-700">{status}</span>
+                      ))}
                     </td>
                   </tr>
                 ))

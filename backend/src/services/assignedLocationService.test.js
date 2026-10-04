@@ -107,7 +107,7 @@ const provincialCapitol = [13.4474, 121.8344];
 
 test('every barangay in the app has its boundary on the PSA map', async () => {
   const { MARINDUQUE_MUNICIPALITIES } = await import('../../../shared/marinduqueLocations.js');
-  const { MARINDUQUE_BARANGAY_AREAS } = await import('../data/marinduqueBarangayAreas.js');
+  const { MARINDUQUE_BARANGAY_AREAS } = await import('../../../shared/marinduqueBarangayAreas.js');
   for (const [municipality, barangays] of Object.entries(MARINDUQUE_MUNICIPALITIES)) {
     assert.deepEqual(Object.keys(MARINDUQUE_BARANGAY_AREAS[municipality]), barangays);
     for (const barangay of barangays) {

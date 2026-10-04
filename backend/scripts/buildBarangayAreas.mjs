@@ -1,4 +1,4 @@
-// Builds backend/src/data/marinduqueBarangayAreas.js: the boundary of every barangay in
+// Builds shared/marinduqueBarangayAreas.js: the boundary of every barangay in
 // Marinduque, from the PSA/NAMRIA barangay shapefile (PSGC as of 31 December 2023) as
 // published by altcoder/philippines-psgc-shapefiles (MIT License). OpenStreetMap is
 // missing about 90 of Marinduque's 218 barangays, so assigned areas and place names use
@@ -20,7 +20,7 @@ const LICENSE_URL = 'https://raw.githubusercontent.com/altcoder/philippines-psgc
 const MARINDUQUE = 1704000000;
 const TOWN_CODES = { 1704001000: 'Boac', 1704002000: 'Buenavista', 1704003000: 'Gasan', 1704004000: 'Mogpog', 1704005000: 'Santa Cruz', 1704006000: 'Torrijos' };
 const TOLERANCE_METERS = 5;
-const OUTPUT = new URL('../src/data/marinduqueBarangayAreas.js', import.meta.url);
+const OUTPUT = new URL('../../shared/marinduqueBarangayAreas.js', import.meta.url);
 
 const shpPath = process.argv[2];
 if (!shpPath) throw new Error('Give the path of PH_Adm4_BgySubMuns.shp.shp');

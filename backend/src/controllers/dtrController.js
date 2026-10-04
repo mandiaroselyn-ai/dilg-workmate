@@ -1,8 +1,10 @@
 import { DtrLog, MAX_TRACKING_ACCURACY_METERS } from '../models/dtrLogModel.js';
+import { Announcement } from '../models/announcementModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
+import { checkOfflineTimeIn, checkOfflineTimeOut } from '../utils/offlineTimeIn.js';
 import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
@@ -136,10 +138,13 @@ export const clockInOut = async (req, res) => {
       if (!record || typeof record !== 'object') {
         return res.status(400).json({ success: false, error: 'Invalid attendance payload.' });
       }
-      // The DTR date and Time In come from the server clock, not the phone's clock.
-      const clockInAt = new Date();
-      record.date = getManilaDateString(clockInAt);
-      record.timeIn = formatManilaClockTime(clockInAt);
+      // A Time In made in the phone app without internet carries the phone's signed record
+      // of it (see utils/offlineTimeIn.js) instead of a fingerprint proof from this server.
+      const offlineProof = record.offlineTimeIn;
+      delete record.offlineTimeIn;
+      // The DTR date and Time In come from the server clock, not the phone's clock, except
+      // for an offline Time In (set below, once its fingerprint signature is checked).
+      let clockInAt = new Date();
       record.timeOut = null;
 
       const requiredFields = ['latitude', 'longitude', 'gpsStatus', 'selfieUrl', 'fingerprintVerified', 'dutyType', 'assignmentSite'];
@@ -162,6 +167,37 @@ export const clockInOut = async (req, res) => {
       if (!user) {
         return res.status(400).json({ success: false, error: 'Employee record not found for fingerprint verification.' });
       }
+
+      let offline = null;
+      if (offlineProof !== undefined && offlineProof !== null) {
+        offline = checkOfflineTimeIn({
+          offline: offlineProof,
+          record,
+          employeeId: user.employeeId,
+          registeredKey: user.nativeBiometricPublicKey,
+          sentAt: req.body.sentAt
+        });
+        if (offline.error) return res.status(offline.statusCode).json({ success: false, error: offline.error });
+        // The same offline Time In sent again (for example, when the answer to the first
+        // send was lost) gets the saved record back instead of a second record.
+        const saved = await DtrLog.findOfflineTimeIn(record.employeeId, offline.nonce);
+        if (saved) return res.status(200).json({ success: true, record: saved });
+        clockInAt = offline.timeInAt;
+      }
+      record.date = getManilaDateString(clockInAt);
+      record.timeIn = formatManilaClockTime(clockInAt);
+
+      // An online Time In that fails a check is refused, so the employee can fix it and try
+      // again. An offline one cannot be redone, so it is saved for HR to review instead.
+      // Returns true when the Time In was refused.
+      const failCheck = (statusCode, error, reviewReason = error) => {
+        if (offline) {
+          offline.reviewReasons.push(reviewReason);
+          return false;
+        }
+        res.status(statusCode).json({ success: false, error });
+        return true;
+      };
 
       const normalizedAssignment = normalizeAttendanceAssignment({
         dutyType: record.dutyType,
@@ -208,25 +244,25 @@ export const clockInOut = async (req, res) => {
         ? isWithinAssignedLocation(record.latitude, record.longitude, resolvedAssignment)
         : distance <= GEO_THRESHOLD_METERS;
 
-      if (!record.assignmentMatch) {
-        return res.status(400).json({
-          success: false,
-          error: resolvedAssignment
-            ? `GPS is outside the selected assignment area: ${resolvedAssignment.label}. Move to the assigned location and retry.`
-            : `Assigned location mismatch. Distance is ${distance} meters, which exceeds the ${GEO_THRESHOLD_METERS}m limit.`
-        });
+      if (!record.assignmentMatch && failCheck(400, resolvedAssignment
+        ? `GPS is outside the selected assignment area: ${resolvedAssignment.label}. Move to the assigned location and retry.`
+        : `Assigned location mismatch. Distance is ${distance} meters, which exceeds the ${GEO_THRESHOLD_METERS}m limit.`,
+      `The GPS at Time In was outside the assignment area (${distance} m from the center of ${record.location}).`)) {
+        return;
       }
 
       if (!record.selfieUrl) {
         return res.status(400).json({ success: false, error: 'Selfie verification is required for clock-in.' });
       }
 
-      const fingerprintProof = record.fingerprintVerified
+      // An offline Time In was checked against the phone's registered fingerprint key above.
+      const fingerprintProof = !offline && record.fingerprintVerified
         ? readVerificationProof(record.fingerprintProof, { employeeId: record.employeeId, type: 'fingerprint' })
         : null;
-      if (!fingerprintProof) {
+      if (!offline && !fingerprintProof) {
         return res.status(400).json({ success: false, error: 'A valid server biometric assertion is required for clock-in.' });
       }
+      if (offline) record.fingerprintVerified = offline.registeredKeyMatched;
 
       const storedHash = user.fingerprintHash || '';
       const providedHash = record.fingerprintHash || '';
@@ -258,52 +294,90 @@ export const clockInOut = async (req, res) => {
       if (!isValidFaceDescriptor(enrollmentDescriptor) && enrollment.image) {
         try {
           enrollmentDescriptor = await createFaceDescriptor(enrollment.image);
+          await User.saveApprovedFaceEnrollmentDescriptor(record.employeeId, enrollmentDescriptor);
         } catch (error) {
-          if (error instanceof FaceImageError) {
-            return res.status(409).json({
-              success: false,
-              error: 'The approved enrollment selfie cannot be processed for face matching. Contact HR to resubmit biometric enrollment.'
-            });
+          if (!(error instanceof FaceImageError)) throw error;
+          if (failCheck(409,
+            'The approved enrollment selfie cannot be processed for face matching. Contact HR to resubmit biometric enrollment.',
+            'The selfie could not be compared: the HR-approved enrollment selfie cannot be processed for face matching.')) {
+            return;
           }
-          throw error;
         }
-        await User.saveApprovedFaceEnrollmentDescriptor(record.employeeId, enrollmentDescriptor);
       }
+      let faceMatch = null;
       if (!isValidFaceDescriptor(enrollmentDescriptor)) {
-        return res.status(409).json({ success: false, error: 'The approved enrollment selfie cannot be used for face matching. Contact HR to resubmit biometric enrollment.' });
+        if (failCheck(409,
+          'The approved enrollment selfie cannot be used for face matching. Contact HR to resubmit biometric enrollment.',
+          'The selfie could not be compared: the HR-approved enrollment selfie cannot be used for face matching.')) {
+          return;
+        }
+      } else {
+        try {
+          faceMatch = await compareEnrollmentToAttendance(enrollmentDescriptor, record.selfieUrl);
+        } catch (error) {
+          // Online, a selfie without a clear face is refused and retaken.
+          if (!(offline && error instanceof FaceImageError)) throw error;
+          offline.reviewReasons.push(`The selfie could not be compared with the enrollment selfie: ${error.message}`);
+        }
+        if (faceMatch && !faceMatch.matched) {
+          await User.addFaceVerificationAudit(record.employeeId, {
+            outcome: 'attendance-face-mismatch',
+            provider: 'local-face-api-v1'
+          });
+          if (failCheck(403,
+            'Your attendance selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.',
+            'The selfie did not match the HR-approved enrollment selfie.')) {
+            return;
+          }
+        }
       }
-      const faceMatch = await compareEnrollmentToAttendance(enrollmentDescriptor, record.selfieUrl);
-      if (!faceMatch.matched) {
-        await User.addFaceVerificationAudit(record.employeeId, {
-          outcome: 'attendance-face-mismatch',
-          provider: 'local-face-api-v1'
-        });
-        return res.status(403).json({
-          success: false,
-          error: 'Your attendance selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.'
-        });
-      }
-      // Each fingerprint verification can be used for only one Time In.
-      if (!(await User.consumeVerificationProof(user._id, fingerprintProof.jti))) {
+      // Each fingerprint verification can be used for only one Time In (an offline Time In
+      // was checked for this above).
+      if (!offline && !(await User.consumeVerificationProof(user._id, fingerprintProof.jti))) {
         return res.status(409).json({ success: false, error: 'This fingerprint verification was already used. Verify your fingerprint again.' });
       }
+      const faceVerified = faceMatch?.matched === true;
       const newLog = await DtrLog.create({
         ...record,
+        timeInAt: clockInAt,
         late: isLateClockIn(clockInAt),
-        faceVerified: true,
+        faceVerified,
         faceMatchConfidence: null,
-        faceMatchDistance: faceMatch.distance,
-        faceVerifiedAt: new Date(),
+        faceMatchDistance: faceMatch?.distance ?? null,
+        faceVerifiedAt: faceVerified ? new Date() : null,
         faceLivenessVerified: false,
         faceLivenessConfidence: 0,
         faceVerificationProvider: 'local-face-api-v1',
         faceLivenessProvider: 'not-used',
-        // Which registered fingerprint this Time In matched.
-        fingerprintMethod: fingerprintProof.method === 'phone-app' ? 'phone-app' : 'browser',
-        deviceId: ''
+        // Which registered fingerprint this Time In matched (offline Time Ins are only made
+        // in the phone app).
+        fingerprintMethod: offline || fingerprintProof.method === 'phone-app' ? 'phone-app' : 'browser',
+        deviceId: '',
+        offlineTimeIn: offline && {
+          recordedAt: offline.recordedAt,
+          syncedAt: new Date(),
+          phoneClockOffsetSeconds: offline.phoneClockOffsetSeconds,
+          nonce: offline.nonce,
+          reviewReasons: offline.reviewReasons,
+          decision: ''
+        }
       });
-      const sms = await sendAttendanceConfirmation(user,
-        `[DILG WorkMate] Clocked-In successfully on ${newLog.date} at ${newLog.timeIn} at ${newLog.location}. Have an outstanding day of service!`);
+      const needsReview = Boolean(offline?.reviewReasons.length);
+      if (needsReview) {
+        try {
+          await Announcement.createNotification({
+            title: 'Offline Time In for Review',
+            message: `${user.name || 'An employee'} timed in without internet on ${newLog.date} at ${newLog.timeIn}. It does not count in their DTR until you approve it in DTR Records. ${offline.reviewReasons.join(' ')}`,
+            type: 'attendance',
+            recipientRole: 'hr_admin'
+          });
+        } catch (error) {
+          console.error('Unable to notify HR about an offline Time In for review:', error);
+        }
+      }
+      const sms = await sendAttendanceConfirmation(user, !offline
+        ? `[DILG WorkMate] Clocked-In successfully on ${newLog.date} at ${newLog.timeIn} at ${newLog.location}. Have an outstanding day of service!`
+        : `[DILG WorkMate] Your Time In saved offline on ${newLog.date} at ${newLog.timeIn} at ${newLog.location} was received.${needsReview ? ' HR will review it before it counts in your DTR.' : ''}`);
       res.status(201).json({ success: true, record: newLog, sms });
     } else if (action === 'clock-out') {
       if (!record?.employeeId) {
@@ -318,16 +392,35 @@ export const clockInOut = async (req, res) => {
         const locationError = timeOutLocationError(activeLog.assignmentSite, record);
         if (locationError) return res.status(400).json({ success: false, error: locationError });
       }
-      const timeOutAt = resolveTimeOutMoment({ recordedOfflineAt: record.recordedOfflineAt, timeInAt: activeLog.createdAt });
+      // An offline Time In reaches the server after it happened, so its record is created
+      // later than its Time In.
+      const timeInAt = activeLog.timeInAt || activeLog.createdAt;
+      const timeOutAt = resolveTimeOutMoment({ recordedOfflineAt: record.recordedOfflineAt, timeInAt });
+      // A Time Out saved offline keeps the phone's time; HR checks it when the phone's clock
+      // looked wrong, and until then it is left out of the DTR.
+      const offline = checkOfflineTimeOut({ recordedOfflineAt: record.recordedOfflineAt, timeInAt, sentAt: req.body.sentAt });
       const closedLog = await DtrLog.closeActiveLog(formatManilaClockTime(timeOutAt), record.employeeId, record.date, {
         latitude: record.timeOutLatitude,
         longitude: record.timeOutLongitude,
         accuracy: record.timeOutGpsAccuracy
-      });
+      }, offline && { ...offline, syncedAt: new Date(), decision: '' });
       if (closedLog) {
         const employee = req.user?.accessLevel === 'employee' ? req.user : await User.findByEmployeeId(record.employeeId);
+        const needsReview = Boolean(offline?.reviewReasons.length);
+        if (needsReview) {
+          try {
+            await Announcement.createNotification({
+              title: 'Offline Time Out for Review',
+              message: `${employee?.name || closedLog.employeeName || 'An employee'} timed out without internet on ${closedLog.date} at ${closedLog.timeOut}. The Time Out is left out of their DTR until you approve it or enter the right Time Out in DTR Records. ${offline.reviewReasons.join(' ')}`,
+              type: 'attendance',
+              recipientRole: 'hr_admin'
+            });
+          } catch (error) {
+            console.error('Unable to notify HR about an offline Time Out for review:', error);
+          }
+        }
         const sms = await sendAttendanceConfirmation(employee,
-          `[DILG WorkMate] Clocked-Out recorded on ${getManilaDateString()} at ${closedLog.timeOut}. Operations sync complete for the day.`);
+          `[DILG WorkMate] Clocked-Out recorded on ${getManilaDateString()} at ${closedLog.timeOut}. ${needsReview ? 'HR will review this Time Out before it counts in your DTR.' : 'Operations sync complete for the day.'}`);
         res.status(200).json({ success: true, record: closedLog, sms });
       } else {
         res.status(400).json({ success: false, error: 'No active clock-in found to clock out.' });
@@ -346,7 +439,7 @@ export const clockInOut = async (req, res) => {
 
 export const bulkUpdateDtrHistory = async (req, res) => {
   try {
-    const updated = await DtrLog.bulkUpdate(req.body);
+    const updated = await DtrLog.bulkUpdate(req.body, { reviewer: req.user?.name || req.user?.email || 'HR/Admin' });
     res.status(200).json({ success: true, attendanceHistory: updated });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });

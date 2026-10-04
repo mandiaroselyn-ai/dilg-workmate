@@ -231,7 +231,7 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
           {cameraTest && !cameraTest.testing && <Message message={cameraTest} />}
         </Card>
 
-        <Card icon={CloudUpload} title="Offline records" description="A Time Out made without internet is saved on this phone and sent when you are back online.">
+        <Card icon={CloudUpload} title="Offline records" description="A Time In or Time Out made without internet in the WorkMate app is saved on this phone and sent when you are back online.">
           <p className="text-xs font-bold text-slate-700">
             {queued === null ? 'Checking...'
               : queued === 'unavailable' ? 'This browser cannot save records offline.'
