@@ -21,9 +21,24 @@ const faqs = [
     answer: 'Two things: (1) Biometric Enrollment approved by HR. Open Profile, then Biometric Enrollment, upload the front and back of your government ID, and take a selfie. The same tab shows whether HR has approved it. (2) Your fingerprint or face unlock registered on your phone. In a browser, tap Register this phone on the Biometric Enrollment tab. In the WorkMate app, your phone is registered the first time you verify your fingerprint on the Attendance page.'
   },
   {
+    topic: 'Getting started',
+    question: "Can I use WorkMate on a computer?",
+    answer: "Employees use WorkMate on a phone, in the browser or in the WorkMate app. The computer version is for Supervisors and HR."
+  },
+  {
+    topic: 'Attendance',
+    question: "How do I choose where I am working today?",
+    answer: "On the Attendance page, choose Office and then your office, Field and then the municipality and barangay, or Work from home. You must be at the site you choose: inside the barangay for Field, or within 150 meters of the office or your work-from-home address. Work from home works only after HR sets your approved work-from-home address."
+  },
+  {
     topic: 'Attendance',
     question: 'Why can I not Time In?',
-    answer: 'The message on the Attendance page says which check failed. Common reasons: you are Out of Range of your assigned work area; your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; or you have no internet. Time In needs an internet connection.'
+    answer: 'The message on the Attendance page says which check failed. Common reasons: you are Out of Range (not at the site you chose: outside the barangay for Field, or more than 150 meters from the office or work-from-home address); your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; or you have no internet. Time In needs an internet connection.'
+  },
+  {
+    topic: 'Attendance',
+    question: "Why did WorkMate Time In by itself?",
+    answer: "After you take your selfie and verify your fingerprint, WorkMate records your Time In by itself as soon as you are within range of the site you chose."
   },
   {
     topic: 'Attendance',
@@ -38,7 +53,7 @@ const faqs = [
   {
     topic: 'Attendance',
     question: 'Why does WorkMate use my location?',
-    answer: 'At Time In, your location confirms that you are at your assigned work area. While your shift is open (from Time In to Time Out), the app sends your location about once a minute while it is open, so HR can see field staff on the map. It does not send your location after Time Out.'
+    answer: 'At Time In, your location confirms that you are at the work site you chose. While your shift is open (from Time In to Time Out), the app sends your location about once a minute while it is open, so HR can see field staff on the map. It does not send your location after Time Out.'
   },
   {
     topic: 'Leave and travel',
@@ -61,9 +76,29 @@ const faqs = [
     answer: 'Open Documents. My Leave Applications has the CSC Form 6 of each leave and the files you attached, My Travel Orders has each Travel Order, and My Daily Time Records has your DTR (CSC Form No. 48) for each month. You can also export your DTR from the Attendance page.'
   },
   {
+    topic: 'Announcements and calendar',
+    question: "How do I confirm that I read an announcement?",
+    answer: "Open Announcements, tap Read Full Circular, then tap Acknowledge Receipt. WorkMate records that you read it."
+  },
+  {
+    topic: 'Announcements and calendar',
+    question: "Where do I see office events?",
+    answer: "Open Calendar from the menu. Upcoming events also appear on your Dashboard."
+  },
+  {
+    topic: 'Profile',
+    question: "How do I update my contact number or profile photo?",
+    answer: "Open Profile. Tap Update Personnel Information to change your name, position, contact number, office, and region. Tap your photo, then Upload Photo, to change it. Your government email and employee ID are managed by HR."
+  },
+  {
     topic: 'SMS and notifications',
     question: 'What updates do I get by SMS?',
     answer: 'A confirmation when you Time In and Time Out, and an update when your leave or travel request changes status. The SMS goes to the contact number in your Profile. The bell icon shows the same updates inside the app.'
+  },
+  {
+    topic: 'SMS and notifications',
+    question: "Where can I see the SMS WorkMate sent me?",
+    answer: "Tap the envelope icon at the top of the app. It lists the texts WorkMate sent to your number."
   },
   {
     topic: 'SMS and notifications',
@@ -74,6 +109,11 @@ const faqs = [
     topic: 'Account and password',
     question: 'I forgot my password. What do I do?',
     answer: 'Tap "Forgot password?" on the login screen. A personal email gets a reset link. DILG (@dilg.gov.ph) accounts are reset by HR: tap "Request password reset from HR" and HR gives you a temporary password. If you signed up with Google, log in with Continue with Google instead.'
+  },
+  {
+    topic: 'Account and password',
+    question: "How do I change my password?",
+    answer: "Open Settings, then Change password. If you signed up with Google and have no password yet, you can set one there."
   },
   {
     topic: 'Account and password',
