@@ -4,260 +4,246 @@
  */
 
 import React, { useState } from 'react';
-import { HelpCircle, Search, ChevronDown, ChevronUp, BookOpen, MessageSquare, PhoneCall, ShieldAlert, CheckCircle } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, HelpCircle, PhoneCall, Search, Send, ShieldCheck } from 'lucide-react';
+import { SUPPORT_DETAILS_MAX, SUPPORT_SUBJECT_MAX, SUPPORT_TOPICS } from '../../shared/supportTopics';
+import { apiFetch } from '../utils/api';
 
-export default function HelpView() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [openIndex, setOpenIndex] = useState(null);
-  const [ticketSubject, setTicketSubject] = useState('');
-  const [ticketCategory, setTicketCategory] = useState('Biometrics / Attendance');
-  const [ticketBody, setTicketBody] = useState('');
-  const [formSubmitted, setFormSubmitted] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
+// Answers match how WorkMate works; update them when a feature changes.
+const faqs = [
+  {
+    topic: 'Getting started',
+    question: 'I signed up. Why can I not log in yet?',
+    answer: 'New accounts wait for HR approval. You get an SMS (sign-up form) or an email (Continue with Google) once HR approves your account. To check, tap "Check account status" on the login screen.'
+  },
+  {
+    topic: 'Getting started',
+    question: 'What do I need before my first Time In?',
+    answer: 'Two things: (1) Biometric Enrollment approved by HR. Open Profile, then Biometric Enrollment, upload the front and back of your government ID, and take a selfie. (2) Your fingerprint or face unlock registered on your phone. Settings, under Time In setup, shows whether both are done.'
+  },
+  {
+    topic: 'Attendance',
+    question: 'Why can I not Time In?',
+    answer: 'The message on the Attendance page says which check failed. Common reasons: you are Out of Range of your assigned work area; your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; or you have no internet. Time In needs an internet connection.'
+  },
+  {
+    topic: 'Attendance',
+    question: 'Can I Time Out without internet?',
+    answer: 'Yes. Your Time Out is saved on your phone and sent automatically when you are back online. Settings, under Offline records, shows anything still waiting and has a Sync now button.'
+  },
+  {
+    topic: 'Attendance',
+    question: 'I forgot to Time Out, or my attendance record is wrong. What do I do?',
+    answer: 'Ask HR to correct it. HR can review and fix attendance records. Use the "Ask HR for help" form below and include the date.'
+  },
+  {
+    topic: 'Attendance',
+    question: 'Why does WorkMate use my location?',
+    answer: 'At Time In, your location confirms that you are at your assigned work area. While your shift is open (from Time In to Time Out), the app sends your location about once a minute while it is open, so HR can see field staff on the map. It does not send your location after Time Out.'
+  },
+  {
+    topic: 'Leave and travel',
+    question: 'What do the request statuses mean?',
+    answer: 'Draft: saved but not sent. Pending: waiting for HR. For Supervisor: HR checked it and sent it to the Supervisor. Approved or Rejected: the Supervisor\'s decision. Withdrawn: you took it back.'
+  },
+  {
+    topic: 'Leave and travel',
+    question: 'When are my leave credits deducted?',
+    answer: 'When the Supervisor approves your leave, its working days are deducted from your Vacation Leave or Sick Leave credits. Requests, under the Leave tab, shows your remaining credits.'
+  },
+  {
+    topic: 'Leave and travel',
+    question: 'Can I cancel a request?',
+    answer: 'Yes, while it is still Pending or For Supervisor: open it in Requests and tap Withdraw. For a request that is already approved, ask HR.'
+  },
+  {
+    topic: 'Documents',
+    question: 'Where do I get my CSC Form 6, Travel Order, or DTR?',
+    answer: 'Open Documents. My Leave Applications has the CSC Form 6 of each leave and the files you attached, My Travel Orders has each Travel Order, and My Daily Time Records has your DTR (CSC Form No. 48) for each month. You can also export your DTR from the Attendance page.'
+  },
+  {
+    topic: 'SMS and notifications',
+    question: 'What updates do I get by SMS?',
+    answer: 'A confirmation when you Time In and Time Out, and an update when your leave or travel request changes status. The SMS goes to the mobile number in Settings. The bell icon shows the same updates inside the app.'
+  },
+  {
+    topic: 'SMS and notifications',
+    question: 'Why am I not getting SMS?',
+    answer: 'Check that your mobile number in Settings is correct (for example, 0917 123 4567). If it is correct and you still get no SMS, tell HR, who can see whether each message was sent or failed.'
+  },
+  {
+    topic: 'Account and password',
+    question: 'I forgot my password. What do I do?',
+    answer: 'Tap "Forgot password?" on the login screen. A personal email gets a reset link. DILG (@dilg.gov.ph) accounts are reset by HR: tap "Request password reset from HR" and HR gives you a temporary password. If you signed up with Google, log in with Continue with Google instead.'
+  },
+  {
+    topic: 'Account and password',
+    question: 'Why was I logged out?',
+    answer: 'A session lasts 8 hours, and changing your password logs you out everywhere. Log in again. On a computer, tick "Remember me" to stay signed in after closing the browser.'
+  },
+  {
+    topic: 'App problems',
+    question: 'The camera or GPS does not work.',
+    answer: 'Allow the camera and location for WorkMate in your phone settings and turn on Location (GPS). Then open Settings, Phone permissions, and use Test GPS and Test camera.'
+  },
+  {
+    topic: 'App problems',
+    question: 'The app is stuck loading or looks outdated.',
+    answer: 'Check your internet connection, then close and reopen WorkMate. To get the newest version, open Settings, About WorkMate, and tap Check for update.'
+  }
+];
 
-  const faqs = [
-    {
-      category: "Attendance",
-      question: "Why can't I time in?",
-      answer: "Allow location and camera access, make sure you are within the assigned work area, and complete the required verification. If the issue continues, submit a support ticket with the exact error message."
-    },
-    {
-      category: "Attendance",
-      question: "How do I view my attendance?",
-      answer: "Open Attendance from the menu to view today's Time In, Time Out, Total Hours, monthly records, and attendance status."
-    },
-    {
-      category: "Requests",
-      question: "Where can I check my leave or travel request?",
-      answer: "Open Requests to submit a Leave Request or Travel Order and check its current status and approval updates."
-    },
-    {
-      category: "Documents",
-      question: "Where can I find my personnel documents?",
-      answer: "Open Documents and choose a category such as Personal Records, Employment Documents, Leave Documents, or Training Certificates. Uploaded files will appear under the matching category."
-    },
-    {
-      category: "Account Access",
-      question: "What should I do if I forget my password?",
-      answer: "Use Forgot password on the login screen and follow the reset instructions sent to your registered email address."
-    },
-    {
-      category: "Mobile App",
-      question: "Why is the mobile app stuck loading?",
-      answer: "Check your internet connection, confirm that the WorkMate service is available, then close and reopen the app. Include a screenshot and your device details in a support ticket if it persists."
+const TOPICS = [...new Set(faqs.map(faq => faq.topic))];
+
+const inputClass = 'w-full rounded-lg border border-slate-200 bg-white p-2.5 text-xs font-semibold text-slate-800 focus:border-[#1e40af] focus:outline-none focus:ring-2 focus:ring-blue-500/10';
+
+function AskHrForm({ user }) {
+  const [topic, setTopic] = useState(SUPPORT_TOPICS[0]);
+  const [subject, setSubject] = useState('');
+  const [details, setDetails] = useState('');
+  const [sending, setSending] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const submit = async event => {
+    event.preventDefault();
+    if (!subject.trim() || !details.trim()) {
+      setMessage({ error: true, text: 'Enter a subject and describe the problem.' });
+      return;
     }
-  ];
-
-  const filteredFaqs = faqs.filter(faq => 
-    faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    faq.answer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    faq.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleTicketSubmit = (e) => {
-    e.preventDefault();
-    if (!ticketSubject || !ticketBody) return;
-    setFormSubmitted(true);
-    setSuccessMsg('');
-    setTimeout(() => {
-      const ticketId = "TKT-" + Math.floor(Math.random() * 90000 + 10000);
-      setTicketSubject('');
-      setTicketBody('');
-      setFormSubmitted(false);
-      setSuccessMsg("DILG WorkMate Helpdesk Ticket submitted. Ticket ID: " + ticketId);
-      setTimeout(() => setSuccessMsg(''), 6000);
-    }, 1500);
+    setSending(true);
+    setMessage(null);
+    try {
+      const response = await apiFetch('/api/support-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, subject: subject.trim(), details: details.trim() })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to send your request. Please try again.');
+      setSubject('');
+      setDetails('');
+      const contact = user?.phoneNumber || user?.email;
+      setMessage({ text: `Sent to HR.${contact ? ` HR will follow up through ${contact}.` : ''}` });
+    } catch (error) {
+      setMessage({ error: true, text: error.message || 'Unable to send your request. Please try again.' });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-32 font-sans sm:p-6 sm:pb-8 lg:p-8">
-      {/* Visual Header Banner */}
-      <div className="bg-gradient-to-r from-[#1e40af] to-indigo-900 rounded-3xl p-6 text-white shadow-md relative overflow-hidden">
-        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 bg-white/5 blur-xl rounded-full"></div>
-        <div className="absolute left-1/3 bottom-0 translate-y-8 w-44 h-44 bg-blue-400/10 blur-lg rounded-full"></div>
-        
-        <div className="max-w-2xl space-y-2 relative z-10 text-left">
-          <span className="text-[10px] bg-sky-500/25 border border-sky-400/30 text-sky-200 px-3 py-1 rounded-full font-mono font-bold uppercase tracking-widest inline-flex items-center gap-1.5">
-            <BookOpen className="w-3 h-3" />
-            Employee Help & Support
+    <form onSubmit={submit} className="space-y-3">
+      <label className="block space-y-1 text-[10px] font-black uppercase tracking-wider text-slate-500" htmlFor="help-topic">What is it about?
+        <select id="help-topic" value={topic} onChange={event => setTopic(event.target.value)} className={inputClass}>
+          {SUPPORT_TOPICS.map(option => <option key={option}>{option}</option>)}
+        </select>
+      </label>
+      <label className="block space-y-1 text-[10px] font-black uppercase tracking-wider text-slate-500" htmlFor="help-subject">Subject
+        <input id="help-subject" type="text" value={subject} maxLength={SUPPORT_SUBJECT_MAX} onChange={event => setSubject(event.target.value)} placeholder="e.g. Out of Range inside the office" className={inputClass} />
+      </label>
+      <label className="block space-y-1 text-[10px] font-black uppercase tracking-wider text-slate-500" htmlFor="help-details">Details
+        <textarea id="help-details" rows={4} value={details} maxLength={SUPPORT_DETAILS_MAX} onChange={event => setDetails(event.target.value)} placeholder="What happened, when, and the exact message the app showed." className={inputClass} />
+      </label>
+      {message?.text && (
+        <p role="status" className={`rounded-lg px-3 py-2 text-xs font-bold ${message.error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{message.text}</p>
+      )}
+      <button type="submit" disabled={sending} className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e40af] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-800 disabled:cursor-wait disabled:opacity-60">
+        <Send className="h-3.5 w-3.5" />{sending ? 'Sending...' : 'Send to HR'}
+      </button>
+    </form>
+  );
+}
+
+export default function HelpView({ user }) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [openQuestion, setOpenQuestion] = useState(null);
+
+  const query = searchQuery.trim().toLowerCase();
+  const matches = faqs.filter(faq => !query || `${faq.topic} ${faq.question} ${faq.answer}`.toLowerCase().includes(query));
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 pb-32 font-sans sm:p-6 sm:pb-8 lg:p-8">
+      <div className="mx-auto w-full max-w-3xl space-y-4 text-left">
+        <div className="rounded-2xl bg-gradient-to-r from-[#1e40af] to-indigo-900 p-5 text-white shadow-md">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/25 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-sky-100">
+            <BookOpen className="h-3 w-3" />Help &amp; Support
           </span>
-          <h2 className="text-2xl font-extrabold tracking-tight">Need help with WorkMate?</h2>
-          <p className="text-xs text-blue-100/95 leading-relaxed font-semibold">
-            Find quick answers for attendance, requests, documents, and account access.
-          </p>
+          <h1 className="mt-2 text-xl font-extrabold tracking-tight">Need help with WorkMate?</h1>
+          <p className="mt-1 text-xs font-semibold leading-relaxed text-blue-100">Find answers about Time In, requests, documents, and your account. If you are still stuck, send your concern to HR.</p>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Helpdesk FAQs List FAQ */}
-        <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="text-left">
-              <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider font-mono flex items-center gap-2">
-                <HelpCircle className="w-4 h-4 text-[#1e40af]" />
-                Common Questions
-              </h3>
-              <p className="text-xs text-slate-500 mt-1 font-semibold">Quick answers for your employee account.</p>
-            </div>
-            {/* Search FAQ */}
-            <div className="relative max-w-xs w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-sm font-black text-slate-900"><HelpCircle className="h-4 w-4 text-[#1e40af]" />Common questions</h2>
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                type="text"
-                placeholder="Search resources..."
+                type="search"
+                aria-label="Search questions"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 pl-9 pr-4 py-2 placeholder-slate-405 focus:outline-none focus:ring-1 focus:ring-[#1e40af]/30 focus:border-[#1e40af] transition-all"
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder="Search, e.g. Time In, DTR, password"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs font-semibold text-slate-800 focus:border-[#1e40af] focus:outline-none focus:ring-2 focus:ring-blue-500/10"
               />
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 border-t border-slate-100 pt-1.5">
-            {filteredFaqs.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 font-bold text-xs">
-                No matching answers found. Try a different keyword.
+          {matches.length === 0 && <p className="rounded-xl bg-slate-50 p-6 text-center text-xs font-bold text-slate-500">No answers match. Try another word, or send your concern to HR below.</p>}
+          {TOPICS.map(topic => {
+            const questions = matches.filter(faq => faq.topic === topic);
+            if (!questions.length) return null;
+            return (
+              <div key={topic}>
+                <h3 className="mb-1 text-[10px] font-black uppercase tracking-widest text-slate-400">{topic}</h3>
+                <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100">
+                  {questions.map(faq => {
+                    const isOpen = openQuestion === faq.question;
+                    return (
+                      <li key={faq.question}>
+                        <button
+                          type="button"
+                          aria-expanded={isOpen}
+                          onClick={() => setOpenQuestion(isOpen ? null : faq.question)}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-xs font-bold text-slate-800 hover:text-[#1e40af]"
+                        >
+                          <span>{faq.question}</span>
+                          {isOpen ? <ChevronUp className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />}
+                        </button>
+                        {isOpen && <p className="px-3 pb-3 text-xs leading-5 text-slate-600">{faq.answer}</p>}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-            ) : (
-              filteredFaqs.map((faq, idx) => {
-                const isOpen = openIndex === idx;
-                return (
-                  <div key={idx} className="py-3.5 space-y-2 text-left">
-                    <button
-                      onClick={() => setOpenIndex(isOpen ? null : idx)}
-                      className="w-full flex items-center justify-between text-left font-bold text-xs text-slate-800 hover:text-[#1e40af] transition-colors gap-4"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <span className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-sans tracking-wide shrink-0">
-                          {faq.category}
-                        </span>
-                        <span>{faq.question}</span>
-                      </span>
-                      {isOpen ? <ChevronUp className="w-4 h-4 shrink-0 text-slate-400" /> : <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" />}
-                    </button>
-                    {isOpen && (
-                      <p className="text-xs text-slate-650 leading-relaxed pl-3 border-l-2 border-blue-500 bg-slate-50/50 p-2.5 rounded-lg animate-in fade-in duration-200 font-semibold text-left">
-                        {faq.answer}
-                      </p>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
+            );
+          })}
+        </section>
 
-        {/* Contact Support Ticket Form */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-5 h-fit text-left">
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div>
-            <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wider font-mono flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-[#1e40af]" />
-              Submit Helpdesk Ticket
-            </h3>
-            <p className="text-xs text-slate-500 mt-1 font-semibold">Send an issue to the support team for follow-up.</p>
+            <h2 className="flex items-center gap-2 text-sm font-black text-slate-900"><Send className="h-4 w-4 text-[#1e40af]" />Ask HR for help</h2>
+            <p className="mt-0.5 text-xs text-slate-500">HR gets your concern in WorkMate with your mobile number and email, so they can follow up.</p>
           </div>
+          <AskHrForm user={user} />
+        </section>
 
-          <form onSubmit={handleTicketSubmit} className="space-y-4">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-550 uppercase tracking-wider mb-1.5 ">Category</label>
-              <select
-                value={ticketCategory}
-                onChange={(e) => setTicketCategory(e.target.value)}
-                className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-808 p-2.5 outline-none focus:ring-1 focus:ring-[#1e40af] focus:border-[#1e40af]"
-              >
-                <option value="Biometrics / Attendance">Biometrics / Attendance</option>
-                <option value="GPS & Boundary Accuracy">GPS & Boundary Accuracy</option>
-                <option value="Employee Profile Updates">Employee Profile Updates</option>
-                <option value="Official Communications">Official Communications</option>
-                <option value="Other System Bug">Other System Bug</option>
-              </select>
-            </div>
+        <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <h2 className="flex items-center gap-2 text-sm font-black text-slate-900"><PhoneCall className="h-4 w-4 text-[#1e40af]" />Contact the office</h2>
+          <p className="text-xs text-slate-600">DILG Provincial Office hotline: <span className="select-all font-bold text-slate-900">(042) 332-1543</span></p>
+          <p className="text-xs text-slate-500">Monday to Friday, 8:00 AM to 5:00 PM</p>
+        </section>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Subject Heading</label>
-              <input
-                type="text"
-                placeholder="e.g. Inaccurate location tagging"
-                value={ticketSubject}
-                onChange={(e) => setTicketSubject(e.target.value)}
-                required
-                className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-808 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#1e40af]/10 focus:border-[#1e40af]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-550 uppercase tracking-wider mb-1.5">Detailed Complaint/Query</label>
-              <textarea
-                placeholder="Indicate municipal coordinates or error behavior..."
-                value={ticketBody}
-                onChange={(e) => setTicketBody(e.target.value)}
-                required
-                rows={4}
-                className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-808 placeholder-slate-400 outline-none focus:ring-2 focus:ring-[#1e40af]/10 focus:border-[#1e40af] resize-none"
-              ></textarea>
-            </div>
-
-            {successMsg && (
-              <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 p-3 rounded-lg text-xs font-semibold flex items-center gap-2 select-none text-left">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={formSubmitted}
-              className="w-full bg-[#1e40af] hover:bg-blue-800 disabled:bg-slate-200 text-white font-bold text-xs py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 shadow transition-all cursor-pointer font-semibold"
-            >
-              {formSubmitted ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Filing Ticket ...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  <span>Submit Ticket</span>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
-
-      {/* Immediate Emergency Contacts Card */}
-      <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200/60 bg-slate-50 p-5 text-left md:grid-cols-3 md:gap-6 md:p-6">
-        <div className="flex items-start gap-3.5">
-          <div className="mt-1 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[#1e40af] shrink-0">
-            <PhoneCall className="w-4 h-4" />
-          </div>
-          <div>
-            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wide">DILG Provincial Hotline</h4>
-            <p className="text-xs font-bold text-[#1e40af] mt-0.5">(042) 332-1543</p>
-            <p className="text-[10px] text-slate-500 font-medium">Available Monday to Friday, 8AM to 5PM</p>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-3.5">
-          <div className="mt-1 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[#1e40af] shrink-0">
-            <MessageSquare className="w-4 h-4" />
-          </div>
-          <div>
-            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wide">Workmate IT Helpdesk</h4>
-            <p className="text-xs font-bold text-[#1e40af] mt-0.5">support@dilg-marinduque.gov.ph</p>
-            <p className="text-[10px] text-slate-500 font-medium">Hashed queries solved within 24 hours</p>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-3.5">
-          <div className="mt-1 w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
-            <ShieldAlert className="w-4 h-4" />
-          </div>
-          <div>
-            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wide">Legal & Audit Compliance</h4>
-            <p className="text-xs font-bold text-rose-600 mt-0.5">compliance@dilg.gov.ph</p>
-            <p className="text-[10px] text-slate-500 font-medium">Authorized personnel reporting line</p>
-          </div>
-        </div>
+        <section id="privacy" className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <h2 className="flex items-center gap-2 text-sm font-black text-slate-900"><ShieldCheck className="h-4 w-4 text-[#1e40af]" />Privacy notice</h2>
+          <p className="text-xs leading-5 text-slate-600">WorkMate collects the following to record your attendance and process your requests, in line with the Data Privacy Act of 2012 (Republic Act No. 10173):</p>
+          <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">
+            <li>Your name, employee ID, position, office, email, and mobile number.</li>
+            <li>Your government ID photos and enrollment selfie, which HR reviews.</li>
+            <li>Your Time In selfie, which is compared with your enrollment selfie.</li>
+            <li>Your location at Time In and Time Out, and while your shift is open.</li>
+            <li>Your leave and travel requests and their attachments.</li>
+          </ul>
+          <p className="text-xs leading-5 text-slate-600">Your fingerprint or face unlock stays on your phone. WorkMate receives only a confirmation that it matched. Your records are seen by HR, and your requests by the Supervisor who decides them. To ask about or correct your data, contact HR.</p>
+        </section>
       </div>
     </div>
   );

@@ -92,6 +92,9 @@ export const isQueuedForOwner = (item, owner) => {
   );
 };
 
+// How many of the signed-in employee's records are saved on this device, waiting to sync.
+export const countQueuedAttendance = async owner => (await readQueue()).filter(item => isQueuedForOwner(item, owner)).length;
+
 export const syncQueuedAttendance = async (onRecord, owner) => {
   const queuedItems = (await readQueue()).filter(item => isQueuedForOwner(item, owner));
   for (const item of queuedItems) {

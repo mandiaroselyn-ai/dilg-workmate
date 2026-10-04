@@ -9,6 +9,10 @@ export default defineConfig(() => {
 
   return {
     root: path.resolve(__dirname),
+    // When this version of the app was built, shown in the employee's Settings.
+    define: {
+      __APP_BUILD_DATE__: JSON.stringify(new Date().toISOString())
+    },
     plugins: [
       react(),
       tailwindcss(),

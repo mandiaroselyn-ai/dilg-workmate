@@ -111,35 +111,47 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    const applySyncedRecord = (action, record) => {
-      setAttendanceHistory(previous => {
-        if (action === 'clock-out') {
-          return previous.map(item => item.id === record.id || (item.employeeId === record.employeeId && !item.timeOut && item.date === record.date) ? record : item);
-        }
-        return [record, ...previous];
-      });
-    };
+  const applySyncedRecord = useCallback((action, record) => {
+    setAttendanceHistory(previous => {
+      if (action === 'clock-out') {
+        return previous.map(item => item.id === record.id || (item.employeeId === record.employeeId && !item.timeOut && item.date === record.date) ? record : item);
+      }
+      return [record, ...previous];
+    });
+  }, []);
 
+  // Sends the owner's attendance records saved on this device. A sync already running is
+  // reused, so the timer and the Settings "Sync now" button never send a record twice.
+  const offlineSyncRef = useRef(null);
+  const syncOfflineAttendance = useCallback(owner => {
+    if (!offlineSyncRef.current) {
+      offlineSyncRef.current = syncQueuedAttendance(applySyncedRecord, owner).finally(() => {
+        offlineSyncRef.current = null;
+      });
+    }
+    return offlineSyncRef.current;
+  }, [applySyncedRecord]);
+
+  useEffect(() => {
     // Only sync while someone is signed in, and only their own queued records, so a
     // queued Time Out is never rejected (and dropped) for lack of a session or sent
     // under another person's account.
     if (!authToken || (!user?.employeeId && !user?.email)) return undefined;
     const owner = { employeeId: user.employeeId, email: user.email };
-    const syncOfflineAttendance = () => {
-      syncQueuedAttendance(applySyncedRecord, owner).catch(error => {
+    const syncNow = () => {
+      syncOfflineAttendance(owner).catch(error => {
         console.warn('Offline attendance sync unavailable:', error);
       });
     };
 
-    window.addEventListener('online', syncOfflineAttendance);
-    syncOfflineAttendance();
-    const syncId = window.setInterval(syncOfflineAttendance, 15000);
+    window.addEventListener('online', syncNow);
+    syncNow();
+    const syncId = window.setInterval(syncNow, 15000);
     return () => {
-      window.removeEventListener('online', syncOfflineAttendance);
+      window.removeEventListener('online', syncNow);
       window.clearInterval(syncId);
     };
-  }, [authToken, user?.employeeId, user?.email]);
+  }, [authToken, user?.employeeId, user?.email, syncOfflineAttendance]);
 
   useEffect(() => {
     if (!profileToast) return;
@@ -1219,6 +1231,13 @@ export default function App() {
     handleViewChange(isRequest ? (activeRole === 'supervisor' ? 'supervisor' : 'hr_leave_records') : 'hr_employees');
   };
 
+  // Opens the employee's Profile on one tab ('profile' or 'biometric'), for the links in
+  // Settings.
+  const handleOpenProfileTab = tab => {
+    setViewFocus({ visit: viewVisit + 1, profileTab: tab });
+    handleViewChange('profile');
+  };
+
   // Hides every current notification; only newer ones appear afterwards.
   const handleDismissNotifications = () => {
     fetch('/api/notifications/dismiss', { method: 'POST' })
@@ -1572,20 +1591,23 @@ export default function App() {
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}
               onRefreshEnrollmentStatus={handleRefreshBiometricStatus}
+              initialTab={focus?.profileTab}
             />
           )}
 
           {currentView === 'settings' && (
             <SettingsView
-              smsNumber={user.phoneNumber}
-              onUpdateSMSNumber={(num) => handleUpdateUser({ ...user, phoneNumber: num })}
-              hasPassword={user.hasPassword !== false}
-              onClearLocalHistories={handleClearLocalHistories}
+              user={user}
+              onUpdateUser={handleUpdateUser}
+              onOpenProfileTab={handleOpenProfileTab}
+              onViewChange={handleViewChange}
+              onSyncOfflineAttendance={() => syncOfflineAttendance({ employeeId: user.employeeId, email: user.email })}
+              onLogout={handleLogout}
             />
           )}
 
           {currentView === 'help' && (
-            <HelpView />
+            <HelpView user={user} />
           )}
           </Suspense>
         </main>

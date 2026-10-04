@@ -27,7 +27,8 @@ import {
 import BiometricEnrollmentView from './BiometricEnrollmentView';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 
-export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
+// `initialTab` ('profile' or 'biometric') is the tab a link from Settings opens.
+export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus, initialTab = 'profile' }) {
   const [name, setName] = useState(user.name);
   const [role, setRole] = useState(user.role);
   const [phoneNumber, setPhoneNumber] = useState(user.phoneNumber);
@@ -38,7 +39,7 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
-  const [activeProfileTab, setActiveProfileTab] = useState('profile');
+  const [activeProfileTab, setActiveProfileTab] = useState(initialTab === 'biometric' ? 'biometric' : 'profile');
 
   // Avatar and Camera Upload States
   const [profilePicture, setProfilePicture] = useState(user.profilePicture || '');

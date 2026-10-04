@@ -4,308 +4,379 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import ChangePasswordCard from './ChangePasswordCard';
 import {
-  Sliders,
-  Bell,
-  Mail,
-  Shield,
-  CheckCircle,
+  Camera,
+  CheckCircle2,
+  CircleAlert,
+  CloudUpload,
+  Fingerprint,
   HelpCircle,
-  Compass,
-  FileText,
-  Lock,
-  Globe,
-  AlertTriangle,
-  UserCheck
+  Info,
+  LogOut,
+  MapPin,
+  MessageSquare,
+  RefreshCw,
+  ScanFace,
+  Settings,
+  UserRound
 } from 'lucide-react';
+import ChangePasswordCard from './ChangePasswordCard';
+import { countQueuedAttendance } from '../utils/offlineAttendance';
 
-export default function SettingsView({ smsNumber, onUpdateSMSNumber, hasPassword = true }) {
-  const [geofenceRadius, setGeofenceRadius] = useState(150);
-  const [disableGeofenceMock, setDisableGeofenceMock] = useState(false);
-  const [enableSMSDispatch, setEnableSMSDispatch] = useState(true);
-  const [enableSoundAlerts, setEnableSoundAlerts] = useState(true);
-  const [cscFormSync, setCscFormSync] = useState(true);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  
-  // Simulated official division configurations
-  const [selectedRegion, setSelectedRegion] = useState("Region IV-B (Mimaropa)");
-  const [assignedOffice, setAssignedOffice] = useState("DILG Provincial LGU Coordination Office - Marinduque");
-  const [cscApprover, setCscApprover] = useState("Atty. Manuel G. Santos, Regional Director");
+// The same rule as the sign-up form: 09XXXXXXXXX or +639XXXXXXXXX.
+const isPhilippineMobile = value => /^(09|\+?639)\d{9}$/.test(String(value).replace(/[\s()-]/g, ''));
+// Time In needs a GPS fix this accurate (the server checks it too).
+const TIME_IN_ACCURACY_METERS = 50;
+const BUILD_DATE = typeof __APP_BUILD_DATE__ === 'string' ? __APP_BUILD_DATE__ : '';
 
-  // The number is edited locally and saved once on Save, not on every keystroke.
-  const [smsDraft, setSmsDraft] = useState(smsNumber || '');
-  useEffect(() => {
-    setSmsDraft(smsNumber || '');
-  }, [smsNumber]);
+const formatDate = value => {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+};
 
-  const handleSave = (e) => {
-    e.preventDefault();
-    const nextNumber = smsDraft.trim();
-    if (nextNumber !== (smsNumber || '')) onUpdateSMSNumber(nextNumber);
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-    }, 3000);
+const ENROLLMENT_STATUS = {
+  'not-submitted': { label: 'Not submitted', ok: false },
+  pending: { label: 'Waiting for HR review', ok: false },
+  'hr-approved': { label: 'Approved by HR', ok: true },
+  rejected: { label: 'Rejected by HR', ok: false }
+};
+
+const PERMISSION_LABELS = { granted: 'Allowed', denied: 'Blocked', prompt: 'Not yet allowed', unknown: 'Checked when you use it' };
+
+const Card = ({ icon: Icon, title, description, children }) => (
+  <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-5">
+    <div className="flex items-start gap-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1e40af]">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <h2 className="text-sm font-black text-slate-900">{title}</h2>
+        {description && <p className="mt-0.5 text-xs leading-5 text-slate-500">{description}</p>}
+      </div>
+    </div>
+    {children}
+  </section>
+);
+
+const StatusRow = ({ icon: Icon, label, value, ok, note, children }) => (
+  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="flex items-center gap-2 text-xs font-bold text-slate-700"><Icon className="h-4 w-4 text-slate-500" />{label}</span>
+      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-black ${ok ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+        {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}{value}
+      </span>
+    </div>
+    {note && <p className="mt-1.5 text-[11px] leading-4 text-slate-500">{note}</p>}
+    {children && <div className="mt-2 flex flex-wrap gap-2">{children}</div>}
+  </div>
+);
+
+const Button = ({ children, onClick, disabled, primary = false, danger = false, type = 'button' }) => (
+  <button
+    type={type}
+    onClick={onClick}
+    disabled={disabled}
+    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+      primary ? 'bg-[#1e40af] text-white hover:bg-blue-800'
+        : danger ? 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50'
+          : 'border border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:text-blue-700'
+    }`}
+  >
+    {children}
+  </button>
+);
+
+const Message = ({ message }) => (message?.text
+  ? <p role="status" className={`rounded-lg px-3 py-2 text-xs font-bold ${message.error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{message.text}</p>
+  : null);
+
+// Asks the browser whether WorkMate may use location or the camera. Browsers that cannot
+// tell answer 'unknown'; the permission is then asked when the employee uses it.
+const queryPermission = async name => {
+  try {
+    const status = await navigator.permissions?.query({ name });
+    return status?.state || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+};
+
+export default function SettingsView({ user = {}, onUpdateUser, onOpenProfileTab, onViewChange, onSyncOfflineAttendance, onLogout }) {
+  const owner = { employeeId: user.employeeId, email: user.email };
+
+  // SMS number
+  const [mobile, setMobile] = useState(user.phoneNumber || '');
+  const [savingMobile, setSavingMobile] = useState(false);
+  const [mobileMessage, setMobileMessage] = useState(null);
+  useEffect(() => setMobile(user.phoneNumber || ''), [user.phoneNumber]);
+
+  const saveMobile = async event => {
+    event.preventDefault();
+    const next = mobile.trim();
+    if (next && !isPhilippineMobile(next)) {
+      setMobileMessage({ error: true, text: 'Enter a Philippine mobile number, such as 0917 123 4567.' });
+      return;
+    }
+    setSavingMobile(true);
+    setMobileMessage(null);
+    const saved = await onUpdateUser({ phoneNumber: next });
+    setSavingMobile(false);
+    if (saved) {
+      setMobileMessage({ text: next ? 'Saved. WorkMate will text this number.' : 'Saved. You will not get SMS until you add a number.' });
+    }
   };
 
+  // Time In readiness
+  const enrollment = ENROLLMENT_STATUS[user.biometricEnrollmentStatus] || ENROLLMENT_STATUS['not-submitted'];
+  const inPhoneApp = typeof window !== 'undefined' && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
+  const fingerprintRegistered = inPhoneApp ? Boolean(user.hasPhoneFingerprint) : Boolean(user.hasBrowserFingerprint);
+  const fingerprintDate = formatDate(inPhoneApp ? user.nativeBiometricRegisteredAt : user.webauthnRegisteredAt);
+
+  // Phone permissions
+  const [permissions, setPermissions] = useState({ geolocation: 'unknown', camera: 'unknown' });
+  const [gpsTest, setGpsTest] = useState(null); // { testing } or a message
+  const [cameraTest, setCameraTest] = useState(null);
+  const refreshPermissions = async () => {
+    const [geolocation, camera] = await Promise.all([queryPermission('geolocation'), queryPermission('camera')]);
+    setPermissions({ geolocation, camera });
+  };
+  useEffect(() => { refreshPermissions(); }, []);
+
+  const testGps = () => {
+    if (!navigator.geolocation) {
+      setGpsTest({ error: true, text: 'This phone or browser cannot share its location.' });
+      return;
+    }
+    setGpsTest({ testing: true, text: 'Finding your location...' });
+    navigator.geolocation.getCurrentPosition(position => {
+      const accuracy = Math.round(position.coords.accuracy || 0);
+      setGpsTest(accuracy <= TIME_IN_ACCURACY_METERS
+        ? { text: `Accuracy: ${accuracy} m. Good enough for Time In (${TIME_IN_ACCURACY_METERS} m or better is needed).` }
+        : { error: true, text: `Accuracy: ${accuracy} m. Too weak for Time In, which needs ${TIME_IN_ACCURACY_METERS} m or better. Move outdoors or near a window, wait a moment, and test again.` });
+      refreshPermissions();
+    }, error => {
+      setGpsTest({
+        error: true,
+        text: error.code === 1
+          ? 'Location is blocked. Allow location for WorkMate in your phone settings, then test again.'
+          : 'Your location could not be found. Turn on Location (GPS), move outdoors or near a window, and test again.'
+      });
+      refreshPermissions();
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  };
+
+  const testCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraTest({ error: true, text: 'This phone or browser cannot use the camera here.' });
+      return;
+    }
+    setCameraTest({ testing: true, text: 'Opening the camera...' });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      stream.getTracks().forEach(track => track.stop());
+      setCameraTest({ text: 'The camera works.' });
+    } catch (error) {
+      setCameraTest({
+        error: true,
+        text: error?.name === 'NotAllowedError'
+          ? 'The camera is blocked. Allow the camera for WorkMate in your phone settings, then test again.'
+          : 'The camera could not be opened. Close other apps using the camera and test again.'
+      });
+    }
+    refreshPermissions();
+  };
+
+  // Offline records
+  const [queued, setQueued] = useState(null); // number, or 'unavailable'
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const recount = async () => {
+    try {
+      const count = await countQueuedAttendance(owner);
+      setQueued(count);
+      return count;
+    } catch {
+      setQueued('unavailable');
+      return null;
+    }
+  };
+  useEffect(() => {
+    recount();
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+    // Counted when Settings opens; Sync now counts again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const syncNow = async () => {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      await onSyncOfflineAttendance();
+      const left = await recount();
+      setSyncMessage(left ? { error: true, text: 'Some records could not be sent yet. WorkMate keeps trying while the app is open.' } : { text: 'All records are synced.' });
+    } catch {
+      setSyncMessage({ error: true, text: 'Unable to sync right now. WorkMate keeps trying while the app is open.' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // App updates
+  const [updateMessage, setUpdateMessage] = useState(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const checkForUpdate = async () => {
+    setCheckingUpdate(true);
+    setUpdateMessage(null);
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      if (!registration) {
+        window.location.reload();
+        return;
+      }
+      await registration.update();
+      setUpdateMessage(registration.installing || registration.waiting
+        ? { text: 'A new version is downloading. WorkMate reloads by itself when it is ready.' }
+        : { text: 'You have the latest version.' });
+    } catch {
+      setUpdateMessage({ error: true, text: 'Unable to check for updates. Check your internet connection and try again.' });
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/50 p-4 pb-32 font-sans text-left sm:p-6 sm:pb-8 lg:p-8">
-      
-      {/* Top Advisory Banner */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Terminal Authenticated Session</span>
+    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 pb-32 font-sans sm:p-6 sm:pb-8 lg:p-8">
+      <div className="mx-auto w-full max-w-2xl space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#1e40af] text-white shadow-sm">
+            <Settings className="h-5 w-5" />
           </div>
-          <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide">
-            Employee Settings
-          </h2>
-          <p className="text-xs text-slate-505">
-            Manage your attendance, notifications, and employee account preferences.
-          </p>
+          <div>
+            <h1 className="text-lg font-extrabold text-slate-900">Settings</h1>
+            <p className="text-xs text-slate-500">Your account, Time In setup, and app information.</p>
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-100 bg-blue-50 text-[#1e40af] text-xs font-bold">
-          <Shield className="w-4 h-4 text-[#1e40af]" />
-          <span>CSC-Compliant V.2026</span>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Main Settings Form */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 p-6 shadow-sm rounded-2xl space-y-6">
-          <form onSubmit={handleSave} className="space-y-6">
-            <div className="border-b border-slate-100 pb-3">
-              <h3 className="font-extrabold text-slate-800 text-md flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-[#1e40af]" />
-                Attendance & Notification Preferences
-              </h3>
-              <p className="text-xs text-slate-505 mt-1">Update the preferences used by your employee workspace.</p>
-            </div>
-
-            <div className="space-y-6 text-xs text-slate-600 font-bold">
-              
-              {/* Geofencing Slider Configuration */}
-              <div className="p-4 bg-slate-50 rounded-xl space-y-3.5 border border-slate-200 text-left">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Compass className="w-4 h-4 text-[#1e40af]" />
-                    <h4 className="text-xs font-extrabold uppercase text-slate-800 tracking-wider">
-                      Attendance Location Radius
-                    </h4>
-                  </div>
-                  <span className="text-[9px] bg-blue-50 text-[#1e40af] border border-blue-100 px-2 py-0.5 rounded font-mono uppercase font-bold">
-                    Attendance setting
-                  </span>
-                </div>
-                <p className="text-[11px] text-[#475569] leading-relaxed font-semibold max-w-2xl font-sans">
-                  The maximum physical distance allowed between the officer's real-time mobile coordinates and the target municipal LGU administrative structure for the system to validate attendance records.
-                </p>
-                
-                <div className="space-y-2.5 max-w-md pt-2">
-                  <div className="flex justify-between items-center text-xs font-mono text-slate-550">
-                    <span>Min Tolerance: 50m</span>
-                    <span className="text-[#1e40af] font-black underline">Active limit: {geofenceRadius} meters</span>
-                    <span>Max Tolerance: 500m</span>
-                  </div>
-                  <input
-                    id="slider-geofence"
-                    type="range"
-                    min="50"
-                    max="500"
-                    step="25"
-                    value={geofenceRadius}
-                    onChange={(e) => setGeofenceRadius(Number(e.target.value))}
-                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1e40af]"
-                  />
-                  <p className="text-[10px] text-slate-400 italic leading-normal font-medium">
-                    Your attendance is validated using your assigned work location.
-                  </p>
-                </div>
+        <Card icon={UserRound} title="Account" description="To change these details, edit your profile or ask HR.">
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-100 bg-slate-100 text-xs">
+            {[
+              ['Name', user.name],
+              ['Employee ID', user.employeeId],
+              ['Position', user.role],
+              ['Office', user.office],
+              ['Email', user.email]
+            ].map(([label, value]) => (
+              <div key={label} className={`bg-white p-2.5 ${label === 'Email' ? 'col-span-2' : ''}`}>
+                <dt className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</dt>
+                <dd className="mt-0.5 break-words font-bold text-slate-800">{value || 'Not recorded'}</dd>
               </div>
+            ))}
+          </dl>
+          <Button onClick={() => onOpenProfileTab('profile')}><UserRound className="h-3.5 w-3.5" />Edit profile</Button>
+        </Card>
 
-              {/* Grid 2x2 for parameters list */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                
-                {/* CSC Directives */}
-                <div className="space-y-4">
-                  <h4 className="font-extrabold text-slate-705 uppercase tracking-wider text-[11px] flex items-center gap-2 border-b border-slate-100 pb-1.5 matches-csc-audit">
-                    <FileText className="w-4 h-4 text-[#1e40af]" />
-                    Attendance Preferences
-                  </h4>
-
-                  <div className="space-y-3 font-medium text-slate-600">
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        id="opt-csc-sync"
-                        type="checkbox"
-                        checked={cscFormSync}
-                        onChange={(e) => setCscFormSync(e.target.checked)}
-                        className="w-4.5 h-4.5 text-[#1e40af] border-slate-355 bg-slate-50 rounded focus:ring-blue-500 cursor-pointer accent-[#1e40af] mt-0.5"
-                      />
-                      <div className="text-xs">
-                        <span className="block font-bold text-slate-705">DTR synchronization</span>
-                        <span className="text-[10px] text-slate-500 block mt-0.5 leading-relaxed font-semibold">Keep your attendance records ready for official DTR processing.</span>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        id="opt-sound"
-                        type="checkbox"
-                        checked={enableSoundAlerts}
-                        onChange={(e) => setEnableSoundAlerts(e.target.checked)}
-                        className="w-4.5 h-4.5 text-[#1e40af] border-slate-355 bg-slate-50 rounded focus:ring-blue-500 cursor-pointer accent-[#1e40af] mt-0.5"
-                      />
-                      <div className="text-xs">
-                        <span className="block font-bold text-slate-705">Attendance sound alerts</span>
-                        <span className="text-[10px] text-slate-500 block mt-0.5 leading-relaxed font-semibold">Play a sound after successful attendance verification.</span>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Secure SMS Gateway / Advisories */}
-                <div className="space-y-4">
-                  <h4 className="font-extrabold text-slate-705 uppercase tracking-wider text-[11px] flex items-center gap-2 border-b border-slate-100 pb-1.5">
-                    <Mail className="w-4 h-4 text-sky-600" />
-                    Notification Preferences
-                  </h4>
-
-                  <div className="space-y-3 font-medium text-slate-600">
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <input
-                        id="opt-sms"
-                        type="checkbox"
-                        checked={enableSMSDispatch}
-                        onChange={(e) => setEnableSMSDispatch(e.target.checked)}
-                        className="w-4.5 h-4.5 text-blue-600 border-slate-300 bg-slate-50 rounded focus:ring-blue-500 cursor-pointer accent-[#1e40af] mt-0.5"
-                      />
-                      <div className="text-xs">
-                        <span className="block font-bold text-slate-705">SMS notifications</span>
-                        <span className="text-[10px] text-slate-500 block mt-0.5 leading-relaxed font-semibold">Receive attendance and official account updates by SMS.</span>
-                      </div>
-                    </label>
-
-                    {enableSMSDispatch && (
-                      <div className="space-y-1.5 pl-7 animate-in fade-in duration-200">
-                        <label className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">Your mobile number</label>
-                        <input
-                          id="input-sms-number"
-                          type="text"
-                          required
-                          value={smsDraft}
-                          onChange={(e) => setSmsDraft(e.target.value)}
-                           placeholder="+63 917 123 4567"
-                          className="w-48 text-xs font-bold rounded-lg border border-slate-200 p-2 focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] bg-slate-50 text-slate-800 placeholder:text-slate-400 font-semibold"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-              </div>
-
+        <Card icon={MessageSquare} title="SMS number" description="WorkMate texts this number when you Time In or Time Out and when your leave or travel request is updated.">
+          <form onSubmit={saveMobile} className="space-y-2">
+            <label htmlFor="settings-mobile" className="block text-[10px] font-black uppercase tracking-wider text-slate-500">Mobile number</label>
+            <div className="flex flex-wrap gap-2">
+              <input
+                id="settings-mobile"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={mobile}
+                onChange={event => setMobile(event.target.value)}
+                placeholder="0917 123 4567"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-800 focus:border-[#1e40af] focus:outline-none focus:ring-2 focus:ring-blue-500/10"
+              />
+              <Button type="submit" primary disabled={savingMobile || mobile.trim() === (user.phoneNumber || '')}>{savingMobile ? 'Saving...' : 'Save'}</Button>
             </div>
-
-            {saveSuccess && (
-              <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-3.5 rounded-xl text-xs font-bold flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Government portal parameters committed successfully to local browser registry.</span>
-              </div>
-            )}
-
-            {/* Action Trigger Row */}
-            <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-xs">
-              <span className="text-slate-405 font-medium font-sans">Changes apply to this employee account.</span>
-              <button
-                id="btn-settings-save"
-                type="submit"
-                className="px-5 py-3 bg-[#1e40af] hover:bg-blue-800 transition-all text-white font-bold text-xs rounded-lg cursor-pointer shadow-xs flex items-center gap-1.5 font-semibold border-0"
-              >
-                <CheckCircle className="w-3.5 h-3.5 text-white" />
-                <span>Save Settings</span>
-              </button>
-            </div>
+            <Message message={mobileMessage} />
           </form>
-        </div>
+        </Card>
 
-        {/* Official Office Details and Security Metadata (Right column) */}
-        <div className="space-y-8 text-left">
-          
-          {/* Government LGU Coordination Info Card */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-            <h4 className="font-extrabold text-slate-805 text-xs uppercase tracking-wider font-mono border-b border-slate-100 pb-2.5 flex items-center gap-2">
-              <Globe className="w-4 h-4 text-blue-600" />
-              Official Assignee Details
-            </h4>
+        <Card icon={Fingerprint} title="Time In setup" description="You need all of these before your first Time In.">
+          <StatusRow
+            icon={ScanFace}
+            label="Biometric enrollment (ID and selfie)"
+            value={enrollment.label}
+            ok={enrollment.ok}
+            note={user.biometricEnrollmentStatus === 'rejected' && user.biometricEnrollmentReviewNote ? `HR's note: ${user.biometricEnrollmentReviewNote}` : enrollment.ok ? '' : 'Your Time In selfie is compared with the selfie HR approves here.'}
+          >
+            {!enrollment.ok && <Button onClick={() => onOpenProfileTab('biometric')}>Open Biometric Enrollment</Button>}
+          </StatusRow>
+          <StatusRow
+            icon={Fingerprint}
+            label="Fingerprint or face unlock on this phone"
+            value={fingerprintRegistered ? 'Registered' : 'Not registered'}
+            ok={fingerprintRegistered}
+            note={inPhoneApp
+              ? (fingerprintRegistered
+                ? `Registered${fingerprintDate ? ` on ${fingerprintDate}` : ''}. If you change phones, the Attendance page asks you to register the new one.`
+                : 'The WorkMate app registers this phone the first time you verify your fingerprint on the Attendance page.')
+              : (fingerprintRegistered
+                ? `Registered${fingerprintDate ? ` on ${fingerprintDate}` : ''}. Register again only if you changed phones.`
+                : 'Register your phone in Biometric Enrollment. Your fingerprint stays on your phone.')}
+          >
+            {!inPhoneApp && <Button onClick={() => onOpenProfileTab('biometric')}>{fingerprintRegistered ? 'Changed phones?' : 'Register this phone'}</Button>}
+          </StatusRow>
+        </Card>
 
-            <div className="space-y-3 font-mono text-[11px]">
-              <div>
-                <span className="text-slate-400 block text-[9px] uppercase font-bold">Registered Region Office</span>
-                <select 
-                  value={selectedRegion}
-                  onChange={(e) => setSelectedRegion(e.target.value)}
-                  className="mt-1 w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-800 focus:outline-none"
-                >
-                  <option value="Region IV-B (Mimaropa)">Region IV-B (Mimaropa)</option>
-                  <option value="Region IV-A (Calabarzon)">Region IV-A (Calabarzon)</option>
-                  <option value="Region NCR (National Capital)">Region NCR (National Capital)</option>
-                </select>
-              </div>
+        <Card icon={MapPin} title="Phone permissions" description="Time In needs your location and camera. Test them here if Time In does not work.">
+          <StatusRow icon={MapPin} label="Location" value={PERMISSION_LABELS[permissions.geolocation] || PERMISSION_LABELS.unknown} ok={permissions.geolocation === 'granted'}>
+            <Button onClick={testGps} disabled={gpsTest?.testing}>{gpsTest?.testing ? 'Testing...' : 'Test GPS'}</Button>
+          </StatusRow>
+          {gpsTest && !gpsTest.testing && <Message message={gpsTest} />}
+          <StatusRow icon={Camera} label="Camera" value={PERMISSION_LABELS[permissions.camera] || PERMISSION_LABELS.unknown} ok={permissions.camera === 'granted'}>
+            <Button onClick={testCamera} disabled={cameraTest?.testing}>{cameraTest?.testing ? 'Testing...' : 'Test camera'}</Button>
+          </StatusRow>
+          {cameraTest && !cameraTest.testing && <Message message={cameraTest} />}
+        </Card>
 
-              <div>
-                <span className="text-slate-400 block text-[9px] uppercase font-bold">LGU Sub-Office Assignment</span>
-                <input
-                  type="text"
-                  value={assignedOffice}
-                  onChange={(e) => setAssignedOffice(e.target.value)}
-                  className="mt-1 w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-800 focus:outline-none"
-                />
-              </div>
+        <Card icon={CloudUpload} title="Offline records" description="A Time Out made without internet is saved on this phone and sent when you are back online.">
+          <p className="text-xs font-bold text-slate-700">
+            {queued === null ? 'Checking...'
+              : queued === 'unavailable' ? 'This browser cannot save records offline.'
+                : queued === 0 ? 'Nothing is waiting to sync.'
+                  : `${queued} record${queued === 1 ? '' : 's'} saved on this phone, waiting to sync.`}
+          </p>
+          {!online && <p className="text-[11px] font-semibold text-amber-700">You are offline. Records sync when you are back online.</p>}
+          {typeof queued === 'number' && queued > 0 && (
+            <Button onClick={syncNow} disabled={syncing || !online}><RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />{syncing ? 'Syncing...' : 'Sync now'}</Button>
+          )}
+          <Message message={syncMessage} />
+        </Card>
 
-              <div>
-                <span className="text-slate-400 block text-[9px] uppercase font-bold">Authorized CSC Signing Approver</span>
-                <input
-                  type="text"
-                  value={cscApprover}
-                  onChange={(e) => setCscApprover(e.target.value)}
-                  className="mt-1 w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-800 focus:outline-none"
-                />
-              </div>
+        <ChangePasswordCard hasPassword={user.hasPassword !== false} />
 
-              <div className="pt-2 bg-blue-50/50 p-2.5 rounded border border-blue-100 text-[10px] text-slate-600 leading-normal font-sans">
-                ⚠️ Information provided above formats the auto-generated monthly DTR PDF and oficial personnel lists. Ensure credentials match your Civil Service appointment document.
-              </div>
-            </div>
+        <Card icon={Info} title="About WorkMate" description={BUILD_DATE ? `This version was released on ${formatDate(BUILD_DATE)}.` : ''}>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={checkForUpdate} disabled={checkingUpdate}><RefreshCw className={`h-3.5 w-3.5 ${checkingUpdate ? 'animate-spin' : ''}`} />{checkingUpdate ? 'Checking...' : 'Check for update'}</Button>
+            <Button onClick={() => onViewChange('help')}><HelpCircle className="h-3.5 w-3.5" />Help, FAQ, and privacy notice</Button>
           </div>
+          <Message message={updateMessage} />
+        </Card>
 
-          {/* Secure Technical System Audit & Protocol Compliance */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3 text-left">
-            <h4 className="font-extrabold text-slate-805 text-xs uppercase tracking-wider font-mono flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-emerald-600" />
-              Cybersecurity Compliance
-            </h4>
-            <div className="space-y-2 text-[11px] text-slate-550 leading-relaxed font-sans font-medium">
-              <div className="flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 px-2 py-1 rounded">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>DESKTOP ID Tagged Secure</span>
-              </div>
-              <p className="leading-relaxed font-semibold">
-                In compliance with DICT security memorandum, all biometric face scan tokens and physical thumb fingerprints are stored under sandboxed environment using high-entropy SHA256 hashing. No biometrics are exported over insecure cloud networks.
-              </p>
+        <Card icon={LogOut} title="Log out" description="Log out when you are done on a shared phone or computer.">
+          {confirmingLogout ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">Log out of WorkMate on this device?</span>
+              <Button danger onClick={onLogout}><LogOut className="h-3.5 w-3.5" />Log out</Button>
+              <Button onClick={() => setConfirmingLogout(false)}>Cancel</Button>
             </div>
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div className="mt-6">
-        <ChangePasswordCard hasPassword={hasPassword} />
+          ) : (
+            <Button danger onClick={() => setConfirmingLogout(true)}><LogOut className="h-3.5 w-3.5" />Log out of this device</Button>
+          )}
+        </Card>
       </div>
     </div>
   );
