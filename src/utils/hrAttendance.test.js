@@ -11,6 +11,7 @@ import {
   isOfflineTimeOutPending,
   mergeAttendanceMonth,
   mergeRecentAttendance,
+  monthAttendanceSummary,
   recordsForEmployees,
   requestCoversDate,
   totalHoursWorked
@@ -107,6 +108,31 @@ test('an offline Time Out with a doubtful phone clock counts once HR approves or
   assert.equal(dtrIssue(corrected, today), null);
   // The Time In still counts while its Time Out waits.
   assert.equal(countsInDtr(pending), true);
+});
+
+test('the month so far counts each day once, by where the employee worked', () => {
+  // October 2026: the 1st is a Thursday; today is Thursday the 8th, before Time In.
+  const day = (date, extra = {}) => ({ employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', date, timeIn: '08:00 AM', timeOut: '05:00 PM', status: 'Present', ...extra });
+  const records = [
+    day('2026-10-01', { dutyType: 'office' }),
+    day('2026-10-02', { dutyType: 'field' }),
+    day('2026-10-03', { dutyType: 'field' }), // Saturday, worked
+    day('2026-10-05', { dutyType: 'wfh' }),
+    day('2026-10-06', { dutyType: 'field', late: true, timeIn: '08:30 AM' })
+  ];
+  const requests = [{ type: 'Travel Order', status: 'Approved', employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', startDate: '2026-10-07' }];
+  assert.deepEqual(monthAttendanceSummary(rimhelyn, { records, requests, today: '2026-10-08' }), {
+    present: 1, wfh: 1, field: 2, late: 1, leave: 1, absent: 0, rate: 100
+  });
+
+  // Without the travel order, the 7th is absent; today is still not counted.
+  assert.deepEqual(monthAttendanceSummary(rimhelyn, { records, requests: [], today: '2026-10-08' }), {
+    present: 1, wfh: 1, field: 2, late: 1, leave: 0, absent: 1, rate: 83
+  });
+
+  // No records at all: every past workday is absent, and the first morning has no rate yet.
+  assert.equal(monthAttendanceSummary(rimhelyn, { records: [], today: '2026-10-08' }).absent, 5);
+  assert.equal(monthAttendanceSummary(rimhelyn, { records: [], today: '2026-10-01' }).rate, null);
 });
 
 test('total hours run from Time In to Time Out', () => {

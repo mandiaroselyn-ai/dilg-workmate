@@ -1,30 +1,24 @@
 /**
  * @license
- * SPDX-License-Identifier: Apache-2.5
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState, useEffect } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import {
-  ArrowRight,
   CalendarDays,
-  Check,
   Clock,
   FileCheck,
-  LogIn,
-  LogOut,
   MapPin,
   Plane,
-  Megaphone,
   ShieldCheck,
   BookOpen,
-  Users,
-  ChevronRight,
-  PhoneCall
+  ChevronRight
 } from 'lucide-react';
 import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { monthAttendanceSummary } from '../utils/hrAttendance';
 
 const DashboardSection = ({ title, actionLabel, onAction, meta, children }) => (
   <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -60,13 +54,37 @@ const TileButton = ({ icon: Icon, label, onClick, bgClass = 'bg-slate-50', textC
   </button>
 );
 
+const STATUS_COLORS = {
+  Approved: 'bg-emerald-100 text-emerald-700',
+  Pending: 'bg-amber-100 text-amber-700',
+  Rejected: 'bg-rose-100 text-rose-700',
+  Withdrawn: 'bg-slate-200 text-slate-600',
+  Draft: 'bg-slate-200 text-slate-600'
+};
+
+// A request's dates, such as "Oct 5" or "Oct 5 – Oct 7".
+const requestDates = request => {
+  const format = value => {
+    const day = typeof value === 'string' ? value.slice(0, 10) : '';
+    return /^\d{4}-\d{2}-\d{2}$/.test(day)
+      ? new Date(`${day}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : '';
+  };
+  const start = format(request.startDate);
+  const end = format(request.endDate);
+  return end && end !== start ? `${start} – ${end}` : start;
+};
+
+// Leave balances accrue in fractions (1.25 days a month), so "15.0" or "16.25", never "16.25.0".
+const formatDays = value => (Number.isInteger(value) ? value.toFixed(1) : String(Number(value.toFixed(3))));
+
 const ProgressRow = ({ title, value, max, color }) => {
   const percent = Math.round((value / max) * 100);
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm font-semibold text-slate-700">
         <span>{title}</span>
-        <span>{value}.0 days</span>
+        <span>{formatDays(value)} days</span>
       </div>
       <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
         <div className={`${color} h-full rounded-full`} style={{ width: `${percent}%` }} />
@@ -89,7 +107,6 @@ export default function DashboardView({
 
   const today = getManilaDateString();
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user)) || {};
-  const isOnDuty = todayRecord?.timeIn && !todayRecord?.timeOut;
 
   const formatDuration = (startTime, endTime) => {
     try {
@@ -164,8 +181,6 @@ export default function DashboardView({
     year: 'numeric'
   });
   const personalRequests = requests.filter((request) => matchesAttendanceEmployee(request, user));
-  const pendingRequests = personalRequests.filter((req) => req.status === 'Pending');
-  const approvedLeaveRequests = personalRequests.filter((request) => request.type === 'Leave Request' && request.status === 'Approved');
   const personalAttendanceHistory = attendanceHistory.filter((record) => matchesAttendanceEmployee(record, user));
   // The server keeps each balance and deducts approved leave, so it is already the
   // remaining balance. Balances can exceed one year's 15 days when credits accumulate.
@@ -173,32 +188,16 @@ export default function DashboardView({
     { title: 'Vacation Leave', available: Number(user?.vacationLeaveCredits ?? 15), color: 'bg-[#0B4EA2]' },
     { title: 'Sick Leave', available: Number(user?.sickLeaveCredits ?? 15), color: 'bg-emerald-600' }
   ].map((credit) => {
-    const used = approvedLeaveRequests
-      .filter((request) => (request.leaveType || '').toLowerCase().includes(credit.title.toLowerCase().replace(' leave', '')))
-      .reduce((total, request) => total + Number(request.workingDays || 0), 0);
     const remaining = Math.max(0, credit.available);
-    return { ...credit, used, remaining, max: Math.max(15, remaining) };
+    return { ...credit, remaining, max: Math.max(15, remaining) };
   });
-  const recentDocs = [
-    { id: 'doc-1', title: 'Memorandum Circular 2026-015', subtitle: 'May 29, 2026 • PDF' },
-    { id: 'doc-2', title: 'Travel Order - Lucena Seminar', subtitle: 'May 27, 2026 • PDF' },
-    { id: 'doc-3', title: 'Service Record Summary', subtitle: 'May 26, 2026 • PDF' }
-  ];
 
   // Upcoming Events lists the next three events from today on; announcements show newest first.
   const upcomingEvents = events
     .filter(event => (event.date || '') >= today)
     .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''))
     .slice(0, 3);
-  const displayEvents = upcomingEvents;
   const newestAnnouncements = [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const dashboardAnnouncements = newestAnnouncements;
-
-  const currentAssignment = todayRecord.workAssignment || {
-    location: 'Boac, Marinduque',
-    barangayLgu: 'Barangay Mand LGU Coordination',
-    task: 'Barangay Monitoring and LGU Coordination'
-  };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans">
@@ -284,30 +283,29 @@ export default function DashboardView({
                 </p>
               ) : personalRequests.slice(0, 3).map((request) => {
                 const isLeave = request.type === 'Leave Request';
-                const r = {
-                  id: request.id,
-                  label: isLeave ? 'Leave' : 'Travel Order',
-                  status: request.status || 'Pending',
-                  color: request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700',
-                  icon: isLeave ? FileCheck : Plane,
-                  iconBg: isLeave ? 'bg-amber-50' : 'bg-emerald-50',
-                  iconText: isLeave ? 'text-amber-700' : 'text-emerald-700'
-                };
-                const Icon = r.icon;
+                const status = request.status || 'Pending';
+                const Icon = isLeave ? FileCheck : Plane;
+                const details = [
+                  isLeave && request.leaveType && request.leaveType !== 'N/A' ? request.leaveType : '',
+                  requestDates(request)
+                ].filter(Boolean).join(' · ');
                 return (
                   <button
-                    key={r.id}
+                    key={request.id}
                     onClick={() => onViewChange('requests')}
-                    className="w-full rounded-[18px] border border-slate-200 bg-slate-50 p-4 flex items-center justify-between hover:shadow-sm"
+                    className="w-full rounded-[18px] border border-slate-200 bg-slate-50 p-4 flex items-center justify-between gap-3 text-left hover:shadow-sm"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className={`inline-flex items-center justify-center rounded-2xl w-10 h-10 ${r.iconBg} shadow-sm`}>
-                        <Icon className={`w-5 h-5 ${r.iconText}`} />
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className={`inline-flex shrink-0 items-center justify-center rounded-2xl w-10 h-10 ${isLeave ? 'bg-amber-50' : 'bg-emerald-50'} shadow-sm`}>
+                        <Icon className={`w-5 h-5 ${isLeave ? 'text-amber-700' : 'text-emerald-700'}`} />
                       </div>
-                      <div className="text-sm font-semibold text-slate-900">{r.label}</div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-slate-900">{isLeave ? 'Leave' : 'Travel Order'}</div>
+                        {details && <div className="truncate text-xs text-slate-500">{details}</div>}
+                      </div>
                     </div>
-                    <div className={`inline-flex items-center gap-2 ${r.color} px-3 py-1 rounded-full text-sm font-bold`}>
-                      <span>{r.status}</span>
+                    <div className={`inline-flex shrink-0 items-center gap-2 ${STATUS_COLORS[status] || STATUS_COLORS.Pending} px-3 py-1 rounded-full text-sm font-bold`}>
+                      <span>{status}</span>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-700" />
                     </div>
                   </button>
@@ -315,8 +313,6 @@ export default function DashboardView({
               })}
             </div>
           </DashboardSection>
-
-          {/* Removed Pending Requests and Announcements sections per request */}
 
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <div className="space-y-3">
@@ -336,63 +332,34 @@ export default function DashboardView({
 
               <DashboardSection title="Attendance This Month">
                 {(() => {
-                  const now = new Date();
-                  const year = now.getFullYear();
-                  const monthIndex = now.getMonth();
-                  const ym = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
-                  const monthRecords = personalAttendanceHistory.filter((r) => r.date && r.date.startsWith(ym));
-                  const todayDate = new Date(year, monthIndex, now.getDate());
-                  const elapsedWorkdays = Array.from({ length: todayDate.getDate() }, (_, index) => {
-                    const date = new Date(year, monthIndex, index + 1);
-                    return date.getDay() !== 0 && date.getDay() !== 6;
-                  }).filter(Boolean).length;
-
-                  const wfhCount = monthRecords.filter((r) => /wfh/i.test(r.mode || '') || /wfh/i.test(r.status || '')).length;
-                  const fieldCount = monthRecords.filter((r) => /field/i.test(r.mode || '') || /field/i.test(r.status || '')).length;
-                  const lateCount = monthRecords.filter((r) => Boolean(r.late) || /late/i.test(r.status || '')).length;
-                  const presentCount = monthRecords.filter((r) => {
-                    const attended = (r.timeIn && r.timeOut) || /present/i.test(r.status || '');
-                    const isWfh = /wfh/i.test(r.mode || '') || /wfh/i.test(r.status || '');
-                    const isField = /field/i.test(r.mode || '') || /field/i.test(r.status || '');
-                    return attended && !isWfh && !isField && !r.late && !/late/i.test(r.status || '');
-                  }).length;
-                  const attendedDates = new Set(
-                    monthRecords
-                      .filter((r) => r.timeIn || r.status || r.mode)
-                      .map((r) => r.date)
-                  );
-                  const absentCount = monthRecords.length > 0
-                    ? Math.max(0, elapsedWorkdays - attendedDates.size)
-                    : 0;
-
+                  const summary = monthAttendanceSummary(user, { records: personalAttendanceHistory, requests: personalRequests, today });
                   const segments = [
-                    { key: 'Present', value: presentCount, color: '#10b981' },
-                    { key: 'WFH', value: wfhCount, color: '#2563eb' },
-                    { key: 'Field Work', value: fieldCount, color: '#f97316' },
-                    { key: 'Late', value: lateCount, color: '#f59e0b' },
-                    { key: 'Absent', value: absentCount, color: '#ef4444' }
+                    { key: 'Present', value: summary.present, color: '#10b981' },
+                    { key: 'WFH', value: summary.wfh, color: '#2563eb' },
+                    { key: 'Field Work', value: summary.field, color: '#f97316' },
+                    { key: 'Late', value: summary.late, color: '#f59e0b' },
+                    { key: 'On Leave / Travel', value: summary.leave, color: '#8b5cf6' },
+                    { key: 'Absent', value: summary.absent, color: '#ef4444' }
                   ];
 
-                  const total = Math.max(elapsedWorkdays, segments.reduce((sum, item) => sum + item.value, 0), 1);
-                  const presentDegrees = (presentCount / total) * 360;
-                  const wfhDegrees = (wfhCount / total) * 360;
-                  const fieldDegrees = (fieldCount / total) * 360;
-                  const lateDegrees = (lateCount / total) * 360;
-                  const absentDegrees = (absentCount / total) * 360;
-                  const attendanceRate = elapsedWorkdays ? (
-                    ((presentCount + wfhCount + fieldCount + lateCount) / elapsedWorkdays) * 100
-                  ).toFixed(0) : '0';
+                  // Each kind of day takes its share of the ring; a month with no days yet is gray.
+                  const total = segments.reduce((sum, item) => sum + item.value, 0);
+                  let start = 0;
+                  const slices = segments.filter(item => item.value > 0).map(item => {
+                    const end = start + (item.value / total) * 360;
+                    const slice = `${item.color} ${start}deg ${end}deg`;
+                    start = end;
+                    return slice;
+                  });
 
                   return (
                     <div className="mt-3 flex flex-wrap items-center justify-center gap-8 md:justify-start">
                       <div
                         className="relative h-44 w-44 shrink-0 rounded-full"
-                        style={{
-                          background: `conic-gradient(#10b981 0deg ${presentDegrees}deg, #2563eb ${presentDegrees}deg ${presentDegrees + wfhDegrees}deg, #f97316 ${presentDegrees + wfhDegrees}deg ${presentDegrees + wfhDegrees + fieldDegrees}deg, #f59e0b ${presentDegrees + wfhDegrees + fieldDegrees}deg ${presentDegrees + wfhDegrees + fieldDegrees + lateDegrees}deg, #ef4444 ${presentDegrees + wfhDegrees + fieldDegrees + lateDegrees}deg 360deg)`
-                        }}
+                        style={{ background: slices.length ? `conic-gradient(${slices.join(', ')})` : '#e2e8f0' }}
                       >
                         <div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white shadow-inner">
-                          <strong className="text-2xl font-black text-slate-900">{attendanceRate}%</strong>
+                          <strong className="text-2xl font-black text-slate-900">{summary.rate === null ? '--' : `${summary.rate}%`}</strong>
                           <span className="text-[10px] font-bold text-slate-500">Monthly Rate</span>
                         </div>
                       </div>
@@ -416,7 +383,7 @@ export default function DashboardView({
 
             <DashboardSection title="Announcements" actionLabel="View All" onAction={() => onViewChange('announcements')}>
               <div className="space-y-3">
-                {dashboardAnnouncements.slice(0, 3).map((ann) => (
+                {newestAnnouncements.slice(0, 3).map((ann) => (
                   <button
                     key={ann.id}
                     onClick={() => onViewChange('announcements')}
@@ -426,14 +393,14 @@ export default function DashboardView({
                     <p className="mt-1 text-[12px] text-slate-600">{ann.content || ann.description}</p>
                   </button>
                 ))}
-                {dashboardAnnouncements.length === 0 && <p className="text-sm text-slate-500">No announcements available.</p>}
+                {newestAnnouncements.length === 0 && <p className="text-sm text-slate-500">No announcements available.</p>}
               </div>
             </DashboardSection>
 
             <DashboardSection title="Upcoming Events" actionLabel="See Calendar" onAction={() => onViewChange('calendar')}>
               <div className="space-y-3">
-                {displayEvents.length === 0 && <p className="text-sm text-slate-500">No upcoming events.</p>}
-                {displayEvents.map((event) => (
+                {upcomingEvents.length === 0 && <p className="text-sm text-slate-500">No upcoming events.</p>}
+                {upcomingEvents.map((event) => (
                   <div key={event.id} className="rounded-[18px] border border-slate-200 bg-slate-50 p-4">
                     <p className="text-sm font-semibold text-slate-900">{event.title}</p>
                     <p className="mt-1 text-[12px] text-slate-600">{new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {event.time}</p>
@@ -445,7 +412,6 @@ export default function DashboardView({
 
           </div>
 
-          {/* Quick Links and Emergency Contacts removed per request */}
         </div>
       </div>
     </div>

@@ -50,6 +50,34 @@ export const employeeDayStatus = (employee, { records = [], requests = [], date 
   return { status: 'Absent', record };
 };
 
+// An employee's attendance this month up to `today` (YYYY-MM-DD), one count per day:
+// Present (office), WFH, Field Work, Late, On Leave/Travel (approved), or Absent. Each
+// Monday to Friday counts; a weekend counts only when the employee timed in. Today counts
+// once the employee has timed in or is on leave, not while the day has not started. The
+// rate is the days attended out of the days the employee was expected at work.
+export const monthAttendanceSummary = (employee, { records = [], requests = [], today }) => {
+  const [year, month, lastDay] = today.split('-').map(Number);
+  const counts = { present: 0, wfh: 0, field: 0, late: 0, leave: 0, absent: 0 };
+  for (let day = 1; day <= lastDay; day += 1) {
+    const date = `${today.slice(0, 8)}${String(day).padStart(2, '0')}`;
+    const weekend = [0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
+    const { status, record } = employeeDayStatus(employee, { records, requests, date });
+    if (status === 'Absent') {
+      if (!weekend && date !== today) counts.absent += 1;
+    } else if (status === 'On Leave' || status === 'On Travel') {
+      if (!weekend) counts.leave += 1;
+    } else if (status === 'Late') {
+      counts.late += 1;
+    } else {
+      const dutyType = record?.dutyType || record?.workAssignment?.assignmentRole;
+      counts[dutyType === 'wfh' ? 'wfh' : dutyType === 'field' ? 'field' : 'present'] += 1;
+    }
+  }
+  const attended = counts.present + counts.wfh + counts.field + counts.late;
+  const expected = attended + counts.absent;
+  return { ...counts, rate: expected ? Math.round((attended / expected) * 100) : null };
+};
+
 // Whether a record has a Time In selfie. HR's lists leave the selfie out and say so with
 // hasSelfie; an employee's own records carry the selfie itself.
 export const hasSelfie = record => Boolean(record?.hasSelfie || record?.selfieUrl);

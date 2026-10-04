@@ -37,15 +37,15 @@ export default function AttendanceTodayCard({
   const recordLocation = todayRecord?.location;
   const locationLabel = recordLocation ? shortenLocation(recordLocation) : 'Not recorded';
   const geoVerified = todayRecord?.gpsStatus && String(todayRecord.gpsStatus).toLowerCase().includes('in');
+  // Before Time In there is no GPS check yet, so it is not shown as a failure.
+  const geoTag = !todayRecord?.timeIn
+    ? { text: 'Geo-tag at Time In', className: 'bg-slate-100 text-slate-500', textClassName: 'text-slate-500' }
+    : geoVerified
+      ? { text: 'Geo-tag Verified', className: 'bg-emerald-50 text-emerald-700', textClassName: 'text-emerald-700' }
+      : { text: 'Geo-tag Not Verified', className: 'bg-rose-50 text-rose-700', textClassName: 'text-rose-700' };
 
-  // Infer mode: WFH, Field, or Office
-  const mode = (() => {
-    if (todayRecord?.mode) return String(todayRecord.mode).toLowerCase();
-    if (todayRecord?.status && /wfh|work from home/i.test(todayRecord.status)) return 'wfh';
-    if (todayRecord?.workAssignment && todayRecord.workAssignment.task && /field/i.test(String(todayRecord.workAssignment.task))) return 'field';
-    if (todayRecord?.workAssignment && todayRecord.workAssignment.location && /home/i.test(String(todayRecord.workAssignment.location))) return 'wfh';
-    return null;
-  })();
+  // Where the employee chose to work at Time In: office, wfh, or field.
+  const mode = todayRecord?.dutyType || todayRecord?.workAssignment?.assignmentRole || todayRecord?.assignmentSite?.mode || null;
 
   return (
     <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-sm">
@@ -71,10 +71,10 @@ export default function AttendanceTodayCard({
             )}
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${geoVerified ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+            <div className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${geoTag.className}`}>
               <Check className="w-3 h-3" />
             </div>
-            <div className={`text-xs font-medium ${geoVerified ? 'text-emerald-700' : 'text-rose-700'}`}>{geoVerified ? 'Geo-tag Verified' : 'Geo-tag Not Verified'}</div>
+            <div className={`text-xs font-medium ${geoTag.textClassName}`}>{geoTag.text}</div>
           </div>
         </div>
       </div>
