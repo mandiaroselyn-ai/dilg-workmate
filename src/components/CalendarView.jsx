@@ -19,18 +19,7 @@ import {
 } from 'lucide-react';
 
 export default function CalendarView({ events, onAddEvent }) {
-  // Use fallback sample events when `events` prop is empty (useful in local/dev without backend)
-  let evtList = events && events.length ? events : [];
-  try {
-    if (!evtList || evtList.length === 0) {
-      // lazy import to avoid circular issues
-      // eslint-disable-next-line global-require
-      const { DEFAULT_EVENTS } = require('../data');
-      evtList = DEFAULT_EVENTS;
-    }
-  } catch (e) {
-    // ignore if data import fails
-  }
+  const evtList = events && events.length ? events : [];
   // Opens on today's month with today selected (Philippine time).
   const today = getManilaDateString(); // YYYY-MM-DD
   const [currentYear, setCurrentYear] = useState(() => Number(today.slice(0, 4)));

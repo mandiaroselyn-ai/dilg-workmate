@@ -18,25 +18,34 @@ DILG WorkMate simplifies administrative workflows, dynamic digital signature pla
 
 ```bash
 dilg-workmate/
+├── api/                      # Vercel serverless functions that run the Express API
 ├── backend/
-│   ├── src/
-│   │   ├── config/
-│   │   ├── controllers/
-│   │   ├── middleware/
-│   │   ├── models/
-│   │   ├── routes/
-│   │   └── index.js
-│   └── data/
+│   ├── scripts/              # maintenance scripts (password migration, barangay map, user checks)
+│   └── src/
+│       ├── config/
+│       ├── controllers/
+│       ├── middleware/
+│       ├── models/
+│       ├── routes/
+│       ├── services/
+│       ├── utils/
+│       ├── app.js            # the Express API, used locally and on Vercel
+│       └── index.js          # local server
 ├── frontend/
 │   └── package.json          # thin wrapper for root scripts
+├── mobile/                   # Android employee app (Expo shell around the web app)
+├── shared/                   # code used by both the web app and the backend
 ├── src/
+│   ├── assets/
 │   ├── components/
+│   ├── utils/
 │   ├── App.jsx
 │   ├── main.jsx
 │   └── index.css
 ├── public/
 ├── scripts/
 ├── package.json
+├── vercel.json
 ├── vite.config.ts
 └── README.md
 ```
