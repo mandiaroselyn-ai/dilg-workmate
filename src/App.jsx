@@ -1506,8 +1506,9 @@ export default function App() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main viewport flow */}
-      <div className="app-frame flex-1 flex flex-col h-screen relative z-10">
+      {/* Main viewport flow. min-w-0 keeps it to the screen's width: "overflow: clip" on
+          app-frame does not, so a long line would widen it past the edge of a phone. */}
+      <div className="app-frame flex-1 min-w-0 flex flex-col h-screen relative z-10">
         {/* Persistent top-bar HUD */}
         <Header
           currentView={currentView}

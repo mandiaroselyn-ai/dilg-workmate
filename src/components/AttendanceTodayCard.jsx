@@ -62,7 +62,7 @@ export default function AttendanceTodayCard({
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-sm text-slate-700">
-            <MapPin className="w-4 h-4 text-emerald-700" />
+            <MapPin className="w-4 h-4 shrink-0 text-emerald-700" />
             <div className="truncate">{hasAttendanceRecord ? locationLabel : 'Not recorded'}</div>
             {mode && (
               <div className="ml-2">
@@ -87,19 +87,19 @@ export default function AttendanceTodayCard({
         </div>
 
         <div className="grid grid-cols-3 divide-x divide-slate-200 bg-white border-t border-slate-200">
-          <div className="p-3 flex flex-col items-center text-center">
+          <div className="px-1 py-3 flex flex-col items-center text-center">
             <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-emerald-700 text-white mb-2"><LogIn className="w-4 h-4" /></div>
             <div className="text-[10px] text-slate-500 font-semibold uppercase">TIME IN</div>
             <div className="mt-1 font-extrabold text-sm text-emerald-800">{todayRecord.timeIn || '--:-- --'}</div>
           </div>
 
-          <div className="p-3 flex flex-col items-center text-center">
+          <div className="px-1 py-3 flex flex-col items-center text-center">
             <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-rose-600 text-white mb-2"><LogOut className="w-4 h-4" /></div>
             <div className="text-[10px] text-slate-500 font-semibold uppercase">TIME OUT</div>
             <div className="mt-1 font-extrabold text-sm text-rose-700">{todayRecord.timeOut || '--:-- --'}</div>
           </div>
 
-          <div className="p-3 flex flex-col items-center text-center">
+          <div className="px-1 py-3 flex flex-col items-center text-center">
             <div className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-amber-500 text-white mb-2"><ClockIcon className="w-4 h-4" /></div>
             <div className="text-[10px] text-slate-500 font-semibold uppercase">TOTAL HOURS</div>
             <div className="mt-1 font-extrabold text-sm text-amber-700">{elapsedText || '--'}</div>

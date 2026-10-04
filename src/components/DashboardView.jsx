@@ -295,7 +295,7 @@ export default function DashboardView({
                     onClick={() => onViewChange('requests')}
                     className="w-full rounded-[18px] border border-slate-200 bg-slate-50 p-4 flex items-center justify-between gap-3 text-left hover:shadow-sm"
                   >
-                    <div className="flex min-w-0 items-center gap-4">
+                    <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                       <div className={`inline-flex shrink-0 items-center justify-center rounded-2xl w-10 h-10 ${isLeave ? 'bg-amber-50' : 'bg-emerald-50'} shadow-sm`}>
                         <Icon className={`w-5 h-5 ${isLeave ? 'text-amber-700' : 'text-emerald-700'}`} />
                       </div>
@@ -304,7 +304,7 @@ export default function DashboardView({
                         {details && <div className="truncate text-xs text-slate-500">{details}</div>}
                       </div>
                     </div>
-                    <div className={`inline-flex shrink-0 items-center gap-2 ${STATUS_COLORS[status] || STATUS_COLORS.Pending} px-3 py-1 rounded-full text-sm font-bold`}>
+                    <div className={`inline-flex shrink-0 items-center gap-1 sm:gap-2 ${STATUS_COLORS[status] || STATUS_COLORS.Pending} px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold`}>
                       <span>{status}</span>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-700" />
                     </div>
@@ -389,8 +389,8 @@ export default function DashboardView({
                     onClick={() => onViewChange('announcements')}
                     className="w-full rounded-[18px] border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-slate-300"
                   >
-                    <p className="text-sm font-semibold text-slate-900">{ann.title}</p>
-                    <p className="mt-1 text-[12px] text-slate-600">{ann.content || ann.description}</p>
+                    <p className="break-words text-sm font-semibold text-slate-900">{ann.title}</p>
+                    <p className="mt-1 break-words text-[12px] text-slate-600">{ann.content || ann.description}</p>
                   </button>
                 ))}
                 {newestAnnouncements.length === 0 && <p className="text-sm text-slate-500">No announcements available.</p>}
