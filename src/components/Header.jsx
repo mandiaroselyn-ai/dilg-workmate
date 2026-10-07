@@ -12,6 +12,8 @@ import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
 import { unseenSmsCount } from '../utils/smsLog';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
+import { getManilaDateString } from '../../shared/localDate';
+import { requestCoversDate } from '../utils/hrAttendance';
 
 // When HR last opened the SMS list, remembered per account in this browser. The first
 // visit starts from now, so the badge counts only what arrives afterwards.
@@ -157,6 +159,17 @@ export default function Header({
     setShowSMSLogs(false);
     onViewChange(view);
   };
+
+  const today = getManilaDateString();
+  const approvedToday = type => activeRole === 'employee' && requests.some(r =>
+    /approved/i.test(r?.status || '') && r?.type === type && requestCoversDate(r, today)
+  );
+  const todayStatus = approvedToday('Leave Request') ? 'on-leave'
+    : approvedToday('Travel Order') ? 'on-travel'
+    : null;
+  const avatarDotClass = todayStatus === 'on-leave' ? 'bg-amber-400'
+    : todayStatus === 'on-travel' ? 'bg-sky-400'
+    : 'bg-emerald-400';
 
   return (
     <header className="h-[5.5rem] sm:h-20 bg-[#0B4EA2] border-b border-[#0B4EA2] px-3 sm:px-4 flex items-center justify-between sticky top-0 z-45 id-header shrink-0 font-sans">
@@ -412,18 +425,21 @@ export default function Header({
         </>
 
         {/* User Avatar */}
-        <button
-          type="button"
-          onClick={() => onViewChange('profile')}
-          className="w-10 h-10 rounded-full border border-white/25 bg-white/10 flex items-center justify-center text-white shadow-sm hover:bg-white/15 transition-all"
-          aria-label="Open profile"
-        >
-          {user.profilePicture ? (
-            <img src={user.profilePicture} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
-          ) : (
-            <span className="text-[11px] font-black uppercase">{user.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}</span>
-          )}
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => onViewChange('profile')}
+            className="w-10 h-10 rounded-full border border-white/25 bg-white/10 flex items-center justify-center text-white shadow-sm hover:bg-white/15 transition-all"
+            aria-label="Open profile"
+          >
+            {user.profilePicture ? (
+              <img src={user.profilePicture} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <span className="text-[11px] font-black uppercase">{user.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}</span>
+            )}
+          </button>
+          <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0B4EA2] shadow-sm z-10 ${avatarDotClass}${todayStatus ? ' animate-pulse' : ''}`} />
+        </div>
       </div>
       {showFullScreenPanels && mobilePanel === 'sms' && (
         <MobileSmsPanel
