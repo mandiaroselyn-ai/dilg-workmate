@@ -1252,10 +1252,6 @@ export default function AttendanceView({
                     Identity Verification
                   </span>
                 </div>
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-relaxed text-amber-900">
-                  Capture a selfie for your attendance record. Time In still requires fingerprint verification and GPS location checks.
-                </p>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Column 1: attendance selfie photo */}
                   <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 flex flex-col space-y-4 relative overflow-hidden shadow-sm">
