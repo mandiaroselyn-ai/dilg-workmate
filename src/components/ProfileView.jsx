@@ -271,25 +271,33 @@ export default function ProfileView({ user, attendanceHistory = [], onUpdateUser
         <section className="relative overflow-visible rounded-[22px] bg-gradient-to-br from-[#1551b5] via-[#245fc6] to-[#0d4299] px-5 pb-5 pt-6 text-white shadow-lg">
           <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-white/10" />
           <div className="relative flex items-center gap-4">
-            <div className="relative shrink-0">
-              <div className="h-[104px] w-[104px] overflow-hidden rounded-full border-4 border-white bg-amber-500 shadow-md">
-                {profilePicture ? (
-                  <img src={profilePicture} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl font-black">{name.split(' ').map(n => n[0]).join('').substring(0, 2)}</div>
-                )}
+            <div className="relative shrink-0 flex flex-col items-center gap-2">
+              <div className="relative">
+                <div className="h-[104px] w-[104px] overflow-hidden rounded-full border-4 border-white bg-amber-500 shadow-md">
+                  {profilePicture ? (
+                    <img src={profilePicture} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-3xl font-black">{name.split(' ').map(n => n[0]).join('').substring(0, 2)}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTempPhoto(profilePicture);
+                    setShowAvatarActions(true);
+                  }}
+                  className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-white text-slate-700 shadow-md"
+                  aria-label="Change profile photo"
+                >
+                  <Camera className="h-5 w-5" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setTempPhoto(profilePicture);
-                  setShowAvatarActions(true);
-                }}
-                className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-white bg-white text-slate-700 shadow-md"
-                aria-label="Change profile photo"
-              >
-                <Camera className="h-5 w-5" />
-              </button>
+              {statusIndicator && (
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase shadow-sm ${statusIndicator.className}`}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {statusIndicator.label}
+                </span>
+              )}
               {showAvatarActions && (
                 <div ref={avatarActionsRef} onMouseDown={(event) => event.stopPropagation()} className="absolute left-0 top-[112px] z-40 w-44 rounded-xl bg-white p-2 text-xs font-bold text-slate-700 shadow-xl">
                   <button type="button" onClick={() => { setShowAvatarActions(false); setViewProfileOnly(false); startCamera(); setShowPhotoModal(true); }} className="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-50">Take Photo</button>
@@ -303,11 +311,6 @@ export default function ProfileView({ user, attendanceHistory = [], onUpdateUser
               <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
                 <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
               </span>
-              {statusIndicator && (
-                <span className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black uppercase ${statusIndicator.className}`}>
-                  <span className="h-2 w-2 rounded-full bg-current opacity-60" /> {statusIndicator.label}
-                </span>
-              )}
               <p className="mt-3 text-xs font-extrabold leading-snug text-white">{role}</p>
             </div>
           </div>
@@ -353,7 +356,7 @@ export default function ProfileView({ user, attendanceHistory = [], onUpdateUser
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15)_0%,rgba(15,23,42,0)_75%)] pointer-events-none"></div>
 
         {/* Big Initials circle badge / Interactive Profile Picture */}
-        <div className="relative shrink-0" ref={avatarActionsRef}>
+        <div className="relative shrink-0 flex flex-col items-center gap-2" ref={avatarActionsRef}>
           <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white font-extrabold text-3xl flex items-center justify-center border-4 border-white/90 shadow-md overflow-hidden relative">
             {profilePicture ? (
               <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -372,6 +375,12 @@ export default function ProfileView({ user, attendanceHistory = [], onUpdateUser
               <Camera className="w-4 h-4" />
             </button>
           </div>
+          {statusIndicator && (
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase shadow-sm ${statusIndicator.className}`}>
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+              {statusIndicator.label}
+            </span>
+          )}
 
           {showAvatarActions && (
             <div onMouseDown={(event) => event.stopPropagation()} className="absolute left-0 top-full mt-3 w-56 rounded-2xl bg-white border border-slate-200 shadow-2xl p-3 text-slate-800 z-40">
@@ -423,11 +432,6 @@ export default function ProfileView({ user, attendanceHistory = [], onUpdateUser
             <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm`}>
               {badge.label}
             </span>
-            {statusIndicator && (
-              <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded shadow-sm ${statusIndicator.className}`}>
-                {statusIndicator.label}
-              </span>
-            )}
           </div>
           <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
           <div className="flex items-center justify-center md:justify-start gap-4 text-xs text-blue-50 font-extrabold font-mono">
