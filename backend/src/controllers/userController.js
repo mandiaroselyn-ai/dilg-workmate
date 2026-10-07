@@ -57,7 +57,7 @@ export const isValidProfilePicture = value => typeof value === 'string' && (
 // Everyone keeps their own name, contact number, photo, personal details, and government
 // ID numbers up to date. HR keeps the position, office, region, and employment details,
 // so only an HR/Admin changes their own here; everyone else's are changed in HR's forms.
-const SELF_PROFILE_FIELDS = ['name', 'phoneNumber', 'profilePicture'];
+const SELF_PROFILE_FIELDS = ['name', 'phoneNumber', 'profilePicture', 'signatureImage'];
 const HR_PROFILE_FIELDS = ['role', 'office', 'region', 'dateHired'];
 
 export const updateUserProfile = async (req, res) => {
@@ -83,6 +83,12 @@ export const updateUserProfile = async (req, res) => {
       && profileData.profilePicture !== req.user.profilePicture
       && !isValidProfilePicture(profileData.profilePicture)) {
       return res.status(400).json({ success: false, error: 'Profile photo must be an image under 300 KB. Choose or take the photo again.' });
+    }
+    if (profileData.signatureImage !== undefined
+      && profileData.signatureImage !== req.user.signatureImage
+      && profileData.signatureImage !== ''
+      && !isValidProfilePicture(profileData.signatureImage)) {
+      return res.status(400).json({ success: false, error: 'Signature image must be a PNG or JPG under 300 KB.' });
     }
     const updated = await User.update(profileData);
     res.status(200).json({ success: true, user: toSafeUser(updated) });

@@ -1532,6 +1532,7 @@ export default function App() {
               employees={employees}
               activeEmployeeCount={activeEmployeeCount}
               onUpdateRequestStatus={handleUpdateRequestStatus}
+              onUpdateUser={handleUpdateUser}
               focus={focus}
             />
           )}

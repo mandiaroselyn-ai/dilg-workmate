@@ -21,7 +21,9 @@ import {
   Sparkles,
   Users,
   Award,
-  Signature
+  Signature,
+  Upload,
+  ImagePlus
 } from 'lucide-react';
 import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
@@ -33,6 +35,7 @@ export default function SupervisorView({
   employees = [],
   activeEmployeeCount = null,
   onUpdateRequestStatus,
+  onUpdateUser,
   // From a notification's button: { requestId } of the request to open.
   focus = null
 }) {
@@ -40,7 +43,10 @@ export default function SupervisorView({
   const [remarks, setRemarks] = useState('');
   
   // Signature settings
-  const [signatureMode, setSignatureMode] = useState('type');
+  const [signatureMode, setSignatureMode] = useState(user?.signatureImage ? 'image' : 'type');
+  const [localSignatureImage, setLocalSignatureImage] = useState(user?.signatureImage || '');
+  const [isSavingSignatureImage, setIsSavingSignatureImage] = useState(false);
+  const sigImgInputRef = useRef(null);
   const [typewrittenName, setTypewrittenName] = useState('GERMAN F. YAP, CESO V');
   const [cursiveStyle, setCursiveStyle] = useState('Dancing Script');
   const [customInitials, setCustomInitials] = useState('GFY');
@@ -151,6 +157,9 @@ export default function SupervisorView({
   };
 
   const getSignatureDataUrl = () => {
+    if (signatureMode === 'image') {
+      return user?.signatureImage || localSignatureImage || '';
+    }
     if (signatureMode === 'type') {
       return `type:${cursiveStyle}:${typewrittenName}`;
     }
@@ -161,6 +170,37 @@ export default function SupervisorView({
       return canvasRef.current.toDataURL();
     }
     return '';
+  };
+
+  const handleSignatureImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxW = 400, maxH = 150;
+        let w = img.width, h = img.height;
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+        if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        setLocalSignatureImage(canvas.toDataURL('image/png'));
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const saveSignatureImage = async () => {
+    if (!localSignatureImage || !onUpdateUser) return;
+    setIsSavingSignatureImage(true);
+    try {
+      await onUpdateUser({ signatureImage: localSignatureImage });
+    } finally {
+      setIsSavingSignatureImage(false);
+    }
   };
 
   // Submit decision
@@ -519,24 +559,79 @@ export default function SupervisorView({
                 <div className="space-y-3.5 border-t border-slate-100 pt-4 text-left">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Digital Signature Options</label>
-                    <div className="flex gap-2 text-[9.5px] font-bold">
-                      <button 
-                        onClick={() => setSignatureMode('type')} 
+                    <div className="flex gap-1.5 text-[9.5px] font-bold flex-wrap">
+                      <button
+                        onClick={() => setSignatureMode('image')}
+                        className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold flex items-center gap-1 ${signatureMode === 'image' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        <ImagePlus className="w-3 h-3" />My Signature
+                      </button>
+                      <button
+                        onClick={() => setSignatureMode('type')}
                         className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold ${signatureMode === 'type' ? 'bg-[#1e40af] text-white' : 'bg-slate-100 text-slate-600'}`}>
                         Typewritten
                       </button>
-                      <button 
-                        onClick={() => setSignatureMode('draw')} 
+                      <button
+                        onClick={() => setSignatureMode('draw')}
                         className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold ${signatureMode === 'draw' ? 'bg-[#1e40af] text-white' : 'bg-slate-100 text-slate-600'}`}>
                         Manual Draw
                       </button>
-                      <button 
-                        onClick={() => setSignatureMode('stamp')} 
+                      <button
+                        onClick={() => setSignatureMode('stamp')}
                         className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold ${signatureMode === 'stamp' ? 'bg-[#1e40af] text-white' : 'bg-slate-100 text-slate-600'}`}>
                         Seal Stamp
                       </button>
                     </div>
                   </div>
+
+                  {/* Mode 0: Uploaded actual signature image */}
+                  {signatureMode === 'image' && (
+                    <div className="space-y-2.5 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-left">
+                      {(localSignatureImage || user?.signatureImage) ? (
+                        <div className="bg-white border border-slate-200 rounded p-4 text-center min-h-[80px] flex items-center justify-center shadow-inner">
+                          <img
+                            src={localSignatureImage || user?.signatureImage}
+                            alt="Your signature"
+                            className="max-h-16 max-w-full object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="bg-white border border-dashed border-slate-300 rounded p-4 text-center min-h-[80px] flex flex-col items-center justify-center gap-1.5">
+                          <Upload className="w-5 h-5 text-slate-300" />
+                          <span className="text-[10px] text-slate-400 font-semibold">Walang naka-upload na pirma</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={sigImgInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg"
+                          className="hidden"
+                          onChange={handleSignatureImageUpload}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => sigImgInputRef.current?.click()}
+                          className="flex-1 py-1.5 px-3 border border-slate-200 bg-white rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          {(localSignatureImage || user?.signatureImage) ? 'Palitan ang Pirma' : 'I-upload ang Pirma'}
+                        </button>
+                        {localSignatureImage && localSignatureImage !== user?.signatureImage && (
+                          <button
+                            type="button"
+                            onClick={saveSignatureImage}
+                            disabled={isSavingSignatureImage}
+                            className="py-1.5 px-3 bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold cursor-pointer disabled:opacity-60 hover:bg-emerald-600 transition-colors"
+                          >
+                            {isSavingSignatureImage ? 'Sine-save…' : 'I-save'}
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
+                        I-scan ang iyong tunay na pirma sa papel, i-crop, tapos i-upload (PNG o JPG). Ito ang lalabas sa CSC Form 6 at sa approved request ng employee.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Mode 1: Cursive Script Generator */}
                   {signatureMode === 'type' && (

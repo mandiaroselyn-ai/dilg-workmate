@@ -23,6 +23,7 @@ const UserSchema = new mongoose.Schema({
   // sign-in). Empty for accounts HR created.
   signUpMethod: { type: String, default: '' },
   profilePicture: { type: String, default: '' },
+  signatureImage: { type: String, default: '' },
   address: { type: String, default: '' },
   dateOfBirth: { type: String, default: '' },
   gender: { type: String, default: '' },
