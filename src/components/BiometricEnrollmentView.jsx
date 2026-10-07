@@ -56,6 +56,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const [statusError, setStatusError] = useState('');
   const [refreshingStatus, setRefreshingStatus] = useState(Boolean(onRefreshEnrollmentStatus));
   const [registeringFingerprint, setRegisteringFingerprint] = useState(false);
+  const [registeringType, setRegisteringType] = useState(null);
   const [fingerprintRegistered, setFingerprintRegistered] = useState(false);
   const [fingerprintRegistrationError, setFingerprintRegistrationError] = useState('');
   const registrationAbortRef = useRef(null);
@@ -88,12 +89,13 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     }
   };
 
-  const handleRegisterFingerprint = async () => {
+  const handleRegisterFingerprint = async (type = 'fingerprint') => {
     setFingerprintRegistrationError('');
     if (registrationAbortRef.current || registeringFingerprint) {
       setFingerprintRegistrationError(PROMPT_STILL_OPEN_MESSAGE);
       return;
     }
+    setRegisteringType(type);
     if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials?.create) {
       setFingerprintRegistrationError('Fingerprint registration requires a supported browser on HTTPS or localhost.');
       return;
@@ -159,6 +161,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         : describeFingerprintError(registrationError, abortReason));
     } finally {
       setRegisteringFingerprint(false);
+      setRegisteringType(null);
     }
   };
 
@@ -454,8 +457,8 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
             </div>
             {!hasRegisteredFingerprint || confirmingNewPhone ? (
               <div className="flex gap-2">
-                <button type="button" onClick={handleRegisterFingerprint} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
-                  <Fingerprint className="h-4 w-4" /> {registeringFingerprint ? 'Waiting...' : 'Register Fingerprint'}
+                <button type="button" onClick={() => handleRegisterFingerprint('fingerprint')} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
+                  <Fingerprint className="h-4 w-4" /> {registeringType === 'fingerprint' ? 'Waiting...' : 'Register Fingerprint'}
                 </button>
                 {confirmingNewPhone && !registeringFingerprint && (
                   <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs font-black text-blue-800">Cancel</button>
@@ -480,8 +483,8 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
             </div>
             {!hasRegisteredFingerprint || confirmingNewPhone ? (
               <div className="flex gap-2">
-                <button type="button" onClick={handleRegisterFingerprint} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
-                  <ScanFace className="h-4 w-4" /> {registeringFingerprint ? 'Waiting...' : 'Register Face ID'}
+                <button type="button" onClick={() => handleRegisterFingerprint('faceid')} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
+                  <ScanFace className="h-4 w-4" /> {registeringType === 'faceid' ? 'Waiting...' : 'Register Face ID'}
                 </button>
                 {confirmingNewPhone && !registeringFingerprint && (
                   <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-xs font-black text-indigo-800">Cancel</button>
