@@ -448,7 +448,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
               <div>
                 <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Fingerprint registered ✓' : 'Fingerprint'}</p>
-                <p className="mt-1 text-xs text-blue-900">Para sa Android — i-register ang fingerprint sensor ng phone mo.</p>
+                <p className="mt-1 text-xs text-blue-900">I-register ang fingerprint sensor ng iyong phone.</p>
                 {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">Mapapalitan ang nakarehistrong phone bago.</p>}
               </div>
             </div>
@@ -474,7 +474,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <ScanFace className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />}
               <div>
                 <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Face ID registered ✓' : 'Face ID'}</p>
-                <p className="mt-1 text-xs text-indigo-900">Para sa iPhone — i-register ang Face ID ng iyong device.</p>
+                <p className="mt-1 text-xs text-indigo-900">I-register ang Face ID ng iyong device.</p>
                 {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">Mapapalitan ang nakarehistrong phone bago.</p>}
               </div>
             </div>
