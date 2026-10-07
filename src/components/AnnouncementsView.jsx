@@ -205,7 +205,7 @@ export default function AnnouncementsView({
                       onClick={() => toggleExpand(ann.id)}
                       className="text-xs font-bold text-[#1e40af] hover:text-blue-800 transition-colors flex items-center gap-1 cursor-pointer"
                     >
-                      <span>{isExpanded ? 'Collapse' : 'Read Full Circular'}</span>
+                      <span>{isExpanded ? 'Close Circular' : 'Read Full Circular'}</span>
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-blue-600" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-500" />}
                     </button>
                   </div>
