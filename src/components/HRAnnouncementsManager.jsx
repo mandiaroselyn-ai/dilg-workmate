@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { CalendarDays, Eye, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
-import AnnouncementsView from './AnnouncementsView';
+import { CalendarDays, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 
-const ANNOUNCEMENT_CATEGORIES = ['Memorandum', 'Meeting', 'Guidelines', 'Training'];
+const ANNOUNCEMENT_CATEGORIES = ['Memorandum Circular', 'Department Order', 'Department Circular', 'Advisory', 'Directive', 'Special Order', 'Meeting', 'Training', 'Guidelines'];
 const EVENT_TYPES = [
   { value: 'meeting', label: 'Meeting' },
   { value: 'training', label: 'Training' },
@@ -13,7 +12,7 @@ const EVENT_TYPES = [
 const emptyAnnouncement = () => ({
   title: '',
   content: '',
-  category: 'Memorandum',
+  category: 'Memorandum Circular',
   referenceNo: '',
   date: getManilaDateString(),
   important: false
@@ -50,7 +49,6 @@ export default function HRAnnouncementsManager({
   const [error, setError] = useState('');
 
   const isAnnouncements = tab === 'announcements';
-  const isPreview = tab === 'preview';
   const sortedAnnouncements = [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const sortedEvents = [...events].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
   const today = getManilaDateString();
@@ -63,7 +61,7 @@ export default function HRAnnouncementsManager({
   const startEdit = (kind, item) => {
     setError('');
     const form = kind === 'announcements'
-      ? { title: item.title || '', content: item.content || item.description || '', category: item.category || 'Memorandum', referenceNo: item.referenceNo || '', date: item.date || today, important: Boolean(item.important) }
+      ? { title: item.title || '', content: item.content || item.description || '', category: item.category || 'Memorandum Circular', referenceNo: item.referenceNo || '', date: item.date || today, important: Boolean(item.important) }
       : { title: item.title || '', date: item.date || today, time: item.time || '', type: item.type || 'event', location: item.location || '', description: item.description || '' };
     setEditing({ kind, id: item.id, form });
   };
@@ -90,7 +88,7 @@ export default function HRAnnouncementsManager({
       }
       onToast?.(id
         ? 'Changes saved.'
-        : kind === 'announcements' ? 'Announcement published. Employees were notified.' : 'Event added to the calendar.');
+        : kind === 'announcements' ? 'Circular published. Employees were notified.' : 'Event added to the calendar.');
       setEditing(null);
     } catch (saveError) {
       setError(saveError.message || 'Unable to save. Please try again.');
@@ -124,7 +122,7 @@ export default function HRAnnouncementsManager({
         </label>
         {kind === 'announcements' ? (
           <>
-            <label className={labelClass}>Announcement text
+            <label className={labelClass}>Content / Body
               <textarea name="content" value={form.content} onChange={updateField} required maxLength={5000} rows={5} className={inputClass} />
             </label>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -134,7 +132,7 @@ export default function HRAnnouncementsManager({
                 </select>
               </label>
               <label className={labelClass}>Reference no. (optional)
-                <input name="referenceNo" value={form.referenceNo} onChange={updateField} maxLength={100} placeholder="e.g. MC-2026-015" className={inputClass} />
+                <input name="referenceNo" value={form.referenceNo} onChange={updateField} maxLength={100} placeholder="e.g. MC-2026-015, DO-2026-001" className={inputClass} />
               </label>
               <label className={labelClass}>Date
                 <input type="date" name="date" value={form.date} onChange={updateField} required className={inputClass} />
@@ -171,7 +169,7 @@ export default function HRAnnouncementsManager({
         {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-xs font-bold text-rose-700">{error}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="submit" disabled={saving} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">
-            {saving ? 'Saving...' : id ? 'Save changes' : kind === 'announcements' ? 'Publish announcement' : 'Add event'}
+            {saving ? 'Saving...' : id ? 'Save changes' : kind === 'announcements' ? 'Publish Circular' : 'Add event'}
           </button>
           <button type="button" onClick={() => setEditing(null)} disabled={saving} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Cancel</button>
         </div>
@@ -186,17 +184,15 @@ export default function HRAnnouncementsManager({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-black text-slate-900">Announcements &amp; Events</h2>
-          <p className="text-sm text-slate-500">Publish announcements and schedule calendar events for employees.</p>
+          <p className="text-sm text-slate-500">Publish official circulars and schedule calendar events for employees.</p>
         </div>
-        {!isPreview && (
-          <button type="button" onClick={startCreate} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">
-            <Plus className="h-4 w-4" /> {isAnnouncements ? 'Create Announcement' : 'Add Event'}
-          </button>
-        )}
+        <button type="button" onClick={startCreate} className="inline-flex items-center gap-2 rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">
+          <Plus className="h-4 w-4" /> {isAnnouncements ? 'Post Circular' : 'Add Event'}
+        </button>
       </div>
 
       <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-black">
-        {[['announcements', Megaphone, `Announcements (${announcements.length})`], ['events', CalendarDays, `Events (${events.length})`], ['preview', Eye, 'Employee view']].map(([value, Icon, label]) => (
+        {[['announcements', Megaphone, `Circulars (${announcements.length})`], ['events', CalendarDays, `Events (${events.length})`]].map(([value, Icon, label]) => (
           <button key={value} type="button" onClick={() => { setTab(value); setEditing(null); }} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 ${tab === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>
             <Icon className="h-4 w-4" /> {label}
           </button>
@@ -205,16 +201,10 @@ export default function HRAnnouncementsManager({
 
       {editing && editing.kind === tab && renderForm()}
 
-      {isPreview ? (
-        <div className="space-y-2">
-          <p className="rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">This is the Announcements page employees see. Employees can acknowledge each announcement there.</p>
-          <AnnouncementsView announcements={announcements} />
-        </div>
-      ) : (
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         {items.length === 0 && (
           <p className="p-6 text-center text-sm font-semibold text-slate-500">
-            {isAnnouncements ? 'No announcements yet. Click Create Announcement to publish one.' : 'No events yet. Click Add Event to schedule one.'}
+            {isAnnouncements ? 'No circulars yet. Click Post Circular to publish one.' : 'No events yet. Click Add Event to schedule one.'}
           </p>
         )}
         {items.map(item => (
@@ -245,7 +235,6 @@ export default function HRAnnouncementsManager({
           </div>
         ))}
       </div>
-      )}
     </div>
   );
 }
