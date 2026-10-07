@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, RefreshCw, Upload, X } from 'lucide-react';
+import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, RefreshCw, ScanFace, Upload, X } from 'lucide-react';
 import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { scrollIntoContentView } from '../utils/scroll';
@@ -62,6 +62,9 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const [confirmingNewPhone, setConfirmingNewPhone] = useState(false);
   // Registered on this visit, or already registered on the server.
   const hasRegisteredFingerprint = fingerprintRegistered || Boolean(user?.hasBrowserFingerprint);
+  const isIOS = /iPad|iPhone|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const BiometricIcon = isIOS ? ScanFace : Fingerprint;
+  const biometricLabel = isIOS ? 'Face ID' : 'Fingerprint';
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const idInputRef = useRef(null);
@@ -443,13 +446,13 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
         <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3 text-blue-950">
-            {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
+            {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <BiometricIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
             <div>
-              <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Fingerprint registered ✓' : 'Fingerprint registration'}</p>
+              <p className="text-sm font-black">{hasRegisteredFingerprint ? `${biometricLabel} registered ✓` : `${biometricLabel} registration`}</p>
               <p className="mt-1 text-xs text-blue-900">
                 {hasRegisteredFingerprint
-                  ? 'Your phone is set up. Use Use Fingerprint on the Attendance page for Time In. Register again only if you changed phones.'
-                  : 'Register this phone using its built-in fingerprint. Your fingerprint stays on your device.'}
+                  ? `Your phone is set up. Use ${biometricLabel} on the Attendance page for Time In. Register again only if you changed phones.`
+                  : `Register this phone using its built-in ${biometricLabel.toLowerCase()}. Your biometric stays on your device.`}
               </p>
               {confirmingNewPhone && (
                 <p className="mt-2 text-xs font-bold text-amber-800">Registering this phone replaces the phone registered before; that phone will stop working for Time In.</p>
@@ -464,7 +467,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                 disabled={registeringFingerprint}
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60"
               >
-                <Fingerprint className="h-4 w-4" /> {registeringFingerprint ? 'Waiting for device...' : 'Register this phone'}
+                <BiometricIcon className="h-4 w-4" /> {registeringFingerprint ? 'Waiting for device...' : `Register with ${biometricLabel}`}
               </button>
               {confirmingNewPhone && !registeringFingerprint && (
                 <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs font-black text-blue-800">Cancel</button>
