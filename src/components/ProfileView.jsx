@@ -21,6 +21,8 @@ import BiometricEnrollmentView from './BiometricEnrollmentView';
 import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
+import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { getManilaDateString } from '../../shared/localDate';
 
 // What the employee can change on their profile. HR keeps the position, office, region,
 // and other employment details.
@@ -30,11 +32,20 @@ const editableValues = person => ({
   ...profileFieldValues(person, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS])
 });
 
-export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
+const STATUS_INDICATOR = {
+  'On Leave':  { label: 'On Leave',  className: 'bg-amber-100 text-amber-800 border border-amber-300' },
+  'Absent':    { label: 'Absent',    className: 'bg-red-100 text-red-800 border border-red-300' },
+  'On Travel': { label: 'On Travel', className: 'bg-sky-100 text-sky-800 border border-sky-300' },
+};
+
+export default function ProfileView({ user, attendanceHistory = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [form, setForm] = useState(() => editableValues(user));
   const { name } = form;
   const { role, office, employeeId } = user;
   const badge = employmentBadge(user);
+  const today = getManilaDateString();
+  const todayRecord = attendanceHistory.find(r => r.date === today && matchesAttendanceEmployee(r, user));
+  const statusIndicator = STATUS_INDICATOR[todayRecord?.status] || null;
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -292,6 +303,11 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
               <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
                 <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
               </span>
+              {statusIndicator && (
+                <span className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black uppercase ${statusIndicator.className}`}>
+                  <span className="h-2 w-2 rounded-full bg-current opacity-60" /> {statusIndicator.label}
+                </span>
+              )}
               <p className="mt-3 text-xs font-extrabold leading-snug text-white">{role}</p>
             </div>
           </div>
@@ -402,11 +418,16 @@ export default function ProfileView({ user, onUpdateUser, onSubmitEnrollment, on
         </div>
 
         <div className="space-y-2 text-center md:text-left">
-          <div className="flex items-center justify-center md:justify-start gap-2.5">
+          <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap">
             <h2 id="txt-profile-top-name" className="text-2xl font-black tracking-tight text-white">{name}</h2>
             <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm`}>
               {badge.label}
             </span>
+            {statusIndicator && (
+              <span className={`text-[10px] uppercase font-black tracking-widest px-2 py-0.5 rounded shadow-sm ${statusIndicator.className}`}>
+                {statusIndicator.label}
+              </span>
+            )}
           </div>
           <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
           <div className="flex items-center justify-center md:justify-start gap-4 text-xs text-blue-50 font-extrabold font-mono">

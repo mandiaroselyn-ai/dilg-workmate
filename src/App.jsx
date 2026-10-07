@@ -1623,6 +1623,7 @@ export default function App() {
           {currentView === 'profile' && activeRole !== 'supervisor' && (
             <ProfileView
               user={user}
+              attendanceHistory={attendanceHistory}
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}
               onRefreshEnrollmentStatus={handleRefreshBiometricStatus}
