@@ -143,55 +143,12 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     [travelOrders, normalizedQuery, today]
   );
 
-  const downloadCsv = (filename, headers, rows) => {
-    const escape = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    // The byte order mark makes Excel read the file as UTF-8, so names with ñ stay intact.
-    const csv = `\uFEFF${[headers, ...rows].map(row => row.map(escape).join(',')).join('\n')}`;
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const reportCards = [
-    {
-      title: 'DTR Attendance Report',
-      description: 'Time In, Time Out, status, and late records per employee.',
-      count: dtrTable.length,
-      accent: 'bg-indigo-50 text-indigo-700',
-      download: () => downloadCsv('dtr-attendance-report.csv', ['Employee', 'Date', 'Time In', 'Time Out', 'Status'], dtrTable.map(row => [row.employee, row.date, row.timeIn, row.timeOut, row.status]))
-    },
-    {
-      title: 'Leave Applications Report',
-      description: 'Leave requests, leave type, submitted date, and status.',
-      count: leaveRows.length,
-      accent: 'bg-violet-50 text-violet-700',
-      download: () => downloadCsv('leave-applications-report.csv', ['Request ID', 'Employee', 'Leave Type', 'Date', 'Status'], leaveRows.map(row => [row.id, row.employee, row.type, row.date, row.status]))
-    },
-    {
-      title: 'Travel Orders Report',
-      description: 'Official travel requests, purpose, date, and approval status.',
-      count: travelRows.length,
-      accent: 'bg-blue-50 text-blue-700',
-      download: () => downloadCsv('travel-orders-report.csv', ['Request ID', 'Employee', 'Purpose', 'Date', 'Status'], travelRows.map(row => [row.id, row.employee, row.purpose, row.date, row.status]))
-    },
-    {
-      title: 'Employee Masterlist',
-      description: 'Registered employee names, IDs, offices, and account status.',
-      count: employees.length,
-      accent: 'bg-emerald-50 text-emerald-700',
-      download: () => downloadCsv('employee-masterlist.csv', ['Name', 'Employee ID', 'Email', 'Office', 'Account Status'], employees.map(employee => [employee.name, employee.employeeId, employee.email, employee.office, employee.accountStatus]))
-    }
-  ];
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'dtr', label: 'DTR' },
     { id: 'leaves', label: 'Leaves' },
-    { id: 'travel', label: 'Travel Orders' },
-    { id: 'reports', label: 'Reports' }
+    { id: 'travel', label: 'Travel Orders' }
   ];
 
   return (
@@ -523,28 +480,6 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
         </section>
       )}
 
-      {activeTab === 'reports' && (
-        <section className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-indigo-600">HR/Admin Reports</p>
-            <h3 className="mt-2 text-xl font-black text-slate-900">Records Reports</h3>
-            <p className="mt-1 text-xs font-semibold text-slate-500">Each report has every matching record{normalizedQuery ? ` (only those matching “${searchQuery.trim()}”)` : ''}. The employee masterlist always has every account.</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {reportCards.map(report => (
-              <article key={report.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${report.accent}`}><FileText className="h-5 w-5" /></div>
-                  <span className="text-2xl font-black text-slate-900">{report.count}</span>
-                </div>
-                <h4 className="mt-4 text-sm font-black text-slate-900">{report.title}</h4>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{report.description}</p>
-                <button type="button" onClick={report.download} className="mt-4 rounded-lg bg-indigo-700 px-3 py-2 text-xs font-black text-white hover:bg-indigo-800">Download CSV</button>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }
