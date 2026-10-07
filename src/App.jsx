@@ -1624,6 +1624,7 @@ export default function App() {
             <ProfileView
               user={user}
               attendanceHistory={attendanceHistory}
+              requests={requests}
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}
               onRefreshEnrollmentStatus={handleRefreshBiometricStatus}

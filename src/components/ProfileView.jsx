@@ -21,8 +21,8 @@ import BiometricEnrollmentView from './BiometricEnrollmentView';
 import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
-import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { getManilaDateString } from '../../shared/localDate';
+import { employeeDayStatus } from '../utils/hrAttendance';
 
 // What the employee can change on their profile. HR keeps the position, office, region,
 // and other employment details.
@@ -38,14 +38,14 @@ const STATUS_INDICATOR = {
   'On Travel': { label: 'On Travel', className: 'bg-sky-100 text-sky-800 border border-sky-300' },
 };
 
-export default function ProfileView({ user, attendanceHistory = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
+export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [form, setForm] = useState(() => editableValues(user));
   const { name } = form;
   const { role, office, employeeId } = user;
   const badge = employmentBadge(user);
   const today = getManilaDateString();
-  const todayRecord = attendanceHistory.find(r => r.date === today && matchesAttendanceEmployee(r, user));
-  const statusIndicator = STATUS_INDICATOR[todayRecord?.status] || null;
+  const { status: todayStatus } = employeeDayStatus(user, { records: attendanceHistory, requests, date: today });
+  const statusIndicator = STATUS_INDICATOR[todayStatus] || null;
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
