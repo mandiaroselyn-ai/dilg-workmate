@@ -775,12 +775,49 @@ export default function SupervisorView({
 
               </div>
             ) : (
-              <div className="text-center py-10 text-slate-400 space-y-2">
-                <Signature className="w-10 h-10 text-slate-300 mx-auto animate-none" />
-                <p className="font-extrabold text-xs">No applicant request selected.</p>
-                <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto leading-relaxed font-semibold">
-                  Select a request from the left panel to review its details, verify the leave balance, and apply your digital signature.
-                </p>
+              <div className="space-y-5">
+                <div className="text-center py-6 text-slate-400 space-y-2">
+                  <Signature className="w-10 h-10 text-slate-300 mx-auto animate-none" />
+                  <p className="font-extrabold text-xs">No applicant request selected.</p>
+                  <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto leading-relaxed font-semibold">
+                    Select a request from the left panel to review its details, verify the leave balance, and apply your digital signature.
+                  </p>
+                </div>
+
+                {/* Standalone signature upload — always accessible */}
+                <div className="border-t border-slate-100 pt-5 space-y-3 text-left">
+                  <div className="flex items-center gap-2">
+                    <ImagePlus className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">My Digital Signature</span>
+                  </div>
+                  {(localSignatureImage || user?.signatureImage) ? (
+                    <div className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-center min-h-[80px] shadow-inner">
+                      <img src={localSignatureImage || user?.signatureImage} alt="Your signature" className="max-h-16 max-w-full object-contain" />
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 min-h-[80px]">
+                      <Upload className="w-5 h-5 text-slate-300" />
+                      <span className="text-[10px] text-slate-400 font-semibold">Walang naka-save na pirma</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input ref={sigImgInputRef} type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={handleSignatureImageUpload} />
+                    <button type="button" onClick={() => sigImgInputRef.current?.click()}
+                      className="flex-1 py-2 px-3 border border-slate-200 bg-white rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center justify-center gap-1.5">
+                      <Upload className="w-3.5 h-3.5" />
+                      {(localSignatureImage || user?.signatureImage) ? 'Palitan ang Pirma' : 'I-upload ang Pirma'}
+                    </button>
+                    {localSignatureImage && localSignatureImage !== user?.signatureImage && (
+                      <button type="button" onClick={saveSignatureImage} disabled={isSavingSignatureImage}
+                        className="py-2 px-3 bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold cursor-pointer disabled:opacity-60 hover:bg-emerald-600 transition-colors">
+                        {isSavingSignatureImage ? 'Sine-save…' : 'I-save'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
+                    I-scan ang iyong tunay na pirma sa papel, i-crop, tapos i-upload (PNG o JPG). Lalabas ito sa CSC Form 6 at sa approved request ng employee.
+                  </p>
+                </div>
               </div>
             )}
           </div>
