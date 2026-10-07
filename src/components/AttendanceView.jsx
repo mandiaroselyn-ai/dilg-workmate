@@ -30,6 +30,7 @@ import {
   Check,
   Camera,
   Fingerprint,
+  ScanFace,
   Download,
   ShieldCheck,
   RefreshCw,
@@ -264,6 +265,9 @@ export default function AttendanceView({
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
+  const isIOS = /iPad|iPhone|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const BiometricIcon = isIOS ? ScanFace : Fingerprint;
+  const biometricLabel = isIOS ? 'Face ID' : 'Fingerprint';
   const hasSecureWebAuthn = typeof window !== 'undefined'
     && Boolean(window.isSecureContext && window.PublicKeyCredential && navigator.credentials);
 
@@ -1360,8 +1364,8 @@ export default function AttendanceView({
                   <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4 relative overflow-hidden shadow-xs">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                        <Fingerprint className="w-4 h-4 text-[#1e40af]" />
-                        {hasNativeBridge ? 'II. Phone Fingerprint Verification' : 'II. Fingerprint Verification'}
+                        <BiometricIcon className="w-4 h-4 text-[#1e40af]" />
+                        {hasNativeBridge ? `II. Phone ${biometricLabel} Verification` : `II. ${biometricLabel} Verification`}
                       </span>
                       {fingerprintVerified ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">
@@ -1403,7 +1407,7 @@ export default function AttendanceView({
                           {/* Laser Scanner sweeping bar */}
                           <div className="absolute inset-x-0 h-1 bg-cyan-400 shadow-[0_0_15px_rgba(34,211,238,1)] animate-[bounce_2s_infinite] z-10"></div>
                           
-                          <Fingerprint className="w-20 h-20 text-cyan-400 animate-pulse" />
+                          <BiometricIcon className="w-20 h-20 text-cyan-400 animate-pulse" />
                           
                           <span className="font-mono text-[10px] text-cyan-400 mt-4 font-black uppercase tracking-widest animate-pulse">
                             WAITING FOR DEVICE BIOMETRIC...
@@ -1411,7 +1415,7 @@ export default function AttendanceView({
                         </div>
                       ) : offlineTimeIn ? (
                         <div className="text-center space-y-3 flex flex-col items-center justify-center max-w-xs">
-                          <Fingerprint className="w-12 h-12 text-amber-400" />
+                          <BiometricIcon className="w-12 h-12 text-amber-400" />
                           <p className="text-xs font-black text-amber-300 uppercase tracking-wider">No internet: Offline Time In</p>
                           <p className="text-[10px] text-slate-400 leading-relaxed">
                             Tap Time In, then scan your fingerprint. Your Time In is saved on this phone and sent when you are back online. If a check fails then, HR reviews it before it counts in your DTR.
@@ -1428,14 +1432,14 @@ export default function AttendanceView({
                           <button
                             onClick={handleStartFingerprintScan}
                             className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 hover:border-blue-500 flex items-center justify-center text-blue-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shadow-lg group relative"
-                            title={hasNativeBridge ? 'Use phone fingerprint' : 'Use fingerprint'}
+                            title={hasNativeBridge ? `Use phone ${biometricLabel}` : `Use ${biometricLabel}`}
                           >
                             <div className="absolute inset-0 bg-blue-500/5 rounded-full animate-ping group-hover:block"></div>
-                            <Fingerprint className="w-8 h-8 text-blue-500 group-hover:text-cyan-400 group-hover:animate-pulse" />
+                            <BiometricIcon className="w-8 h-8 text-blue-500 group-hover:text-cyan-400 group-hover:animate-pulse" />
                           </button>
                           <div className="space-y-1">
                             <p className="text-xs font-black text-slate-300 uppercase tracking-wider">
-                              {hasNativeBridge ? 'USE PHONE FINGERPRINT' : 'USE FINGERPRINT'}
+                              {hasNativeBridge ? `USE PHONE ${biometricLabel.toUpperCase()}` : `USE ${biometricLabel.toUpperCase()}`}
                             </p>
                             <p className="text-[10px] text-slate-500 leading-relaxed">
                               {hasNativeBridge
@@ -1528,7 +1532,7 @@ export default function AttendanceView({
                   {capturedSelfie ? '✓ Selfie Recorded' : '✗ Selfie Required'}
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${fingerprintVerified ? 'text-emerald-700 bg-emerald-50' : offlineTimeIn ? 'text-amber-700 bg-amber-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
-                  {fingerprintVerified ? '✓ Fingerprint Authenticated' : offlineTimeIn ? 'Fingerprint at Time In (offline)' : '✗ Fingerprint Required'}
+                  {fingerprintVerified ? `✓ ${biometricLabel} Authenticated` : offlineTimeIn ? `${biometricLabel} at Time In (offline)` : `✗ ${biometricLabel} Required`}
                 </span>
               </div>
             )}
