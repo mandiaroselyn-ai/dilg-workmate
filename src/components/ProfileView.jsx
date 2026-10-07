@@ -296,9 +296,6 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
                 >
                   <Camera className="h-5 w-5" />
                 </button>
-                {statusIndicator && (
-                  <span className={`absolute -bottom-1 -left-1 h-5 w-5 rounded-full border-2 border-white shadow-md animate-pulse ${statusIndicator.dotClass}`} />
-                )}
               </div>
               {showAvatarActions && (
                 <div ref={avatarActionsRef} onMouseDown={(event) => event.stopPropagation()} className="absolute left-0 top-[112px] z-40 w-44 rounded-xl bg-white p-2 text-xs font-bold text-slate-700 shadow-xl">
@@ -310,18 +307,16 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             </div>
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-black leading-tight">{name}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className={`inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
-                  <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
-                </span>
-                {statusIndicator && (
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${statusIndicator.pillClass}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${statusIndicator.dotClass}`} />
-                    {statusIndicator.label}
-                  </span>
-                )}
-              </div>
-              <p className="mt-3 text-xs font-extrabold leading-snug text-white">{role}</p>
+              <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
+                <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
+              </span>
+              <p className="mt-2 text-xs font-extrabold leading-snug text-white">{role}</p>
+              {statusIndicator && (
+                <div className={`mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-black ${statusIndicator.pillClass}`}>
+                  <span className={`h-2 w-2 rounded-full animate-pulse shrink-0 ${statusIndicator.dotClass}`} />
+                  {statusIndicator.label}
+                </div>
+              )}
             </div>
           </div>
           <div className="relative mt-5 grid grid-cols-2 gap-3 border-t border-white/20 pt-4 text-xs font-semibold text-blue-50">
@@ -386,9 +381,6 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
                 <Camera className="w-4 h-4" />
               </button>
             </div>
-            {statusIndicator && (
-              <span className={`absolute -bottom-1 -left-1 h-5 w-5 rounded-full border-2 border-white/90 shadow-md animate-pulse ${statusIndicator.dotClass}`} />
-            )}
           </div>
 
           {showAvatarActions && (
@@ -441,14 +433,14 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm`}>
               {badge.label}
             </span>
-            {statusIndicator && (
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${statusIndicator.pillClass}`}>
-                <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${statusIndicator.dotClass}`} />
-                {statusIndicator.label}
-              </span>
-            )}
           </div>
           <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
+          {statusIndicator && (
+            <div className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-black ${statusIndicator.pillClass}`}>
+              <span className={`h-2 w-2 rounded-full animate-pulse shrink-0 ${statusIndicator.dotClass}`} />
+              {statusIndicator.label}
+            </div>
+          )}
           <div className="flex items-center justify-center md:justify-start gap-4 text-xs text-blue-50 font-extrabold font-mono">
             <span>ID: {employeeId}</span>
             <span>•</span>
