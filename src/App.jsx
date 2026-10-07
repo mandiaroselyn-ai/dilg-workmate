@@ -1478,6 +1478,7 @@ export default function App() {
           smsAlerts={headerSmsAlerts}
           employees={employees}
           requests={requests}
+          attendanceHistory={attendanceHistory}
           smsConfigured={smsConfigured}
           onMarkNotificationRead={handleMarkNotificationRead}
           onClearNotifications={handleClearNotifications}

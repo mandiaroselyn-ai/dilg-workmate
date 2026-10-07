@@ -37,6 +37,7 @@ export default function Header({
   smsAlerts,
   employees = [],
   requests = [],
+  attendanceHistory = [],
   smsConfigured,
   onMarkNotificationRead,
   onClearNotifications,
@@ -164,12 +165,17 @@ export default function Header({
   const approvedToday = type => activeRole === 'employee' && requests.some(r =>
     /approved/i.test(r?.status || '') && r?.type === type && requestCoversDate(r, today)
   );
+  const isLateToday = activeRole === 'employee' && attendanceHistory.some(r =>
+    r?.date === today && (r?.late || /late/i.test(r?.status || ''))
+  );
   const todayStatus = approvedToday('Leave Request') ? 'on-leave'
     : approvedToday('Travel Order') ? 'on-travel'
+    : isLateToday ? 'late'
     : null;
-  const avatarDotClass = todayStatus === 'on-leave' ? 'bg-amber-400'
+  const avatarDotClass = todayStatus === 'on-leave' ? 'bg-orange-400'
     : todayStatus === 'on-travel' ? 'bg-sky-400'
-    : 'bg-emerald-400';
+    : todayStatus === 'late' ? 'bg-red-400'
+    : null;
 
   return (
     <header className="h-[5.5rem] sm:h-20 bg-[#0B4EA2] border-b border-[#0B4EA2] px-3 sm:px-4 flex items-center justify-between sticky top-0 z-45 id-header shrink-0 font-sans">
@@ -438,6 +444,9 @@ export default function Header({
               <span className="text-[11px] font-black uppercase">{user.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}</span>
             )}
           </button>
+          {avatarDotClass && (
+            <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0B4EA2] shadow-sm z-10 animate-pulse ${avatarDotClass}`} />
+          )}
         </div>
       </div>
       {showFullScreenPanels && mobilePanel === 'sms' && (
