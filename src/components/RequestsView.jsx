@@ -390,6 +390,25 @@ Reason (optional):`, '');
       .catch(error => setFormErrorMessage(error.message || 'Unable to discard the draft.'));
   };
 
+  const renderSigBlock = (sigData, name) => {
+    if (!sigData && !name) return null;
+    if (sigData && sigData.startsWith('data:')) {
+      return <img src={sigData} alt="Signature" className="h-10 max-w-[170px] object-contain" />;
+    }
+    if (sigData && sigData.startsWith('type:')) {
+      const parts = sigData.split(':');
+      const font = parts[1] || 'Dancing Script';
+      const sigName = parts.slice(2).join(':') || name;
+      return <span style={{ fontFamily: `"${font}", cursive`, fontSize: '19px', color: '#1e3a8a', lineHeight: 1.2 }}>{sigName}</span>;
+    }
+    if (sigData && sigData.startsWith('stamp:')) {
+      const parts = sigData.split(':');
+      const ink = parts[2] || '#1e3a8a';
+      return <span className="inline-block font-mono text-xl font-black px-2 py-0.5 rounded-sm border-2" style={{ color: ink, borderColor: ink, opacity: 0.85 }}>{parts[1] || 'SIG'}</span>;
+    }
+    return null;
+  };
+
   const myRequests = requests.filter(request => {
     const hasEmployeeIdentity = request.employeeId || request.employeeEmail || request.employeeName;
     return !hasEmployeeIdentity || matchesAttendanceEmployee(request, user);
@@ -1242,6 +1261,22 @@ Reason (optional):`, '');
                             {file.name}
                           </span>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Supervisor approval signature block */}
+                    {req.status === 'Approved' && req.supervisorName && (
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 space-y-1">
+                        <span className="text-[9px] uppercase tracking-widest font-bold text-emerald-600 block">Approved by Supervisor</span>
+                        <div className="flex flex-col gap-0.5">
+                          {renderSigBlock(req.supervisorSignature || req.signatureData, req.supervisorName)}
+                          <div className="h-px w-36 bg-slate-300 mt-0.5"></div>
+                          <span className="text-[10px] font-extrabold text-slate-700">{req.supervisorName}</span>
+                          {req.supervisorApprovedAt && <span className="text-[9px] text-slate-400 font-semibold">{req.supervisorApprovedAt}</span>}
+                        </div>
+                        {req.supervisorRemarks && req.supervisorRemarks !== 'Approved based on sufficient leave balance.' && (
+                          <p className="text-[9px] text-slate-500 font-semibold italic border-l-2 border-emerald-200 pl-2 mt-1">"{req.supervisorRemarks}"</p>
+                        )}
                       </div>
                     )}
 
