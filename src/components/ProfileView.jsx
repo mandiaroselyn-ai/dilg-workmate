@@ -22,7 +22,7 @@ import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
 import { getManilaDateString } from '../../shared/localDate';
-import { employeeDayStatus } from '../utils/hrAttendance';
+import { requestCoversDate } from '../utils/hrAttendance';
 
 // What the employee can change on their profile. HR keeps the position, office, region,
 // and other employment details.
@@ -44,7 +44,12 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
   const { role, office, employeeId } = user;
   const badge = employmentBadge(user);
   const today = getManilaDateString();
-  const { status: todayStatus } = employeeDayStatus(user, { records: attendanceHistory, requests, date: today });
+  const approvedToday = type => requests.some(r =>
+    /approved/i.test(r?.status || '') && r?.type === type && requestCoversDate(r, today)
+  );
+  const todayStatus = approvedToday('Leave Request') ? 'On Leave'
+    : approvedToday('Travel Order') ? 'On Travel'
+    : null;
   const statusIndicator = STATUS_INDICATOR[todayStatus] || null;
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);
