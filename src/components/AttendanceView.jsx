@@ -1352,7 +1352,7 @@ export default function AttendanceView({
                             <Camera className="h-4 w-4" /> Open Front Camera
                           </button>
                           <p className="mt-3 text-[9px] font-semibold uppercase tracking-wider text-slate-400">
-                            Camera access required · Fingerprint + GPS checked separately
+                            Camera access required · {biometricLabel} + GPS checked separately
                           </p>
                         </div>
                       )}
@@ -1392,7 +1392,7 @@ export default function AttendanceView({
                           <div className="space-y-1">
                             <p className="text-xs font-black text-emerald-400 uppercase tracking-widest leading-none">BIOMETRIC TOUCH CONFIRMED</p>
                             <p className="text-[10px] text-slate-400">
-                              {hasNativeBridge ? 'Fingerprint challenge verified by the server' : 'Device biometric credential accepted'}
+                              {hasNativeBridge ? `${biometricLabel} challenge verified by the server` : 'Device biometric credential accepted'}
                             </p>
                             <button
                               onClick={handleResetFingerprint}
@@ -1418,7 +1418,7 @@ export default function AttendanceView({
                           <BiometricIcon className="w-12 h-12 text-amber-400" />
                           <p className="text-xs font-black text-amber-300 uppercase tracking-wider">No internet: Offline Time In</p>
                           <p className="text-[10px] text-slate-400 leading-relaxed">
-                            Tap Time In, then scan your fingerprint. Your Time In is saved on this phone and sent when you are back online. If a check fails then, HR reviews it before it counts in your DTR.
+                            Tap Time In, then use your {biometricLabel}. Your Time In is saved on this phone and sent when you are back online. If a check fails then, HR reviews it before it counts in your DTR.
                           </p>
                           <button
                             onClick={handleResetFingerprint}
@@ -1443,8 +1443,8 @@ export default function AttendanceView({
                             </p>
                             <p className="text-[10px] text-slate-500 leading-relaxed">
                               {hasNativeBridge
-                                ? 'Confirm with your phone fingerprint. Your fingerprint stays on this device.'
-                                : 'Verify your identity using your registered fingerprint.'}
+                                ? `Confirm with your phone ${biometricLabel}. Your biometric stays on this device.`
+                                : `Verify your identity using your registered ${biometricLabel}.`}
                             </p>
                           </div>
                         </div>
