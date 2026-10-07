@@ -296,7 +296,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
                 >
                   <Camera className="h-5 w-5" />
                 </button>
-                <span className={`absolute -bottom-1 -left-1 h-5 w-5 rounded-full border-2 border-white shadow-md z-10 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-emerald-500'}`} />
+                <span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white shadow-md z-20 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-emerald-500'}`} />
               </div>
               {showAvatarActions && (
                 <div ref={avatarActionsRef} onMouseDown={(event) => event.stopPropagation()} className="absolute left-0 top-[112px] z-40 w-44 rounded-xl bg-white p-2 text-xs font-bold text-slate-700 shadow-xl">
@@ -383,7 +383,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
               >
                 <Camera className="w-4 h-4" />
               </button>
-              <span className={`absolute -bottom-1 -left-1 h-5 w-5 rounded-full border-2 border-white/90 shadow-md z-10 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-emerald-500'}`} />
+              <span className={`absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white/90 shadow-md z-20 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-emerald-500'}`} />
             </div>
           </div>
 
