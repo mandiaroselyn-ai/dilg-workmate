@@ -1428,24 +1428,27 @@ export default function AttendanceView({
                           </button>
                         </div>
                       ) : (
-                        <div className="text-center space-y-4 flex flex-col items-center justify-center max-w-xs">
-                          <button
-                            onClick={handleStartFingerprintScan}
-                            className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 hover:border-blue-500 flex items-center justify-center text-blue-500 hover:scale-105 active:scale-95 transition-all cursor-pointer shadow-lg group relative"
-                            title={hasNativeBridge ? `Use phone ${biometricLabel}` : `Use ${biometricLabel}`}
-                          >
-                            <div className="absolute inset-0 bg-blue-500/5 rounded-full animate-ping group-hover:block"></div>
-                            <BiometricIcon className="w-8 h-8 text-blue-500 group-hover:text-cyan-400 group-hover:animate-pulse" />
-                          </button>
-                          <div className="space-y-1">
-                            <p className="text-xs font-black text-slate-300 uppercase tracking-wider">
-                              {hasNativeBridge ? `USE PHONE ${biometricLabel.toUpperCase()}` : `USE ${biometricLabel.toUpperCase()}`}
-                            </p>
-                            <p className="text-[10px] text-slate-500 leading-relaxed">
-                              {hasNativeBridge
-                                ? `Confirm with your phone ${biometricLabel}. Your biometric stays on this device.`
-                                : `Verify your identity using your registered ${biometricLabel}.`}
-                            </p>
+                        <div className="flex flex-col items-center justify-center gap-4 w-full">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Choose your biometric</p>
+                          <div className="flex gap-3 w-full">
+                            {/* Fingerprint */}
+                            <button
+                              onClick={handleStartFingerprintScan}
+                              className="flex-1 flex flex-col items-center justify-center gap-2 py-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-blue-500 text-blue-400 hover:text-cyan-400 transition-all cursor-pointer group"
+                              title="Use Fingerprint"
+                            >
+                              <Fingerprint className="w-8 h-8 group-hover:animate-pulse" />
+                              <span className="text-[10px] font-black uppercase tracking-wider">Fingerprint</span>
+                            </button>
+                            {/* Face ID */}
+                            <button
+                              onClick={handleStartFingerprintScan}
+                              className="flex-1 flex flex-col items-center justify-center gap-2 py-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer group"
+                              title="Use Face ID"
+                            >
+                              <ScanFace className="w-8 h-8 group-hover:animate-pulse" />
+                              <span className="text-[10px] font-black uppercase tracking-wider">Face ID</span>
+                            </button>
                           </div>
                         </div>
                       )}
