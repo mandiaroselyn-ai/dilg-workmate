@@ -142,7 +142,7 @@ export default function HRAnnouncementsManager({
             </div>
             <label className="flex items-center gap-2 text-xs font-bold text-slate-700">
               <input type="checkbox" name="important" checked={form.important} onChange={updateField} />
-              Mark as important (highlighted for employees)
+              Mark as Urgent (highlighted for employees)
             </label>
           </>
         ) : (
@@ -222,7 +222,7 @@ export default function HRAnnouncementsManager({
             <div className="min-w-0 flex-1">
               <p className="font-black text-slate-800">
                 {item.title}
-                {isAnnouncements && item.important && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black uppercase text-amber-800">Important</span>}
+                {isAnnouncements && item.important && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black uppercase text-amber-800">Urgent</span>}
                 {!isAnnouncements && item.date < today && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black uppercase text-slate-500">Past</span>}
               </p>
               <p className="mt-1 text-xs text-slate-500">

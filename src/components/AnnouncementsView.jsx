@@ -130,7 +130,7 @@ export default function AnnouncementsView({
                 {ann.important && (
                   <div className="absolute top-0 right-0 py-1 px-3 bg-gradient-to-r from-amber-500 to-yellow-600 rounded-bl text-[9px] font-black text-slate-950 tracking-wider uppercase flex items-center gap-1 shadow-md">
                     <Pin className="w-2.5 h-2.5 fill-slate-950 shrink-0" />
-                    <span>CRITICAL</span>
+                    <span>URGENT</span>
                   </div>
                 )}
 
