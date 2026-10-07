@@ -818,8 +818,6 @@ This cannot be undone.`
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-slate-600">Employee</span>
-                <button type="button" onClick={() => setPromotion({ accessLevel: 'supervisor', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make Supervisor</button>
-                <button type="button" onClick={() => setPromotion({ accessLevel: 'hr_admin', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make HR/Admin</button>
               </div>
             )}
           </div>
