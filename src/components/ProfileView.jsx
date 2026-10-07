@@ -33,9 +33,9 @@ const editableValues = person => ({
 });
 
 const STATUS_INDICATOR = {
-  'On Leave':  { label: 'On Leave',  dotClass: 'bg-white/80', pillClass: 'bg-amber-500 text-white shadow-md' },
-  'Absent':    { label: 'Absent',    dotClass: 'bg-white/80', pillClass: 'bg-red-500 text-white shadow-md' },
-  'On Travel': { label: 'On Travel', dotClass: 'bg-white/80', pillClass: 'bg-sky-500 text-white shadow-md' },
+  'On Leave':  { label: 'On Leave',  dotClass: 'bg-amber-400' },
+  'Absent':    { label: 'Absent',    dotClass: 'bg-red-400' },
+  'On Travel': { label: 'On Travel', dotClass: 'bg-sky-300' },
 };
 
 export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
@@ -308,15 +308,13 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-black leading-tight">{name}</h2>
               <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
-                <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
+                <span className={`h-2 w-2 rounded-full shrink-0 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-white/60'}`} />
+                {badge.label}
               </span>
-              <p className="mt-2 text-xs font-extrabold leading-snug text-white">{role}</p>
               {statusIndicator && (
-                <div className={`mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-black ${statusIndicator.pillClass}`}>
-                  <span className={`h-2 w-2 rounded-full animate-pulse shrink-0 ${statusIndicator.dotClass}`} />
-                  {statusIndicator.label}
-                </div>
+                <p className="mt-1 text-[11px] font-bold text-white/70">{statusIndicator.label}</p>
               )}
+              <p className="mt-1 text-xs font-extrabold leading-snug text-white">{role}</p>
             </div>
           </div>
           <div className="relative mt-5 grid grid-cols-2 gap-3 border-t border-white/20 pt-4 text-xs font-semibold text-blue-50">
@@ -430,17 +428,15 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
         <div className="space-y-2 text-center md:text-left">
           <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap">
             <h2 id="txt-profile-top-name" className="text-2xl font-black tracking-tight text-white">{name}</h2>
-            <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm`}>
+            <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm inline-flex items-center gap-1.5`}>
+              <span className={`h-2 w-2 rounded-full shrink-0 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-white/60'}`} />
               {badge.label}
             </span>
           </div>
-          <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
           {statusIndicator && (
-            <div className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-black ${statusIndicator.pillClass}`}>
-              <span className={`h-2 w-2 rounded-full animate-pulse shrink-0 ${statusIndicator.dotClass}`} />
-              {statusIndicator.label}
-            </div>
+            <p className="text-xs font-bold text-white/70">{statusIndicator.label}</p>
           )}
+          <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
           <div className="flex items-center justify-center md:justify-start gap-4 text-xs text-blue-50 font-extrabold font-mono">
             <span>ID: {employeeId}</span>
             <span>•</span>
