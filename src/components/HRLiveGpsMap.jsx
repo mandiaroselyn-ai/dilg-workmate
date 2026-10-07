@@ -215,14 +215,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
               React would wipe them and the map tiles would disappear. */}
           <div ref={containerRef} className="h-full w-full" />
         </div>
-        <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-600">
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.lost }} />No live signal (5+ min)</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
-        </div>
       </div>
-      <p className="text-xs font-semibold text-slate-500">Each dot is the employee's latest phone GPS, sent every minute while WorkMate is open on their phone. Phones do not share location while the app is closed or the phone is locked, so those employees turn amber after 5 minutes.</p>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
     </div>
   );
