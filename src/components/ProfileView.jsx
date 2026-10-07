@@ -34,8 +34,9 @@ const editableValues = person => ({
 
 const STATUS_INDICATOR = {
   'On Leave':  { label: 'On Leave',  dotClass: 'bg-white', pillClass: 'bg-amber-500 text-white' },
-  'Absent':    { label: 'Absent',    dotClass: 'bg-white', pillClass: 'bg-red-500 text-white' },
   'On Travel': { label: 'On Travel', dotClass: 'bg-white', pillClass: 'bg-sky-500 text-white' },
+  'Late':      { label: 'Late',      dotClass: 'bg-white', pillClass: 'bg-orange-500 text-white' },
+  'Absent':    { label: 'Absent',    dotClass: 'bg-white', pillClass: 'bg-red-500 text-white' },
 };
 
 export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
@@ -47,8 +48,12 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
   const approvedToday = type => requests.some(r =>
     /approved/i.test(r?.status || '') && r?.type === type && requestCoversDate(r, today)
   );
+  const isLateToday = attendanceHistory.some(r =>
+    r?.date === today && (r?.late || /late/i.test(r?.status || ''))
+  );
   const todayStatus = approvedToday('Leave Request') ? 'On Leave'
     : approvedToday('Travel Order') ? 'On Travel'
+    : isLateToday ? 'Late'
     : null;
   const statusIndicator = STATUS_INDICATOR[todayStatus] || null;
   const [profileSuccess, setProfileSuccess] = useState(false);
