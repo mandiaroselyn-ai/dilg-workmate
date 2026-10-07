@@ -33,9 +33,9 @@ const editableValues = person => ({
 });
 
 const STATUS_INDICATOR = {
-  'On Leave':  { label: 'On Leave',  dotClass: 'bg-amber-400', pillClass: 'bg-amber-500/20 text-amber-200 border border-amber-400/40' },
-  'Absent':    { label: 'Absent',    dotClass: 'bg-red-500',   pillClass: 'bg-red-500/20 text-red-200 border border-red-400/40' },
-  'On Travel': { label: 'On Travel', dotClass: 'bg-sky-400',   pillClass: 'bg-sky-500/20 text-sky-200 border border-sky-400/40' },
+  'On Leave':  { label: 'On Leave',  dotClass: 'bg-white/80', pillClass: 'bg-amber-500 text-white shadow-md' },
+  'Absent':    { label: 'Absent',    dotClass: 'bg-white/80', pillClass: 'bg-red-500 text-white shadow-md' },
+  'On Travel': { label: 'On Travel', dotClass: 'bg-white/80', pillClass: 'bg-sky-500 text-white shadow-md' },
 };
 
 export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
