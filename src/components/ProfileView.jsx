@@ -276,8 +276,8 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
         <section className="relative overflow-visible rounded-[22px] bg-gradient-to-br from-[#1551b5] via-[#245fc6] to-[#0d4299] px-5 pb-5 pt-6 text-white shadow-lg">
           <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-white/10" />
           <div className="relative flex items-center gap-4">
-            <div className="relative shrink-0 flex flex-col items-center gap-2">
-              <div className="relative">
+            <div className="relative shrink-0 flex flex-col items-center">
+              <div className="relative" style={{paddingBottom: statusIndicator ? '18px' : '0'}}>
                 <div className="h-[104px] w-[104px] overflow-hidden rounded-full border-4 border-white bg-amber-500 shadow-md">
                   {profilePicture ? (
                     <img src={profilePicture} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
@@ -296,13 +296,15 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
                 >
                   <Camera className="h-5 w-5" />
                 </button>
+                {statusIndicator && (
+                  <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white shadow-lg ${statusIndicator.className}`}>
+                      <span className="h-2 w-2 rounded-full bg-white/90 shrink-0 animate-pulse" />
+                      {statusIndicator.label}
+                    </span>
+                  </div>
+                )}
               </div>
-              {statusIndicator && (
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white ${statusIndicator.className}`}>
-                  <span className="h-2 w-2 rounded-full bg-white/80 shrink-0" />
-                  {statusIndicator.label}
-                </span>
-              )}
               {showAvatarActions && (
                 <div ref={avatarActionsRef} onMouseDown={(event) => event.stopPropagation()} className="absolute left-0 top-[112px] z-40 w-44 rounded-xl bg-white p-2 text-xs font-bold text-slate-700 shadow-xl">
                   <button type="button" onClick={() => { setShowAvatarActions(false); setViewProfileOnly(false); startCamera(); setShowPhotoModal(true); }} className="w-full rounded-lg px-3 py-2 text-left hover:bg-slate-50">Take Photo</button>
@@ -361,31 +363,35 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15)_0%,rgba(15,23,42,0)_75%)] pointer-events-none"></div>
 
         {/* Big Initials circle badge / Interactive Profile Picture */}
-        <div className="relative shrink-0 flex flex-col items-center gap-2" ref={avatarActionsRef}>
-          <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white font-extrabold text-3xl flex items-center justify-center border-4 border-white/90 shadow-md overflow-hidden relative">
-            {profilePicture ? (
-              <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              name.split(' ').map(n => n[0]).join('').substring(0, 2)
+        <div className="relative shrink-0 flex flex-col items-center" ref={avatarActionsRef}>
+          <div className="relative" style={{paddingBottom: statusIndicator ? '18px' : '0'}}>
+            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white font-extrabold text-3xl flex items-center justify-center border-4 border-white/90 shadow-md overflow-hidden relative">
+              {profilePicture ? (
+                <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                name.split(' ').map(n => n[0]).join('').substring(0, 2)
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setTempPhoto(profilePicture);
+                  setShowAvatarActions((prev) => !prev);
+                }}
+                className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-white/95 text-slate-800 shadow-lg flex items-center justify-center border border-slate-200 transition-transform duration-200 hover:scale-105"
+                title="Profile photo actions"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            </div>
+            {statusIndicator && (
+              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white shadow-lg ${statusIndicator.className}`}>
+                  <span className="h-2 w-2 rounded-full bg-white/90 shrink-0 animate-pulse" />
+                  {statusIndicator.label}
+                </span>
+              </div>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setTempPhoto(profilePicture);
-                setShowAvatarActions((prev) => !prev);
-              }}
-              className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-white/95 text-slate-800 shadow-lg flex items-center justify-center border border-slate-200 transition-transform duration-200 hover:scale-105"
-              title="Profile photo actions"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
           </div>
-          {statusIndicator && (
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white ${statusIndicator.className}`}>
-              <span className="h-2 w-2 rounded-full bg-white/80 shrink-0" />
-              {statusIndicator.label}
-            </span>
-          )}
 
           {showAvatarActions && (
             <div onMouseDown={(event) => event.stopPropagation()} className="absolute left-0 top-full mt-3 w-56 rounded-2xl bg-white border border-slate-200 shadow-2xl p-3 text-slate-800 z-40">
