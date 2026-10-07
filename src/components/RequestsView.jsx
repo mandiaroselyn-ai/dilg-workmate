@@ -5,7 +5,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
-import { createWorker } from 'tesseract.js';
 import {
   FileText,
   Calendar,
@@ -188,6 +187,7 @@ export default function RequestsView({
     setOcrScanning(true);
     setOcrError('');
     try {
+      const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
       const result = await worker.recognize(file);
       await worker.terminate();
@@ -235,6 +235,7 @@ export default function RequestsView({
     setOcrScanning(true);
     setOcrError('');
     try {
+      const { createWorker } = await import('tesseract.js');
       const worker = await createWorker('eng');
       const result = await worker.recognize(canvas);
       await worker.terminate();
