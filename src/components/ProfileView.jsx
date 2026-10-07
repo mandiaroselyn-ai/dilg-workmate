@@ -33,9 +33,9 @@ const editableValues = person => ({
 });
 
 const STATUS_INDICATOR = {
-  'On Leave':  { label: 'On Leave',  className: 'bg-amber-100 text-amber-800 border border-amber-300' },
-  'Absent':    { label: 'Absent',    className: 'bg-red-100 text-red-800 border border-red-300' },
-  'On Travel': { label: 'On Travel', className: 'bg-sky-100 text-sky-800 border border-sky-300' },
+  'On Leave':  { label: 'On Leave',  className: 'bg-amber-500 text-white shadow-lg' },
+  'Absent':    { label: 'Absent',    className: 'bg-red-500 text-white shadow-lg' },
+  'On Travel': { label: 'On Travel', className: 'bg-blue-500 text-white shadow-lg' },
 };
 
 export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
@@ -298,8 +298,8 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
                 </button>
               </div>
               {statusIndicator && (
-                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase shadow-sm ${statusIndicator.className}`}>
-                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white ${statusIndicator.className}`}>
+                  <span className="h-2 w-2 rounded-full bg-white/80 shrink-0" />
                   {statusIndicator.label}
                 </span>
               )}
@@ -381,8 +381,8 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             </button>
           </div>
           {statusIndicator && (
-            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase shadow-sm ${statusIndicator.className}`}>
-              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white ${statusIndicator.className}`}>
+              <span className="h-2 w-2 rounded-full bg-white/80 shrink-0" />
               {statusIndicator.label}
             </span>
           )}
