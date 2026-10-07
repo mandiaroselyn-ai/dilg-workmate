@@ -307,15 +307,10 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             </div>
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-black leading-tight">{name}</h2>
-              {statusIndicator ? (
+              {statusIndicator && (
                 <span className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black uppercase ${statusIndicator.pillClass}`}>
                   <span className={`h-2 w-2 rounded-full shrink-0 animate-pulse ${statusIndicator.dotClass}`} />
                   {statusIndicator.label}
-                </span>
-              ) : (
-                <span className="mt-2 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-3 py-1 text-xs font-black uppercase text-white">
-                  <span className="h-2 w-2 rounded-full bg-green-300 shrink-0" />
-                  Active
                 </span>
               )}
               <p className="mt-2 text-xs font-extrabold leading-snug text-white">{role}</p>
@@ -432,15 +427,10 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
         <div className="space-y-2 text-center md:text-left">
           <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap">
             <h2 id="txt-profile-top-name" className="text-2xl font-black tracking-tight text-white">{name}</h2>
-            {statusIndicator ? (
+            {statusIndicator && (
               <span className={`text-[10px] uppercase font-black tracking-widest text-white px-2.5 py-1 rounded-full inline-flex items-center gap-1.5 ${statusIndicator.pillClass}`}>
                 <span className={`h-2 w-2 rounded-full shrink-0 animate-pulse ${statusIndicator.dotClass}`} />
                 {statusIndicator.label}
-              </span>
-            ) : (
-              <span className="text-[10px] uppercase font-black tracking-widest bg-emerald-500 text-white px-2.5 py-1 rounded-full inline-flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-green-300 shrink-0" />
-                Active
               </span>
             )}
           </div>
