@@ -321,9 +321,9 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
               )}
             </div>
           </div>
-          <div className="relative mt-5 grid grid-cols-2 gap-3 border-t border-white/20 pt-4 text-xs font-semibold text-blue-50">
-            <span className="flex items-center gap-2 truncate"><IdCard className="h-5 w-5 shrink-0" /><span><span className="block text-blue-200">DILG ID</span>{employeeId}</span></span>
-            <span className="flex items-center gap-2 truncate"><MapPin className="h-5 w-5 shrink-0" /><span><span className="block text-blue-200">Office</span>{office}</span></span>
+          <div className="relative mt-5 grid grid-cols-2 gap-3 border-t border-white/20 pt-4 text-[10px] font-semibold text-blue-50">
+            <span className="flex items-center gap-1.5 min-w-0"><IdCard className="h-4 w-4 shrink-0" /><span className="min-w-0"><span className="block text-blue-200 text-[9px] uppercase tracking-wide">ID No.</span><span className="block truncate">{employeeId}</span></span></span>
+            <span className="flex items-center gap-1.5 min-w-0"><MapPin className="h-4 w-4 shrink-0" /><span className="min-w-0"><span className="block text-blue-200 text-[9px] uppercase tracking-wide">Office</span><span className="block truncate">{office}</span></span></span>
           </div>
         </section>
 
