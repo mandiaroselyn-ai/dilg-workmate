@@ -441,42 +441,58 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         </div>
         {statusError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{statusError}</p>}
 
-        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3 text-blue-950">
-            {hasRegisteredFingerprint
-            ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
-            : <div className="flex mt-0.5 shrink-0 gap-0.5"><Fingerprint className="h-5 w-5 text-blue-700" /><ScanFace className="h-5 w-5 text-blue-700" /></div>}
-            <div>
-              <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Biometric registered ✓' : 'Fingerprint / Face ID registration'}</p>
-              <p className="mt-1 text-xs text-blue-900">
-                {hasRegisteredFingerprint
-                  ? 'Your phone is set up. Use Fingerprint or Face ID on the Attendance page for Time In. Register again only if you changed phones.'
-                  : 'Register this phone using its built-in Fingerprint (Android) or Face ID (iPhone). Your biometric stays on your device.'}
-              </p>
-              {confirmingNewPhone && (
-                <p className="mt-2 text-xs font-bold text-amber-800">Registering this phone replaces the phone registered before; that phone will stop working for Time In.</p>
-              )}
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Fingerprint option */}
+          <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-start gap-3 text-blue-950">
+              {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
+              <div>
+                <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Fingerprint registered ✓' : 'Fingerprint'}</p>
+                <p className="mt-1 text-xs text-blue-900">Para sa Android — i-register ang fingerprint sensor ng phone mo.</p>
+                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">Mapapalitan ang nakarehistrong phone bago.</p>}
+              </div>
             </div>
-          </div>
-          {!hasRegisteredFingerprint || confirmingNewPhone ? (
-            <div className="flex shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={handleRegisterFingerprint}
-                disabled={registeringFingerprint}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60"
-              >
-                <Fingerprint className="h-4 w-4" /><ScanFace className="h-4 w-4" /> {registeringFingerprint ? 'Waiting for device...' : 'Register Fingerprint / Face ID'}
+            {!hasRegisteredFingerprint || confirmingNewPhone ? (
+              <div className="flex gap-2">
+                <button type="button" onClick={handleRegisterFingerprint} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
+                  <Fingerprint className="h-4 w-4" /> {registeringFingerprint ? 'Waiting...' : 'Register Fingerprint'}
+                </button>
+                {confirmingNewPhone && !registeringFingerprint && (
+                  <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs font-black text-blue-800">Cancel</button>
+                )}
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConfirmingNewPhone(true)} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-[11px] font-black text-blue-800">
+                Changed phones?
               </button>
-              {confirmingNewPhone && !registeringFingerprint && (
-                <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs font-black text-blue-800">Cancel</button>
-              )}
+            )}
+          </div>
+
+          {/* Face ID option */}
+          <div className="flex flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex items-start gap-3 text-indigo-950">
+              {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <ScanFace className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />}
+              <div>
+                <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Face ID registered ✓' : 'Face ID'}</p>
+                <p className="mt-1 text-xs text-indigo-900">Para sa iPhone — i-register ang Face ID ng iyong device.</p>
+                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">Mapapalitan ang nakarehistrong phone bago.</p>}
+              </div>
             </div>
-          ) : (
-            <button type="button" onClick={() => setConfirmingNewPhone(true)} className="shrink-0 rounded-lg border border-blue-200 bg-white px-3 py-2 text-[11px] font-black text-blue-800">
-              Changed phones?
-            </button>
-          )}
+            {!hasRegisteredFingerprint || confirmingNewPhone ? (
+              <div className="flex gap-2">
+                <button type="button" onClick={handleRegisterFingerprint} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
+                  <ScanFace className="h-4 w-4" /> {registeringFingerprint ? 'Waiting...' : 'Register Face ID'}
+                </button>
+                {confirmingNewPhone && !registeringFingerprint && (
+                  <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-xs font-black text-indigo-800">Cancel</button>
+                )}
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConfirmingNewPhone(true)} className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-[11px] font-black text-indigo-800">
+                Changed phones?
+              </button>
+            )}
+          </div>
         </div>
         {fingerprintRegistrationError && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{fingerprintRegistrationError}</p>}
 
