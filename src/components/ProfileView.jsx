@@ -33,9 +33,9 @@ const editableValues = person => ({
 });
 
 const STATUS_INDICATOR = {
-  'On Leave':  { label: 'On Leave',  className: 'bg-amber-500 text-white shadow-lg' },
-  'Absent':    { label: 'Absent',    className: 'bg-red-500 text-white shadow-lg' },
-  'On Travel': { label: 'On Travel', className: 'bg-blue-500 text-white shadow-lg' },
+  'On Leave':  { label: 'On Leave',  dotClass: 'bg-amber-400', pillClass: 'bg-amber-500/20 text-amber-200 border border-amber-400/40' },
+  'Absent':    { label: 'Absent',    dotClass: 'bg-red-500',   pillClass: 'bg-red-500/20 text-red-200 border border-red-400/40' },
+  'On Travel': { label: 'On Travel', dotClass: 'bg-sky-400',   pillClass: 'bg-sky-500/20 text-sky-200 border border-sky-400/40' },
 };
 
 export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
@@ -276,8 +276,8 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
         <section className="relative overflow-visible rounded-[22px] bg-gradient-to-br from-[#1551b5] via-[#245fc6] to-[#0d4299] px-5 pb-5 pt-6 text-white shadow-lg">
           <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-white/10" />
           <div className="relative flex items-center gap-4">
-            <div className="relative shrink-0 flex flex-col items-center">
-              <div className="relative" style={{paddingBottom: statusIndicator ? '18px' : '0'}}>
+            <div className="relative shrink-0">
+              <div className="relative">
                 <div className="h-[104px] w-[104px] overflow-hidden rounded-full border-4 border-white bg-amber-500 shadow-md">
                   {profilePicture ? (
                     <img src={profilePicture} alt="Profile" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
@@ -297,12 +297,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
                   <Camera className="h-5 w-5" />
                 </button>
                 {statusIndicator && (
-                  <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white shadow-lg ${statusIndicator.className}`}>
-                      <span className="h-2 w-2 rounded-full bg-white/90 shrink-0 animate-pulse" />
-                      {statusIndicator.label}
-                    </span>
-                  </div>
+                  <span className={`absolute -bottom-1 -left-1 h-5 w-5 rounded-full border-2 border-white shadow-md animate-pulse ${statusIndicator.dotClass}`} />
                 )}
               </div>
               {showAvatarActions && (
@@ -315,9 +310,17 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             </div>
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-black leading-tight">{name}</h2>
-              <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
-                <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
-              </span>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
+                  <span className="h-2 w-2 rounded-full bg-white/60" /> {badge.label}
+                </span>
+                {statusIndicator && (
+                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${statusIndicator.pillClass}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${statusIndicator.dotClass}`} />
+                    {statusIndicator.label}
+                  </span>
+                )}
+              </div>
               <p className="mt-3 text-xs font-extrabold leading-snug text-white">{role}</p>
             </div>
           </div>
@@ -363,8 +366,8 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15)_0%,rgba(15,23,42,0)_75%)] pointer-events-none"></div>
 
         {/* Big Initials circle badge / Interactive Profile Picture */}
-        <div className="relative shrink-0 flex flex-col items-center" ref={avatarActionsRef}>
-          <div className="relative" style={{paddingBottom: statusIndicator ? '18px' : '0'}}>
+        <div className="relative shrink-0" ref={avatarActionsRef}>
+          <div className="relative">
             <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-amber-500 to-amber-600 text-white font-extrabold text-3xl flex items-center justify-center border-4 border-white/90 shadow-md overflow-hidden relative">
               {profilePicture ? (
                 <img src={profilePicture} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
@@ -384,12 +387,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
               </button>
             </div>
             {statusIndicator && (
-              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 whitespace-nowrap">
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold border-2 border-white shadow-lg ${statusIndicator.className}`}>
-                  <span className="h-2 w-2 rounded-full bg-white/90 shrink-0 animate-pulse" />
-                  {statusIndicator.label}
-                </span>
-              </div>
+              <span className={`absolute -bottom-1 -left-1 h-5 w-5 rounded-full border-2 border-white/90 shadow-md animate-pulse ${statusIndicator.dotClass}`} />
             )}
           </div>
 
@@ -443,6 +441,12 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm`}>
               {badge.label}
             </span>
+            {statusIndicator && (
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${statusIndicator.pillClass}`}>
+                <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${statusIndicator.dotClass}`} />
+                {statusIndicator.label}
+              </span>
+            )}
           </div>
           <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
           <div className="flex items-center justify-center md:justify-start gap-4 text-xs text-blue-50 font-extrabold font-mono">
