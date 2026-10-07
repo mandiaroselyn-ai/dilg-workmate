@@ -188,7 +188,7 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
   // 7.B: Supervisor recommendation — erase the template placeholder then write the actual approver.
   const supervisorName = request.supervisorName;
   if (supervisorName) {
-    page.drawRectangle({ x: L.supervisorClearRect.x, y: L.supervisorClearRect.y, width: L.supervisorClearRect.width, height: L.supervisorClearRect.height, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: L.supervisorClearRect.x, y: L.supervisorClearRect.y, width: L.supervisorClearRect.width, height: L.supervisorClearRect.height + 8, color: rgb(1, 1, 1) });
     const sigData = String(request.supervisorSignature || request.signatureData || '');
     if (sigData.startsWith('data:image/png;base64,')) {
       try {
@@ -204,7 +204,7 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
       const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
       const sigSize = 9.5;
       const sigWidth = italic.widthOfTextAtSize(sigNameDisplay, sigSize);
-      page.drawText(sigNameDisplay, { x: 427 - sigWidth / 2, y: 198, size: sigSize, font: italic, color: black });
+      page.drawText(sigNameDisplay, { x: 427 - sigWidth / 2, y: 187, size: sigSize, font: italic, color: black });
     } else if (sigData.startsWith('stamp:')) {
       const parts = sigData.split(':');
       const initials = parts[1] || supervisorName.split(' ').filter(Boolean).map(w => w[0]).join('');
@@ -212,8 +212,8 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
       const initSize = 10;
       const iW = courier.widthOfTextAtSize(initials, initSize) + 6;
       const iX = 427 - iW / 2;
-      page.drawRectangle({ x: iX, y: 194, width: iW, height: 12, borderColor: black, borderWidth: 0.5 });
-      page.drawText(initials, { x: iX + 3, y: 196, size: initSize, font: courier, color: black });
+      page.drawRectangle({ x: iX, y: 186, width: iW, height: 12, borderColor: black, borderWidth: 0.5 });
+      page.drawText(initials, { x: iX + 3, y: 188, size: initSize, font: courier, color: black });
     }
     page.drawLine({ start: { x: L.supervisorSigLine.x1, y: L.supervisorSigLine.y }, end: { x: L.supervisorSigLine.x2, y: L.supervisorSigLine.y }, thickness: 0.5, color: black });
     write(supervisorName.toUpperCase(), L.supervisorName7B);
