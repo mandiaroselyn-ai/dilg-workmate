@@ -597,7 +597,7 @@ export default function SupervisorView({
                       ) : (
                         <div className="bg-white border border-dashed border-slate-300 rounded p-4 text-center min-h-[80px] flex flex-col items-center justify-center gap-1.5">
                           <Upload className="w-5 h-5 text-slate-300" />
-                          <span className="text-[10px] text-slate-400 font-semibold">Walang naka-upload na pirma</span>
+                          <span className="text-[10px] text-slate-400 font-semibold">No signature uploaded yet</span>
                         </div>
                       )}
                       <div className="flex items-center gap-2">
@@ -614,7 +614,7 @@ export default function SupervisorView({
                           className="flex-1 py-1.5 px-3 border border-slate-200 bg-white rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center justify-center gap-1.5"
                         >
                           <Upload className="w-3.5 h-3.5" />
-                          {(localSignatureImage || user?.signatureImage) ? 'Palitan ang Pirma' : 'I-upload ang Pirma'}
+                          {(localSignatureImage || user?.signatureImage) ? 'Replace Signature' : 'Upload Signature'}
                         </button>
                         {localSignatureImage && localSignatureImage !== user?.signatureImage && (
                           <button
@@ -623,12 +623,12 @@ export default function SupervisorView({
                             disabled={isSavingSignatureImage}
                             className="py-1.5 px-3 bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold cursor-pointer disabled:opacity-60 hover:bg-emerald-600 transition-colors"
                           >
-                            {isSavingSignatureImage ? 'Sine-save…' : 'I-save'}
+                            {isSavingSignatureImage ? 'Saving…' : 'Save'}
                           </button>
                         )}
                       </div>
                       <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
-                        I-scan ang iyong tunay na pirma sa papel, i-crop, tapos i-upload (PNG o JPG). Ito ang lalabas sa CSC Form 6 at sa approved request ng employee.
+                        Scan your actual handwritten signature on paper, crop it, then upload (PNG or JPG). This will appear on the CSC Form 6 and on the employee's approved request.
                       </p>
                     </div>
                   )}
@@ -797,7 +797,7 @@ export default function SupervisorView({
                   ) : (
                     <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 min-h-[80px]">
                       <Upload className="w-5 h-5 text-slate-300" />
-                      <span className="text-[10px] text-slate-400 font-semibold">Walang naka-save na pirma</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">No signature uploaded yet</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2">
@@ -805,17 +805,17 @@ export default function SupervisorView({
                     <button type="button" onClick={() => sigImgInputRef.current?.click()}
                       className="flex-1 py-2 px-3 border border-slate-200 bg-white rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center justify-center gap-1.5">
                       <Upload className="w-3.5 h-3.5" />
-                      {(localSignatureImage || user?.signatureImage) ? 'Palitan ang Pirma' : 'I-upload ang Pirma'}
+                      {(localSignatureImage || user?.signatureImage) ? 'Replace Signature' : 'Upload Signature'}
                     </button>
                     {localSignatureImage && localSignatureImage !== user?.signatureImage && (
                       <button type="button" onClick={saveSignatureImage} disabled={isSavingSignatureImage}
                         className="py-2 px-3 bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold cursor-pointer disabled:opacity-60 hover:bg-emerald-600 transition-colors">
-                        {isSavingSignatureImage ? 'Sine-save…' : 'I-save'}
+                        {isSavingSignatureImage ? 'Saving…' : 'Save'}
                       </button>
                     )}
                   </div>
                   <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
-                    I-scan ang iyong tunay na pirma sa papel, i-crop, tapos i-upload (PNG o JPG). Lalabas ito sa CSC Form 6 at sa approved request ng employee.
+                    Scan your actual handwritten signature on paper, crop it, then upload (PNG or JPG). It will appear on the CSC Form 6 and on the employee's approved request.
                   </p>
                 </div>
               </div>
