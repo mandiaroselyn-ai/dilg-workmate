@@ -33,7 +33,7 @@ const editableValues = person => ({
 });
 
 const STATUS_INDICATOR = {
-  'On Leave':  { label: 'On Leave',  dotClass: 'bg-white', pillClass: 'bg-amber-500 text-white' },
+  'On Leave':  { label: 'On Leave',  dotClass: 'bg-white', pillClass: 'bg-orange-500 text-white' },
   'On Travel': { label: 'On Travel', dotClass: 'bg-white', pillClass: 'bg-sky-500 text-white' },
   'Late':      { label: 'Late',      dotClass: 'bg-white', pillClass: 'bg-red-500 text-white' },
   'Absent':    { label: 'Absent',    dotClass: 'bg-white', pillClass: 'bg-red-500 text-white' },
