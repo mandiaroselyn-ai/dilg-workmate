@@ -308,7 +308,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             <div className="min-w-0">
               <h2 className="truncate text-[22px] font-black leading-tight">{name}</h2>
               <span className={`mt-2 inline-flex items-center gap-2 rounded-full ${badge.className} px-3 py-1 text-xs font-black uppercase`}>
-                <span className={`h-2 w-2 rounded-full shrink-0 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-white/60'}`} />
+                <span className={`h-2 w-2 rounded-full shrink-0 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-green-300'}`} />
                 {badge.label}
               </span>
               {statusIndicator && (
@@ -429,7 +429,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
           <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap">
             <h2 id="txt-profile-top-name" className="text-2xl font-black tracking-tight text-white">{name}</h2>
             <span className={`text-[10px] uppercase font-mono tracking-widest ${badge.className} text-white font-bold px-2 py-0.5 rounded border border-white/30 shadow-sm inline-flex items-center gap-1.5`}>
-              <span className={`h-2 w-2 rounded-full shrink-0 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-white/60'}`} />
+              <span className={`h-2 w-2 rounded-full shrink-0 ${statusIndicator ? `${statusIndicator.dotClass} animate-pulse` : 'bg-green-300'}`} />
               {badge.label}
             </span>
           </div>
