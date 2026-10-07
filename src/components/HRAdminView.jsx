@@ -414,24 +414,13 @@ export default function HRAdminView({
 
       {activeTab === 'directory' && (
         <div className="space-y-4">
-          <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-black">
-            {[['employees', 'Employees'], ['staff', 'Supervisors & HR/Admin']].map(([value, label]) => (
-              <button key={value} type="button" onClick={() => setDirectoryView(value)} className={`flex-1 rounded-lg px-3 py-2 ${directoryView === value ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {directoryView === 'staff' ? (
-            <HRStaffAccountsView currentUser={user} onToast={triggerToast} />
-          ) : (
-            <HRAdminEmployeesView
-              employees={employees}
-              currentUser={user}
-              onEmployeesChange={onEmployeesChange}
-              onAdminNotification={onAdminNotification}
-              focusEmployeeId={focus?.employeeId}
-            />
-          )}
+          <HRAdminEmployeesView
+            employees={employees}
+            currentUser={user}
+            onEmployeesChange={onEmployeesChange}
+            onAdminNotification={onAdminNotification}
+            focusEmployeeId={focus?.employeeId}
+          />
         </div>
       )}
 
