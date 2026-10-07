@@ -57,7 +57,7 @@ export default function AnnouncementsView({
 
         {/* Categories Tab Selector */}
         <div className="flex flex-wrap gap-2">
-          {['All', 'Memorandum', 'Meeting', 'Guidelines', 'Training'].map(cat => (
+          {['All', 'Memorandum Circular', 'Department Order', 'Advisory', 'Directive', 'Meeting', 'Training', 'Guidelines'].map(cat => (
             <button
               key={cat}
               id={`cat-tab-${cat}`}
@@ -110,8 +110,8 @@ export default function AnnouncementsView({
         {filteredAnnouncements.length === 0 ? (
           <div className="md:col-span-2 p-16 text-center text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-55 space-y-2">
             <Megaphone className="w-8 h-8 text-slate-500 mx-auto animate-pulse" />
-            <p className="font-bold text-sm text-slate-800">{visibleAnnouncements.length === 0 ? 'No announcements yet.' : 'No bulletins match your query.'}</p>
-            <p className="text-xs">{visibleAnnouncements.length === 0 ? 'Announcements from HR will appear here.' : 'Adjust filters or search criteria to query larger database indexes.'}</p>
+            <p className="font-bold text-sm text-slate-800">{visibleAnnouncements.length === 0 ? 'No official circulars yet.' : 'No bulletins match your query.'}</p>
+            <p className="text-xs">{visibleAnnouncements.length === 0 ? 'Official circulars from HR will appear here.' : 'Adjust filters or search criteria to query larger database indexes.'}</p>
           </div>
         ) : (
           filteredAnnouncements.map((ann) => {
@@ -139,8 +139,14 @@ export default function AnnouncementsView({
                   <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold">
                     <span className={`px-2.5 py-0.5 rounded uppercase font-extrabold tracking-wider ${
                       ann.category === 'Guidelines' ? 'bg-slate-100 text-slate-700' :
-                      ann.category === 'Memorandum' ? 'bg-blue-50 text-blue-700' :
-                      ann.category === 'Meeting' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                      ann.category === 'Memorandum Circular' ? 'bg-blue-50 text-blue-700' :
+                      ann.category === 'Department Order' ? 'bg-indigo-50 text-indigo-700' :
+                      ann.category === 'Department Circular' ? 'bg-blue-50 text-blue-700' :
+                      ann.category === 'Advisory' ? 'bg-sky-50 text-sky-700' :
+                      ann.category === 'Directive' ? 'bg-violet-50 text-violet-700' :
+                      ann.category === 'Special Order' ? 'bg-purple-50 text-purple-700' :
+                      ann.category === 'Meeting' ? 'bg-emerald-50 text-emerald-700' :
+                      ann.category === 'Training' ? 'bg-teal-50 text-teal-700' : 'bg-rose-50 text-rose-700'
                     }`}>
                       {ann.category}
                     </span>
