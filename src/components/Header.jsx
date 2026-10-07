@@ -438,9 +438,7 @@ export default function Header({
               <span className="text-[11px] font-black uppercase">{user.name.split(' ').map((n) => n[0]).join('').substring(0, 2)}</span>
             )}
           </button>
-          {todayStatus && (
-            <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0B4EA2] shadow-sm z-10 animate-pulse ${avatarDotClass}`} />
-          )}
+          <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0B4EA2] shadow-sm z-10 bg-emerald-400" />
         </div>
       </div>
       {showFullScreenPanels && mobilePanel === 'sms' && (
