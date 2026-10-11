@@ -1,14 +1,24 @@
-import webpush from 'web-push';
 import { PushSubscription } from '../models/pushSubscriptionModel.js';
 
+// Loaded lazily so a missing web-push package never crashes the API on startup.
+let webpushInstance = null;
 let vapidConfigured = false;
 
-const ensureVapid = () => {
-  if (vapidConfigured) return;
+const ensureVapid = async () => {
+  if (vapidConfigured) return true;
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL } = process.env;
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_EMAIL) return;
-  webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  vapidConfigured = true;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_EMAIL) return false;
+  try {
+    if (!webpushInstance) {
+      const mod = await import('web-push');
+      webpushInstance = mod.default;
+    }
+    webpushInstance.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    vapidConfigured = true;
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export const getVapidPublicKey = () => process.env.VAPID_PUBLIC_KEY || '';
@@ -33,10 +43,10 @@ export const removePushSubscription = async (endpoint) => {
 
 // Send a push notification to one Web Push subscription. Removes the sub if expired.
 const sendWebPush = async (sub, payload) => {
-  ensureVapid();
-  if (!vapidConfigured) return;
+  const ready = await ensureVapid();
+  if (!ready) return;
   try {
-    await webpush.sendNotification(sub.subscription, JSON.stringify(payload));
+    await webpushInstance.sendNotification(sub.subscription, JSON.stringify(payload));
   } catch (error) {
     if (error.statusCode === 404 || error.statusCode === 410) {
       await removePushSubscription(sub.subscription?.endpoint);
