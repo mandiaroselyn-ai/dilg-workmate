@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
 import { stampOf } from '../utils/updateStamp.js';
+import { sendPushNotification } from '../services/pushService.js';
 
 // Schemas
 const EventSchema = new mongoose.Schema({
@@ -263,6 +264,16 @@ export const Announcement = {
     const item = await MongoNotification.create(newNotifData);
     const obj = item.toObject();
     obj.id = obj.customId;
+
+    sendPushNotification({
+      title: notifData.title,
+      body: notifData.message,
+      data: { type: notifData.type, action: notifData.action, targetId: notifData.targetId },
+      recipientRole: notifData.recipientRole || '',
+      employeeEmail: notifData.employeeEmail || '',
+      employeeId: notifData.employeeId || ''
+    }).catch(() => {});
+
     return obj;
   },
 

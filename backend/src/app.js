@@ -72,7 +72,8 @@ export function createApiApp() {
     const publicRoutes = [
       req.method === 'POST' && ['/login', '/account-status', '/register', '/password-reset-request', '/password-reset-hr-request', '/password-reset', '/auth/google/exchange'].includes(apiPath),
       req.method === 'GET' && apiPath.startsWith('/auth/google'),
-      req.method === 'POST' && apiPath === '/sms/webhook'
+      req.method === 'POST' && apiPath === '/sms/webhook',
+      req.method === 'GET' && apiPath === '/push/vapid-public-key'
     ];
     if (publicRoutes.some(Boolean)) return next();
     return authenticate(req, res, next);

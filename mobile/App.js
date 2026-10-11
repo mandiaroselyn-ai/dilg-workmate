@@ -6,7 +6,16 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
+import * as Notifications from 'expo-notifications';
 import { WebView } from 'react-native-webview';
+
+Notifications.setNotificationHandler({
+	handleNotification: async () => ({
+		shouldShowAlert: true,
+		shouldPlaySound: true,
+		shouldSetBadge: true
+	})
+});
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -51,6 +60,21 @@ export default function App() {
 	const [canGoBack, setCanGoBack] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [hasError, setHasError] = useState(false);
+	const expoPushTokenRef = useRef('');
+
+	// Get Expo push token on startup and store it so we can inject it into the WebView.
+	useEffect(() => {
+		(async () => {
+			try {
+				const { status } = await Notifications.requestPermissionsAsync();
+				if (status !== 'granted') return;
+				const tokenData = await Notifications.getExpoPushTokenAsync();
+				expoPushTokenRef.current = tokenData.data;
+			} catch {
+				// Push token is non-critical; silently ignore errors.
+			}
+		})();
+	}, []);
 
 	useEffect(() => {
 		if (Platform.OS !== 'android') return undefined;
@@ -252,7 +276,14 @@ export default function App() {
 					setLoading(true);
 					setHasError(false);
 				}}
-				onLoadEnd={() => setLoading(false)}
+				onLoadEnd={() => {
+					setLoading(false);
+					if (expoPushTokenRef.current) {
+						webViewRef.current?.injectJavaScript(
+							`window.__expoPushToken = ${JSON.stringify(expoPushTokenRef.current)}; true;`
+						);
+					}
+				}}
 				onError={() => {
 					setLoading(false);
 					setHasError(true);

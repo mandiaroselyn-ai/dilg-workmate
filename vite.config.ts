@@ -17,11 +17,11 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
       VitePWA({
+        strategies: 'injectManifest',
+        srcDir: 'src',
+        filename: 'sw.js',
         registerType: 'autoUpdate',
-        workbox: {
-          navigateFallbackDenylist: [/^\/api\//],
-          // The phone app opens from these files when there is no internet, so the logo
-          // and icons are kept with the code.
+        injectManifest: {
           globPatterns: ['**/*.{js,css,html,png,svg}'],
         },
         manifest: {

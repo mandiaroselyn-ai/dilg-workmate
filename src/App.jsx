@@ -15,6 +15,7 @@ import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueu
 import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
+import { subscribeToWebPush } from './utils/webPush';
 
 const DashboardView = lazy(() => import('./components/DashboardView'));
 const AttendanceView = lazy(() => import('./components/AttendanceView'));
@@ -487,6 +488,7 @@ export default function App() {
       body: JSON.stringify(profile)
     });
 
+    subscribeToWebPush();
     setCurrentView(homeViewFor(normalizedRole));
   };
 
@@ -509,6 +511,7 @@ export default function App() {
         setUser(data.user);
         setActiveRole(role);
         setCurrentView(homeViewFor(role));
+        subscribeToWebPush();
       })
       .catch(error => {
         if (cancelled) return;
