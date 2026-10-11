@@ -61,6 +61,7 @@ export const sendSms = async ({ recipient, message, employeeId = '', employeeEma
 
   const providerData = await providerResponse.json().catch(() => ({}));
   if (!providerResponse.ok) {
+    console.error('UniSMS error response:', providerResponse.status, JSON.stringify(providerData));
     const reason = providerData?.message || providerData?.error || 'UniSMS rejected the message.';
     await recordFailedSms(record, reason);
     throw new SmsError(reason, 502);

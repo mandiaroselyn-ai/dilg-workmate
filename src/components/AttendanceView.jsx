@@ -1342,14 +1342,14 @@ export default function AttendanceView({
                           </div>
                           <p className="text-sm font-black text-slate-800">Ready for your selfie</p>
                           <p className="mt-1.5 max-w-[230px] text-[11px] leading-relaxed text-slate-500">
-                            Use your front camera. Center your face when the live preview opens.
+                            Center your face when the live preview opens.
                           </p>
                           <button
                             type="button"
                             onClick={startSelfieCamera}
                             className="mt-4 inline-flex w-full max-w-[220px] items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white shadow-md shadow-blue-200 transition hover:-translate-y-0.5 hover:bg-blue-800 hover:shadow-lg focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200"
                           >
-                            <Camera className="h-4 w-4" /> Open Front Camera
+                            <Camera className="h-4 w-4" /> Open Camera
                           </button>
                           <p className="mt-3 text-[9px] font-semibold uppercase tracking-wider text-slate-400">
                             Camera access required · {biometricLabel} + GPS checked separately
