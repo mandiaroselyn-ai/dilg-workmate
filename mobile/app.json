@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "DILG Workmate",
+    "slug": "dilg-workmate-employee-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["android"],
+    "android": {
+      "package": "com.dilg.workmate",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "abde18d3-e6af-4c98-b053-32289f2c156c"
+      }
+    }
+  }
+}

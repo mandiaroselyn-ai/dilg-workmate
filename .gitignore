@@ -16,3 +16,5 @@ backups/
 # Output of scripts/preview-leave-form.mjs and scripts/preview-travel-order.mjs
 leave-form-preview.pdf
 travel-order-preview.pdf
+dtr-grid.pdf
+dtr-preview.pdf
