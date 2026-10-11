@@ -451,7 +451,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
               <div>
                 <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Fingerprint registered ✓' : 'Fingerprint'}</p>
-                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">Mapapalitan ang nakarehistrong phone bago.</p>}
+                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">This will replace the previously registered phone.</p>}
               </div>
             </div>
             {!hasRegisteredFingerprint || confirmingNewPhone ? (
@@ -476,7 +476,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <ScanFace className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />}
               <div>
                 <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Face ID registered ✓' : 'Face ID'}</p>
-                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">Mapapalitan ang nakarehistrong phone bago.</p>}
+                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">This will replace the previously registered phone.</p>}
               </div>
             </div>
             {!hasRegisteredFingerprint || confirmingNewPhone ? (
