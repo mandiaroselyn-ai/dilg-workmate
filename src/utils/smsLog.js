@@ -111,6 +111,12 @@ export const unseenSmsCount = (list = [], since = 0) => list.filter(sms => {
   return (status === 'Failed' || status === 'Received') && (smsTime(sms) ?? 0) > since;
 }).length;
 
+// Texts sent to an employee (not their own replies) that arrived after `since`, when they
+// last opened their conversation: the number on their SMS button.
+export const unreadTextsCount = (list = [], since = 0) => list.filter(sms => (
+  sms.direction !== 'inbound' && (smsTime(sms) ?? 0) > since
+)).length;
+
 // Matches a message by the person's name or number, or by its text.
 export const matchesSmsSearch = (sms, employees, query) => {
   const search = lower(query);

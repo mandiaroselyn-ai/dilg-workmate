@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft } from 'lucide-react';
 import { smsStatus, smsTime, smsWhen } from '../utils/smsLog';
@@ -13,17 +13,23 @@ const Avatar = ({ className }) => (
   <span className={`flex shrink-0 items-center justify-center rounded-full font-extrabold ${className}`} aria-hidden="true">DW</span>
 );
 
-// The inbox row for the employee's one conversation, with its newest text.
-const ConversationRow = ({ latest, onOpen }) => (
-  <button type="button" onClick={onOpen} className="flex w-full items-start gap-3 border-b border-slate-100 bg-white px-4 py-3.5 text-left hover:bg-slate-50 active:bg-slate-100">
+// The inbox row for the employee's one conversation, with its newest text. Unread texts
+// make it bold with their count, like a phone's Messages app.
+const ConversationRow = ({ latest, unread = 0, onOpen }) => (
+  <button type="button" onClick={onOpen} aria-label={unread > 0 ? `DILG WorkMate, ${unread} unread` : undefined} className="flex w-full items-start gap-3 border-b border-slate-100 bg-white px-4 py-3.5 text-left hover:bg-slate-50 active:bg-slate-100">
     <Avatar className="h-11 w-11 bg-[#1e40af] text-sm text-white" />
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
       <span className="flex items-center gap-2">
-        <span className="truncate text-[15px] font-bold text-slate-900">DILG WorkMate</span>
-        {latest && <span className="ml-auto shrink-0 text-xs text-slate-500">{smsWhen(latest)}</span>}
+        <span className={`truncate text-[15px] text-slate-900 ${unread > 0 ? 'font-extrabold' : 'font-bold'}`}>DILG WorkMate</span>
+        {latest && <span className={`ml-auto shrink-0 text-xs ${unread > 0 ? 'font-bold text-[#1e40af]' : 'text-slate-500'}`}>{smsWhen(latest)}</span>}
       </span>
-      <span className="line-clamp-2 text-[13px] leading-snug text-slate-600">
-        {latest ? `${latest.direction === 'inbound' ? 'You: ' : ''}${latest.message}` : 'No texts yet. Tap to message HR.'}
+      <span className="flex items-start gap-2">
+        <span className={`line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug ${unread > 0 ? 'font-semibold text-slate-900' : 'text-slate-600'}`}>
+          {latest ? `${latest.direction === 'inbound' ? 'You: ' : ''}${latest.message}` : 'No texts yet. Tap to message HR.'}
+        </span>
+        {unread > 0 && (
+          <span className="mt-0.5 flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#1e40af] px-1.5 text-[11px] font-bold text-white" aria-hidden="true">{unread}</span>
+        )}
       </span>
       {latest && smsStatus(latest) === 'Failed' && (
         <span className="mt-0.5 self-start rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700">Not delivered</span>
@@ -36,13 +42,20 @@ const ConversationRow = ({ latest, onOpen }) => (
 // with the "DILG WorkMate" conversation, which opens into chat bubbles (WorkMate's texts on
 // the left, the employee's replies on the right). With `onReply`, the employee can type a
 // message to HR at the bottom. `layout` is 'screen' (full screen in the phone app and
-// phone browsers) or 'dropdown' (under the SMS button in a computer browser).
-export function EmployeeSms({ smsAlerts = [], onClose, onReply, layout = 'screen' }) {
+// phone browsers) or 'dropdown' (under the SMS button in a computer browser). `unread` is
+// how many texts are new; opening the conversation reads them (`onSeen`).
+export function EmployeeSms({ smsAlerts = [], onClose, onReply, unread = 0, onSeen, layout = 'screen' }) {
   const [open, setOpen] = useState(false);
   const messages = useMemo(
     () => [...smsAlerts].sort((a, b) => (smsTime(a) ?? 0) - (smsTime(b) ?? 0)),
     [smsAlerts]
   );
+  // While the conversation is open, its texts, including ones that arrive, count as read.
+  const onSeenRef = useRef(onSeen);
+  onSeenRef.current = onSeen;
+  useEffect(() => {
+    if (open) onSeenRef.current?.();
+  }, [open, messages.length]);
   const latest = messages[messages.length - 1];
   const screen = layout === 'screen';
   const goBack = open ? () => setOpen(false) : onClose;
@@ -96,7 +109,7 @@ export function EmployeeSms({ smsAlerts = [], onClose, onReply, layout = 'screen
         </>
       ) : (
         <div className={screen ? 'min-h-0 flex-1 overflow-y-auto bg-white' : 'bg-white'}>
-          <ConversationRow latest={latest} onOpen={() => setOpen(true)} />
+          <ConversationRow latest={latest} unread={unread} onOpen={() => setOpen(true)} />
         </div>
       )}
     </>
@@ -105,10 +118,10 @@ export function EmployeeSms({ smsAlerts = [], onClose, onReply, layout = 'screen
 
 // The full-screen Messages view. It is drawn on the page itself, outside the header's layer,
 // so it covers the bottom menu while open.
-export default function MobileSmsPanel({ smsAlerts = [], onClose, onReply }) {
+export default function MobileSmsPanel({ smsAlerts = [], onClose, onReply, unread, onSeen }) {
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-[60] flex flex-col bg-white text-slate-900">
-      <EmployeeSms smsAlerts={smsAlerts} onClose={onClose} onReply={onReply} layout="screen" />
+      <EmployeeSms smsAlerts={smsAlerts} onClose={onClose} onReply={onReply} unread={unread} onSeen={onSeen} layout="screen" />
     </div>,
     document.body
   );

@@ -8,6 +8,7 @@ import {
   smsKind,
   smsStatus,
   smsThreads,
+  unreadTextsCount,
   unseenSmsCount
 } from './smsLog.js';
 
@@ -61,6 +62,15 @@ test('messages are grouped by person with their names, newest conversation first
 
 test('filters count failed texts, replies, attendance, and account approvals', () => {
   assert.deepEqual(smsFilterCounts([timeIn, approvalFailed, reply, stranger]), { all: 4, failed: 1, reply: 1, attendance: 1, account: 1 });
+});
+
+test('an employee\'s badge counts the texts that came after they last opened their messages', () => {
+  const list = [approvalFailed, timeIn, reply];
+  assert.equal(unreadTextsCount(list, 0), 2);
+  assert.equal(unreadTextsCount(list, Date.parse('2026-10-01T00:00:00Z')), 1);
+  // Their own reply never counts.
+  assert.equal(unreadTextsCount([reply], 0), 0);
+  assert.equal(unreadTextsCount(list, Date.parse('2026-10-01T02:00:00Z')), 0);
 });
 
 test('the badge counts only new failed texts and replies', () => {

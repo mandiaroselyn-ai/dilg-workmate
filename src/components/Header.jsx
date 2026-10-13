@@ -10,7 +10,7 @@ import MobileNotificationsPanel from './MobileNotificationsPanel';
 import MobileSmsPanel, { EmployeeSms } from './MobileSmsPanel';
 import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
-import { unseenSmsCount } from '../utils/smsLog';
+import { unreadTextsCount, unseenSmsCount } from '../utils/smsLog';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 import { getManilaDateString } from '../../shared/localDate';
 import { requestCoversDate } from '../utils/hrAttendance';
@@ -169,7 +169,8 @@ export default function Header({
   // HR/Admins and Supervisors use the web panels; supervisors only decide requests, so
   // they have no SMS list.
   const showSmsButton = !isWebOnlyRole || activeRole === 'hr_admin';
-  const smsBadgeCount = isWebOnlyRole ? unseenSmsCount(smsAlerts, smsSeenAt) : smsAlerts.length;
+  // HR: new failed texts and replies. Employee: texts since they last opened their messages.
+  const smsBadgeCount = isWebOnlyRole ? unseenSmsCount(smsAlerts, smsSeenAt) : unreadTextsCount(smsAlerts, smsSeenAt);
   const goTo = view => {
     setShowNotifications(false);
     setShowSMSLogs(false);
@@ -250,7 +251,9 @@ export default function Header({
             }}
             className="w-10 h-10 rounded-full flex items-center justify-center text-white transition-all relative border border-white/30 bg-white/10 hover:bg-white/20 cursor-pointer"
             title={isWebOnlyRole ? 'SMS' : 'SMS Alerts Activity Feed'}
-            aria-label={isWebOnlyRole && smsBadgeCount > 0 ? `SMS, ${smsBadgeCount} new failed text${smsBadgeCount === 1 ? '' : 's'} or replies` : 'SMS'}
+            aria-label={smsBadgeCount > 0
+              ? (isWebOnlyRole ? `SMS, ${smsBadgeCount} new failed text${smsBadgeCount === 1 ? '' : 's'} or replies` : `SMS, ${smsBadgeCount} new text${smsBadgeCount === 1 ? '' : 's'}`)
+              : 'SMS'}
           >
             <Mail className="w-5 h-5 text-white" />
             {smsBadgeCount > 0 && (
@@ -277,7 +280,7 @@ export default function Header({
           {/* The employee's texts: the DILG WorkMate conversation, which opens into chat */}
           {showSMSLogs && !isWebOnlyRole && (
             <div className="absolute right-0 mt-2 z-30 flex w-[min(22rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl animate-in fade-in slide-in-from-top-3 duration-200">
-              <EmployeeSms smsAlerts={smsAlerts} onReply={onSmsReply} layout="dropdown" />
+              <EmployeeSms smsAlerts={smsAlerts} onReply={onSmsReply} unread={smsBadgeCount} onSeen={markSmsSeen} layout="dropdown" />
             </div>
           )}
         </div>
@@ -439,6 +442,8 @@ export default function Header({
           smsAlerts={smsAlerts}
           onClose={() => setMobilePanel(null)}
           onReply={onSmsReply}
+          unread={smsBadgeCount}
+          onSeen={markSmsSeen}
         />
       )}
       {showFullScreenPanels && mobilePanel === 'notifications' && (
