@@ -1,13 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, ChevronLeft, Download, MessageSquare, Search, SquarePen } from 'lucide-react';
-import { downloadCsv } from '../utils/csv';
+import { ArrowRight, ChevronLeft, MessageSquare, Search, SquarePen } from 'lucide-react';
 import {
-  SMS_CSV_HEADERS,
   formatMobile,
   isMobileNumber,
   matchesSmsFilter,
   matchesSmsSearch,
-  smsCsvRows,
   smsFilterCounts,
   smsPerson,
   smsStatus,
@@ -96,7 +93,7 @@ const PeoplePicker = ({ employees = [], onPick, onBack, listClassName }) => {
 // HR's SMS, laid out like a phone's Messages app: a list of conversations, one per person,
 // that opens into chat bubbles with a box to text back. In the header dropdown ('panel')
 // one shows at a time; on the SMS Log page ('page') the list and the open conversation sit
-// side by side, with search and CSV export. Filters (failed texts, replies, attendance,
+// side by side, with search. Filters (failed texts, replies, attendance,
 // account approvals) choose which conversations are listed. A text that was not delivered
 // can be sent again with `onResend`, and with `onSend` HR can text anyone with a number.
 export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees = [], smsConfigured, onViewAll, onResend, onSend }) {
@@ -160,11 +157,6 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
     ? allThreads.find(thread => thread.key === openKey) || (draft?.key === openKey ? draft : null)
     : null;
 
-  const exportCsv = () => {
-    const date = new Date().toISOString().slice(0, 10);
-    downloadCsv(`sms-log-${date}.csv`, SMS_CSV_HEADERS, smsCsvRows(visible, employees));
-  };
-
   const openConversation = key => {
     setOpenKey(key);
     setPicking(false);
@@ -217,9 +209,6 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
               className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-[#0B4EA2]"
             />
           </label>
-          <button type="button" onClick={exportCsv} disabled={visible.length === 0} aria-label="Export CSV" title="Export CSV" className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-            <Download className="h-4 w-4" aria-hidden="true" /> CSV
-          </button>
         </div>
       )}
       <div role="tablist" aria-label="Show" className="flex flex-wrap gap-2">
@@ -319,16 +308,13 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
           <>
             {listHeader}
             {threadList}
-            <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-3">
-              {onViewAll ? (
+            {onViewAll && (
+              <div className="border-t border-slate-200 px-4 py-3">
                 <button type="button" onClick={onViewAll} className="flex items-center gap-1.5 text-[13px] font-extrabold text-[#0B4EA2] hover:underline">
                   View full SMS log <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </button>
-              ) : <span />}
-              <button type="button" onClick={exportCsv} disabled={visible.length === 0} className="flex items-center gap-1.5 rounded-[10px] border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-                <Download className="h-3.5 w-3.5" aria-hidden="true" /> Export CSV
-              </button>
-            </div>
+              </div>
+            )}
           </>
         )}
       </section>

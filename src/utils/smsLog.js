@@ -119,10 +119,3 @@ export const matchesSmsSearch = (sms, employees, query) => {
   return lower(`${person.name} ${person.number} ${sms.message}`).includes(search);
 };
 
-export const SMS_CSV_HEADERS = ['Date and time', 'Name', 'Mobile number', 'Type', 'Status', 'Message', 'Reason not delivered'];
-
-// One CSV row per message, in the order of SMS_CSV_HEADERS.
-export const smsCsvRows = (list = [], employees = []) => list.map(sms => {
-  const person = smsPerson(sms, employees);
-  return [smsWhen(sms), person.employee ? person.name : '', person.number, SMS_KIND_LABELS[smsKind(sms)], smsStatus(sms), sms.message || '', sms.error || ''];
-});

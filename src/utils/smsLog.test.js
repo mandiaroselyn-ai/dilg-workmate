@@ -4,7 +4,6 @@ import {
   formatMobile,
   isMobileNumber,
   matchesSmsSearch,
-  smsCsvRows,
   smsFilterCounts,
   smsKind,
   smsStatus,
@@ -78,11 +77,3 @@ test('the SMS log can be searched by name, number, or text', () => {
   assert.equal(matchesSmsSearch(reply, employees, 'juan'), false);
 });
 
-test('the CSV export has one row per message', () => {
-  const [row] = smsCsvRows([approvalFailed], employees);
-  assert.equal(row[1], 'Juan Dela Cruz');
-  assert.equal(row[2], '0917 123 4567');
-  assert.equal(row[3], 'Account');
-  assert.equal(row[4], 'Failed');
-  assert.equal(row[6], 'Invalid number');
-});
