@@ -118,7 +118,7 @@ const faqs = [
   {
     topic: 'Account and password',
     question: 'Why was I logged out?',
-    answer: 'A session lasts 8 hours, and changing your password logs you out everywhere. Log in again. On a computer, tick "Remember me" to stay signed in after closing the browser.'
+    answer: 'In the WorkMate app you stay signed in for 30 days. On a computer a session lasts 8 hours, or 7 days if you tick "Remember me", which also keeps you signed in after closing the browser. Changing your password logs you out everywhere, so log in again.'
   },
   {
     topic: 'App problems',

@@ -20,7 +20,7 @@ import { DtrLog } from '../models/dtrLogModel.js';
 import { Leave } from '../models/leaveModel.js';
 import { isConnected } from '../config/db.js';
 import { toRequesterProfile, toSafeUser } from '../utils/passwordSecurity.js';
-import { createAuthToken } from '../utils/authToken.js';
+import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
@@ -379,7 +379,7 @@ export const changePassword = async (req, res) => {
       }
     }
     await User.changePassword(user, newPassword);
-    res.status(200).json({ success: true, message: 'Password changed. You were signed out on your other devices.', token: createAuthToken(user) });
+    res.status(200).json({ success: true, message: 'Password changed. You were signed out on your other devices.', token: createAuthToken(user, sessionLengthOf(req.authClaims)) });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -387,10 +387,11 @@ export const changePassword = async (req, res) => {
 
 export const loginUser = async (req, res) => {
   try {
-    const { email, password, role, platform } = req.body;
+    const { email, password, role, platform, remember } = req.body;
     const normalizedEmail = email?.toString().trim().toLowerCase();
     const normalizedPassword = password?.toString().trim();
     const normalizedRole = role?.toString().trim().toLowerCase();
+    const normalizedPlatform = platform?.toString().trim().toLowerCase();
 
     if (!normalizedEmail || !normalizedPassword || !normalizedRole) {
       return res.status(400).json({ success: false, error: 'Email, password, and role are required.' });
@@ -408,7 +409,7 @@ export const loginUser = async (req, res) => {
     }
 
     const storedRole = (user.accessLevel || 'employee').toString().trim().toLowerCase();
-    if (platform?.toString().trim().toLowerCase() === 'mobile' && storedRole !== 'employee') {
+    if (normalizedPlatform === 'mobile' && storedRole !== 'employee') {
       return res.status(403).json({
         success: false,
         error: 'Only employee accounts can use the mobile app.'
@@ -422,7 +423,8 @@ export const loginUser = async (req, res) => {
       });
     }
 
-    res.status(200).json({ success: true, token: createAuthToken(user), user: toSafeUser(user) });
+    const sessionLength = sessionLengthFor({ platform: normalizedPlatform, remember: remember === true });
+    res.status(200).json({ success: true, token: createAuthToken(user, sessionLength), user: toSafeUser(user) });
   } catch (error) {
     sendServerError(res, error);
   }

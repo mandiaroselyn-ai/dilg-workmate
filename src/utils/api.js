@@ -2,8 +2,9 @@ const TOKEN_KEY = 'dilg_auth_token';
 
 // The session token lives in localStorage when the person chose "Remember me", so it
 // survives closing the browser, and in sessionStorage otherwise, so it survives refreshing
-// this tab only. Either way the server ends the session after 8 hours. Storage can be
-// blocked (for example, in a private window), so every access is guarded.
+// this tab only. The server ends the session after 8 hours, 7 days with "Remember me", or
+// 30 days in the phone app. Storage can be blocked (for example, in a private window), so
+// every access is guarded.
 const tokenStores = () => [window.sessionStorage, window.localStorage].filter(Boolean);
 const readFrom = store => {
   try {

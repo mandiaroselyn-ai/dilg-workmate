@@ -118,6 +118,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
     }
     const params = new URLSearchParams({ frontendOrigin: window.location.origin });
     if (mobileOnly) params.set('mobile', '1');
+    if (rememberMe) params.set('remember', '1');
     window.location.assign(`/api/auth/google/url?${params.toString()}`);
   };
 
@@ -188,7 +189,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
           email: loginEmail,
           password: passwordInput,
           role: roleLabel,
-          platform: mobileOnly ? 'mobile' : 'web'
+          platform: mobileOnly ? 'mobile' : 'web',
+          remember: rememberMe
         })
       });
 

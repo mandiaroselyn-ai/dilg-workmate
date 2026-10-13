@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { User } from '../models/User.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
-import { createAuthToken } from '../utils/authToken.js';
+import { createAuthToken, sessionLengthFor } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { createMobileHandoffCode, isValidCodeChallenge, readMobileHandoffCode } from '../utils/mobileAuthHandoff.js';
 import { approvalNoticeDestination, inactiveAccountMessage, notifyHrOfNewAccount } from '../services/accountNotifications.js';
@@ -64,12 +64,15 @@ function getStateSecret() {
   return process.env.JWT_SECRET;
 }
 
-function createState(mobile, frontendOrigin, codeChallenge) {
+// `remember` is the web login's "Remember me", carried through Google to set how long the
+// session lasts; the phone app always stays signed in longer.
+function createState(mobile, frontendOrigin, codeChallenge, remember = false) {
   const payload = Buffer.from(JSON.stringify({
     createdAt: Date.now(),
     nonce: crypto.randomBytes(16).toString('hex'),
     frontendOrigin: mobile ? null : frontendOrigin,
-    codeChallenge: mobile ? codeChallenge : null
+    codeChallenge: mobile ? codeChallenge : null,
+    remember: !mobile && remember === true
   })).toString('base64url');
   const signature = crypto.createHmac('sha256', getStateSecret()).update(payload).digest('base64url');
   return `${mobile ? 'mobile:' : ''}${payload}.${signature}`;
@@ -140,7 +143,7 @@ export const googleAuthUrl =(req, res) => {
   }
 
   const frontendOrigin = getDevelopmentFrontendOrigin(req);
-  const state = createState(mobile, frontendOrigin, codeChallenge);
+  const state = createState(mobile, frontendOrigin, codeChallenge, req.query.remember === '1');
   const url = new URL(GOOGLE_AUTH_BASE);
   url.searchParams.set('client_id', CLIENT_ID);
   url.searchParams.set('redirect_uri', redirectUri);
@@ -229,7 +232,7 @@ export const googleAuthCallback = async (req, res) => {
     const frontendOrigin = stateData.frontendOrigin || getFrontendOrigin(req);
     sendPopupResult(res, 200, frontendOrigin, {
       type: 'google-login-success',
-      token: createAuthToken(user),
+      token: createAuthToken(user, sessionLengthFor({ remember: stateData.remember === true })),
       user: toSafeUser(user)
     });
   } catch (error) {
@@ -252,7 +255,8 @@ export const googleMobileExchange = async (req, res) => {
     if (!user || (user.accountStatus && user.accountStatus.toLowerCase() !== 'active')) {
       return res.status(401).json({ success: false, error: 'Google sign-in expired. Please try again.' });
     }
-    return res.status(200).json({ success: true, token: createAuthToken(user), user: toSafeUser(user) });
+    // Only the phone app exchanges a Google sign-in this way, so it gets the app's session length.
+    return res.status(200).json({ success: true, token: createAuthToken(user, sessionLengthFor({ platform: 'mobile' })), user: toSafeUser(user) });
   } catch (error) {
     console.error('Google mobile sign-in exchange failed:', error);
     return res.status(500).json({ success: false, error: 'Google sign-in failed.' });

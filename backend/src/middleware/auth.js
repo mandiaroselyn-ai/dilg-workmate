@@ -24,6 +24,7 @@ export const authenticate = async (req, res, next) => {
     }
 
     req.user = currentUser;
+    req.authClaims = claims;
     next();
   } catch (error) {
     return authenticationFailure(res, 'Invalid authentication token.');

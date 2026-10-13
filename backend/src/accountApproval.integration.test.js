@@ -18,7 +18,7 @@ globalThis.fetch = async url => {
 const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { Announcement } = await import('./models/announcementModel.js');
-const { createAuthToken } = await import('./utils/authToken.js');
+const { createAuthToken, verifyAuthToken } = await import('./utils/authToken.js');
 const { toPhilippineMobile, sendAccountApprovedSms } = await import('./services/smsService.js');
 const { inactiveAccountMessage, maskEmail, maskMobile, signedUpWithGoogle } = await import('./services/accountNotifications.js');
 
@@ -102,6 +102,20 @@ test('a pending account is told where its approval notice will go', t => {
 test('rejected and deactivated accounts are told to contact HR', () => {
   assert.equal(inactiveAccountMessage({ accountStatus: 'Rejected' }), 'Your account registration was rejected. Please contact the HR Administrator.');
   assert.equal(inactiveAccountMessage({ accountStatus: 'Inactive' }), 'This account is inactive. Please contact the HR Administrator.');
+});
+
+test('logging in gives 8 hours, 7 days with Remember me, and 30 days in the phone app', async t => {
+  t.mock.method(User, 'verifyPassword', async () => true);
+  t.mock.method(User, 'findByEmail', async () => ({ ...pendingEmployee, accountStatus: 'Active' }));
+  const sessionDays = async body => {
+    const response = await request(app).post('/api/login').send({ email: 'juan@gmail.com', password: 'a-long-password-42', role: 'employee', ...body });
+    assert.equal(response.status, 200);
+    const claims = verifyAuthToken(response.body.token);
+    return (claims.exp - claims.iat) / 86400;
+  };
+  assert.equal(await sessionDays({ platform: 'web' }), 8 / 24);
+  assert.equal(await sessionDays({ platform: 'web', remember: true }), 7);
+  assert.equal(await sessionDays({ platform: 'mobile' }), 30);
 });
 
 test('logging in to a pending or rejected account shows its status', async t => {
