@@ -11,6 +11,7 @@ import {
   toPhilippineMobile
 } from '../services/smsService.js';
 import { normalizeAnnouncementInput, normalizeEventInput } from '../utils/bulletinFields.js';
+import { sendPushNotification } from '../services/pushService.js';
 
 // Compares hashes so the check takes the same time regardless of where the secrets differ.
 const isMatchingSecret = (received, expected) => {
@@ -229,16 +230,17 @@ export const createSmsAlert = async (req, res) => {
       employeeId: typeof employeeId === 'string' ? employeeId : '',
       employeeEmail: typeof employeeEmail === 'string' ? employeeEmail : ''
     };
-    // The employee is also told in WorkMate, which opens their SMS screen, so they see the
-    // message even when the text did not reach their phone (it is saved as not delivered).
+    // The employee also gets a phone notification from the WorkMate app, which opens their
+    // SMS screen, so they see the message even when the text did not reach their phone (it
+    // is saved as not delivered). It is not added to their Notifications list: the message
+    // itself is in their SMS.
     const notifyEmployee = () => (person.employeeId || person.employeeEmail
-      ? Announcement.createNotification({
+      ? sendPushNotification({
         title: isHr ? 'New message from HR' : 'New message from DILG WorkMate',
-        message: text,
-        type: 'sms',
-        view: 'sms',
+        body: text,
+        data: { type: 'sms', view: 'sms' },
         ...person
-      }).catch(error => console.error('Unable to notify the employee of a text:', error.message))
+      })
       : null);
     let sms;
     try {

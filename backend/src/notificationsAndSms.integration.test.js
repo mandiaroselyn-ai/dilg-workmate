@@ -18,6 +18,7 @@ const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { Announcement, notificationActionFields } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
+const { PushSubscription } = await import('./models/pushSubscriptionModel.js');
 const { sendSms, SmsError } = await import('./services/smsService.js');
 
 const app = createApiApp();
@@ -159,7 +160,9 @@ test('HR texts one person, and the text says it is from HR', async t => {
   withSms(t);
   t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ id: 'uni-3' }) }));
   const record = t.mock.method(Announcement, 'createSmsAlert', async data => ({ id: 'sms-9', ...data }));
-  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+  const listed = t.mock.method(Announcement, 'createNotification', async data => data);
+  // The phone notification is looked up by the employee's push subscription.
+  const notify = t.mock.method(PushSubscription, 'find', () => ({ lean: async () => [] }));
   t.mock.method(User, 'findByEmail', async () => hr);
   const send = body => request(app).post('/api/sms').set('Authorization', `Bearer ${createAuthToken(hr)}`).send(body);
 
@@ -170,12 +173,9 @@ test('HR texts one person, and the text says it is from HR', async t => {
   assert.equal(saved.recipient, '+639171234567');
   assert.equal(saved.kind, 'manual');
   assert.equal(saved.employeeId, 'DILG-2026-1');
-  // The employee is also told in WorkMate, and the notice opens their SMS screen.
-  const notice = notify.mock.calls[0].arguments[0];
-  assert.equal(notice.title, 'New message from HR');
-  assert.equal(notice.message, 'Please call HR today.');
-  assert.equal(notice.view, 'sms');
-  assert.equal(notice.employeeEmail, 'juan@gmail.com');
+  // The employee gets a phone notification, but nothing is added to their Notifications list.
+  assert.deepEqual(notify.mock.calls[0].arguments[0], { employeeEmail: 'juan@gmail.com' });
+  assert.equal(listed.mock.callCount(), 0);
 
   assert.match((await send({ recipient: '12345', message: 'Hi' })).body.error, /valid mobile number/);
   assert.match((await send({ recipient: '09171234567', message: '   ' })).body.error, /Type the message/);
@@ -184,17 +184,17 @@ test('HR texts one person, and the text says it is from HR', async t => {
   assert.equal(notify.mock.callCount(), 1);
 });
 
-test('the employee is told in WorkMate even when HR\'s text does not reach their phone', async t => {
+test('the employee gets a phone notification even when HR\'s text does not reach their phone', async t => {
   withSms(t);
   t.mock.method(globalThis, 'fetch', async () => ({ ok: false, status: 422, json: async () => ({ message: 'Phone offline' }) }));
   t.mock.method(Announcement, 'createSmsAlert', async data => data);
-  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+  const notify = t.mock.method(PushSubscription, 'find', () => ({ lean: async () => [] }));
   t.mock.method(User, 'findByEmail', async () => hr);
   const send = body => request(app).post('/api/sms').set('Authorization', `Bearer ${createAuthToken(hr)}`).send(body);
 
   const response = await send({ recipient: '09171234567', message: 'Please call HR.', employeeId: 'DILG-2026-1' });
   assert.equal(response.status, 502);
-  assert.equal(notify.mock.calls[0].arguments[0].employeeId, 'DILG-2026-1');
+  assert.deepEqual(notify.mock.calls[0].arguments[0], { employeeId: 'DILG-2026-1' });
 
   // A number that is not on an account has no one to tell.
   await send({ recipient: '09171234567', message: 'Hello' });
