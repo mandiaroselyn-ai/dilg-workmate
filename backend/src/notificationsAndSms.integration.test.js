@@ -6,8 +6,9 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'notifications-sms-test-secre
 // The SMS provider is turned on only inside the tests that need it, and the network is
 // replaced in each of them, so no real text message is ever sent.
 process.env.UNISMS_API_KEY = '';
-delete process.env.HTTPSMS_API_KEY;
-delete process.env.HTTPSMS_FROM;
+// Empty, not deleted, so a developer's backend/.env cannot switch the tests to httpSMS.
+process.env.HTTPSMS_API_KEY = '';
+process.env.HTTPSMS_FROM = '';
 globalThis.fetch = async url => {
   throw new Error(`Tests must not call the network (${url}).`);
 };
@@ -66,8 +67,8 @@ test('with HTTPSMS_API_KEY set, texts go out through httpSMS from the configured
   process.env.HTTPSMS_API_KEY = 'httpsms-test-key';
   process.env.HTTPSMS_FROM = '0998 123 4567';
   t.after(() => {
-    delete process.env.HTTPSMS_API_KEY;
-    delete process.env.HTTPSMS_FROM;
+    process.env.HTTPSMS_API_KEY = '';
+    process.env.HTTPSMS_FROM = '';
   });
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, init) => {
@@ -86,7 +87,7 @@ test('with HTTPSMS_API_KEY set, texts go out through httpSMS from the configured
 
 test('httpSMS without the phone number is reported instead of sent', async t => {
   process.env.HTTPSMS_API_KEY = 'httpsms-test-key';
-  t.after(() => { delete process.env.HTTPSMS_API_KEY; });
+  t.after(() => { process.env.HTTPSMS_API_KEY = ''; });
   await assert.rejects(
     sendSms({ recipient: '09171234567', message: 'Time In recorded.', kind: 'attendance' }),
     error => error instanceof SmsError && error.statusCode === 503 && /HTTPSMS_FROM/.test(error.message)
@@ -113,6 +114,20 @@ test('a sent text is recorded with what it was about', async t => {
   assert.equal(sms.kind, 'account');
   assert.equal(sms.providerMessageId, 'uni-1');
   assert.equal(record.mock.callCount(), 1);
+});
+
+test('a resent text updates its log entry instead of adding a new one', async t => {
+  withSms(t);
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ id: 'uni-2' }) }));
+  const created = t.mock.method(Announcement, 'createSmsAlert', async data => data);
+  const updated = t.mock.method(Announcement, 'updateSmsAlert', async (id, data) => ({ id, ...data }));
+
+  const sms = await sendSms({ recipient: '09171234567', message: 'Your account has been approved.', kind: 'account', resendOf: 'sms-1' });
+  assert.equal(created.mock.callCount(), 0);
+  assert.equal(updated.mock.calls[0].arguments[0], 'sms-1');
+  assert.equal(sms.id, 'sms-1');
+  assert.equal(sms.status, 'Sent');
+  assert.equal(sms.error, '');
 });
 
 test('only HR/Admins can load the SMS log, and loading it often is not rate limited', async t => {

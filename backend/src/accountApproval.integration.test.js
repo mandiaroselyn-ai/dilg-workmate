@@ -8,7 +8,7 @@ process.env.GOOGLE_CLIENT_ID = 'test-google-client';
 // No SMS provider or mail server in tests: an approval reports that they are not set up.
 // The settings are set to empty (not deleted) so the app's .env loader cannot fill in real
 // ones, and any network call fails the test, so no real text or email is ever sent.
-for (const key of ['UNISMS_API_KEY', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM']) {
+for (const key of ['UNISMS_API_KEY', 'HTTPSMS_API_KEY', 'HTTPSMS_FROM', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'EMAIL_FROM']) {
   process.env[key] = '';
 }
 globalThis.fetch = async url => {

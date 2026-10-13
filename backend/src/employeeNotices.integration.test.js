@@ -6,6 +6,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'employee-notices-test-secret
 process.env.UNISMS_WEBHOOK_SECRET = 'employee-notices-webhook-secret';
 // Texts are "sent" to a stand-in for the SMS service, so nothing leaves the test.
 process.env.UNISMS_API_KEY = '';
+// Empty, not deleted, so a developer's backend/.env cannot switch the tests to httpSMS.
+process.env.HTTPSMS_API_KEY = '';
 const texts = [];
 globalThis.fetch = async (url, options) => {
   texts.push(JSON.parse(options.body));

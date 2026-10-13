@@ -51,21 +51,28 @@ const providerErrorText = (data, providerName) => {
   return [message, details].filter(Boolean).join(': ') || `${providerName} rejected the message.`;
 };
 
+// Logs a text: as a new entry, or, for a resend, on the entry that was sent again, so a
+// text that went through on a resend no longer shows as Failed.
+const saveSms = (resendOf, fields) => (resendOf
+  ? Announcement.updateSmsAlert(resendOf, fields)
+  : Announcement.createSmsAlert(fields));
+
 // Records a message the SMS provider did not take, so HR sees it as Failed in the SMS log
 // and can reach the person another way. Recording never hides the original error.
-const recordFailedSms = async (fields, error) => {
+const recordFailedSms = async (fields, error, resendOf) => {
   try {
-    await Announcement.createSmsAlert({ ...fields, status: 'Failed', error });
+    await saveSms(resendOf, { ...fields, status: 'Failed', error });
   } catch (recordError) {
     console.error('Unable to record a failed SMS:', recordError.message);
   }
 };
 
 // Sends one SMS through the SMS provider and records it, with what it is about (`kind`:
-// 'attendance', 'account', or 'manual'). Throws SmsError with an HTTP status when the request
-// is invalid, SMS is not configured, or the provider cannot be reached or rejects it; those
-// last two are also recorded as Failed.
-export const sendSms = async ({ recipient, message, employeeId = '', employeeEmail = '', timestamp, kind = '' }) => {
+// 'attendance', 'account', or 'manual'). `resendOf` is the logged text being sent again,
+// which is updated instead of adding a new entry. Throws SmsError with an HTTP status when
+// the request is invalid, SMS is not configured, or the provider cannot be reached or
+// rejects it; those last two are also recorded as Failed.
+export const sendSms = async ({ recipient, message, employeeId = '', employeeEmail = '', timestamp, kind = '', resendOf = '' }) => {
   const normalizedRecipient = normalizePhilippineNumber(recipient);
   if (!normalizedRecipient || !message) {
     throw new SmsError('SMS recipient and message are required.', 400);
@@ -87,7 +94,7 @@ export const sendSms = async ({ recipient, message, employeeId = '', employeeEma
       body: JSON.stringify(provider.body)
     });
   } catch (error) {
-    await recordFailedSms(record, 'The SMS service could not be reached.');
+    await recordFailedSms(record, 'The SMS service could not be reached.', resendOf);
     throw new SmsError('The SMS service could not be reached. Please try again.', 502);
   }
 
@@ -95,14 +102,15 @@ export const sendSms = async ({ recipient, message, employeeId = '', employeeEma
   if (!providerResponse.ok) {
     console.error(`${provider.name} error response:`, providerResponse.status, JSON.stringify(providerData));
     const reason = providerErrorText(providerData, provider.name);
-    await recordFailedSms(record, reason);
+    await recordFailedSms(record, reason, resendOf);
     throw new SmsError(reason, 502);
   }
 
   // httpSMS queues the text on the phone ("pending"); it counts as sent once accepted.
-  return Announcement.createSmsAlert({
+  return saveSms(resendOf, {
     ...record,
     status: 'Sent',
+    error: '',
     providerMessageId: providerData?.data?.id || providerData?.id || providerData?.message_id || providerData?.message?.reference_id || ''
   });
 };

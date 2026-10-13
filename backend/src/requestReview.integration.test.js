@@ -3,6 +3,8 @@ import test from 'node:test';
 import request from 'supertest';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'request-review-test-secret';
+// Empty, not deleted, so a developer's backend/.env cannot switch the tests to httpSMS.
+process.env.HTTPSMS_API_KEY = '';
 
 const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');

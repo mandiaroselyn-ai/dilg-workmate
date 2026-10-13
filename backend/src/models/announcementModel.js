@@ -322,6 +322,16 @@ export const Announcement = {
     return obj;
   },
 
+  // Changes a logged text in place, such as one that was not delivered and was sent again.
+  updateSmsAlert: async (id, changes) => {
+    ensureConnected();
+    const item = await MongoSmsAlert.findOneAndUpdate({ customId: id }, { $set: changes }, { returnDocument: 'after' });
+    if (!item) return null;
+    const obj = item.toObject();
+    obj.id = obj.customId;
+    return obj;
+  },
+
   createSmsAlert: async (smsData) => {
     ensureConnected();
     const customId = smsData.id || createRecordId('sms');

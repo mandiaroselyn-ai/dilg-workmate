@@ -190,7 +190,7 @@ export const getSmsAlerts = async (req, res) => {
 export const createSmsAlert = async (req, res) => {
   try {
     // Resending a text that was not delivered sends the saved message to the same number
-    // again, so the log keeps what it was about. A failed resend is logged as Failed too.
+    // again and updates that log entry: Sent when it goes through, or Failed with the new reason.
     if (req.body?.resendOf !== undefined) {
       const original = typeof req.body.resendOf === 'string' ? await Announcement.findSmsAlert(req.body.resendOf) : null;
       if (!original || original.direction === 'inbound' || original.status !== 'Failed') {
@@ -202,9 +202,10 @@ export const createSmsAlert = async (req, res) => {
         employeeId: original.employeeId,
         employeeEmail: original.employeeEmail,
         timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }),
-        kind: original.kind || 'manual'
+        kind: original.kind || 'manual',
+        resendOf: original.id
       });
-      return res.status(201).json({ success: true, sms });
+      return res.status(200).json({ success: true, sms });
     }
 
     const { recipient, message, employeeId, employeeEmail, timestamp } = req.body;
