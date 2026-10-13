@@ -8,28 +8,28 @@ const urlBase64ToUint8Array = base64String => {
 };
 
 // If running inside the Expo mobile app, register the Expo push token the native
-// shell injected, then return. Otherwise subscribe to Web Push.
+// shell injected. Otherwise subscribe to Web Push. Returns 'subscribed', 'unsupported'
+// (this browser cannot receive push; on iPhone, WorkMate must be opened from the Home
+// Screen), 'denied', or 'failed'.
 export const subscribeToWebPush = async () => {
   try {
-    // Expo mobile app case
     if (window.__expoPushToken) {
-      await apiFetch('/api/push/subscribe', {
+      const response = await apiFetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'expo', expoToken: window.__expoPushToken })
       });
-      return;
+      return response.ok ? 'subscribed' : 'failed';
     }
 
-    // Web browser case
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') return 'unsupported';
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return;
+    if (permission !== 'granted') return 'denied';
 
     const keyRes = await apiFetch('/api/push/vapid-public-key');
-    if (!keyRes.ok) return;
+    if (!keyRes.ok) return 'failed';
     const { publicKey } = await keyRes.json();
-    if (!publicKey) return;
+    if (!publicKey) return 'failed';
 
     const registration = await navigator.serviceWorker.ready;
     const existing = await registration.pushManager.getSubscription();
@@ -38,12 +38,13 @@ export const subscribeToWebPush = async () => {
       applicationServerKey: urlBase64ToUint8Array(publicKey)
     });
 
-    await apiFetch('/api/push/subscribe', {
+    const response = await apiFetch('/api/push/subscribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'web', subscription })
     });
+    return response.ok ? 'subscribed' : 'failed';
   } catch {
-    // Push subscription failures are non-fatal.
+    return 'failed';
   }
 };

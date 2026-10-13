@@ -74,14 +74,16 @@ const sendExpoPush = async (token, payload) => {
 };
 
 // Send a push notification to all subscriptions matching the given filter.
-// `recipientRole` ('hr_admin', 'supervisor') or `employeeEmail`/`employeeId` narrows the audience.
+// `recipientRole` ('hr_admin', 'supervisor') or `employeeEmail`/`employeeId` narrows the
+// audience; with none of them, every employee gets it.
 export const sendPushNotification = async ({ title, body, data, recipientRole, employeeEmail, employeeId }) => {
   try {
     const filter = {};
     if (recipientRole) filter.accessLevel = recipientRole;
     else if (employeeEmail) filter.employeeEmail = employeeEmail.toLowerCase();
     else if (employeeId) filter.employeeId = employeeId;
-    else return;
+    // A notification with no recipient, such as an announcement or event, is for every employee.
+    else filter.accessLevel = 'employee';
 
     const subs = await PushSubscription.find(filter).lean();
     if (!subs.length) return;

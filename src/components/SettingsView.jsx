@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
+  Bell,
   Camera,
   CheckCircle2,
   CircleAlert,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import ChangePasswordCard from './ChangePasswordCard';
 import { countQueuedAttendance } from '../utils/offlineAttendance';
+import { subscribeToWebPush } from '../utils/webPush';
 
 // Account details, the SMS number, biometric enrollment, and logging out live in Profile and
 // the menu; Settings has only what is about this phone and the app.
@@ -31,6 +33,22 @@ const formatDate = value => {
 };
 
 const PERMISSION_LABELS = { granted: 'Allowed', denied: 'Blocked', prompt: 'Not yet allowed', unknown: 'Checked when you use it' };
+
+const notificationPermission = () => {
+  if (window.ReactNativeWebView) return window.__expoPushToken ? 'granted' : 'unknown';
+  return typeof Notification === 'undefined' ? 'unknown' : Notification.permission === 'default' ? 'prompt' : Notification.permission;
+};
+
+const notificationResultMessage = result => {
+  if (result === 'subscribed') return { text: 'Notifications are on for this phone. You will be notified even when WorkMate is closed.' };
+  if (result === 'denied') return { error: true, text: 'Notifications are blocked. Allow notifications for WorkMate in your phone or browser settings, then try again.' };
+  if (result === 'unsupported') {
+    if (window.ReactNativeWebView) return { error: true, text: 'This version of the WorkMate app cannot receive notifications yet. Update the app when a new version is available.' };
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) return { error: true, text: 'On iPhone, add WorkMate to your Home Screen first: in Safari, tap Share, then Add to Home Screen. Open WorkMate from the Home Screen and try again.' };
+    return { error: true, text: 'This browser cannot show notifications. Open WorkMate in Chrome and try again.' };
+  }
+  return { error: true, text: 'Unable to turn on notifications. Check your internet connection and try again.' };
+};
 
 const Card = ({ icon: Icon, title, description, children }) => (
   <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm sm:p-5">
@@ -142,6 +160,19 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
     refreshPermissions();
   };
 
+  // Notifications. On iPhone, the permission can only be asked from a tap, so it has a button.
+  const [notifications, setNotifications] = useState(notificationPermission);
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyMessage, setNotifyMessage] = useState(null);
+  const turnOnNotifications = async () => {
+    setNotifyBusy(true);
+    setNotifyMessage(null);
+    const result = await subscribeToWebPush();
+    setNotifyMessage(notificationResultMessage(result));
+    setNotifications(result === 'subscribed' ? 'granted' : notificationPermission());
+    setNotifyBusy(false);
+  };
+
   // Offline records
   const [queued, setQueued] = useState(null); // number, or 'unavailable'
   const [syncing, setSyncing] = useState(false);
@@ -229,6 +260,13 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
             <Button onClick={testCamera} disabled={cameraTest?.testing}>{cameraTest?.testing ? 'Testing...' : 'Test camera'}</Button>
           </StatusRow>
           {cameraTest && !cameraTest.testing && <Message message={cameraTest} />}
+        </Card>
+
+        <Card icon={Bell} title="Notifications" description="Get a phone notification for announcements and request updates, even when WorkMate is closed.">
+          <StatusRow icon={Bell} label="Notifications" value={PERMISSION_LABELS[notifications] || PERMISSION_LABELS.unknown} ok={notifications === 'granted'}>
+            <Button onClick={turnOnNotifications} disabled={notifyBusy}>{notifyBusy ? 'Turning on...' : 'Turn on notifications'}</Button>
+          </StatusRow>
+          <Message message={notifyMessage} />
         </Card>
 
         <Card icon={CloudUpload} title="Offline records" description="A Time In or Time Out made without internet in the WorkMate app is saved on this phone and sent when you are back online.">
