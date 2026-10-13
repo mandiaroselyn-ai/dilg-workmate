@@ -29,15 +29,19 @@ self.addEventListener('push', event => {
   );
 });
 
-// When the user taps the notification, open the app
+// Tapping a notification opens WorkMate on the page it is about: an open tab is told which
+// page, and a new tab gets it in the address.
 self.addEventListener('notificationclick', event => {
   event.notification.close();
+  const target = event.notification.data || {};
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      if (windowClients.length > 0) {
-        return windowClients[0].focus();
+      const client = windowClients[0];
+      if (client) {
+        client.postMessage({ type: 'dilg-open-notification', target });
+        return client.focus();
       }
-      return clients.openWindow('/');
+      return clients.openWindow(`/?openNotification=${encodeURIComponent(JSON.stringify(target))}`);
     })
   );
 });

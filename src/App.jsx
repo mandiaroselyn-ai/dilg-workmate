@@ -16,6 +16,7 @@ import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './u
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
 import { subscribeToWebPush } from './utils/webPush';
+import { employeeNotificationView } from './utils/notifications';
 
 const DashboardView = lazy(() => import('./components/DashboardView'));
 const AttendanceView = lazy(() => import('./components/AttendanceView'));
@@ -1265,15 +1266,70 @@ export default function App() {
       });
   };
 
-  // A notification's button: marks it read and opens the employee's profile (accounts,
-  // password resets, enrollments) or the request it is about.
-  const handleNotificationAction = (notification, target) => {
-    if (!notification.read) handleMarkNotificationRead(notification.id);
+  // Opens the employee's profile (accounts, password resets, enrollments) or the request a
+  // notification is about.
+  const openNotificationActionTarget = target => {
     const isRequest = target.action === 'review_request';
     // handleViewChange counts this as the next visit; the focus is for that visit only.
     setViewFocus({ visit: viewVisit + 1, ...(isRequest ? { requestId: target.targetId } : { employeeId: target.targetId }) });
     handleViewChange(isRequest ? (activeRole === 'supervisor' ? 'supervisor' : 'hr_leave_records') : 'hr_employees');
   };
+
+  // A notification's button: marks it read and opens what it is about.
+  const handleNotificationAction = (notification, target) => {
+    if (!notification.read) handleMarkNotificationRead(notification.id);
+    openNotificationActionTarget(target);
+  };
+
+  // Opens the page a tapped phone notification is about, as its button would in the app.
+  const openNotificationTarget = target => {
+    if (target.action && target.targetId && activeRole !== 'employee') {
+      openNotificationActionTarget({ action: target.action, targetId: target.targetId });
+      return;
+    }
+    const view = employeeNotificationView(target);
+    if (view) handleViewChange(view);
+  };
+
+  // A tapped phone notification arrives from the WorkMate app, an open browser tab (the
+  // service worker), or the address of a new tab, and opens once someone is signed in.
+  const [notificationToOpen, setNotificationToOpen] = useState(() => {
+    try {
+      return JSON.parse(new URLSearchParams(window.location.search).get('openNotification') || 'null');
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('openNotification')) {
+      params.delete('openNotification');
+      const query = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    }
+    const fromPhoneApp = () => {
+      if (!window.__dilgOpenNotification) return;
+      setNotificationToOpen(window.__dilgOpenNotification);
+      window.__dilgOpenNotification = null;
+    };
+    const fromServiceWorker = event => {
+      if (event.data?.type === 'dilg-open-notification') setNotificationToOpen(event.data.target || {});
+    };
+    fromPhoneApp();
+    window.addEventListener('dilg-open-notification', fromPhoneApp);
+    navigator.serviceWorker?.addEventListener('message', fromServiceWorker);
+    return () => {
+      window.removeEventListener('dilg-open-notification', fromPhoneApp);
+      navigator.serviceWorker?.removeEventListener('message', fromServiceWorker);
+    };
+  }, []);
+  useEffect(() => {
+    if (!activeRole || !notificationToOpen) return;
+    openNotificationTarget(notificationToOpen);
+    setNotificationToOpen(null);
+    // Runs when someone is signed in and a notification is waiting to open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRole, notificationToOpen]);
 
   // Hides every current notification; only newer ones appear afterwards.
   const handleDismissNotifications = () => {

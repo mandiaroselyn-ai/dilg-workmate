@@ -117,6 +117,34 @@ export default function App() {
 	const googleOpenRef = useRef(false);
 	const finishingSignInRef = useRef(false);
 	const expoPushTokenRef = useRef('');
+	const pageReadyRef = useRef(false);
+	const notificationToOpenRef = useRef(null);
+	const openedNotificationIdsRef = useRef(new Set());
+
+	// Hands a tapped notification to the page, which opens its page once someone is signed in.
+	// It waits for the page when the tap opened the app.
+	const deliverNotificationToOpen = () => {
+		const target = notificationToOpenRef.current;
+		if (!target || !pageReadyRef.current) return;
+		notificationToOpenRef.current = null;
+		webViewRef.current?.injectJavaScript(
+			`window.__dilgOpenNotification = ${JSON.stringify(target)}; window.dispatchEvent(new Event('dilg-open-notification')); true;`
+		);
+	};
+
+	useEffect(() => {
+		const openNotification = response => {
+			const id = response?.notification?.request?.identifier;
+			const target = response?.notification?.request?.content?.data;
+			if (!id || openedNotificationIdsRef.current.has(id) || !target || typeof target !== 'object') return;
+			openedNotificationIdsRef.current.add(id);
+			notificationToOpenRef.current = target;
+			deliverNotificationToOpen();
+		};
+		Notifications.getLastNotificationResponseAsync().then(openNotification).catch(() => {});
+		const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
+		return () => subscription.remove();
+	}, []);
 
 	const coverSignIn = () => {
 		signingInRef.current = true;
@@ -396,6 +424,7 @@ export default function App() {
 				startInLoadingState
 				pullToRefreshEnabled
 				onLoadStart={() => {
+					pageReadyRef.current = false;
 					setLoading(true);
 					setHasError(false);
 				}}
@@ -406,6 +435,8 @@ export default function App() {
 					if (signingInRef.current) webViewRef.current?.injectJavaScript(SHOW_SIGN_IN_COVER_JS);
 					if (finishingSignInRef.current) webViewRef.current?.injectJavaScript(WATCH_FOR_DASHBOARD_JS);
 					registerPushToken();
+					pageReadyRef.current = true;
+					deliverNotificationToOpen();
 				}}
 				onError={() => {
 					setLoading(false);

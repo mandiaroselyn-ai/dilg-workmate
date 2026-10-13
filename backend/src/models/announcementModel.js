@@ -268,7 +268,8 @@ export const Announcement = {
     sendPushNotification({
       title: notifData.title,
       body: notifData.message,
-      data: { type: notifData.type, action: notifData.action, targetId: notifData.targetId },
+      // Tapping the phone notification opens this page (see openNotificationTarget in App.jsx).
+      data: { type: notifData.type, view: notifData.view || '', action: notifData.action, targetId: notifData.targetId },
       recipientRole: notifData.recipientRole || '',
       employeeEmail: notifData.employeeEmail || '',
       employeeId: notifData.employeeId || ''
