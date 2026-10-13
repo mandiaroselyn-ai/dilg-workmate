@@ -59,6 +59,10 @@
       "destination": "/api/sms"
     },
     {
+      "source": "/api/push/:path*",
+      "destination": "/api/push"
+    },
+    {
       "source": "/api/location/:path*",
       "destination": "/api/location"
     },
