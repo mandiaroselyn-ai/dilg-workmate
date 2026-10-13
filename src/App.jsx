@@ -1308,7 +1308,9 @@ export default function App() {
       return;
     }
     const view = employeeNotificationView(target);
-    if (view) handleViewChange(view);
+    // A text from HR opens the employee's SMS screen, which the header shows.
+    if (view === 'sms') window.dispatchEvent(new Event('dilg-open-sms'));
+    else if (view) handleViewChange(view);
   };
 
   // A tapped phone notification arrives from the WorkMate app, an open browser tab (the

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock, ShieldCheck, Megaphone, FileText, ChevronLeft, CheckCheck, ArrowRight, Info } from 'lucide-react';
+import { Clock, ShieldCheck, Megaphone, FileText, ChevronLeft, CheckCheck, ArrowRight, Info, MessageSquare } from 'lucide-react';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 
 // Each kind's icon and colors. Account notices are mostly good news (approvals), so they
@@ -10,6 +10,7 @@ const TYPE_CONFIG = {
   request:      { label: 'Request',      chip: 'bg-amber-50 text-amber-700',   icon: <FileText    className="w-4 h-4 text-amber-600" aria-hidden="true" />,  dot: 'bg-amber-100' },
   announcement: { label: 'Announcement', chip: 'bg-green-50 text-green-700',   icon: <Megaphone   className="w-4 h-4 text-green-600" aria-hidden="true" />,  dot: 'bg-green-100' },
   system:       { label: 'Account',      chip: 'bg-indigo-50 text-indigo-700', icon: <ShieldCheck className="w-4 h-4 text-indigo-600" aria-hidden="true" />, dot: 'bg-indigo-100' },
+  sms:          { label: 'Message',      chip: 'bg-sky-50 text-sky-700',       icon: <MessageSquare className="w-4 h-4 text-sky-600" aria-hidden="true" />, dot: 'bg-sky-100' },
 };
 
 const FILTERS = [
@@ -23,9 +24,10 @@ const FILTERS = [
 
 // Account notices (approval, leave credits, biometric review, password, profile changes)
 // are the ones of no other kind.
-const isAccountNotice = n => !['attendance', 'request', 'announcement'].includes(n.type);
+const isAccountNotice = n => !['attendance', 'request', 'announcement', 'sms'].includes(n.type);
 
 const VIEW_LABELS = {
+  sms: 'Messages',
   dashboard: 'Dashboard',
   attendance: 'Attendance',
   requests: 'My Requests',
@@ -84,8 +86,8 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
 
   const selectedView = selectedNotification ? employeeNotificationView(selectedNotification) : '';
   function openView() {
-    onOpenView?.(selectedView);
     onClose();
+    onOpenView?.(selectedView);
   }
 
   // A notice about something with its own page opens that page in one tap, like a phone's
@@ -94,8 +96,9 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
     if (!notif.read) onMarkNotificationRead(notif.id);
     const view = employeeNotificationView(notif);
     if (view && VIEW_LABELS[view] && onOpenView) {
-      onOpenView(view);
+      // Closed first, so a notice that opens the SMS screen (another panel) stays open.
       onClose();
+      onOpenView(view);
       return;
     }
     setSelectedNotification(notif);

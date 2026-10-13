@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Bell, Mail, ShieldAlert, CircleDot, Info, Calendar as CalendarIcon, Clock, Settings, User, Menu } from 'lucide-react';
+import { Bell, Mail, MessageSquare, ShieldAlert, CircleDot, Info, Calendar as CalendarIcon, Clock, Settings, User, Menu } from 'lucide-react';
 import logoImage from '../assets/dilg-logo.png';
 import MobileNotificationsPanel from './MobileNotificationsPanel';
 import MobileSmsPanel, { EmployeeSms } from './MobileSmsPanel';
@@ -118,6 +118,25 @@ export default function Header({
     setShowNotifications(false);
     setMobilePanel(null);
   }, [currentView]);
+
+  // An employee's notice about a text from HR opens their SMS screen instead of a page.
+  const openEmployeeView = view => {
+    if (view !== 'sms') {
+      onViewChange(view);
+      return;
+    }
+    setShowNotifications(false);
+    if (showFullScreenPanels) setMobilePanel('sms');
+    else setShowSMSLogs(true);
+  };
+  // A tapped phone notification about a text opens the SMS screen too (see App.jsx).
+  const openEmployeeViewRef = useRef(openEmployeeView);
+  openEmployeeViewRef.current = openEmployeeView;
+  useEffect(() => {
+    const openSms = () => openEmployeeViewRef.current('sms');
+    window.addEventListener('dilg-open-sms', openSms);
+    return () => window.removeEventListener('dilg-open-sms', openSms);
+  }, []);
 
   const viewTitles = {
     dashboard: 'Dashboard',
@@ -346,6 +365,7 @@ export default function Header({
                       request:      { label: 'Request',      bg: 'bg-amber-100', icon: <CircleDot className="w-3.5 h-3.5 text-amber-600" />,   chip: 'bg-amber-50 text-amber-700' },
                       announcement: { label: 'Announcement', bg: 'bg-green-100', icon: <Info className="w-3.5 h-3.5 text-green-600" />,         chip: 'bg-green-50 text-green-700' },
                       system:       { label: 'Account',      bg: 'bg-slate-100', icon: <ShieldAlert className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' },
+                      sms:          { label: 'Message',      bg: 'bg-sky-100',   icon: <MessageSquare className="w-3.5 h-3.5 text-sky-600" />, chip: 'bg-sky-50 text-sky-700' },
                     }[notif.type] || { label: 'Account', bg: 'bg-slate-100', icon: <Info className="w-3.5 h-3.5 text-slate-500" />, chip: 'bg-slate-100 text-slate-600' };
                     // Opening a notification marks it read and goes to the page it is about.
                     const view = employeeNotificationView(notif);
@@ -356,7 +376,7 @@ export default function Header({
                           if (!notif.read) onMarkNotificationRead(notif.id);
                           if (view) {
                             setShowNotifications(false);
-                            onViewChange(view);
+                            openEmployeeView(view);
                           }
                         }}
                         className={`px-3 py-3 hover:bg-slate-50 transition-colors cursor-pointer flex gap-2.5 ${
@@ -427,7 +447,7 @@ export default function Header({
           onClose={() => setMobilePanel(null)}
           onMarkNotificationRead={onMarkNotificationRead}
           onMarkAllRead={onClearNotifications}
-          onOpenView={onViewChange}
+          onOpenView={openEmployeeView}
         />
       )}
     </header>

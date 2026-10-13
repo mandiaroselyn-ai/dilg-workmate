@@ -82,7 +82,7 @@ export const notificationKind = (notification = {}) => {
   if (notification.type === 'request' || action === 'review_request') return 'request';
   if (notification.type === 'announcement') return 'announcement';
   if (notification.type === 'attendance') return 'attendance';
-  if (title.includes('sms')) return 'sms';
+  if (notification.type === 'sms' || title.includes('sms')) return 'sms';
   if (notification.type === 'employee_management') return 'people';
   return 'system';
 };

@@ -224,15 +224,37 @@ export const createSmsAlert = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Use a valid mobile number, such as 0917 123 4567.' });
     }
     if (!text) return res.status(400).json({ success: false, error: 'Type the message to send.' });
-    const from = req.user?.accessLevel === 'hr_admin' ? 'DILG WorkMate HR' : 'DILG WorkMate';
-    const sms = await sendSms({
-      recipient,
-      message: `${from}: ${text}`,
+    const isHr = req.user?.accessLevel === 'hr_admin';
+    const person = {
       employeeId: typeof employeeId === 'string' ? employeeId : '',
-      employeeEmail: typeof employeeEmail === 'string' ? employeeEmail : '',
-      timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }),
-      kind: 'manual'
-    });
+      employeeEmail: typeof employeeEmail === 'string' ? employeeEmail : ''
+    };
+    // The employee is also told in WorkMate, which opens their SMS screen, so they see the
+    // message even when the text did not reach their phone (it is saved as not delivered).
+    const notifyEmployee = () => (person.employeeId || person.employeeEmail
+      ? Announcement.createNotification({
+        title: isHr ? 'New message from HR' : 'New message from DILG WorkMate',
+        message: text,
+        type: 'sms',
+        view: 'sms',
+        ...person
+      }).catch(error => console.error('Unable to notify the employee of a text:', error.message))
+      : null);
+    let sms;
+    try {
+      sms = await sendSms({
+        recipient,
+        message: `${isHr ? 'DILG WorkMate HR' : 'DILG WorkMate'}: ${text}`,
+        ...person,
+        timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }),
+        kind: 'manual'
+      });
+    } catch (error) {
+      // 502: the SMS service did not take it, and it was saved as not delivered.
+      if (error instanceof SmsError && error.statusCode === 502) await notifyEmployee();
+      throw error;
+    }
+    await notifyEmployee();
     res.status(201).json({ success: true, sms });
   } catch (error) {
     if (error instanceof SmsError) {
