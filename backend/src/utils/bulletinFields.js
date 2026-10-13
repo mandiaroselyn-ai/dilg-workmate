@@ -1,9 +1,13 @@
 import { getManilaDateString } from '../../../shared/localDate.js';
+import {
+  ANNOUNCEMENT_CATEGORIES,
+  DEFAULT_ANNOUNCEMENT_CATEGORY,
+  LEGACY_ANNOUNCEMENT_CATEGORIES
+} from '../../../shared/announcementCategories.js';
 
 // Validation for HR announcements and calendar events. Each function returns
 // { value } with the cleaned fields, or { error } with a message for HR.
 
-export const ANNOUNCEMENT_CATEGORIES = ['Memorandum', 'Meeting', 'Guidelines', 'Training'];
 export const EVENT_TYPES = ['meeting', 'training', 'event'];
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -32,8 +36,8 @@ export const normalizeAnnouncementInput = (body, { partial = false } = {}) => {
     if (!result.skip) value[field] = result.text;
   }
   if (body?.category !== undefined || !partial) {
-    const category = body?.category ?? 'Memorandum';
-    if (!ANNOUNCEMENT_CATEGORIES.includes(category)) return { error: 'Choose a valid announcement category.' };
+    const category = body?.category ?? DEFAULT_ANNOUNCEMENT_CATEGORY;
+    if (!ANNOUNCEMENT_CATEGORIES.includes(category) && !LEGACY_ANNOUNCEMENT_CATEGORIES.includes(category)) return { error: 'Choose a valid announcement category.' };
     value.category = category;
   }
   if (body?.date !== undefined || !partial) {

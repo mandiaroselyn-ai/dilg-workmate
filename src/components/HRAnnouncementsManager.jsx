@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { CalendarDays, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
+import { ANNOUNCEMENT_CATEGORIES, DEFAULT_ANNOUNCEMENT_CATEGORY } from '../../shared/announcementCategories';
 
-const ANNOUNCEMENT_CATEGORIES = ['Memorandum Circular', 'Department Order', 'Department Circular', 'Advisory', 'Directive', 'Special Order', 'Meeting', 'Training', 'Guidelines'];
 const EVENT_TYPES = [
   { value: 'meeting', label: 'Meeting' },
   { value: 'training', label: 'Training' },
@@ -12,7 +12,7 @@ const EVENT_TYPES = [
 const emptyAnnouncement = () => ({
   title: '',
   content: '',
-  category: 'Memorandum Circular',
+  category: DEFAULT_ANNOUNCEMENT_CATEGORY,
   referenceNo: '',
   date: getManilaDateString(),
   important: false
@@ -61,7 +61,7 @@ export default function HRAnnouncementsManager({
   const startEdit = (kind, item) => {
     setError('');
     const form = kind === 'announcements'
-      ? { title: item.title || '', content: item.content || item.description || '', category: item.category || 'Memorandum Circular', referenceNo: item.referenceNo || '', date: item.date || today, important: Boolean(item.important) }
+      ? { title: item.title || '', content: item.content || item.description || '', category: item.category || DEFAULT_ANNOUNCEMENT_CATEGORY, referenceNo: item.referenceNo || '', date: item.date || today, important: Boolean(item.important) }
       : { title: item.title || '', date: item.date || today, time: item.time || '', type: item.type || 'event', location: item.location || '', description: item.description || '' };
     setEditing({ kind, id: item.id, form });
   };

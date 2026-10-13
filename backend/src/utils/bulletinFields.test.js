@@ -6,7 +6,7 @@ test('accepts a complete announcement and fills in defaults', () => {
   const { value, error } = normalizeAnnouncementInput({ title: ' DTR schedule ', content: 'Submit DTRs by Friday.' });
   assert.equal(error, undefined);
   assert.equal(value.title, 'DTR schedule');
-  assert.equal(value.category, 'Memorandum');
+  assert.equal(value.category, 'Memorandum Circular');
   assert.match(value.date, /^\d{4}-\d{2}-\d{2}$/);
 });
 
@@ -14,6 +14,14 @@ test('rejects announcements without a title or with an unknown category', () => 
   assert.match(normalizeAnnouncementInput({ content: 'Text' }).error, /Title/);
   assert.match(normalizeAnnouncementInput({ title: 'T', content: 'C', category: 'Gossip' }).error, /category/);
   assert.match(normalizeAnnouncementInput({ title: 'T', content: { $gt: '' } }).error, /text/);
+});
+
+test('accepts every category on the announcement form, and the older Memorandum', () => {
+  for (const category of ['Memorandum Circular', 'Department Order', 'Department Circular', 'Advisory', 'Directive', 'Special Order', 'Meeting', 'Training', 'Guidelines', 'Memorandum']) {
+    const { value, error } = normalizeAnnouncementInput({ title: 'T', content: 'C', category });
+    assert.equal(error, undefined, category);
+    assert.equal(value.category, category);
+  }
 });
 
 test('announcement edits only change the fields that were sent', () => {

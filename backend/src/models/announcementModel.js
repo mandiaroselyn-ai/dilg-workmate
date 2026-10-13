@@ -67,7 +67,7 @@ const AnnouncementPostSchema = new mongoose.Schema({
   customId: { type: String, required: true },
   title: { type: String, required: true },
   content: { type: String, required: true },
-  category: { type: String, default: 'Memorandum' },
+  category: { type: String, default: 'Memorandum Circular' },
   referenceNo: { type: String, default: '' },
   date: { type: String, required: true },
   important: { type: Boolean, default: false },
