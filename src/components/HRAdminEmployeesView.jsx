@@ -496,7 +496,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         notify(wasPending && accountStatus === 'Active'
           ? `Account approved. ${noticeNote || `${name} can now log in.`}`
           : wasPending && accountStatus === 'Rejected'
-            ? `Account rejected. ${name} cannot log in and will see "Rejected" when they check their account status.`
+            ? `Account rejected. ${name} cannot log in and is told to contact HR when they try.`
             : `Account status updated to ${accountStatus}.${noticeNote ? ` ${noticeNote}` : ''}`);
       }
       if (openProfile) setScreen('profile');

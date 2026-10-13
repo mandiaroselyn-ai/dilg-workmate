@@ -13,7 +13,7 @@ const faqs = [
   {
     topic: 'Getting started',
     question: 'I signed up. Why can I not log in yet?',
-    answer: 'New accounts wait for HR approval. You get an SMS (sign-up form) or an email (Continue with Google) once HR approves your account. To check, tap "Check account status" on the login screen.'
+    answer: 'New accounts wait for HR approval. You get an SMS (sign-up form) or an email (Continue with Google) once HR approves your account, and can then log in.'
   },
   {
     topic: 'Getting started',

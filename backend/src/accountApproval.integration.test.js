@@ -20,7 +20,7 @@ const { User } = await import('./models/User.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 const { toPhilippineMobile, sendAccountApprovedSms } = await import('./services/smsService.js');
-const { accountStatusLabel, inactiveAccountMessage, maskEmail, maskMobile, signedUpWithGoogle } = await import('./services/accountNotifications.js');
+const { inactiveAccountMessage, maskEmail, maskMobile, signedUpWithGoogle } = await import('./services/accountNotifications.js');
 
 const app = createApiApp();
 const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', accessLevel: 'hr_admin', accountStatus: 'Active' };
@@ -79,14 +79,6 @@ test('Google sign-ups are told about approval by email, sign-up form accounts by
   assert.equal(signedUpWithGoogle({ phoneNumber: '09171234567' }), false);
 });
 
-test('the status shown before logging in is Pending, Approved, or Rejected', () => {
-  assert.equal(accountStatusLabel({ accountStatus: 'Pending' }), 'Pending');
-  assert.equal(accountStatusLabel({ accountStatus: 'Active' }), 'Approved');
-  assert.equal(accountStatusLabel({}), 'Approved');
-  assert.equal(accountStatusLabel({ accountStatus: 'Rejected' }), 'Rejected');
-  assert.equal(accountStatusLabel({ accountStatus: 'Inactive' }), 'Inactive');
-});
-
 test('a pending account is told where its approval notice will go', t => {
   assert.equal(maskMobile('+639171234567'), '0917*****67');
   assert.equal(maskEmail('ana.reyes@gmail.com'), 'an***@gmail.com');
@@ -124,43 +116,6 @@ test('logging in to a pending or rejected account shows its status', async t => 
   const rejected = await request(app).post('/api/login').send({ email: 'juan@gmail.com', password: 'a-long-password-42', role: 'employee' });
   assert.equal(rejected.status, 403);
   assert.match(rejected.body.error, /rejected\. Please contact the HR Administrator/);
-});
-
-// Checks an account's status from the login page, with the database replaced.
-const checkStatus = (t, account, { passwordMatches = true } = {}) => {
-  t.mock.method(User, 'findByEmail', async () => account);
-  t.mock.method(User, 'verifyPassword', async () => passwordMatches);
-  return request(app).post('/api/account-status').send({ email: 'juan@gmail.com', password: 'a-long-password-42' });
-};
-
-test('the account status check shows Pending, Approved, and Rejected without logging in', async t => {
-  const pending = await checkStatus(t, pendingEmployee);
-  assert.equal(pending.status, 200);
-  assert.equal(pending.body.status, 'Pending');
-  assert.match(pending.body.message, /waiting for HR approval/);
-  assert.equal(pending.body.token, undefined);
-
-  t.mock.restoreAll();
-  const approved = await checkStatus(t, { ...pendingEmployee, accountStatus: 'Active' });
-  assert.equal(approved.body.status, 'Approved');
-  assert.match(approved.body.message, /You can now log in/);
-  assert.equal(approved.body.token, undefined);
-
-  t.mock.restoreAll();
-  const rejected = await checkStatus(t, { ...pendingEmployee, accountStatus: 'Rejected' });
-  assert.equal(rejected.body.status, 'Rejected');
-  assert.match(rejected.body.message, /contact the HR Administrator/);
-});
-
-test('the account status check needs the right password, like logging in', async t => {
-  const wrongPassword = await checkStatus(t, pendingEmployee, { passwordMatches: false });
-  t.mock.restoreAll();
-  const unknownEmail = await checkStatus(t, null, { passwordMatches: false });
-  assert.equal(wrongPassword.status, 401);
-  assert.equal(unknownEmail.status, 401);
-  // The same answer either way, so nobody can find out which emails have accounts.
-  assert.equal(wrongPassword.body.error, unknownEmail.body.error);
-  assert.equal(wrongPassword.body.status, undefined);
 });
 
 // Approves or changes an employee's status as HR, with the database replaced.

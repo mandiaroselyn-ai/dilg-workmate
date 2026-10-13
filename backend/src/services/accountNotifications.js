@@ -37,20 +37,12 @@ export const pendingAccountMessage = user => {
     : 'Your account is still waiting for HR approval. HR will let you know once it is approved.';
 };
 
-// What someone whose account is not active sees when they try to sign in or check their
-// account status.
+// What someone whose account is not active sees when they try to sign in.
 export const inactiveAccountMessage = user => {
   const status = String(user?.accountStatus || '').toLowerCase();
   if (status === 'pending') return pendingAccountMessage(user);
   if (status === 'rejected') return 'Your account registration was rejected. Please contact the HR Administrator.';
   return `This account is ${status}. Please contact the HR Administrator.`;
-};
-
-// The status an employee sees before logging in: Pending, Approved, Rejected, or, for an
-// account HR deactivated, Inactive or Suspended. An account with no status is active.
-export const accountStatusLabel = user => {
-  const status = String(user?.accountStatus || 'Active').trim().toLowerCase();
-  return { active: 'Approved', pending: 'Pending', rejected: 'Rejected', suspended: 'Suspended' }[status] || 'Inactive';
 };
 
 // True when HR's change makes an account active that was not active before.

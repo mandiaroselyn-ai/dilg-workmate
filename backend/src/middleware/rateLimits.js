@@ -36,14 +36,12 @@ export const createRateLimits = () => {
   const signedInActionLimit = () => limit({ limit: 10, keyGenerator: sessionOrIp });
   // Only failed logins count: 10 per email on a connection, and at most 100 across
   // all emails from one connection to stop password guessing against many accounts.
-  // The account status check also takes a password, so it shares these limits.
   const passwordCheckLimits = [
     limit({ limit: 100, keyGenerator: clientIp, skipSuccessfulRequests: true }),
     limit({ limit: 10, keyGenerator: ipAndEmail, skipSuccessfulRequests: true })
   ];
   const routeLimits = {
     '/login': passwordCheckLimits,
-    '/account-status': passwordCheckLimits,
     // Every reset request sends an email, so all requests count, per email address.
     '/password-reset-request': [limit({ limit: 5, keyGenerator: ipAndEmail })],
     // Every request notifies HR, so a few per email, and 20 across all emails per connection.

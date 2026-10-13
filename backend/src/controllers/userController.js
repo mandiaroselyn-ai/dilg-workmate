@@ -3,7 +3,6 @@ import { attendanceWindowStart, getManilaDateString } from '../../../shared/loca
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
-  accountStatusLabel,
   announceAccountApproved,
   approvalNoticeDestination,
   inactiveAccountMessage,
@@ -424,31 +423,6 @@ export const loginUser = async (req, res) => {
     }
 
     res.status(200).json({ success: true, token: createAuthToken(user), user: toSafeUser(user) });
-  } catch (error) {
-    sendServerError(res, error);
-  }
-};
-
-// Lets someone who signed up with the form see whether HR approved their account without
-// logging in. Like logging in, it needs the password, so nobody can look up someone else's
-// account by email, and failed attempts count toward the same limit as failed logins.
-export const checkAccountStatus = async (req, res) => {
-  try {
-    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
-    const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
-    if (!email || !password) {
-      return res.status(400).json({ success: false, error: 'Email and password are required.' });
-    }
-    const user = await User.findByEmail(email);
-    if (!(await User.verifyPassword(user, password))) {
-      return res.status(401).json({ success: false, error: INVALID_LOGIN_MESSAGE });
-    }
-    const status = accountStatusLabel(user);
-    res.status(200).json({
-      success: true,
-      status,
-      message: status === 'Approved' ? 'Your account has been approved. You can now log in.' : inactiveAccountMessage(user)
-    });
   } catch (error) {
     sendServerError(res, error);
   }
