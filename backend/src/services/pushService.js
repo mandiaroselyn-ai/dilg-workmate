@@ -4,9 +4,13 @@ import { PushSubscription } from '../models/pushSubscriptionModel.js';
 let webpushInstance = null;
 let vapidConfigured = false;
 
+// Reads a VAPID setting. A value pasted into a hosting dashboard can carry an invisible
+// byte order mark or a line break, which makes the key invalid for browsers and web-push.
+export const vapidSetting = name => String(process.env[name] || '').replace(/^\uFEFF/, '').trim();
+
 const ensureVapid = async () => {
   if (vapidConfigured) return true;
-  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL } = process.env;
+  const [VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL] = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_EMAIL'].map(vapidSetting);
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_EMAIL) return false;
   try {
     if (!webpushInstance) {
@@ -21,7 +25,7 @@ const ensureVapid = async () => {
   }
 };
 
-export const getVapidPublicKey = () => process.env.VAPID_PUBLIC_KEY || '';
+export const getVapidPublicKey = () => vapidSetting('VAPID_PUBLIC_KEY');
 
 // Save or update a push subscription for a user.
 export const savePushSubscription = async ({ employeeEmail, employeeId, accessLevel, type, subscription, expoToken }) => {

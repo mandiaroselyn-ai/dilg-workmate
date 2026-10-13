@@ -2,6 +2,7 @@
 import { Building2, Camera, CheckCircle2, Pencil } from 'lucide-react';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import ChangePasswordCard from './ChangePasswordCard';
+import NotificationsCard from './NotificationsCard';
 import ProfileDetails from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
 
@@ -301,6 +302,8 @@ export default function HRAdminProfileView({ user: sourceUser = {}, onUpdateUser
           </div>
         </div>
       )}
+      <NotificationsCard isHrAdmin={isHrAdmin} />
+
       <ChangePasswordCard hasPassword={sourceUser.hasPassword !== false} />
     </div>
   );
