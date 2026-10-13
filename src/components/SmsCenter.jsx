@@ -32,12 +32,39 @@ const StatusChip = ({ status }) => (
 
 // HR's SMS log: whether SMS is set up, filters (failed texts, replies, attendance, account
 // approvals), and either one row per person that opens their messages ('panel', the header
-// dropdown) or every message with search and CSV export ('page', the SMS Log page).
-export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees = [], smsConfigured, onViewAll }) {
+// dropdown) or every message with search and CSV export ('page', the SMS Log page). A text
+// that was not delivered can be sent again with `onResend`.
+export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees = [], smsConfigured, onViewAll, onResend }) {
   const isPanel = variant === 'panel';
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [openKey, setOpenKey] = useState(null);
+  // Each resent text: 'sending', 'sent', or why it could not be sent.
+  const [resends, setResends] = useState({});
+
+  const resend = async sms => {
+    setResends(current => ({ ...current, [sms.id]: 'sending' }));
+    try {
+      await onResend(sms.id);
+      setResends(current => ({ ...current, [sms.id]: 'sent' }));
+    } catch (error) {
+      setResends(current => ({ ...current, [sms.id]: error.message || 'The text could not be sent again.' }));
+    }
+  };
+
+  const resendControl = sms => {
+    if (!onResend || sms.direction === 'inbound') return null;
+    const state = resends[sms.id];
+    if (state === 'sent') return <span className="mt-1.5 block text-xs font-bold text-emerald-700">Sent again.</span>;
+    return (
+      <span className="mt-1.5 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => resend(sms)} disabled={state === 'sending'} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-bold text-[#0B4EA2] hover:bg-slate-50 disabled:opacity-50">
+          {state === 'sending' ? 'Sending...' : 'Resend'}
+        </button>
+        {state && state !== 'sending' && <span className="text-xs font-bold text-rose-800">{state}</span>}
+      </span>
+    );
+  };
 
   const counts = useMemo(() => smsFilterCounts(smsAlerts), [smsAlerts]);
   const visible = useMemo(
@@ -147,9 +174,12 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
                           </div>
                           <p className="mt-1 break-words text-[13px] leading-snug text-slate-800">{sms.message}</p>
                           {messageStatus === 'Failed' && (
-                            <p className="mt-1.5 text-xs font-bold text-rose-800">
-                              Not delivered{sms.error ? `: ${sms.error}` : ''}. Contact {thread.employee ? thread.name : 'them'} another way.
-                            </p>
+                            <>
+                              <p className="mt-1.5 text-xs font-bold text-rose-800">
+                                Not delivered{sms.error ? `: ${sms.error}` : ''}. Contact {thread.employee ? thread.name : 'them'} another way.
+                              </p>
+                              {resendControl(sms)}
+                            </>
                           )}
                         </li>
                       );
@@ -191,7 +221,10 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
                       <td className="px-4 py-3 text-[13px] leading-snug text-slate-700">
                         {sms.message}
                         {status === 'Failed' && (
-                          <span className="mt-1 block text-xs font-bold text-rose-800">Not delivered{sms.error ? `: ${sms.error}` : ''}.</span>
+                          <>
+                            <span className="mt-1 block text-xs font-bold text-rose-800">Not delivered{sms.error ? `: ${sms.error}` : ''}.</span>
+                            {resendControl(sms)}
+                          </>
                         )}
                       </td>
                     </tr>

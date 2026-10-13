@@ -668,6 +668,20 @@ export default function App() {
     return data.sms;
   };
 
+  // Sends a text that was not delivered again. The log reloads either way, since a resend
+  // that fails is saved as a new Failed text.
+  const handleResendSms = async id => {
+    const response = await fetch('/api/sms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resendOf: id })
+    });
+    const data = await response.json().catch(() => ({}));
+    const list = await fetch('/api/sms').then(res => (res.ok ? res.json() : null)).catch(() => null);
+    if (Array.isArray(list)) setSmsAlerts(list);
+    if (!response.ok || !data.success) throw new Error(data?.error || 'The text could not be sent again.');
+  };
+
   // A Time Out saved offline keeps the time it was made; online ones use the server clock.
   const markRecordedOffline = payload => ({ ...payload, record: { ...payload.record, recordedOfflineAt: new Date().toISOString() } });
 
@@ -1544,6 +1558,7 @@ export default function App() {
           onDismissNotifications={handleDismissNotifications}
           onNotificationAction={handleNotificationAction}
           onSendSms={handleSendSms}
+          onResendSms={handleResendSms}
           onViewChange={handleViewChange}
           onToggleSidebar={handleToggleSidebar}
           onLogout={handleLogout}
@@ -1612,7 +1627,7 @@ export default function App() {
 
           {currentView === 'sms_log' && activeRole === 'hr_admin' && (
             <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
-              <SmsCenter variant="page" smsAlerts={headerSmsAlerts} employees={employees} smsConfigured={smsConfigured} />
+              <SmsCenter variant="page" smsAlerts={headerSmsAlerts} employees={employees} smsConfigured={smsConfigured} onResend={handleResendSms} />
             </div>
           )}
 

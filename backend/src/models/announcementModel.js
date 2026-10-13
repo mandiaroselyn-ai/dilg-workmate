@@ -313,6 +313,15 @@ export const Announcement = {
     });
   },
 
+  findSmsAlert: async (id) => {
+    ensureConnected();
+    const item = await MongoSmsAlert.findOne({ customId: id });
+    if (!item) return null;
+    const obj = item.toObject();
+    obj.id = obj.customId;
+    return obj;
+  },
+
   createSmsAlert: async (smsData) => {
     ensureConnected();
     const customId = smsData.id || createRecordId('sms');

@@ -44,6 +44,7 @@ export default function Header({
   onDismissNotifications,
   onNotificationAction,
   onSendSms,
+  onResendSms,
   onViewChange,
   onToggleSidebar,
   onLogout
@@ -253,6 +254,7 @@ export default function Header({
                 employees={employees}
                 smsConfigured={smsConfigured}
                 onViewAll={() => goTo('sms_log')}
+                onResend={onResendSms}
               />
             </div>
           )}
