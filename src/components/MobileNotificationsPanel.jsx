@@ -1,12 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { Clock, ShieldAlert, Info, CircleDot, ChevronLeft, CheckCheck, ArrowRight } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Clock, ShieldCheck, Megaphone, FileText, ChevronLeft, CheckCheck, ArrowRight, Info } from 'lucide-react';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 
+// Each kind's icon and colors. Account notices are mostly good news (approvals), so they
+// are indigo rather than an alarming red.
 const TYPE_CONFIG = {
-  attendance:   { label: 'Attendance',   chip: 'bg-blue-50 text-blue-700',   icon: <Clock    className="w-4 h-4 text-blue-600" />,   dot: 'bg-blue-100' },
-  request:      { label: 'Request',      chip: 'bg-amber-50 text-amber-700', icon: <CircleDot className="w-4 h-4 text-amber-600" />, dot: 'bg-amber-100' },
-  announcement: { label: 'Announcement', chip: 'bg-green-50 text-green-700', icon: <Info      className="w-4 h-4 text-green-600" />,  dot: 'bg-green-100' },
-  system:       { label: 'Account',      chip: 'bg-red-50 text-red-700',     icon: <ShieldAlert className="w-4 h-4 text-red-600" />, dot: 'bg-red-100' },
+  attendance:   { label: 'Attendance',   chip: 'bg-blue-50 text-blue-700',     icon: <Clock       className="w-4 h-4 text-blue-600" aria-hidden="true" />,   dot: 'bg-blue-100' },
+  request:      { label: 'Request',      chip: 'bg-amber-50 text-amber-700',   icon: <FileText    className="w-4 h-4 text-amber-600" aria-hidden="true" />,  dot: 'bg-amber-100' },
+  announcement: { label: 'Announcement', chip: 'bg-green-50 text-green-700',   icon: <Megaphone   className="w-4 h-4 text-green-600" aria-hidden="true" />,  dot: 'bg-green-100' },
+  system:       { label: 'Account',      chip: 'bg-indigo-50 text-indigo-700', icon: <ShieldCheck className="w-4 h-4 text-indigo-600" aria-hidden="true" />, dot: 'bg-indigo-100' },
 };
 
 const FILTERS = [
@@ -85,13 +88,22 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
     onClose();
   }
 
+  // A notice about something with its own page opens that page in one tap, like a phone's
+  // notifications; any other notice opens here in full.
   function openNotif(notif) {
-    setSelectedNotification(notif);
     if (!notif.read) onMarkNotificationRead(notif.id);
+    const view = employeeNotificationView(notif);
+    if (view && VIEW_LABELS[view] && onOpenView) {
+      onOpenView(view);
+      onClose();
+      return;
+    }
+    setSelectedNotification(notif);
   }
 
-  return (
-    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex flex-col bg-slate-50 text-slate-900">
+  // Drawn on the page itself, outside the header's layer, so it covers the bottom menu.
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label="Notifications" className="fixed inset-0 z-[60] flex flex-col bg-slate-50 text-slate-900">
 
       {/* Header */}
       <header className="flex-shrink-0 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white">
@@ -195,7 +207,7 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
                         onClick={() => openNotif(notif)}
                         onKeyDown={e => e.key === 'Enter' && openNotif(notif)}
                         className={`flex items-start gap-3 px-4 py-3.5 cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${
-                          !notif.read ? 'border-l-[3px] border-[#1e40af]' : 'border-l-[3px] border-transparent'
+                          !notif.read ? 'border-l-[3px] border-l-[#1e40af]' : 'border-l-[3px] border-l-transparent'
                         }`}
                       >
                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${cfg.dot}`}>
@@ -204,13 +216,10 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${cfg.chip}`}>
-                                  {cfg.label}
-                                </span>
-                              </div>
-                              <p className="text-[13px] font-semibold text-slate-900 leading-snug">{notif.title}</p>
-                              <p className="text-[12px] text-slate-500 mt-0.5 leading-snug line-clamp-2">{notif.message}</p>
+                              <p className={`text-[13.5px] leading-snug text-slate-900 ${notif.read ? 'font-semibold' : 'font-extrabold'}`}>
+                                <span className="sr-only">{cfg.label}: </span>{notif.title}
+                              </p>
+                              <p className="text-[12.5px] text-slate-600 mt-0.5 leading-snug line-clamp-3">{notif.message}</p>
                             </div>
                             <div className="flex flex-col items-end gap-1.5 shrink-0">
                               <time className="text-[10px] text-slate-400 whitespace-nowrap">{notificationWhen(notif)}</time>
@@ -229,6 +238,7 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
           )}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
