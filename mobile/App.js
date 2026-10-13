@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Linking, NativeModules, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Linking, NativeModules, Platform, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,7 +7,58 @@ import * as Location from 'expo-location';
 import * as WebBrowser from 'expo-web-browser';
 import * as Crypto from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import { WebView } from 'react-native-webview';
+
+// The splash stays up until the web app loads, so the app opens on a single launch screen.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+const SPLASH_MAX_MS = 20000;
+const SIGN_IN_COVER_MAX_MS = 10000;
+// After a Google account is chosen, a spinner drawn inside the page hides the login form
+// until the dashboard shows. It goes up while Google is open, so it is never seen before.
+const SHOW_SIGN_IN_COVER_JS = `(function(){
+	if (document.getElementById('dilg-signin-cover')) return;
+	var cover = document.createElement('div');
+	cover.id = 'dilg-signin-cover';
+	cover.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2147483647;background:#fff;display:flex;align-items:center;justify-content:center';
+	cover.innerHTML = '<style>@keyframes dilgspin{to{transform:rotate(360deg)}}</style><div style="width:44px;height:44px;border:4px solid #dbeafe;border-top-color:#1e40af;border-radius:50%;animation:dilgspin .8s linear infinite"></div>';
+	document.body.appendChild(cover);
+})(); true;`;
+const HIDE_SIGN_IN_COVER_JS = `(function(){
+	var cover = document.getElementById('dilg-signin-cover');
+	if (cover) cover.remove();
+})(); true;`;
+// Removes the cover once the dashboard shows: no login form and no "Signing you in" screen.
+const WATCH_FOR_DASHBOARD_JS = `(function(){
+	var done = false;
+	function onDashboard(){
+		return !document.querySelector('input[type=password]') && !/Signing you in/.test(document.body.innerText || '');
+	}
+	var timer = setInterval(function(){ if (onDashboard()) report(); }, 200);
+	function report(){
+		if (done) return;
+		done = true;
+		clearInterval(timer);
+		var cover = document.getElementById('dilg-signin-cover');
+		if (cover) cover.remove();
+		window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dilg-signed-in' }));
+	}
+	setTimeout(report, ${SIGN_IN_COVER_MAX_MS});
+})(); true;`;
+
+// Registers this phone's push token for whoever is signed in to the page, using the page's
+// saved session, so it works however the person signed in (password, Google, or a saved session).
+const registerPushTokenJs = token => `(function(){
+	window.__expoPushToken = ${JSON.stringify(token)};
+	var session = '';
+	try { session = sessionStorage.getItem('dilg_auth_token') || localStorage.getItem('dilg_auth_token') || ''; } catch (e) {}
+	if (!session) return;
+	fetch('/api/push/subscribe', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session },
+		body: JSON.stringify({ type: 'expo', expoToken: window.__expoPushToken })
+	}).catch(function(){});
+})(); true;`;
 
 Notifications.setNotificationHandler({
 	handleNotification: async () => ({
@@ -60,16 +111,66 @@ export default function App() {
 	const [canGoBack, setCanGoBack] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [hasError, setHasError] = useState(false);
+	const [splashVisible, setSplashVisible] = useState(true);
+	const [signingIn, setSigningIn] = useState(false);
+	const signingInRef = useRef(false);
+	const googleOpenRef = useRef(false);
+	const finishingSignInRef = useRef(false);
 	const expoPushTokenRef = useRef('');
+
+	const coverSignIn = () => {
+		signingInRef.current = true;
+		setSigningIn(true);
+		webViewRef.current?.injectJavaScript(SHOW_SIGN_IN_COVER_JS);
+	};
+
+	const endSignIn = () => {
+		finishingSignInRef.current = false;
+		signingInRef.current = false;
+		setSigningIn(false);
+		webViewRef.current?.injectJavaScript(HIDE_SIGN_IN_COVER_JS);
+	};
+
+	// The cover goes up once Google has opened over the app, so it is in place on the way back.
+	useEffect(() => {
+		const subscription = AppState.addEventListener('change', state => {
+			if (state !== 'active' && googleOpenRef.current) coverSignIn();
+		});
+		return () => subscription.remove();
+	}, []);
+
+	const hideSplash = () => {
+		setSplashVisible(false);
+		SplashScreen.hideAsync().catch(() => {});
+	};
+
+	// On a slow connection, switch to the loading screen so the app does not look frozen.
+	useEffect(() => {
+		const timer = setTimeout(hideSplash, SPLASH_MAX_MS);
+		return () => clearTimeout(timer);
+	}, []);
+
+	// Hands the push token to the page and registers this phone for the signed-in person.
+	// Called whenever either one may have just become available.
+	const registerPushToken = () => {
+		if (expoPushTokenRef.current) webViewRef.current?.injectJavaScript(registerPushTokenJs(expoPushTokenRef.current));
+	};
 
 	// Get Expo push token on startup and store it so we can inject it into the WebView.
 	useEffect(() => {
 		(async () => {
 			try {
+				if (Platform.OS === 'android') {
+					await Notifications.setNotificationChannelAsync('default', {
+						name: 'WorkMate',
+						importance: Notifications.AndroidImportance.HIGH
+					});
+				}
 				const { status } = await Notifications.requestPermissionsAsync();
 				if (status !== 'granted') return;
 				const tokenData = await Notifications.getExpoPushTokenAsync();
 				expoPushTokenRef.current = tokenData.data;
+				registerPushToken();
 			} catch {
 				// Push token is non-critical; silently ignore errors.
 			}
@@ -98,6 +199,13 @@ export default function App() {
 			return;
 		}
 
+		if (message?.type === 'dilg-signed-in') {
+			finishingSignInRef.current = false;
+			signingInRef.current = false;
+			setSigningIn(false);
+			registerPushToken();
+			return;
+		}
 		if (message?.type === 'dilg-camera-auth') {
 			let payload;
 			try {
@@ -123,6 +231,7 @@ export default function App() {
 			return;
 		}
 		if (message?.type === 'dilg-google-auth') {
+			let payload = null;
 			try {
 				// PKCE: the backend only returns a short-lived code in the redirect, and only this
 				// app instance knows the verifier needed to exchange it for a session token.
@@ -132,12 +241,14 @@ export default function App() {
 					new TextEncoder().encode(codeVerifier)
 				)));
 				const authUrl = `${configuredWebAppUrl}/api/auth/google/url?mobile=1&code_challenge=${codeChallenge}`;
+				googleOpenRef.current = true;
 				const result = await WebBrowser.openAuthSessionAsync(authUrl, MOBILE_REDIRECT_URI);
+				googleOpenRef.current = false;
 				if (result.type === 'success' && result.url) {
+					coverSignIn();
 					const callbackUrl = new URL(result.url);
 					const code = callbackUrl.searchParams.get('code');
 					const error = callbackUrl.searchParams.get('error');
-					let payload;
 					if (error || !code) {
 						payload = { type: 'google-login-failure', error: error || 'Google sign-in failed.' };
 					} else {
@@ -151,14 +262,26 @@ export default function App() {
 							? { type: 'google-login-success', user: data.user || null, token: data.token }
 							: { type: 'google-login-failure', error: data.error || 'Google sign-in failed.' };
 					}
-					webViewRef.current?.injectJavaScript(
-						`window.postMessage(${JSON.stringify(payload)}, '*'); true;`
-					);
 				}
 			} catch (error) {
+				payload = { type: 'google-login-failure', error: error.message };
+			} finally {
+				googleOpenRef.current = false;
+			}
+			if (payload?.type === 'google-login-success') {
+				finishingSignInRef.current = true;
+				// The token is saved first, so if the page reloads now (for example, to pick up a new
+				// version), it still opens signed in.
 				webViewRef.current?.injectJavaScript(
-					`window.postMessage(${JSON.stringify({ type: 'google-login-failure', error: error.message })}, '*'); true;`
+					`try { localStorage.setItem('dilg_auth_token', ${JSON.stringify(payload.token)}); } catch (e) {} window.postMessage(${JSON.stringify(payload)}, '*'); true;`
 				);
+				webViewRef.current?.injectJavaScript(WATCH_FOR_DASHBOARD_JS);
+				setTimeout(() => { if (finishingSignInRef.current) endSignIn(); }, SIGN_IN_COVER_MAX_MS + 2000);
+			} else {
+				if (payload) {
+					webViewRef.current?.injectJavaScript(`window.postMessage(${JSON.stringify(payload)}, '*'); true;`);
+				}
+				endSignIn();
 			}
 			return;
 		}
@@ -278,22 +401,24 @@ export default function App() {
 				}}
 				onLoadEnd={() => {
 					setLoading(false);
-					if (expoPushTokenRef.current) {
-						webViewRef.current?.injectJavaScript(
-							`window.__expoPushToken = ${JSON.stringify(expoPushTokenRef.current)}; true;`
-						);
-					}
+					hideSplash();
+					// The page reloaded during a Google sign-in: cover it again until the dashboard shows.
+					if (signingInRef.current) webViewRef.current?.injectJavaScript(SHOW_SIGN_IN_COVER_JS);
+					if (finishingSignInRef.current) webViewRef.current?.injectJavaScript(WATCH_FOR_DASHBOARD_JS);
+					registerPushToken();
 				}}
 				onError={() => {
 					setLoading(false);
 					setHasError(true);
+					hideSplash();
 				}}
 				onMessage={handleWebViewMessage}
 				onNavigationStateChange={(state) => setCanGoBack(state.canGoBack)}
 			/>
-			{loading && (
+			{/* During a Google sign-in the page shows its own spinner, so this one stays hidden. */}
+			{loading && !splashVisible && !signingIn && (
 				<View style={styles.loader}>
-					<ActivityIndicator size="large" color="#176b87" />
+					<ActivityIndicator size="large" color="#1e40af" />
 				</View>
 			)}
 		</SafeAreaView>
@@ -314,7 +439,7 @@ const styles = StyleSheet.create({
 		...StyleSheet.absoluteFillObject,
 		alignItems: 'center',
 		justifyContent: 'center',
-		backgroundColor: '#f7fafb',
+		backgroundColor: '#ffffff',
 	},
 	message: {
 		flex: 1,
