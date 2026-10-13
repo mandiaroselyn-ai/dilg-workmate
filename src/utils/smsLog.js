@@ -10,7 +10,7 @@ const numberKey = value => {
 };
 
 // True for a Philippine mobile number (09XX XXX XXXX), the kind HR can text.
-export const isMobileNumber = value => /^9d{9}$/.test(numberKey(value));
+export const isMobileNumber = value => /^9\d{9}$/.test(numberKey(value));
 
 // A mobile number written the way people read it: 0917 123 4567.
 export const formatMobile = value => {

@@ -4,13 +4,14 @@
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Bell, Mail, MessageSquare, ShieldAlert, CircleDot, Info, Calendar as CalendarIcon, Clock, Settings, User, Menu } from 'lucide-react';
+import { Bell, Mail, ShieldAlert, CircleDot, Info, Calendar as CalendarIcon, Clock, Settings, User, Menu } from 'lucide-react';
 import logoImage from '../assets/dilg-logo.png';
 import MobileNotificationsPanel from './MobileNotificationsPanel';
 import MobileSmsPanel from './MobileSmsPanel';
 import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
-import { unseenSmsCount } from '../utils/smsLog';
+import { smsTime, unseenSmsCount } from '../utils/smsLog';
+import { SmsBubbles } from './SmsChat';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 import { getManilaDateString } from '../../shared/localDate';
 import { requestCoversDate } from '../utils/hrAttendance';
@@ -92,12 +93,10 @@ export default function Header({
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const smsThreads = Object.values(smsAlerts.reduce((groups, sms) => {
-    const recipient = sms.recipient || 'Unknown';
-    if (!groups[recipient]) groups[recipient] = { recipient, messages: [] };
-    groups[recipient].messages.push(sms);
-    return groups;
-  }, {}));
+  const employeeSmsConversation = useMemo(
+    () => [...smsAlerts].sort((a, b) => (smsTime(a) ?? 0) - (smsTime(b) ?? 0)),
+    [smsAlerts]
+  );
   const isWebOnlyRole = [activeRole, user?.accessLevel]
     .map(role => role?.toString().trim().toLowerCase())
     .some(role => role === 'supervisor' || role === 'hr_admin');
@@ -260,43 +259,23 @@ export default function Header({
             </div>
           )}
 
-          {/* SMS Dropdown */}
+          {/* The employee's texts, as one conversation */}
           {showSMSLogs && !isWebOnlyRole && (
-            <div className="absolute right-0 mt-2 w-[min(18rem,calc(100vw-1rem))] bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 z-30 animate-in fade-in slide-in-from-top-3 duration-200 text-slate-800">
-              <div className="p-4 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-sky-200" />
-                  <span className="font-semibold text-[11px] col-auto">System SMS Logs</span>
-                </div>
+            <div className="absolute right-0 mt-2 z-30 flex w-[min(22rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl animate-in fade-in slide-in-from-top-3 duration-200">
+              <div className="flex items-center gap-2.5 bg-gradient-to-r from-[#1e40af] to-indigo-900 px-4 py-3 text-white">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-extrabold">DW</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold">DILG WorkMate</span>
+                  <span className="block text-[11px] text-white/75">Texts sent to your phone</span>
+                </span>
               </div>
-              
-              <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-                {smsThreads.length === 0 ? (
-                  <div className="p-8 text-center text-slate-500 text-xs font-semibold">
-                    No SMS alerts sent recently
-                  </div>
-                ) : (
-                  smsThreads.map(thread => (
-                    <div key={thread.recipient} className="border-b border-slate-100 p-2.5 text-left last:border-0">
-                      <div className="flex items-center justify-between gap-2 font-bold text-slate-800">
-                        <span className="truncate text-[#155e75] font-mono">{thread.recipient}</span>
-                        <span className="shrink-0 text-[9px] font-normal text-slate-400">{thread.messages.length} message{thread.messages.length === 1 ? '' : 's'}</span>
-                      </div>
-                      <div className="mt-1 space-y-1.5">
-                        {thread.messages.map((sms, index) => (
-                            <div key={sms.id || `${thread.recipient}-${index}`} className={`rounded-md p-1.5 text-[10px] ${sms.direction === 'inbound' ? 'bg-emerald-50' : 'bg-slate-50'}`}>
-                            <div className="flex items-center justify-between gap-2 text-[9px] text-slate-400"><span>{sms.timestamp}</span><span className={`font-bold ${sms.direction === 'inbound' ? 'text-blue-600' : 'text-emerald-600'}`}>{sms.direction === 'inbound' ? 'Received' : 'Sent'}</span></div>
-                            <p className="mt-0.5 leading-snug font-semibold text-slate-600">{sms.message}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="p-2 text-center bg-slate-50">
-                <span className="text-[9px] text-slate-500 font-semibold">Attendance SMS logs</span>
-              </div>
+              <SmsBubbles
+                messages={employeeSmsConversation}
+                isMine={sms => sms.direction === 'inbound'}
+                emptyText="No texts yet."
+                className="h-80"
+              />
+              <p className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-[11px] text-slate-600">To reply, text back from your phone's Messages app.</p>
             </div>
           )}
         </div>

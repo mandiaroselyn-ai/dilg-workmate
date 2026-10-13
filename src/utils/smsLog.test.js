@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   formatMobile,
+  isMobileNumber,
   matchesSmsSearch,
   smsCsvRows,
   smsFilterCounts,
@@ -24,6 +25,15 @@ test('mobile numbers are shown the way people read them', () => {
   assert.equal(formatMobile('+639171234567'), '0917 123 4567');
   assert.equal(formatMobile('09171234567'), '0917 123 4567');
   assert.equal(formatMobile('(042) 332 1234'), '(042) 332 1234');
+});
+
+test('only mobile numbers can be texted', () => {
+  for (const number of ['0917 123 4567', '09171234567', '+639171234567', '+63 918 222 3344']) {
+    assert.equal(isMobileNumber(number), true, number);
+  }
+  for (const number of ['(042) 332 1234', '12345', '', undefined]) {
+    assert.equal(isMobileNumber(number), false, String(number));
+  }
 });
 
 test('older messages are sorted into attendance, account, and replies by their text', () => {
