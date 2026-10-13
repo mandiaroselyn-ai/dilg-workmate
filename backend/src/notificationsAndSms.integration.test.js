@@ -6,6 +6,8 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || 'notifications-sms-test-secre
 // The SMS provider is turned on only inside the tests that need it, and the network is
 // replaced in each of them, so no real text message is ever sent.
 process.env.UNISMS_API_KEY = '';
+delete process.env.HTTPSMS_API_KEY;
+delete process.env.HTTPSMS_FROM;
 globalThis.fetch = async url => {
   throw new Error(`Tests must not call the network (${url}).`);
 };
@@ -49,6 +51,46 @@ test('a text the SMS service rejects is recorded as Failed with the reason', asy
   assert.equal(saved.error, 'Invalid recipient number.');
   assert.equal(saved.recipient, '+639171234567');
   assert.equal(saved.employeeId, 'DILG-2026-1');
+});
+
+test('field errors from the SMS service are recorded as the reason', async t => {
+  withSms(t);
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: false, status: 422, json: async () => ({ errors: { sender_id: ['is inactive'] } }) }));
+  const record = t.mock.method(Announcement, 'createSmsAlert', async data => data);
+
+  await assert.rejects(sendSms({ recipient: '09171234567', message: 'Time In recorded.', kind: 'attendance' }), SmsError);
+  assert.equal(record.mock.calls[0].arguments[0].error, 'sender_id is inactive');
+});
+
+test('with HTTPSMS_API_KEY set, texts go out through httpSMS from the configured phone', async t => {
+  process.env.HTTPSMS_API_KEY = 'httpsms-test-key';
+  process.env.HTTPSMS_FROM = '0998 123 4567';
+  t.after(() => {
+    delete process.env.HTTPSMS_API_KEY;
+    delete process.env.HTTPSMS_FROM;
+  });
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, json: async () => ({ data: { id: 'httpsms-1', status: 'pending' }, status: 'success' }) };
+  });
+  t.mock.method(Announcement, 'createSmsAlert', async data => data);
+
+  const sms = await sendSms({ recipient: '09171234567', message: 'Time In recorded.', kind: 'attendance' });
+  assert.equal(calls[0].url, 'https://api.httpsms.com/v1/messages/send');
+  assert.equal(calls[0].init.headers['x-api-key'], 'httpsms-test-key');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { from: '+639981234567', to: '+639171234567', content: 'Time In recorded.' });
+  assert.equal(sms.status, 'Sent');
+  assert.equal(sms.providerMessageId, 'httpsms-1');
+});
+
+test('httpSMS without the phone number is reported instead of sent', async t => {
+  process.env.HTTPSMS_API_KEY = 'httpsms-test-key';
+  t.after(() => { delete process.env.HTTPSMS_API_KEY; });
+  await assert.rejects(
+    sendSms({ recipient: '09171234567', message: 'Time In recorded.', kind: 'attendance' }),
+    error => error instanceof SmsError && error.statusCode === 503 && /HTTPSMS_FROM/.test(error.message)
+  );
 });
 
 test('a text that cannot reach the SMS service is recorded as Failed too', async t => {
