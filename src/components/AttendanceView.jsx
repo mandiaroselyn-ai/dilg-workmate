@@ -1518,7 +1518,7 @@ export default function AttendanceView({
             {/* On duty, the app shares the employee's GPS with HR's Live GPS Map while it is open. */}
             {isCurrentlyActive && (
               <p className="text-[11px] font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                While you are on duty, HR sees your phone's location on the Live GPS Map every minute that WorkMate is open. Keep the app open during fieldwork. If it is closed or your phone is locked, HR sees "No Live Signal".
+                While you are on duty, HR sees your phone's location on the Live GPS Map every minute that WorkMate is open. Keep the app open during fieldwork. If it is closed or your phone is locked, HR sees the last location WorkMate sent.
               </p>
             )}
 

@@ -36,9 +36,8 @@ const statusStyles = {
   'On Travel': ['bg-blue-50 text-blue-700', Plane]
 };
 
-// The app sends an employee's phone GPS every minute while it is open; after 5 minutes
-// without one (app closed, phone locked, or weak GPS) HR sees "No Live Signal".
-const NO_SIGNAL_AFTER_SECONDS = 5 * 60;
+// The app sends an employee's phone GPS every minute while it is open. When none comes (app
+// closed, phone locked, or weak GPS), HR sees the last position the app sent.
 const LIVE_REFRESH_MS = 30000;
 
 const accuracyText = value => {
@@ -66,18 +65,13 @@ const describeLastGps = row => (row.live && row.record.lastGpsAt
 const statusTextFor = row => {
   const { record } = row;
   if (row.gpsState === 'Timed Out') return `Timed out${record.timeOut ? ` at ${record.timeOut}` : ''}`;
-  if (row.gpsState === 'No Live Signal') {
-    const lastKnown = /in range/i.test(record.gpsStatus || '') ? 'inside' : 'outside';
-    return `No live GPS since ${clockText(record.lastGpsAt)} (app closed, phone locked, or weak GPS). Last known: ${lastKnown} assigned area.`;
-  }
   if (row.gpsState === 'Inside Assigned Area') return 'Inside assigned area';
   return record.leftAreaAt ? `Outside assigned area since ${clockText(record.leftAreaAt)}` : 'Outside assigned area';
 };
 
 const gpsStateStyles = {
   'Inside Assigned Area': ['bg-emerald-50 text-emerald-700', 'text-emerald-700'],
-  'Outside Geofence': ['bg-rose-50 text-rose-700', 'text-rose-700'],
-  'No Live Signal': ['bg-amber-50 text-amber-700', 'text-amber-700']
+  'Outside Geofence': ['bg-rose-50 text-rose-700', 'text-rose-700']
 };
 const gpsBadgeClass = state => gpsStateStyles[state]?.[0] || 'bg-slate-100 text-slate-600';
 const gpsTextClass = state => gpsStateStyles[state]?.[1] || 'text-slate-700';
@@ -96,9 +90,6 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const [locationStatus, setLocationStatus] = useState('All Status');
   const [lastGpsRefresh, setLastGpsRefreshText] = useState('Not refreshed');
   const [liveLocations, setLiveLocations] = useState([]);
-  // When the live locations arrived, and the time now (ticking), to tell a lost signal.
-  const [liveFetchedAt, setLiveFetchedAt] = useState(0);
-  const [now, setNow] = useState(() => Date.now());
   // Place names for Time In positions, such as "Brgy. Bangbang, Gasan" ('' if unknown).
   const [placeNames, setPlaceNames] = useState({});
   const [issueSearch, setIssueSearch] = useState('');
@@ -114,8 +105,6 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
         throw new Error(result.error || 'Unable to load live employee locations.');
       }
       setLiveLocations(result.locations);
-      setLiveFetchedAt(Date.now());
-      setNow(Date.now());
       setLastGpsRefreshText(new Date().toLocaleTimeString());
     } catch (error) {
       setLastGpsRefreshText(`Refresh failed: ${error.message || 'Unable to load live employee locations.'}`);
@@ -123,8 +112,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   }, []);
   const setLastGpsRefresh = refreshLiveGps;
 
-  // Live locations refresh every 30 seconds on the screens that show them, and the clock
-  // ticks so an employee whose GPS stops coming turns "No Live Signal" on time.
+  // Live locations refresh every 30 seconds on the screens that show them.
   const showsLiveGps = activeSection === 'GPS & Geofence' || activeSection === 'Monitoring';
   useEffect(() => {
     if (!showsLiveGps) return undefined;
@@ -133,11 +121,9 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
     };
     refreshIfShown();
     const refresh = window.setInterval(refreshIfShown, LIVE_REFRESH_MS);
-    const tick = window.setInterval(() => setNow(Date.now()), 15000);
     document.addEventListener('visibilitychange', refreshIfShown);
     return () => {
       window.clearInterval(refresh);
-      window.clearInterval(tick);
       document.removeEventListener('visibilitychange', refreshIfShown);
     };
   }, [showsLiveGps, refreshLiveGps]);
@@ -211,11 +197,10 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
     const attendanceRecord = records.find(item => matchesAttendanceEmployee(item, employee));
     const liveRecord = liveLocations.find(item => matchesAttendanceEmployee(item, employee));
     const record = liveRecord || attendanceRecord;
-    const gpsAgeSeconds = liveRecord ? Number(liveRecord.lastGpsAgeSeconds) + Math.max(0, now - liveFetchedAt) / 1000 : null;
+    // An open shift shows where the phone last was, however long ago it sent its GPS.
     const gpsState = !record ? 'Not Timed In'
       : !liveRecord && attendanceRecord?.timeOut ? 'Timed Out'
-        : liveRecord && !(gpsAgeSeconds <= NO_SIGNAL_AFTER_SECONDS) ? 'No Live Signal'
-          : /in range/i.test(record.gpsStatus || '') ? 'Inside Assigned Area' : 'Outside Geofence';
+        : /in range/i.test(record.gpsStatus || '') ? 'Inside Assigned Area' : 'Outside Geofence';
     return {
       employee,
       record,
@@ -263,7 +248,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   };
 
   // Where an employee is on the map: their latest phone GPS, green inside their assigned
-  // area, red outside it, amber when no GPS has come for 5 minutes, gray after Time Out.
+  // area, red outside it, gray after Time Out.
   const mapPointFor = row => {
     const { record } = row;
     if (!record) return null;
@@ -272,7 +257,6 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
     const area = (row.live ? record.assignmentArea : record.assignmentSite) || null;
     const state = { 'Inside Assigned Area': 'inside', 'Outside Geofence': 'outside' }[row.gpsState] || 'done';
-    if (state === 'done' && row.gpsState === 'No Live Signal') return null;
     return {
       key: employeeMapKey(row.employee),
       name: row.employee.name || 'Registered employee',

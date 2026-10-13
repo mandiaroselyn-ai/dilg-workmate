@@ -29,11 +29,10 @@ const loadGoogleMaps = key => {
 };
 
 // HR's map of employees on duty. Each dot is the employee's latest phone GPS, which the app
-// sends every minute while it is open: green inside their assigned area, red outside it,
-// amber when no GPS has come for 5 minutes (app closed, phone locked, or weak GPS). Someone
-// picked after timing out is gray, at where they timed in.
+// sends every minute while it is open: green inside their assigned area, red outside it.
+// Someone picked after timing out is gray, at where they timed in.
 
-const COLORS = { inside: '#16a34a', outside: '#dc2626', lost: '#f59e0b', done: '#94a3b8' };
+const COLORS = { inside: '#16a34a', outside: '#dc2626', done: '#94a3b8' };
 const MARINDUQUE = [13.4, 121.95];
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
@@ -58,7 +57,7 @@ const popupFor = point => {
   return wrapper;
 };
 
-// points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'lost' | 'done',
+// points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'done',
 //            place, details: [lines for the popup] }]
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
