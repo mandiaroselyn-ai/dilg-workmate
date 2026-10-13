@@ -31,14 +31,14 @@ const signIn = (t, account) => {
   };
 };
 
-test('employees get fingerprints of their lists, without attendance', async t => {
+test('employees get fingerprints of their lists and their own texts, without attendance', async t => {
   const session = signIn(t, employee);
   const response = await session.get('/api/updates');
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.stamps, { announcements: 'a1', events: 'e1', notifications: 'n1', requests: 'r1' });
+  assert.deepEqual(response.body.stamps, { announcements: 'a1', events: 'e1', notifications: 'n1', requests: 'r1', sms: 's1' });
   assert.equal(session.requestStamp.mock.calls[0].arguments[0].email, employee.email);
   assert.equal(session.attendanceStamp.mock.callCount(), 0);
-  assert.equal(session.smsStamp.mock.callCount(), 0);
+  assert.equal(session.smsStamp.mock.calls[0].arguments[0].email, employee.email);
 });
 
 test('HR/Admins also get the attendance and SMS fingerprints', async t => {
@@ -47,6 +47,7 @@ test('HR/Admins also get the attendance and SMS fingerprints', async t => {
   assert.equal(response.status, 200);
   assert.equal(response.body.stamps.attendance, 'd1');
   assert.equal(response.body.stamps.sms, 's1');
+  assert.equal(session.smsStamp.mock.calls[0].arguments[0], undefined);
 });
 
 test('checking for updates often never uses up the request limit', async t => {

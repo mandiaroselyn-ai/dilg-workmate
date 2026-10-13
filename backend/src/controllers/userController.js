@@ -474,11 +474,13 @@ export const getEmployees = async (req, res) => {
 export const getUpdateStamps = async (req, res) => {
   try {
     const isHr = req.user?.accessLevel === 'hr_admin';
+    const isEmployee = req.user?.accessLevel === 'employee';
     const [bulletins, requests, attendance, sms] = await Promise.all([
       Announcement.updateStamps(req.user),
       Leave.updateStamp(req.user),
       isHr ? DtrLog.updateStamp() : null,
-      isHr ? Announcement.smsStamp() : null
+      // HR follows the whole SMS log; an employee, only their own texts.
+      isHr ? Announcement.smsStamp() : isEmployee ? Announcement.smsStamp(req.user) : null
     ]);
     res.status(200).json({ success: true, stamps: { ...bulletins, requests, ...(attendance ? { attendance } : {}), ...(sms ? { sms } : {}) } });
   } catch (error) {

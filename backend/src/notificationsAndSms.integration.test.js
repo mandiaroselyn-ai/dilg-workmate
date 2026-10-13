@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import crypto from 'node:crypto';
 import request from 'supertest';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'notifications-sms-test-secret';
@@ -130,7 +131,7 @@ test('a resent text updates its log entry instead of adding a new one', async t 
   assert.equal(sms.error, '');
 });
 
-test('only HR/Admins can load the SMS log, and loading it often is not rate limited', async t => {
+test('only HR/Admins load the whole SMS log, and loading it often is not rate limited', async t => {
   t.mock.method(Announcement, 'findSmsAlerts', async () => [{ id: 'sms-1', recipient: '+639171234567', status: 'Sent' }]);
   const as = account => {
     t.mock.method(User, 'findByEmail', async () => account);
@@ -144,7 +145,94 @@ test('only HR/Admins can load the SMS log, and loading it often is not rate limi
     t.mock.restoreAll();
     t.mock.method(Announcement, 'findSmsAlerts', async () => [{ id: 'sms-1', recipient: '+639171234567', status: 'Sent' }]);
   }
+  await as(hr);
+  assert.equal(Announcement.findSmsAlerts.mock.calls[0].arguments[0], undefined);
   assert.equal((await as(supervisor)).status, 403);
   t.mock.restoreAll();
-  assert.equal((await as(employee)).status, 403);
+  // An employee gets only their own texts.
+  const own = t.mock.method(Announcement, 'findSmsAlerts', async () => []);
+  assert.equal((await as(employee)).status, 200);
+  assert.equal(own.mock.calls[0].arguments[0].email, employee.email);
+});
+
+test('HR texts one person, and the text says it is from HR', async t => {
+  withSms(t);
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, json: async () => ({ id: 'uni-3' }) }));
+  const record = t.mock.method(Announcement, 'createSmsAlert', async data => ({ id: 'sms-9', ...data }));
+  t.mock.method(User, 'findByEmail', async () => hr);
+  const send = body => request(app).post('/api/sms').set('Authorization', `Bearer ${createAuthToken(hr)}`).send(body);
+
+  const response = await send({ recipient: '0917 123 4567', message: '  Please call HR today.  ', employeeId: 'DILG-2026-1', employeeEmail: 'juan@gmail.com' });
+  assert.equal(response.status, 201);
+  const saved = record.mock.calls[0].arguments[0];
+  assert.equal(saved.message, 'DILG WorkMate HR: Please call HR today.');
+  assert.equal(saved.recipient, '+639171234567');
+  assert.equal(saved.kind, 'manual');
+  assert.equal(saved.employeeId, 'DILG-2026-1');
+
+  assert.match((await send({ recipient: '12345', message: 'Hi' })).body.error, /valid mobile number/);
+  assert.match((await send({ recipient: '09171234567', message: '   ' })).body.error, /Type the message/);
+  assert.match((await send({ recipient: '09171234567', message: { $gt: '' } })).body.error, /Type the message/);
+  assert.equal(record.mock.callCount(), 1);
+});
+
+// A webhook call the way httpSMS makes it: a JWT signed with the signing key, and the event.
+const HTTPSMS_KEY = 'httpsms-signing-key';
+const httpSmsToken = (key = HTTPSMS_KEY, claims = {}) => {
+  const part = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const unsigned = `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ iss: 'api.httpsms.com', exp: Math.floor(Date.now() / 1000) + 600, ...claims })}`;
+  return `${unsigned}.${crypto.createHmac('sha256', key).update(unsigned).digest('base64url')}`;
+};
+const httpSmsReply = (t, { token = httpSmsToken(), contact = '+639171234567', owner = '+639981234567', type = 'message.phone.received' } = {}) => {
+  process.env.HTTPSMS_WEBHOOK_SIGNING_KEY = HTTPSMS_KEY;
+  process.env.HTTPSMS_FROM = '0998 123 4567';
+  t.after(() => {
+    process.env.HTTPSMS_WEBHOOK_SIGNING_KEY = '';
+    process.env.HTTPSMS_FROM = '';
+  });
+  return request(app)
+    .post('/api/sms/webhook')
+    .set('Authorization', `Bearer ${token}`)
+    .set('X-Event-Type', type)
+    .send({
+      specversion: '1.0',
+      type,
+      data: { message_id: 'msg-1', owner, contact, content: 'Noted po, salamat.', timestamp: '2026-10-13T08:00:00Z', sim: 'SIM2' }
+    });
+};
+
+test('a reply texted to the httpSMS phone is saved and HR is told', async t => {
+  t.mock.method(User, 'findByPhoneNumber', async () => ({ name: 'Juan Dela Cruz', email: 'juan@gmail.com', employeeId: 'DILG-2026-1' }));
+  const saved = t.mock.method(Announcement, 'createIncomingSms', async data => data);
+  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+
+  const response = await httpSmsReply(t);
+  assert.equal(response.status, 200);
+  const sms = saved.mock.calls[0].arguments[0];
+  assert.equal(sms.sender, '+639171234567');
+  assert.equal(sms.message, 'Noted po, salamat.');
+  assert.equal(sms.employeeId, 'DILG-2026-1');
+  assert.equal(sms.id, 'sms-in-msg-1');
+  assert.equal(notify.mock.calls[0].arguments[0].recipientRole, 'hr_admin');
+});
+
+test('httpSMS texts from numbers not on an account, to the other SIM, or other events are not saved', async t => {
+  t.mock.method(User, 'findByPhoneNumber', async () => null);
+  const saved = t.mock.method(Announcement, 'createIncomingSms', async data => data);
+  t.mock.method(Announcement, 'createNotification', async data => data);
+
+  for (const options of [{}, { owner: '+639170000000' }, { type: 'message.phone.sent' }]) {
+    const response = await httpSmsReply(t, options);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ignored, true);
+  }
+  assert.equal(saved.mock.callCount(), 0);
+});
+
+test('httpSMS webhook calls with a wrong or expired signature are refused', async t => {
+  const saved = t.mock.method(Announcement, 'createIncomingSms', async data => data);
+  assert.equal((await httpSmsReply(t, { token: httpSmsToken('wrong-key') })).status, 401);
+  assert.equal((await httpSmsReply(t, { token: httpSmsToken(HTTPSMS_KEY, { exp: Math.floor(Date.now() / 1000) - 3600 }) })).status, 401);
+  assert.equal((await httpSmsReply(t, { token: 'not-a-token' })).status, 401);
+  assert.equal(saved.mock.callCount(), 0);
 });

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Announcement } from '../models/announcementModel.js';
 
 export const normalizePhilippineNumber = value => {
@@ -183,4 +184,44 @@ export const sendSupervisorReviewSms = async (request, supervisors = []) => {
       return false;
     })));
   return results.filter(Boolean).length;
+};
+
+// httpSMS signs each webhook call with a JWT (HS256) made from the webhook's signing key and
+// sends it as "Authorization: Bearer <token>". True when the signature matches and the
+// token is in date.
+export const isValidHttpSmsToken = (authorization, signingKey) => {
+  const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+  const parts = token.split('.');
+  if (!signingKey || parts.length !== 3) return false;
+  const [header, payload, signature] = parts;
+  const expected = crypto.createHmac('sha256', signingKey).update(`${header}.${payload}`).digest();
+  const received = Buffer.from(signature, 'base64url');
+  if (received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) return false;
+  try {
+    const { alg } = JSON.parse(Buffer.from(header, 'base64url').toString());
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    const now = Date.now() / 1000;
+    const allowance = 60;
+    return alg === 'HS256'
+      && !(Number.isFinite(claims.exp) && claims.exp < now - allowance)
+      && !(Number.isFinite(claims.nbf) && claims.nbf > now + allowance);
+  } catch {
+    return false;
+  }
+};
+
+// A text the httpSMS phone received (its message.phone.received event), as
+// { sender, content, providerMessageId, timestamp }. Null for any other event, and for
+// texts to the phone's other SIM, which are not WorkMate's.
+export const httpSmsIncomingText = (eventType, body) => {
+  if ((eventType || body?.type) !== 'message.phone.received') return null;
+  const data = body?.data || {};
+  const ourNumber = toPhilippineMobile(process.env.HTTPSMS_FROM);
+  if (!ourNumber || toPhilippineMobile(data.owner) !== ourNumber) return null;
+  return {
+    sender: normalizePhilippineNumber(data.contact),
+    content: typeof data.content === 'string' ? data.content.trim().slice(0, 918) : '',
+    providerMessageId: typeof data.message_id === 'string' ? data.message_id : '',
+    timestamp: typeof data.timestamp === 'string' ? data.timestamp : ''
+  };
 };

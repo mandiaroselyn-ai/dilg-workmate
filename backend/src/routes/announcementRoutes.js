@@ -37,7 +37,7 @@ router.post('/notifications', createNotification);
 router.post('/notifications/clear', clearNotifications);
 router.post('/notifications/dismiss', dismissNotifications);
 router.post('/notifications/:id/read', readNotification);
-router.get('/sms', authorizeRoles('hr_admin'), getSmsAlerts);
+router.get('/sms', authorizeRoles('hr_admin', 'employee'), getSmsAlerts);
 router.post('/sms', authorizeRoles('supervisor', 'hr_admin'), createSmsAlert);
 router.post('/sms/webhook', receiveSmsWebhook);
 

@@ -2,7 +2,14 @@ import { Announcement } from '../models/announcementModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'node:crypto';
-import { normalizePhilippineNumber, sendSms, SmsError } from '../services/smsService.js';
+import {
+  httpSmsIncomingText,
+  isValidHttpSmsToken,
+  normalizePhilippineNumber,
+  sendSms,
+  SmsError,
+  toPhilippineMobile
+} from '../services/smsService.js';
 import { normalizeAnnouncementInput, normalizeEventInput } from '../utils/bulletinFields.js';
 
 // Compares hashes so the check takes the same time regardless of where the secrets differ.
@@ -178,10 +185,11 @@ export const readNotification = async (req, res) => {
   }
 };
 
-// The whole SMS log, newest first, for HR's SMS list and SMS Log page.
+// Newest first: the whole SMS log for HR's SMS list and SMS Log page, or an employee's
+// own texts for their SMS screen.
 export const getSmsAlerts = async (req, res) => {
   try {
-    res.status(200).json(await Announcement.findSmsAlerts());
+    res.status(200).json(await Announcement.findSmsAlerts(req.user?.accessLevel === 'hr_admin' ? undefined : req.user));
   } catch (error) {
     sendServerError(res, error);
   }
@@ -208,8 +216,23 @@ export const createSmsAlert = async (req, res) => {
       return res.status(200).json({ success: true, sms });
     }
 
-    const { recipient, message, employeeId, employeeEmail, timestamp } = req.body;
-    const sms = await sendSms({ recipient, message, employeeId, employeeEmail, timestamp, kind: 'manual' });
+    // A text HR types to one person, starting with who it is from, since it arrives from
+    // the SMS phone's own number.
+    const { recipient, employeeId, employeeEmail } = req.body || {};
+    const text = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (!toPhilippineMobile(recipient)) {
+      return res.status(400).json({ success: false, error: 'Use a valid mobile number, such as 0917 123 4567.' });
+    }
+    if (!text) return res.status(400).json({ success: false, error: 'Type the message to send.' });
+    const from = req.user?.accessLevel === 'hr_admin' ? 'DILG WorkMate HR' : 'DILG WorkMate';
+    const sms = await sendSms({
+      recipient,
+      message: `${from}: ${text}`,
+      employeeId: typeof employeeId === 'string' ? employeeId : '',
+      employeeEmail: typeof employeeEmail === 'string' ? employeeEmail : '',
+      timestamp: new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }),
+      kind: 'manual'
+    });
     res.status(201).json({ success: true, sms });
   } catch (error) {
     if (error instanceof SmsError) {
@@ -219,27 +242,53 @@ export const createSmsAlert = async (req, res) => {
   }
 };
 
+// A text sent to the httpSMS phone, checked against HTTPSMS_WEBHOOK_SIGNING_KEY. Only texts
+// from WorkMate accounts are kept (`accountsOnly`), since the phone's number also gets
+// bank codes, promos, and personal messages that HR must not see.
+const readHttpSmsWebhook = req => {
+  const signingKey = process.env.HTTPSMS_WEBHOOK_SIGNING_KEY;
+  if (!signingKey) return { status: 503, error: 'SMS webhook is not configured.' };
+  if (!isValidHttpSmsToken(req.headers.authorization, signingKey)) {
+    return { status: 401, error: 'Invalid webhook signature.' };
+  }
+  const text = httpSmsIncomingText(req.headers['x-event-type'], req.body);
+  // Other events, and texts to the phone's other SIM, need nothing done.
+  return text ? { text, accountsOnly: true } : { ignore: true };
+};
+
+// A text sent to the UniSMS number, checked against UNISMS_WEBHOOK_SECRET.
+const readUniSmsWebhook = req => {
+  const expectedSecret = process.env.UNISMS_WEBHOOK_SECRET;
+  if (!expectedSecret) return { status: 503, error: 'SMS webhook is not configured.' };
+  if (!isMatchingSecret(req.headers['webhook-secret-key'], expectedSecret)) {
+    return { status: 401, error: 'Invalid webhook secret.' };
+  }
+  const message = req.body?.message || req.body || {};
+  return {
+    text: {
+      sender: normalizePhilippineNumber(message.sender || message.from || req.body?.sender),
+      content: message.content || message.message || req.body?.content || req.body?.message,
+      providerMessageId: req.body?.id || message.reference_id || message.id || '',
+      timestamp: message.created
+    }
+  };
+};
+
+// Saves a reply texted to WorkMate's SMS number and tells HR. httpSMS marks its calls
+// with X-Event-Type; anything else is read as UniSMS.
 export const receiveSmsWebhook = async (req, res) => {
   try {
-    const expectedSecret = process.env.UNISMS_WEBHOOK_SECRET;
-    if (!expectedSecret) {
-      return res.status(503).json({ success: false, error: 'SMS webhook is not configured.' });
-    }
-    if (!isMatchingSecret(req.headers['webhook-secret-key'], expectedSecret)) {
-      return res.status(401).json({ success: false, error: 'Invalid webhook secret.' });
-    }
+    const incoming = req.headers['x-event-type'] ? readHttpSmsWebhook(req) : readUniSmsWebhook(req);
+    if (incoming.error) return res.status(incoming.status).json({ success: false, error: incoming.error });
+    if (incoming.ignore) return res.status(200).json({ success: true, ignored: true });
 
-    const message = req.body?.message || req.body || {};
-    const sender = normalizePhilippineNumber(message.sender || message.from || req.body?.sender);
-    const content = message.content || message.message || req.body?.content || req.body?.message;
-    const providerMessageId = req.body?.id || message.reference_id || message.id || '';
-    const ourNumber = normalizePhilippineNumber(message.recipient || req.body?.recipient || '');
-
+    const { sender, content, providerMessageId, timestamp } = incoming.text;
     if (!sender || !content) {
       return res.status(400).json({ success: false, error: 'Webhook sender and message content are required.' });
     }
 
     const employee = await User.findByPhoneNumber(sender);
+    if (incoming.accountsOnly && !employee) return res.status(200).json({ success: true, ignored: true });
     const sms = await Announcement.createIncomingSms({
       id: providerMessageId ? `sms-in-${providerMessageId}` : undefined,
       recipient: sender,
@@ -248,7 +297,7 @@ export const receiveSmsWebhook = async (req, res) => {
       providerMessageId,
       employeeId: employee?.employeeId || '',
       employeeEmail: employee?.email || '',
-      timestamp: message.created || new Date().toISOString()
+      timestamp: timestamp || new Date().toISOString()
     });
 
     // The reply is from the employee, so HR is the one told about it.
@@ -261,7 +310,7 @@ export const receiveSmsWebhook = async (req, res) => {
 
     res.status(200).json({ success: true, sms });
   } catch (error) {
-    console.error('UniSMS webhook error:', error);
+    console.error('SMS webhook error:', error);
     sendServerError(res, error);
   }
 };

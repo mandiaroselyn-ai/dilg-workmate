@@ -104,6 +104,16 @@ export const notificationActionFields = data => {
 // Identifies a reader in a notice's readBy list.
 export const notificationReaderKey = user => String(user?.employeeId || user?.email || '').trim().toLowerCase();
 
+// The texts sent to or received from one employee, matched by employee ID or email.
+// An account with neither matches nothing.
+export const ownSmsFilter = user => {
+  const own = [
+    ...(user?.employeeId ? [{ employeeId: user.employeeId }] : []),
+    ...(user?.email ? [{ employeeEmail: String(user.email).trim().toLowerCase() }] : [])
+  ];
+  return own.length ? { $or: own } : { _id: null };
+};
+
 // The notifications one person sees: their own, their role's (HR/Admin or supervisor),
 // and, for employees, notices sent to every employee. Nothing from before their account
 // existed, or before they last cleared their notifications, is shown.
@@ -298,14 +308,15 @@ export const Announcement = {
   },
 
   // A fingerprint of the SMS log, so HR's SMS list updates without a reload.
-  smsStamp: async () => {
+  // With `user`, only that employee's texts; without, the whole SMS log.
+  smsStamp: async (user) => {
     ensureConnected();
-    return stampOf(MongoSmsAlert);
+    return stampOf(MongoSmsAlert, user ? ownSmsFilter(user) : {});
   },
 
-  findSmsAlerts: async () => {
+  findSmsAlerts: async (user) => {
     ensureConnected();
-    const list = await MongoSmsAlert.find().sort({ createdAt: -1 });
+    const list = await MongoSmsAlert.find(user ? ownSmsFilter(user) : {}).sort({ createdAt: -1 });
     return list.map(item => {
       const obj = item.toObject();
       obj.id = obj.customId;

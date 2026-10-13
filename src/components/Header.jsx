@@ -255,6 +255,7 @@ export default function Header({
                 smsConfigured={smsConfigured}
                 onViewAll={() => goTo('sms_log')}
                 onResend={onResendSms}
+                onSend={onSendSms}
               />
             </div>
           )}

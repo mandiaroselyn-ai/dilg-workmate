@@ -348,7 +348,7 @@ export default function App() {
           : list));
         if (activeRole === 'employee') showQueuedAttendance(userRef.current);
       },
-      // HR only: texts sent at Time In or Time Out, failed texts, and replies.
+      // For HR, the whole SMS log; for an employee, the texts sent to them.
       sms: async () => {
         const list = await readJson('/api/sms');
         if (isCurrentSession && Array.isArray(list)) setSmsAlerts(list);
@@ -647,25 +647,18 @@ export default function App() {
     return data.enrollment;
   }, []);
 
+  // Sends a text HR typed to one person. The log reloads either way, since a text that
+  // fails is saved as Failed with the reason.
   const handleSendSms = async ({ recipient, message, employeeId = '', employeeEmail = '' }) => {
     const response = await fetch('/api/sms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        recipient,
-        message,
-        employeeId,
-        employeeEmail,
-        timestamp: new Date().toLocaleString('en-US'),
-        status: 'Sent'
-      })
+      body: JSON.stringify({ recipient, message, employeeId, employeeEmail })
     });
-    const data = await response.json();
-    if (!response.ok || !data.success || !data.sms) {
-      throw new Error(data?.error || 'Unable to send SMS reply.');
-    }
-    setSmsAlerts(previous => [data.sms, ...previous]);
-    return data.sms;
+    const data = await response.json().catch(() => ({}));
+    const list = await fetch('/api/sms').then(res => (res.ok ? res.json() : null)).catch(() => null);
+    if (Array.isArray(list)) setSmsAlerts(list);
+    if (!response.ok || !data.success) throw new Error(data?.error || 'The text could not be sent.');
   };
 
   // Sends a text that was not delivered again. The log reloads either way, since a resend
@@ -1627,7 +1620,7 @@ export default function App() {
 
           {currentView === 'sms_log' && activeRole === 'hr_admin' && (
             <div className="mx-auto w-full max-w-6xl p-4 sm:p-6">
-              <SmsCenter variant="page" smsAlerts={headerSmsAlerts} employees={employees} smsConfigured={smsConfigured} onResend={handleResendSms} />
+              <SmsCenter variant="page" smsAlerts={headerSmsAlerts} employees={employees} smsConfigured={smsConfigured} onResend={handleResendSms} onSend={handleSendSms} />
             </div>
           )}
 

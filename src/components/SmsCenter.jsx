@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Download, Search } from 'lucide-react';
+import { ArrowRight, Download, Search, Send, X } from 'lucide-react';
 import { downloadCsv } from '../utils/csv';
 import {
   SMS_CSV_HEADERS,
   SMS_KIND_LABELS,
+  formatMobile,
+  isMobileNumber,
   matchesSmsFilter,
   matchesSmsSearch,
   smsCsvRows,
@@ -30,12 +32,102 @@ const StatusChip = ({ status }) => (
   <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${STATUS_STYLES[status] || STATUS_STYLES.Sent}`}>{status}</span>
 );
 
+// The server starts each text with this, so it fits in the 918-character SMS limit.
+const SENT_AS = 'DILG WorkMate HR:';
+const MESSAGE_MAX = 900;
+
+const personKey = person => String(person.employeeId || person.email || '');
+
+// A text HR types to one person. With `to` (a thread), it is a reply to that person;
+// without, HR picks someone with a mobile number.
+const SmsComposer = ({ to, employees = [], onSend, onClose }) => {
+  const people = useMemo(
+    () => employees
+      .filter(person => isMobileNumber(person.phoneNumber) && personKey(person))
+      .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email))),
+    [employees]
+  );
+  const [chosen, setChosen] = useState('');
+  const [message, setMessage] = useState('');
+  // '', 'sending', 'sent', or why it was not sent.
+  const [state, setState] = useState('');
+
+  const person = to ? null : people.find(item => personKey(item) === chosen);
+  const recipient = to
+    ? { recipient: to.number, employeeId: to.employee?.employeeId || '', employeeEmail: to.employee?.email || '' }
+    : person && { recipient: person.phoneNumber, employeeId: person.employeeId || '', employeeEmail: person.email || '' };
+  const canSend = Boolean(recipient && message.trim()) && state !== 'sending';
+
+  const submit = async event => {
+    event.preventDefault();
+    if (!canSend) return;
+    setState('sending');
+    try {
+      await onSend({ ...recipient, message: message.trim() });
+      setMessage('');
+      setState('sent');
+    } catch (error) {
+      setState(error.message || 'The text could not be sent.');
+    }
+  };
+
+  return (
+    <form onSubmit={submit} aria-label={to ? `Reply to ${to.name}` : 'New text'} className={`space-y-2 ${to ? 'mt-3' : 'rounded-xl border border-slate-200 bg-slate-50 p-3'}`}>
+      {!to && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-extrabold text-slate-900">New text</p>
+          <button type="button" onClick={onClose} aria-label="Close new text" className="rounded-lg p-1 text-slate-500 hover:bg-slate-200">
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      {!to && (
+        <label className="block">
+          <span className="text-xs font-bold text-slate-700">To</span>
+          <select
+            value={chosen}
+            onChange={event => { setChosen(event.target.value); setState(''); }}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm outline-none focus:border-[#0B4EA2]"
+          >
+            <option value="">{people.length ? 'Choose a person' : 'No one has a mobile number yet'}</option>
+            {people.map(item => (
+              <option key={personKey(item)} value={personKey(item)}>{item.name || item.email} · {formatMobile(item.phoneNumber)}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className="block">
+        <span className={to ? 'sr-only' : 'text-xs font-bold text-slate-700'}>{to ? `Reply to ${to.name}` : 'Message'}</span>
+        <textarea
+          value={message}
+          onChange={event => { setMessage(event.target.value); if (state !== 'sending') setState(''); }}
+          maxLength={MESSAGE_MAX}
+          rows={to ? 2 : 3}
+          placeholder={to ? `Reply to ${to.name}` : 'Type your message'}
+          className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-[13px] outline-none focus:border-[#0B4EA2]"
+        />
+      </label>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] text-slate-500">Starts with "{SENT_AS}" · {message.length}/{MESSAGE_MAX}</span>
+        <button type="submit" disabled={!canSend} className="flex items-center gap-1.5 rounded-lg bg-[#0B4EA2] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#093f84] disabled:opacity-50">
+          <Send className="h-3.5 w-3.5" aria-hidden="true" /> {state === 'sending' ? 'Sending...' : 'Send'}
+        </button>
+      </div>
+      {state === 'sent' && <p role="status" className="text-xs font-bold text-emerald-700">Text sent.</p>}
+      {state && !['sending', 'sent'].includes(state) && <p role="alert" className="text-xs font-bold text-rose-800">{state}</p>}
+    </form>
+  );
+};
+
 // HR's SMS log: whether SMS is set up, filters (failed texts, replies, attendance, account
 // approvals), and either one row per person that opens their messages ('panel', the header
 // dropdown) or every message with search and CSV export ('page', the SMS Log page). A text
-// that was not delivered can be sent again with `onResend`.
-export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees = [], smsConfigured, onViewAll, onResend }) {
+// that was not delivered can be sent again with `onResend`, and with `onSend` HR can text
+// someone new or reply in a thread.
+export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees = [], smsConfigured, onViewAll, onResend, onSend }) {
   const isPanel = variant === 'panel';
+  const canText = Boolean(onSend) && smsConfigured !== false;
+  const [composing, setComposing] = useState(false);
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [openKey, setOpenKey] = useState(null);
@@ -90,6 +182,11 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
       <div className="space-y-3 border-b border-slate-200 px-4 pb-3 pt-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className={`${isPanel ? 'text-base' : 'text-lg'} font-extrabold`}>{isPanel ? 'SMS' : 'SMS Log'}</h3>
+          {canText && !composing && (
+            <button type="button" onClick={() => setComposing(true)} className="ml-auto flex items-center gap-1.5 rounded-lg bg-[#0B4EA2] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#093f84]">
+              <Send className="h-3.5 w-3.5" aria-hidden="true" /> New text
+            </button>
+          )}
           {smsConfigured !== undefined && (
             <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${smsConfigured ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
               <span className={`h-2 w-2 rounded-full ${smsConfigured ? 'bg-emerald-600' : 'bg-amber-600'}`} aria-hidden="true" />
@@ -97,6 +194,7 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
             </span>
           )}
         </div>
+        {canText && composing && <SmsComposer employees={employees} onSend={onSend} onClose={() => setComposing(false)} />}
         {!isPanel && (
           <div className="flex flex-wrap items-center gap-2">
             <label className="relative min-w-0 flex-1">
@@ -163,28 +261,31 @@ export default function SmsCenter({ variant = 'panel', smsAlerts = [], employees
                   </span>
                 </button>
                 {expanded && (
-                  <ol className="space-y-2 bg-slate-50 pb-3.5 pl-16 pr-4 pt-1">
-                    {thread.messages.map(sms => {
-                      const messageStatus = smsStatus(sms);
-                      return (
-                        <li key={sms.id} className={`rounded-[10px] border p-3 ${messageStatus === 'Failed' ? 'border-rose-300 bg-white' : messageStatus === 'Received' ? 'border-slate-200 bg-blue-50' : 'border-slate-200 bg-white'}`}>
-                          <div className="flex justify-between gap-2 text-[11px] font-bold text-slate-500">
-                            <span>{smsWhen(sms)} · {SMS_KIND_LABELS[smsKind(sms)]}</span>
-                            <StatusChip status={messageStatus} />
-                          </div>
-                          <p className="mt-1 break-words text-[13px] leading-snug text-slate-800">{sms.message}</p>
-                          {messageStatus === 'Failed' && (
-                            <>
-                              <p className="mt-1.5 text-xs font-bold text-rose-800">
-                                Not delivered{sms.error ? `: ${sms.error}` : ''}. Contact {thread.employee ? thread.name : 'them'} another way.
-                              </p>
-                              {resendControl(sms)}
-                            </>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ol>
+                  <div className="bg-slate-50 pb-3.5 pl-16 pr-4 pt-1">
+                    <ol className="space-y-2">
+                      {thread.messages.map(sms => {
+                        const messageStatus = smsStatus(sms);
+                        return (
+                          <li key={sms.id} className={`rounded-[10px] border p-3 ${messageStatus === 'Failed' ? 'border-rose-300 bg-white' : messageStatus === 'Received' ? 'border-slate-200 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                            <div className="flex justify-between gap-2 text-[11px] font-bold text-slate-500">
+                              <span>{smsWhen(sms)} · {SMS_KIND_LABELS[smsKind(sms)]}</span>
+                              <StatusChip status={messageStatus} />
+                            </div>
+                            <p className="mt-1 break-words text-[13px] leading-snug text-slate-800">{sms.message}</p>
+                            {messageStatus === 'Failed' && (
+                              <>
+                                <p className="mt-1.5 text-xs font-bold text-rose-800">
+                                  Not delivered{sms.error ? `: ${sms.error}` : ''}. Contact {thread.employee ? thread.name : 'them'} another way.
+                                </p>
+                                {resendControl(sms)}
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {canText && isMobileNumber(thread.number) && <SmsComposer to={thread} onSend={onSend} />}
+                  </div>
                 )}
               </div>
             );
