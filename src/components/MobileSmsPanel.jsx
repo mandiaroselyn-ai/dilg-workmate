@@ -18,7 +18,7 @@ export default function MobileSmsPanel({ smsAlerts = [], onClose, onReply }) {
   );
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-50 flex flex-col bg-white text-slate-900">
+    <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-[60] flex flex-col bg-white text-slate-900">
       <header className="flex-shrink-0 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white">
         <div className="flex items-center gap-2.5 px-3 py-2.5">
           <button
