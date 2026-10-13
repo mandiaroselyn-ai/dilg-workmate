@@ -7,11 +7,10 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Bell, Mail, ShieldAlert, CircleDot, Info, Calendar as CalendarIcon, Clock, Settings, User, Menu } from 'lucide-react';
 import logoImage from '../assets/dilg-logo.png';
 import MobileNotificationsPanel from './MobileNotificationsPanel';
-import MobileSmsPanel from './MobileSmsPanel';
+import MobileSmsPanel, { EmployeeSms } from './MobileSmsPanel';
 import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
-import { smsTime, unseenSmsCount } from '../utils/smsLog';
-import { SmsBubbles, SmsReplyBar } from './SmsChat';
+import { unseenSmsCount } from '../utils/smsLog';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 import { getManilaDateString } from '../../shared/localDate';
 import { requestCoversDate } from '../utils/hrAttendance';
@@ -94,10 +93,6 @@ export default function Header({
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const employeeSmsConversation = useMemo(
-    () => [...smsAlerts].sort((a, b) => (smsTime(a) ?? 0) - (smsTime(b) ?? 0)),
-    [smsAlerts]
-  );
   const isWebOnlyRole = [activeRole, user?.accessLevel]
     .map(role => role?.toString().trim().toLowerCase())
     .some(role => role === 'supervisor' || role === 'hr_admin');
@@ -260,25 +255,10 @@ export default function Header({
             </div>
           )}
 
-          {/* The employee's texts, as one conversation */}
+          {/* The employee's texts: the DILG WorkMate conversation, which opens into chat */}
           {showSMSLogs && !isWebOnlyRole && (
             <div className="absolute right-0 mt-2 z-30 flex w-[min(22rem,calc(100vw-1rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-xl animate-in fade-in slide-in-from-top-3 duration-200">
-              <div className="flex items-center gap-2.5 bg-gradient-to-r from-[#1e40af] to-indigo-900 px-4 py-3 text-white">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-extrabold">DW</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-bold">DILG WorkMate</span>
-                  <span className="block text-[11px] text-white/75">Texts and messages with HR</span>
-                </span>
-              </div>
-              <SmsBubbles
-                messages={employeeSmsConversation}
-                isMine={sms => sms.direction === 'inbound'}
-                emptyText="No texts yet."
-                className="h-80"
-              />
-              {onSmsReply
-                ? <SmsReplyBar name="HR" onSend={onSmsReply} placeholder="Message to HR" note="Goes to HR in WorkMate" />
-                : <p className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-[11px] text-slate-600">To reply, text back from your phone's Messages app.</p>}
+              <EmployeeSms smsAlerts={smsAlerts} onReply={onSmsReply} layout="dropdown" />
             </div>
           )}
         </div>
