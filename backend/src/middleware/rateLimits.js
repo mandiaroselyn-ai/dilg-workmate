@@ -56,6 +56,8 @@ export const createRateLimits = () => {
     '/face/enrollment': [signedInActionLimit()],
     '/face-enrollment': [signedInActionLimit()],
     '/sms': [signedInActionLimit()],
+    // Every message an employee sends HR in the app notifies HR.
+    '/sms/reply': [signedInActionLimit()],
     // Every help request notifies HR.
     '/support-requests': [signedInActionLimit()]
   };

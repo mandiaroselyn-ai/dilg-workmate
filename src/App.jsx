@@ -675,6 +675,19 @@ export default function App() {
     if (!response.ok || !data.success) throw new Error(data?.error || 'The text could not be sent again.');
   };
 
+  // A message the employee types to HR in their SMS screen. Their texts reload either way.
+  const handleEmployeeSmsReply = async message => {
+    const response = await fetch('/api/sms/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    });
+    const data = await response.json().catch(() => ({}));
+    const list = await fetch('/api/sms').then(res => (res.ok ? res.json() : null)).catch(() => null);
+    if (Array.isArray(list)) setSmsAlerts(list);
+    if (!response.ok || !data.success) throw new Error(data?.error || 'Your message could not be sent.');
+  };
+
   // A Time Out saved offline keeps the time it was made; online ones use the server clock.
   const markRecordedOffline = payload => ({ ...payload, record: { ...payload.record, recordedOfflineAt: new Date().toISOString() } });
 
@@ -1551,6 +1564,7 @@ export default function App() {
           onDismissNotifications={handleDismissNotifications}
           onNotificationAction={handleNotificationAction}
           onSendSms={handleSendSms}
+          onSmsReply={activeRole === 'employee' ? handleEmployeeSmsReply : undefined}
           onResendSms={handleResendSms}
           onViewChange={handleViewChange}
           onToggleSidebar={handleToggleSidebar}

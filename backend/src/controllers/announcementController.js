@@ -242,6 +242,35 @@ export const createSmsAlert = async (req, res) => {
   }
 };
 
+// A message an employee types to HR in WorkMate's SMS screen. It is saved with their texts
+// like a reply sent by SMS, so HR sees it in the same conversation, and HR is told.
+export const createEmployeeReply = async (req, res) => {
+  try {
+    const text = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (!text) return res.status(400).json({ success: false, error: 'Type your message to HR.' });
+    const employee = req.user;
+    const number = normalizePhilippineNumber(employee.phoneNumber);
+    const sms = await Announcement.createIncomingSms({
+      recipient: number || employee.email,
+      sender: number,
+      message: text,
+      employeeId: employee.employeeId || '',
+      employeeEmail: employee.email || '',
+      timestamp: new Date().toISOString(),
+      channel: 'app'
+    });
+    await Announcement.createNotification({
+      title: 'New SMS Reply',
+      message: `${employee.name || employee.email} replied in WorkMate: ${text}`,
+      type: 'system',
+      recipientRole: 'hr_admin'
+    });
+    res.status(201).json({ success: true, sms });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 // A text sent to the httpSMS phone, checked against HTTPSMS_WEBHOOK_SIGNING_KEY. Only texts
 // from WorkMate accounts are kept (`accountsOnly`), since the phone's number also gets
 // bank codes, promos, and personal messages that HR must not see.

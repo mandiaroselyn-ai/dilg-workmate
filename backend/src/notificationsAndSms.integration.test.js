@@ -176,6 +176,33 @@ test('HR texts one person, and the text says it is from HR', async t => {
   assert.equal(record.mock.callCount(), 1);
 });
 
+test('an employee can message HR in the app, and HR is told', async t => {
+  const juan = { ...employee, name: 'Juan Dela Cruz', phoneNumber: '0917 123 4567' };
+  const saved = t.mock.method(Announcement, 'createIncomingSms', async data => ({ id: 'sms-in-1', ...data }));
+  const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+  const as = account => {
+    t.mock.method(User, 'findByEmail', async () => account);
+    return body => request(app).post('/api/sms/reply').set('Authorization', `Bearer ${createAuthToken(account)}`).send(body);
+  };
+
+  const response = await as(juan)({ message: '  Noted po, salamat.  ' });
+  assert.equal(response.status, 201);
+  const sms = saved.mock.calls[0].arguments[0];
+  assert.equal(sms.message, 'Noted po, salamat.');
+  assert.equal(sms.channel, 'app');
+  assert.equal(sms.sender, '+639171234567');
+  assert.equal(sms.employeeId, employee.employeeId);
+  assert.equal(notify.mock.calls[0].arguments[0].recipientRole, 'hr_admin');
+  assert.equal(notify.mock.calls[0].arguments[0].message, 'Juan Dela Cruz replied in WorkMate: Noted po, salamat.');
+
+  assert.match((await as(juan)({ message: '   ' })).body.error, /Type your message/);
+  assert.match((await as(juan)({ message: { $gt: '' } })).body.error, /Type your message/);
+  t.mock.restoreAll();
+  t.mock.method(Announcement, 'createIncomingSms', async data => data);
+  assert.equal((await as(hr)({ message: 'Hi' })).status, 403);
+  assert.equal((await as(supervisor)({ message: 'Hi' })).status, 403);
+});
+
 // A webhook call the way httpSMS makes it: a JWT signed with the signing key, and the event.
 const HTTPSMS_KEY = 'httpsms-signing-key';
 const httpSmsToken = (key = HTTPSMS_KEY, claims = {}) => {

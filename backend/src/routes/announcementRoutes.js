@@ -16,6 +16,7 @@ import {
   readNotification,
   getSmsAlerts,
   createSmsAlert,
+  createEmployeeReply,
   receiveSmsWebhook
 } from '../controllers/announcementController.js';
 import { savePushSubscription, getVapidPublicKey } from '../services/pushService.js';
@@ -39,6 +40,7 @@ router.post('/notifications/dismiss', dismissNotifications);
 router.post('/notifications/:id/read', readNotification);
 router.get('/sms', authorizeRoles('hr_admin', 'employee'), getSmsAlerts);
 router.post('/sms', authorizeRoles('supervisor', 'hr_admin'), createSmsAlert);
+router.post('/sms/reply', authorizeRoles('employee'), createEmployeeReply);
 router.post('/sms/webhook', receiveSmsWebhook);
 
 // Push notification subscription endpoints

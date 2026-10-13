@@ -48,6 +48,7 @@ export function SmsBubbles({ messages = [], isMine, failedNote, emptyText = 'No 
                 <p className={`mt-0.5 px-1 text-[10.5px] ${failed ? 'font-bold text-rose-700' : 'text-slate-500'}`}>
                   {clockLabel(sms, time)}
                   {LABELED_KINDS.includes(kind) ? ` · ${SMS_KIND_LABELS[kind]}` : ''}
+                  {sms.channel === 'app' ? ' · Sent in WorkMate' : ''}
                   {failed ? ' · Not delivered' : ''}
                 </p>
                 {failed && failedNote && <div className={`max-w-[85%] px-1 ${mine ? 'text-right' : 'text-left'}`}>{failedNote(sms)}</div>}
@@ -60,9 +61,9 @@ export function SmsBubbles({ messages = [], isMine, failedNote, emptyText = 'No 
   );
 }
 
-// The box at the bottom of a conversation where HR types a text, with a round Send button.
-// Enter sends; Shift+Enter starts a new line.
-export function SmsReplyBar({ name, onSend }) {
+// The box at the bottom of a conversation for typing a message, with a round Send button.
+// Enter sends; Shift+Enter starts a new line. `note` says where the message goes.
+export function SmsReplyBar({ name, onSend, placeholder = 'Text message', note = `Starts with "${SENT_AS}"` }) {
   const [message, setMessage] = useState('');
   // '', 'sending', or why the text was not sent.
   const [state, setState] = useState('');
@@ -97,7 +98,7 @@ export function SmsReplyBar({ name, onSend }) {
             }}
             maxLength={MESSAGE_MAX}
             rows={Math.min(4, message.split('\n').length)}
-            placeholder="Text message"
+            placeholder={placeholder}
             className="block max-h-28 w-full resize-none rounded-2xl border border-slate-300 bg-slate-100 px-3.5 py-2 text-[13.5px] outline-none focus:border-[#0B4EA2] focus:bg-white"
           />
         </label>
@@ -111,7 +112,7 @@ export function SmsReplyBar({ name, onSend }) {
         </button>
       </div>
       <p className="mt-1 px-1 text-[10.5px] text-slate-500">
-        {state === 'sending' ? 'Sending...' : `Starts with "${SENT_AS}" · ${message.length}/${MESSAGE_MAX}`}
+        {state === 'sending' ? 'Sending...' : `${note} · ${message.length}/${MESSAGE_MAX}`}
       </p>
     </form>
   );

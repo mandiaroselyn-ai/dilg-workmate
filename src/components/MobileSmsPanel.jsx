@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { smsTime } from '../utils/smsLog';
-import { SmsBubbles } from './SmsChat';
+import { SmsBubbles, SmsReplyBar } from './SmsChat';
 
 // A text that could not be sent to the employee's phone is still shown here.
 const failedNote = () => (
@@ -9,8 +9,9 @@ const failedNote = () => (
 );
 
 // The employee's texts from DILG WorkMate, shown as one conversation like a phone's
-// Messages app: WorkMate's texts on the left, the employee's replies on the right.
-export default function MobileSmsPanel({ smsAlerts = [], onClose }) {
+// Messages app: WorkMate's texts on the left, the employee's replies on the right. With
+// `onReply`, the employee can type a message to HR at the bottom.
+export default function MobileSmsPanel({ smsAlerts = [], onClose, onReply }) {
   const messages = useMemo(
     () => [...smsAlerts].sort((a, b) => (smsTime(a) ?? 0) - (smsTime(b) ?? 0)),
     [smsAlerts]
@@ -31,7 +32,7 @@ export default function MobileSmsPanel({ smsAlerts = [], onClose }) {
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 text-xs font-extrabold">DW</span>
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-[15px] font-bold tracking-tight">DILG WorkMate</h2>
-            <p className="truncate text-[11px] text-white/75">Texts sent to your phone</p>
+            <p className="truncate text-[11px] text-white/75">Texts and messages with HR</p>
           </div>
         </div>
       </header>
@@ -44,9 +45,15 @@ export default function MobileSmsPanel({ smsAlerts = [], onClose }) {
         className="min-h-0 flex-1"
       />
 
-      <p className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-600">
-        To reply, text back from your phone's Messages app. HR sees your reply.
-      </p>
+      {onReply ? (
+        <div className="flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
+          <SmsReplyBar name="HR" onSend={onReply} placeholder="Message to HR" note="Goes to HR in WorkMate" />
+        </div>
+      ) : (
+        <p className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs text-slate-600">
+          To reply, text back from your phone's Messages app. HR sees your reply.
+        </p>
+      )}
     </div>
   );
 }

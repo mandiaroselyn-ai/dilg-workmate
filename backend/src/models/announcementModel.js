@@ -53,7 +53,9 @@ const SmsAlertSchema = new mongoose.Schema({
   // staff), or 'reply' (received). Empty on messages saved before this was recorded.
   kind: { type: String, default: '' },
   // Why a message with status Failed was not delivered.
-  error: { type: String, default: '' }
+  error: { type: String, default: '' },
+  // 'app' for a message an employee typed to HR in WorkMate instead of texting it.
+  channel: { type: String, default: '' }
 }, { timestamps: true });
 
 // Mini-settings schema to preserve acknowledged IDs
@@ -381,7 +383,8 @@ export const Announcement = {
       direction: 'inbound',
       sender: smsData.sender || '',
       employeeId: smsData.employeeId || '',
-      employeeEmail: smsData.employeeEmail?.toString().trim().toLowerCase() || ''
+      employeeEmail: smsData.employeeEmail?.toString().trim().toLowerCase() || '',
+      channel: smsData.channel || ''
     });
     const obj = item.toObject();
     obj.id = obj.customId;

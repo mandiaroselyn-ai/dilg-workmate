@@ -11,7 +11,7 @@ import MobileSmsPanel from './MobileSmsPanel';
 import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
 import { smsTime, unseenSmsCount } from '../utils/smsLog';
-import { SmsBubbles } from './SmsChat';
+import { SmsBubbles, SmsReplyBar } from './SmsChat';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 import { getManilaDateString } from '../../shared/localDate';
 import { requestCoversDate } from '../utils/hrAttendance';
@@ -45,6 +45,7 @@ export default function Header({
   onDismissNotifications,
   onNotificationAction,
   onSendSms,
+  onSmsReply,
   onResendSms,
   onViewChange,
   onToggleSidebar,
@@ -266,7 +267,7 @@ export default function Header({
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-extrabold">DW</span>
                 <span className="min-w-0">
                   <span className="block text-sm font-bold">DILG WorkMate</span>
-                  <span className="block text-[11px] text-white/75">Texts sent to your phone</span>
+                  <span className="block text-[11px] text-white/75">Texts and messages with HR</span>
                 </span>
               </div>
               <SmsBubbles
@@ -275,7 +276,9 @@ export default function Header({
                 emptyText="No texts yet."
                 className="h-80"
               />
-              <p className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-[11px] text-slate-600">To reply, text back from your phone's Messages app.</p>
+              {onSmsReply
+                ? <SmsReplyBar name="HR" onSend={onSmsReply} placeholder="Message to HR" note="Goes to HR in WorkMate" />
+                : <p className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-[11px] text-slate-600">To reply, text back from your phone's Messages app.</p>}
             </div>
           )}
         </div>
@@ -435,6 +438,7 @@ export default function Header({
         <MobileSmsPanel
           smsAlerts={smsAlerts}
           onClose={() => setMobilePanel(null)}
+          onReply={onSmsReply}
         />
       )}
       {showFullScreenPanels && mobilePanel === 'notifications' && (
