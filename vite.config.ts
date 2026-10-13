@@ -81,7 +81,6 @@ export default defineConfig(() => {
             if (!id.includes('node_modules')) return undefined;
             if (id.includes('jspdf')) return 'vendor-pdf';
             if (id.includes('pdf-lib')) return 'vendor-pdf-lib';
-            if (id.includes('tesseract.js')) return 'vendor-ocr';
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('motion')) return 'vendor-motion';
             if (id.includes('react')) return 'vendor-react';

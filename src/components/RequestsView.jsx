@@ -21,7 +21,6 @@ import {
   Edit2,
   Paperclip,
   Upload,
-  Camera,
   Sparkles,
   BookmarkCheck,
   Eye,
@@ -66,12 +65,6 @@ export default function RequestsView({
   const [uploadTarget, setUploadTarget] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [ocrText, setOcrText] = useState('');
-  const [ocrScanning, setOcrScanning] = useState(false);
-  const [ocrError, setOcrError] = useState('');
-  const [ocrCameraOpen, setOcrCameraOpen] = useState(false);
-  const ocrVideoRef = React.useRef(null);
-  const ocrStreamRef = React.useRef(null);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -108,18 +101,6 @@ export default function RequestsView({
       setWorkingDays(0);
     }
   }, [startDate, endDate]);
-
-  useEffect(() => {
-    if (activeTab2 !== 'Leave') {
-      setOcrText('');
-      setOcrError('');
-      setOcrScanning(false);
-    }
-  }, [activeTab2]);
-
-  useEffect(() => () => {
-    ocrStreamRef.current?.getTracks().forEach(track => track.stop());
-  }, []);
 
   // Handle Drag-and-Drop parameters
   const handleDragOver = (e) => {
@@ -173,83 +154,6 @@ export default function RequestsView({
 
   const deleteAttachment = (fileId) => {
     setAttachments(prev => prev.filter(f => f.id !== fileId));
-  };
-
-  const handleLeaveOcrScan = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || activeTab2 !== 'Leave') return;
-    if (!file.type.startsWith('image/')) {
-      setOcrError('OCR scanner accepts image files only.');
-      return;
-    }
-
-    setOcrScanning(true);
-    setOcrError('');
-    try {
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('eng');
-      const result = await worker.recognize(file);
-      await worker.terminate();
-      setOcrText(result.data.text.trim());
-      if (!result.data.text.trim()) setOcrError('No readable text found in the scanned document.');
-    } catch (error) {
-      setOcrError(error.message || 'Unable to scan the Leave Card.');
-    } finally {
-      setOcrScanning(false);
-    }
-  };
-
-  const openLeaveOcrCamera = async () => {
-    setOcrError('');
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setOcrError('Camera scanner is unavailable. Please use a device with camera access.');
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
-      ocrStreamRef.current = stream;
-      setOcrCameraOpen(true);
-      window.setTimeout(() => {
-        if (ocrVideoRef.current) ocrVideoRef.current.srcObject = stream;
-      }, 100);
-    } catch {
-      setOcrError('Camera permission is required to scan the Leave Card.');
-    }
-  };
-
-  const closeLeaveOcrCamera = () => {
-    ocrStreamRef.current?.getTracks().forEach(track => track.stop());
-    ocrStreamRef.current = null;
-    setOcrCameraOpen(false);
-  };
-
-  const captureLeaveOcrImage = async () => {
-    const video = ocrVideoRef.current;
-    if (!video) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
-    canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height);
-    closeLeaveOcrCamera();
-    setOcrScanning(true);
-    setOcrError('');
-    try {
-      const { createWorker } = await import('tesseract.js');
-      const worker = await createWorker('eng');
-      const result = await worker.recognize(canvas);
-      await worker.terminate();
-      setOcrText(result.data.text.trim());
-      if (!result.data.text.trim()) setOcrError('No readable text found in the scanned document.');
-    } catch (error) {
-      setOcrError(error.message || 'Unable to scan the Leave Card.');
-    } finally {
-      setOcrScanning(false);
-    }
-  };
-
-  const applyOcrText = () => {
-    if (ocrText) setPurpose(previous => previous ? `${previous}\n${ocrText}` : ocrText);
   };
 
   // Create or update a form submission
@@ -994,45 +898,8 @@ Reason (optional):`, '');
                   <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-1 text-[7.5px] font-black uppercase tracking-wider">Upload</span>
                 </div>
 
-                {activeTab2 === 'Leave' && (
-                  <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-black uppercase tracking-wider text-blue-800">Leave Card Scanner</p>
-                        <p className="mt-1 text-[9px] font-semibold text-blue-700">Scan the Leave Card and review the extracted text.</p>
-                      </div>
-                      <button type="button" onClick={openLeaveOcrCamera} disabled={ocrScanning} className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-[10px] font-black text-white hover:bg-blue-800 disabled:opacity-60">
-                        <Camera className="h-3.5 w-3.5" />
-                        {ocrScanning ? 'Scanning...' : 'Scan Leave Card'}
-                      </button>
-                    </div>
-                    {ocrError && <p className="mt-2 rounded-lg bg-rose-50 p-2 text-[9px] font-bold text-rose-700">{ocrError}</p>}
-                    {ocrText && (
-                      <div className="mt-3 rounded-lg border border-blue-100 bg-white p-2">
-                        <p className="max-h-24 overflow-y-auto whitespace-pre-line text-[10px] font-semibold text-slate-700">{ocrText}</p>
-                        <button type="button" onClick={applyOcrText} className="mt-2 text-[10px] font-black text-blue-700 hover:underline">Use scanned text in reason</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {ocrCameraOpen && (
-                  <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/75 p-4">
-                    <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-                      <div className="flex items-center justify-between border-b border-slate-200 p-3">
-                        <p className="text-sm font-black text-slate-800">Scan Leave Card</p>
-                        <button type="button" onClick={closeLeaveOcrCamera} className="text-xs font-bold text-slate-500">Cancel</button>
-                      </div>
-                      <video ref={ocrVideoRef} autoPlay playsInline muted className="aspect-video w-full bg-black object-cover" />
-                      <div className="flex justify-end p-3">
-                        <button type="button" onClick={captureLeaveOcrImage} className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-xs font-black text-white hover:bg-blue-800"><Camera className="h-4 w-4" />Capture Scan</button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div className={`${activeTab2 === 'Leave' ? 'grid grid-cols-2' : 'grid grid-cols-1'} gap-3 pb-1`}>
-                  {/* Medical Certificate upload card; the scanner above is for the Leave Card. */}
+                  {/* Medical Certificate upload card */}
                   {activeTab2 === 'Leave' && <div
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
