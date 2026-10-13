@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft } from 'lucide-react';
 import { smsTime } from '../utils/smsLog';
 import { SmsBubbles, SmsReplyBar } from './SmsChat';
@@ -10,14 +11,15 @@ const failedNote = () => (
 
 // The employee's texts from DILG WorkMate, shown as one conversation like a phone's
 // Messages app: WorkMate's texts on the left, the employee's replies on the right. With
-// `onReply`, the employee can type a message to HR at the bottom.
+// `onReply`, the employee can type a message to HR at the bottom. It is drawn on the page
+// itself, outside the header's layer, so it covers the bottom menu while open.
 export default function MobileSmsPanel({ smsAlerts = [], onClose, onReply }) {
   const messages = useMemo(
     () => [...smsAlerts].sort((a, b) => (smsTime(a) ?? 0) - (smsTime(b) ?? 0)),
     [smsAlerts]
   );
 
-  return (
+  return createPortal(
     <div role="dialog" aria-modal="true" aria-label="Messages" className="fixed inset-0 z-[60] flex flex-col bg-white text-slate-900">
       <header className="flex-shrink-0 bg-gradient-to-r from-[#1e40af] to-indigo-900 text-white">
         <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -54,6 +56,7 @@ export default function MobileSmsPanel({ smsAlerts = [], onClose, onReply }) {
           To reply, text back from your phone's Messages app. HR sees your reply.
         </p>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
