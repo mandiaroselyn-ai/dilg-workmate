@@ -1249,21 +1249,26 @@ export default function App() {
       });
   };
 
-  // Notifications togglers: marks one notification read, or unread with `read` false.
+  // Notifications togglers: marks one notification read, or unread with `read` false. The
+  // change shows at once, since on a phone the server can take a few seconds to answer; it
+  // is undone if the server cannot save it.
   const handleMarkNotificationRead = (id, read = true) => {
+    const setList = activeRole === 'hr_admin' ? setAdminNotifications : setNotifications;
+    const showRead = value => setList(previous => previous.map(item => (item.id === id ? { ...item, read: value } : item)));
+    showRead(read);
     fetch(`/api/notifications/${id}/${read ? 'read' : 'unread'}`, {
       method: 'POST'
     })
       .then(res => res.json())
       .then(data => {
-        if (data.success) {
-          if (activeRole === 'hr_admin') {
-            setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', user));
-          } else {
-            setNotifications(scopeNotificationsToAccount(data.notifications, activeRole, user));
-          }
+        if (!data.success) throw new Error(data.error || 'Unable to update the notification.');
+        if (activeRole === 'hr_admin') {
+          setAdminNotifications(scopeNotificationsToAccount(data.notifications, 'hr_admin', user));
+        } else {
+          setNotifications(scopeNotificationsToAccount(data.notifications, activeRole, user));
         }
-      });
+      })
+      .catch(() => showRead(!read));
   };
 
   // Opens the employee's profile (accounts, password resets, enrollments) or the request a
