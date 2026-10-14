@@ -1,13 +1,19 @@
-import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst } from 'workbox-strategies';
 
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 
-// Navigation fallback: serve index.html for all non-API routes
+// Pages (all non-API routes) come from the network. Without internet, or when a weak signal
+// gives no answer within a few seconds, the page saved last time is shown, or else the
+// precached index.html, so the phone app opens in the field (see utils/offlineSession.js).
 registerRoute(
-  new NavigationRoute(new NetworkFirst({ cacheName: 'navigations' }), {
+  new NavigationRoute(new NetworkFirst({
+    cacheName: 'navigations',
+    networkTimeoutSeconds: 5,
+    plugins: [{ handlerDidError: () => matchPrecache('/index.html') }]
+  }), {
     denylist: [/^\/api\//]
   })
 );
