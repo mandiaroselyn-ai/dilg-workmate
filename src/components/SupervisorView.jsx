@@ -221,7 +221,7 @@ export default function SupervisorView({
       return;
     }
 
-    const finalRemarks = remarks.trim() || (decision === 'Approved' ? 'Approved based on sufficient leave balance.' : 'Operational conflicts.');
+    const finalRemarks = remarks.trim() || (decision === 'Approved' ? 'Approved.' : 'Operational conflicts.');
     const sigData = getSignatureDataUrl();
 
     let updatePayload = {};

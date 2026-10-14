@@ -44,6 +44,10 @@ const attachmentBytes = file => Math.round((String(file?.dataUrl || '').split(',
 // Submitted requests that are not decided yet can be withdrawn (matches the server).
 const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
 
+// The remark saved when the Supervisor approves without typing one (the first is from
+// before it was shortened). It says nothing, so it is not shown.
+const DEFAULT_APPROVAL_REMARKS = ['Approved based on sufficient leave balance.', 'Approved.'];
+
 export default function RequestsView({
   user,
   requests,
@@ -239,7 +243,9 @@ export default function RequestsView({
     // Provide visual success report
     const bannerMessage = isDraftMode
       ? 'A draft copy has been securely logged to your draft tray.'
-      : 'Leave Application transmitted securely to John Erick J. Matining (HR Admin) for evaluation.';
+      : activeTab2 === 'Leave'
+        ? 'Leave application submitted to HR for review.'
+        : 'Travel order submitted to HR for review.';
     
     setFormSuccessMessage(bannerMessage);
     setTimeout(() => setFormSuccessMessage(''), 5500);
@@ -1178,7 +1184,7 @@ Reason (optional):`, '');
                           <span className="text-[10px] font-extrabold text-slate-700">{req.supervisorName}</span>
                           {req.supervisorApprovedAt && <span className="text-[9px] text-slate-400 font-semibold">{req.supervisorApprovedAt}</span>}
                         </div>
-                        {req.supervisorRemarks && req.supervisorRemarks !== 'Approved based on sufficient leave balance.' && (
+                        {req.supervisorRemarks && !DEFAULT_APPROVAL_REMARKS.includes(req.supervisorRemarks) && (
                           <p className="text-[9px] text-slate-500 font-semibold italic border-l-2 border-emerald-200 pl-2 mt-1">"{req.supervisorRemarks}"</p>
                         )}
                       </div>
@@ -1231,7 +1237,7 @@ Reason (optional):`, '');
                             ) : canWithdraw(req) ? (
                               <>
                                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
-                                <span>{req.status === 'Returned' ? 'Returned to you: fix it and submit again' : req.status === 'For Supervisor' ? 'Awaiting supervisor approval' : 'Awaiting Program Manager endorsement'}</span>
+                                <span>{req.status === 'Returned' ? 'Returned to you: fix it and submit again' : req.status === 'For Supervisor' ? 'Awaiting supervisor approval' : 'Awaiting HR review'}</span>
                               </>
                             ) : (
                               <>
