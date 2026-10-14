@@ -32,7 +32,10 @@ const NotificationSchema = new mongoose.Schema({
   // The page an employee's notification opens (one of NOTIFICATION_VIEWS).
   view: { type: String, default: '' },
   // People who read a notice meant for several readers (all employees or all HR/Admins).
-  readBy: { type: [String], default: [] }
+  readBy: { type: [String], default: [] },
+  // People who marked a notice unread again. This wins over `read`, which notices read
+  // before readBy existed still carry for everyone.
+  unreadBy: { type: [String], default: [] }
 }, { timestamps: true });
 
 export const NOTIFICATION_ACTIONS = ['review_account', 'reset_password', 'review_enrollment', 'review_request'];
@@ -140,12 +143,22 @@ export const notificationFilter = user => {
   };
 };
 
-// A notice is read for this person when it was marked read for them.
+// A notice is read for the person with reader key `key` when it was marked read for them,
+// or read before readBy existed, unless they marked it unread again.
+export const isNotificationReadBy = ({ read, readBy = [], unreadBy = [] }, key) => {
+  if (key && unreadBy.includes(key)) return false;
+  return Boolean(read || (key && readBy.includes(key)));
+};
+
+// Marking a notice read or unread changes it for this reader only.
+export const markReadUpdate = key => ({ $addToSet: { readBy: key }, $pull: { unreadBy: key } });
+export const markUnreadUpdate = key => ({ $pull: { readBy: key }, $addToSet: { unreadBy: key } });
+
 const serializeNotificationsFor = (list, user) => {
   const key = notificationReaderKey(user);
   return list.map(item => {
-    const { readBy = [], ...obj } = item.toObject();
-    return { ...obj, id: obj.customId, read: Boolean(obj.read || (key && readBy.includes(key))) };
+    const { readBy = [], unreadBy = [], ...obj } = item.toObject();
+    return { ...obj, id: obj.customId, read: isNotificationReadBy({ read: obj.read, readBy, unreadBy }, key) };
   });
 };
 
@@ -297,7 +310,7 @@ export const Announcement = {
   markAllNotificationsReadFor: async (user) => {
     ensureConnected();
     const key = notificationReaderKey(user);
-    if (key) await MongoNotification.updateMany(notificationFilter(user), { $addToSet: { readBy: key } });
+    if (key) await MongoNotification.updateMany(notificationFilter(user), markReadUpdate(key));
     return findVisibleNotifications(user);
   },
 
@@ -305,7 +318,7 @@ export const Announcement = {
     ensureConnected();
     const key = notificationReaderKey(user);
     if (key && typeof id === 'string') {
-      await MongoNotification.updateOne({ $and: [{ customId: id }, notificationFilter(user)] }, { $addToSet: { readBy: key } });
+      await MongoNotification.updateOne({ $and: [{ customId: id }, notificationFilter(user)] }, markReadUpdate(key));
     }
     return findVisibleNotifications(user);
   },
@@ -315,7 +328,7 @@ export const Announcement = {
     ensureConnected();
     const key = notificationReaderKey(user);
     if (key && typeof id === 'string') {
-      await MongoNotification.updateOne({ $and: [{ customId: id }, notificationFilter(user)] }, { $pull: { readBy: key } });
+      await MongoNotification.updateOne({ $and: [{ customId: id }, notificationFilter(user)] }, markUnreadUpdate(key));
     }
     return findVisibleNotifications(user);
   },
