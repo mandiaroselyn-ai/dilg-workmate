@@ -62,7 +62,9 @@ test('every answer position is on the page', () => {
   const spots = Object.values(LEAVE_FORM_LAYOUT).filter(value => value && typeof value === 'object' && 'y' in value);
   for (const spot of spots) {
     assert.ok(spot.y > 0 && spot.y < 792, JSON.stringify(spot));
-    const x = spot.x ?? spot.center ?? spot.labelX;
+    // A line (such as a signature line) runs from x1 to x2.
+    const x = spot.x ?? spot.center ?? spot.labelX ?? spot.x1;
     assert.ok(x > 0 && x < 612, JSON.stringify(spot));
+    if (spot.x2 !== undefined) assert.ok(spot.x2 > spot.x1 && spot.x2 < 612, JSON.stringify(spot));
   }
 });

@@ -15,6 +15,8 @@ const fetch = apiFetch;
 // A fingerprint prompt that has not opened or finished by now is abandoned so the
 // employee can try again (the server challenge itself allows about 60 seconds).
 const FINGERPRINT_PROMPT_TIMEOUT_MS = 65000;
+// The GPS accuracy Time In and Time Out need, in meters (the server checks it too).
+const GPS_ACCURACY_REQUIRED_METERS = 50;
 import {
   Clock,
   MapPin,
@@ -41,6 +43,7 @@ import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import { isWithinAssignedLocation } from '../../shared/assignmentGeofence';
+import { takeAccuratePosition } from '../utils/accuratePosition';
 import {
   canSignOffline,
   isNetworkError,
@@ -189,6 +192,16 @@ export default function AttendanceView({
       });
     }
   };
+
+  // Time In and Time Out keep taking fresh GPS readings for a while until one is accurate
+  // enough, so a rough first reading (common without internet) does not need a second tap.
+  const getAccuratePosition = onRough => takeAccuratePosition({
+    first: getPositionWithFallback,
+    again: () => getCurrentPosition({ enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }),
+    requiredMeters: GPS_ACCURACY_REQUIRED_METERS,
+    onRough
+  });
+  const showRoughGps = accuracy => setLocationError(`Getting a better GPS signal (${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m now` : 'no accuracy yet'}; ${GPS_ACCURACY_REQUIRED_METERS}m or better is needed). Stay outdoors or near a window.`);
 
   const isMessengerBrowser = typeof navigator !== 'undefined'
     && /FBAN|FBAV|FB_IAB|Messenger/i.test(navigator.userAgent);
@@ -876,7 +889,7 @@ export default function AttendanceView({
     }
 
     setGpsLoading(true);
-    getPositionWithFallback()
+    getAccuratePosition(showRoughGps)
       .then(position => {
         setGpsChecked(true);
         const lat = Number(position.coords.latitude.toFixed(6));
@@ -892,11 +905,12 @@ export default function AttendanceView({
         syncGeofenceStatus(lat, lon, siteLocation);
         setGpsLoading(false);
 
-        if (!Number.isFinite(accuracy) || accuracy > 50) {
-          setLocationError(`GPS accuracy is ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'}. Move outdoors or near a window and retry until accuracy is 50m or better.`);
+        if (!Number.isFinite(accuracy) || accuracy > GPS_ACCURACY_REQUIRED_METERS) {
+          setLocationError(`GPS accuracy is still ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'} after trying for a while. Move outdoors or near a window and tap Time In again; ${GPS_ACCURACY_REQUIRED_METERS}m or better is needed.`);
           autoClockInRef.current = false;
           return;
         }
+        setLocationError('');
 
         if (verdict !== 'In Range') {
           setLocationError(`Time In blocked: your GPS location is outside ${siteLocation.label}. Move to the assigned address and verify GPS again.`);
@@ -990,7 +1004,7 @@ export default function AttendanceView({
     }
 
     setGpsLoading(true);
-    getPositionWithFallback()
+    getAccuratePosition(showRoughGps)
       .then(position => {
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
@@ -1005,10 +1019,11 @@ export default function AttendanceView({
         setGpsLoading(false);
         syncGeofenceStatus(lat, lon, siteLocation);
 
-        if (!Number.isFinite(accuracy) || accuracy > 50) {
-          setLocationError(`GPS accuracy is ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'}. Improve the GPS fix before Time Out.`);
+        if (!Number.isFinite(accuracy) || accuracy > GPS_ACCURACY_REQUIRED_METERS) {
+          setLocationError(`GPS accuracy is still ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'} after trying for a while. Move outdoors or near a window and tap Time Out again; ${GPS_ACCURACY_REQUIRED_METERS}m or better is needed.`);
           return;
         }
+        setLocationError('');
 
         if (verdict !== 'In Range') {
           setLocationError(`Time Out blocked: your GPS location is outside ${siteLocation.label}.`);

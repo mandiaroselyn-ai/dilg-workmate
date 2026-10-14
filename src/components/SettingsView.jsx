@@ -201,8 +201,10 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Whether this phone can open WorkMate without internet: the service worker that keeps a
-  // copy of the app is running and the copy is saved. The details show why not, if not.
+  // Whether WorkMate can keep working on this phone without internet while it is open: the
+  // service worker that keeps a copy of the app is running and the copy is saved, so pages
+  // not opened yet still load. (The phone app itself still needs internet to start.) The
+  // details show why not, if not.
   const [offlineOpen, setOfflineOpen] = useState(null); // { ready, detail }
   useEffect(() => {
     const check = async () => {
@@ -300,9 +302,9 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
           </p>
           {!online && <p className="text-[11px] font-semibold text-amber-700">You are offline. Records sync when you are back online.</p>}
           <p className={`text-xs font-bold ${offlineOpen?.ready ? 'text-emerald-700' : 'text-amber-700'}`}>
-            {offlineOpen === null ? 'Checking if this phone can open WorkMate without internet...'
-              : offlineOpen.ready ? 'This phone can open WorkMate without internet.'
-                : 'This phone cannot open WorkMate without internet yet. Keep WorkMate open with internet for a minute, then close and open it again.'}
+            {offlineOpen === null ? 'Checking if WorkMate can work without internet...'
+              : offlineOpen.ready ? 'WorkMate keeps working without internet while it is open. Open it with internet before you go where there is no signal, and do not close it.'
+                : 'WorkMate is not ready to work without internet yet. Keep it open with internet for a minute, then close and open it again.'}
           </p>
           {offlineOpen && <p className="text-[10px] font-semibold text-slate-400">{offlineOpen.detail}</p>}
           {typeof queued === 'number' && queued > 0 && (
