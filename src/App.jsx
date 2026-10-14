@@ -1086,37 +1086,6 @@ export default function App() {
       });
   };
 
-  const handleRequestCertifiedCopy = (recordDetails) => {
-    const today = getManilaDateString();
-    const request = {
-      type: 'Certified Copy Request',
-      submissionDate: today,
-      startDate: today,
-      endDate: today,
-      purpose: 'Request for certified copy of service record',
-      status: 'Pending',
-      remarks: 'Awaiting HR review and certification.',
-      employeeId: user?.employeeId || '',
-      employeeEmail: user?.email || '',
-      employeePhoneNumber: user?.phoneNumber || '',
-      employeeName: user?.name || '',
-      recordDetails
-    };
-
-    return fetch('/api/requests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request)
-    }).then(async (response) => {
-      const data = await response.json();
-      if (!response.ok || !data.success || !data.request) {
-        throw new Error(data?.error || 'Unable to save certified copy request.');
-      }
-      setRequests(prev => [data.request, ...prev]);
-      return data.request;
-    });
-  };
-
   // Simulated Admin reviewer
   const handleUpdateRequestStatus = async (
     id,

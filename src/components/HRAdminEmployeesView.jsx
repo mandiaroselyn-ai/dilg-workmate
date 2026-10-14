@@ -16,6 +16,7 @@ import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
+import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { ProfileFieldInput } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
@@ -141,12 +142,13 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
-export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification, focusEmployeeId }) {
+export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
   // A notification's button opens this employee's profile first.
   const focusedEmployee = focusEmployeeId ? findTargetEmployee(employees, focusEmployeeId) : null;
   const [screen, setScreen] = useState(() => (focusedEmployee ? 'profile' : 'list'));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [officeFilter, setOfficeFilter] = useState(''); // '' is every office
   const [showBiometricPending, setShowBiometricPending] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [toast, setToast] = useState('');
@@ -188,9 +190,14 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         || (statusFilter === 'Inactive' ? /inactive|suspended/.test(status) : status === statusFilter.toLowerCase());
       const matchesText = !q || `${name} ${employee.email || ''} ${employee.role || ''} ${employee.employeeId || ''}`.toLowerCase().includes(q);
       const matchesBiometricReview = !showBiometricPending || employee.biometricEnrollmentStatus === 'pending';
-      return matchesStatus && matchesText && matchesBiometricReview;
+      const matchesOffice = !officeFilter || employee.office === officeFilter;
+      return matchesStatus && matchesText && matchesBiometricReview && matchesOffice;
     });
-  }, [employeeAccounts, query, statusFilter, showBiometricPending]);
+  }, [employeeAccounts, query, statusFilter, showBiometricPending, officeFilter]);
+  const employeeOffices = useMemo(
+    () => [...new Set(employeeAccounts.map(employee => employee.office).filter(Boolean))].sort(),
+    [employeeAccounts]
+  );
   // The Assigned Station column is shown only when some employee has one recorded.
   const showStationColumn = employeeAccounts.some(employee => employee.assignedStation || employee.assignedLGU);
 
@@ -1083,6 +1090,16 @@ This cannot be undone.`
             <ProfileDetails person={selectedEmployee} attendanceAssignment />
           </div>
         </section>
+
+        <HREmployeeDocuments
+          key={employeeKey(selectedEmployee)}
+          employee={selectedEmployee}
+          requests={requests}
+          attendanceHistory={attendanceHistory}
+          attendanceFrom={attendanceFrom}
+          loadedAttendanceMonths={loadedAttendanceMonths}
+          onLoadAttendanceMonth={onLoadAttendanceMonth}
+        />
       </div>
     );
   }
@@ -1127,6 +1144,12 @@ This cannot be undone.`
           <Filter className="h-4 w-4" />
         </button>
       </div>
+      <label className="flex items-center gap-2 text-xs font-black text-slate-600">Office / Department
+        <select value={officeFilter} onChange={event => setOfficeFilter(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 sm:max-w-sm">
+          <option value="">All offices</option>
+          {employeeOffices.map(office => <option key={office}>{office}</option>)}
+        </select>
+      </label>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button

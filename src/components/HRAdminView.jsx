@@ -34,8 +34,6 @@ import {
   Bell,
   Settings
 } from 'lucide-react';
-import CSCForm6Preview from './CSCForm6Preview';
-import TravelOrderPreview from './TravelOrderPreview';
 import HRAdminDashboard from './HRAdminDashboard';
 import HRAdminAttendanceView from './HRAdminAttendanceView';
 import HRAdminDTRRecordsView from './HRAdminDTRRecordsView';
@@ -94,9 +92,6 @@ export default function HRAdminView({
   const [dtrSearch, setDtrSearch] = useState('');
   const [dtrFilterDate, setDtrFilterDate] = useState('');
   const [dtrMode, setDtrMode] = useState('all');
-  const [requestsSearch, setRequestsSearch] = useState('');
-  const [requestsFilterStatus, setRequestsFilterStatus] = useState('All');
-  const [selectedFormRequest, setSelectedFormRequest] = useState(null);
   const [selectedDtrRecord, setSelectedDtrRecord] = useState(null);
   const [selectedVerificationPhoto, setSelectedVerificationPhoto] = useState(null);
   const [editTimeIn, setEditTimeIn] = useState('');
@@ -222,35 +217,6 @@ export default function HRAdminView({
     setDtrMode('verified');
   };
 
-  // Saves one request's review decision. Other requests are not sent or changed.
-  const handleUpdateRequestStatusByAdmin = async (requestId, newStatus, updatePayload = {}) => {
-    const today = getManilaDateString();
-    const req = requests.find(item => item.id === requestId);
-    if (!req) return;
-
-    try {
-      await onUpdateRequestStatus(requestId, {
-        status: newStatus,
-        approver: 'DILG HR Admin Desk',
-        remarks: updatePayload.remarks || req.remarks || 'Reviewed by HR Admin Desk.',
-        directorSignature: req.directorSignature || req.signatureData || '',
-        directorRemarks: req.directorRemarks || updatePayload.remarks || req.remarks || 'Reviewed by HR Admin Desk.',
-        directorApprovedAt: today,
-        directorName: officialDirectorName || 'GERMAN F. YAP, CESO V'
-      });
-    } catch (error) {
-      triggerToast(error.message || 'Unable to save the request status. Please try again.');
-      return;
-    }
-    onAdminNotification?.({
-      title: 'Request Status Updated',
-      message: `Service Request ${requestId} has been marked as ${newStatus} by HR/Admin.`,
-      time: 'Just now',
-      type: 'request'
-    });
-    triggerToast(`Service Request ID ${requestId} has been marked as ${newStatus}.`);
-  };
-
   const handleSaveTemplateControls = () => {
     triggerToast('DILG official document templates & approval names settings applied globally.');
   };
@@ -266,18 +232,6 @@ export default function HRAdminView({
   });
 
   const getEmployeeForRecord = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
-
-  const filteredRequests = requests.filter((req) => {
-    const matchesStatus = requestsFilterStatus === 'All' ? true : req.status === requestsFilterStatus;
-    const searchLower = requestsSearch.toLowerCase();
-    const matchesText = (
-      req.id.toLowerCase().includes(searchLower) ||
-      (req.employeeName || '').toLowerCase().includes(searchLower) ||
-      (req.type || '').toLowerCase().includes(searchLower) ||
-      (req.purpose || '').toLowerCase().includes(searchLower)
-    );
-    return matchesStatus && matchesText;
-  });
 
   const presentCount = attendanceHistory.filter(record => record.status !== 'Absent').length;
   const absentCount = attendanceHistory.filter(record => record.status === 'Absent').length;
@@ -395,6 +349,11 @@ export default function HRAdminView({
               onEmployeesChange={onEmployeesChange}
               onAdminNotification={onAdminNotification}
               focusEmployeeId={focus?.employeeId}
+              requests={requests}
+              attendanceHistory={attendanceHistory}
+              attendanceFrom={attendanceFrom}
+              loadedAttendanceMonths={loadedAttendanceMonths}
+              onLoadAttendanceMonth={onLoadAttendanceMonth}
             />
           )}
         </div>
@@ -466,153 +425,6 @@ export default function HRAdminView({
         onBack={() => setActiveTab('dashboard')}
         focusRequestId={focus?.requestId}
       /></div>}
-
-      {false && activeTab === 'requests' && (
-        <div className="space-y-6 animate-fadeIn">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-xs">
-            <div className="flex flex-col md:flex-row md:items-center justify-between pb-3 border-b border-slate-100 gap-4">
-              <div>
-                <h3 className="font-extrabold text-slate-800 text-sm italic uppercase">Personnel Leave & Travel Requests</h3>
-                <p className="text-[10px] text-slate-400">Review and verify employees Form 6 and Travel Order submissions</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
-                    <Search className="h-3.5 w-3.5 text-slate-400" />
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Search requests..."
-                    value={requestsSearch}
-                    onChange={(e) => setRequestsSearch(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 w-48 sm:w-56 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:border-indigo-500 focus:bg-white transition-all text-slate-700"
-                  />
-                </div>
-
-                <div className="flex bg-slate-100 p-0.5 border border-slate-200 rounded-lg text-[10px] font-bold select-none text-slate-500">
-                  {['All', 'Pending', 'Approved', 'Rejected'].map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => setRequestsFilterStatus(status)}
-                      className={`px-3 py-1 rounded transition-colors whitespace-nowrap cursor-pointer ${requestsFilterStatus === status ? 'bg-white text-slate-800 shadow-xs font-black' : 'hover:text-slate-850 font-bold'}`}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs leading-relaxed border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-extrabold">
-                    <th className="p-3">Request ID</th>
-                    <th className="p-3">Employee Name</th>
-                    <th className="p-3">Request Type</th>
-                    <th className="p-3">Coverage Period</th>
-                    <th className="p-3">Purpose/Reason</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3 text-center">Form Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-                  {filteredRequests.length > 0 ? (
-                    filteredRequests.map((req) => (
-                      <tr key={req.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="p-3 font-mono font-bold text-[#1e40af]">{req.id}</td>
-                        <td className="p-3 font-extrabold text-slate-800">{req.employeeName || 'DILG Employee'}</td>
-                        <td className="p-3">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold ${
-                            req.type === 'Leave Request' ? 'text-indigo-700 bg-indigo-50 border border-indigo-100' : 'text-amber-700 bg-amber-50 border border-amber-100'
-                          }`}>
-                            <FileText className="w-3 h-3 shrink-0" />
-                            {req.type}
-                          </span>
-                        </td>
-                        <td className="p-3 font-mono text-slate-500 text-[11px]">{req.startDate} to {req.endDate}</td>
-                        <td className="p-3 text-slate-500 max-w-xs truncate" title={req.purpose}>{req.purpose || 'No details provided.'}</td>
-                        <td className="p-3">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold ${
-                            req.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                            req.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                            'bg-amber-50 text-amber-700 border border-amber-100'
-                          }`}>
-                            {req.status}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center select-none">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              onClick={() => setSelectedFormRequest(req)}
-                              className="p-1.5 text-indigo-700 hover:text-white hover:bg-indigo-700 bg-indigo-50 border border-indigo-150 rounded px-2 py-0.8 cursor-pointer transition-all inline-flex items-center gap-1 text-[10px] font-black"
-                              title="Preview Official CSC Document"
-                            >
-                              <Eye className="w-3 h-3" />
-                              <span>Preview</span>
-                            </button>
-                            {req.status === 'Pending' ? (
-                              <>
-                                <button
-                                  onClick={() => handleUpdateRequestStatusByAdmin(req.id, 'Approved')}
-                                  className="p-1 text-emerald-600 hover:bg-emerald-50 rounded border border-transparent hover:border-emerald-100 transition-all cursor-pointer"
-                                  title="Approve Request"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleUpdateRequestStatusByAdmin(req.id, 'Rejected')}
-                                  className="p-1 text-rose-600 hover:bg-rose-50 rounded border border-transparent hover:border-rose-100 transition-all cursor-pointer"
-                                  title="Disapprove Request"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  const promptStatus = req.status === 'Approved' ? 'Rejected' : 'Approved';
-                                  handleUpdateRequestStatusByAdmin(req.id, promptStatus);
-                                }}
-                                className="text-[9px] text-slate-400 hover:text-slate-600 hover:underline cursor-pointer font-bold"
-                                title="Toggle Approval State"
-                              >
-                                Override State
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
-                        No service requests found matching the filter criteria.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedFormRequest && selectedFormRequest.type === 'Leave Request' && (
-        <CSCForm6Preview
-          request={selectedFormRequest}
-          user={{ name: selectedFormRequest.employeeName || 'DILG Personnel', role: 'Employee' }}
-          onClose={() => setSelectedFormRequest(null)}
-        />
-      )}
-
-      {selectedFormRequest && selectedFormRequest.type === 'Travel Order' && (
-        <TravelOrderPreview
-          request={selectedFormRequest}
-          onClose={() => setSelectedFormRequest(null)}
-        />
-      )}
 
       {selectedVerificationPhoto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onClick={() => setSelectedVerificationPhoto(null)}>
