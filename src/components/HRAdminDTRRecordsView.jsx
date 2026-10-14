@@ -283,6 +283,12 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <span>Face liveness: <b>{selected.record.faceLivenessVerified ? `${Number(selected.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
         <span>Face match: <b>{selected.record.faceVerified ? `Matched · distance ${Number(selected.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
         <span>Fingerprint: <b>{describeFingerprintCheck(selected.record)}</b></span>
+        {selected.record.timeOut && (
+          <>
+            <span>Time Out face match: <b>{selected.record.timeOutFaceVerified ? `Matched · distance ${Number(selected.record.timeOutFaceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
+            <span>Time Out fingerprint: <b>{describeFingerprintCheck({ fingerprintVerified: selected.record.timeOutFingerprintVerified, fingerprintMethod: selected.record.timeOutFingerprintMethod })}</b></span>
+          </>
+        )}
         <span>Face-match time: <b>{selected.record.faceVerifiedAt ? new Date(selected.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
         <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
       </div>
@@ -318,6 +324,17 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         faceVerified={selected.record.faceVerified}
         faceMatchDistance={selected.record.faceMatchDistance}
       />
+      {selected.record.timeOut && (
+        <HRFaceComparison
+          entry="timeOut"
+          employeeId={selected.employee?.employeeId || selected.record.employeeId}
+          recordId={selected.record.id}
+          hasAttendanceSelfie={Boolean(selected.record.hasTimeOutSelfie || selected.record.timeOutSelfieUrl)}
+          attendanceSelfie={selected.record.timeOutSelfieUrl}
+          faceVerified={selected.record.timeOutFaceVerified}
+          faceMatchDistance={selected.record.timeOutFaceMatchDistance}
+        />
+      )}
     </section>
   );
 

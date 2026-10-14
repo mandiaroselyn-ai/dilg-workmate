@@ -111,7 +111,11 @@ export const applyQueuedAttendance = (list = [], queuedItems = []) => queuedItem
     return [{ ...record, id: `offline-att-${item.id}` }, ...records];
   }
   if (item.payload.action === 'clock-out') {
-    return records.map(shown => (sameDay(shown, record) && !shown.timeOut ? { ...shown, ...record } : shown));
+    // Shown as not sent yet. Its fingerprint check is for the server, not for the screen.
+    const shownTimeOut = { ...record, timeOutNotSent: true };
+    delete shownTimeOut.fingerprintProof;
+    delete shownTimeOut.offlineTimeOut;
+    return records.map(shown => (sameDay(shown, record) && !shown.timeOut ? { ...shown, ...shownTimeOut } : shown));
   }
   return records;
 }, list);

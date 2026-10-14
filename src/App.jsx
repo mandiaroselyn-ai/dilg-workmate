@@ -688,8 +688,9 @@ export default function App() {
     if (!response.ok || !data.success) throw new Error(data?.error || 'Your message could not be sent.');
   };
 
-  // A Time Out saved offline keeps the time it was made; online ones use the server clock.
-  const markRecordedOffline = payload => ({ ...payload, record: { ...payload.record, recordedOfflineAt: new Date().toISOString() } });
+  // A Time Out saved offline keeps the time it was made (for one the phone signed, the time it
+  // signed); online ones use the server clock.
+  const markRecordedOffline = payload => ({ ...payload, record: { ...payload.record, recordedOfflineAt: payload.record.recordedOfflineAt || new Date().toISOString() } });
 
   // A Time In can be saved on the phone only when the phone signed it with its fingerprint
   // key (an offline Time In); any other Time In needs the server to check the fingerprint.
@@ -699,8 +700,9 @@ export default function App() {
     const saveOnPhone = async (details = {}) => {
       await queueAttendance({ payload: markRecordedOffline(payload) });
       if (optimisticRecord) {
+        // A Time Out shows as saved on this phone and not sent yet until it is synced.
         setAttendanceHistory(previous => payload.action === 'clock-out'
-          ? previous.map(item => item.employeeId === optimisticRecord.employeeId && !item.timeOut ? optimisticRecord : item)
+          ? previous.map(item => item.employeeId === optimisticRecord.employeeId && !item.timeOut ? { ...optimisticRecord, timeOutNotSent: true } : item)
           : [optimisticRecord, ...previous]);
       }
       return { queued: true, record: optimisticRecord, ...details };
@@ -922,7 +924,9 @@ export default function App() {
       });
   };
 
-  // Clock out handle
+  // Clock out handle. `providedGps` also carries the Time Out `selfie` and the fingerprint: a
+  // server check (`fingerprintProof`), or without internet the phone app's signature
+  // (`offlineTimeOut`, see utils/offlineTimeIn.js).
   const handleTimeOut = async (providedGps = {}) => {
     const timeString = new Date().toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -958,10 +962,16 @@ export default function App() {
       timeOutLatitude: gps.latitude || null,
       timeOutLongitude: gps.longitude || null,
       timeOutGpsAccuracy: gps.gpsAccuracy || null,
-      selfieUrl: activeRecord?.selfieUrl || null
+      selfieUrl: activeRecord?.selfieUrl || null,
+      timeOutSelfieUrl: providedGps.selfie || null
     };
+    // The fingerprint goes to the server only, not into the record shown on screen. A Time Out
+    // the phone signed without internet keeps the time it was signed.
+    const fingerprint = providedGps.offlineTimeOut
+      ? { offlineTimeOut: providedGps.offlineTimeOut, recordedOfflineAt: providedGps.offlineTimeOut.recordedAt }
+      : { fingerprintProof: providedGps.fingerprintProof || '' };
 
-    submitAttendance({ action: 'clock-out', record: clockOutRecord }, {
+    submitAttendance({ action: 'clock-out', record: { ...clockOutRecord, ...fingerprint } }, {
       ...activeRecord,
       ...clockOutRecord,
       id: activeRecord?.id || `offline-att-${Date.now()}`

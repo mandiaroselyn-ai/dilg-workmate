@@ -1,4 +1,4 @@
-import { OFFLINE_TIME_IN_PREFIX, offlineTimeInText } from '../../shared/offlineTimeIn.js';
+import { OFFLINE_TIME_IN_PREFIX, OFFLINE_TIME_OUT_PREFIX, offlineTimeInText, offlineTimeOutText } from '../../shared/offlineTimeIn.js';
 
 // A Time In made in the WorkMate phone app without internet is signed with the phone's
 // fingerprint key and saved on the phone until it can be sent (see shared/offlineTimeIn.js).
@@ -64,6 +64,23 @@ export const signOfflineTimeIn = async ({ employeeId, keyId, latitude, longitude
     selfieHash: await sha256(selfie)
   });
   const { signature, publicKey } = await sign(OFFLINE_TIME_IN_PREFIX + await sha256(text), keyId);
+  return { recordedAt, nonce, signature, publicKey };
+};
+
+// The same for a Time Out made without internet, with its own GPS and Time Out selfie.
+export const signOfflineTimeOut = async ({ employeeId, keyId, latitude, longitude, gpsAccuracy, selfie, sign }) => {
+  const recordedAt = new Date().toISOString();
+  const nonce = toBase64Url(window.crypto.getRandomValues(new Uint8Array(18)));
+  const text = offlineTimeOutText({
+    employeeId,
+    recordedAt,
+    nonce,
+    latitude,
+    longitude,
+    gpsAccuracy,
+    selfieHash: await sha256(selfie)
+  });
+  const { signature, publicKey } = await sign(OFFLINE_TIME_OUT_PREFIX + await sha256(text), keyId);
   return { recordedAt, nonce, signature, publicKey };
 };
 

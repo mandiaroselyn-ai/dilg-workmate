@@ -4,14 +4,17 @@ import { apiFetch, parseApiResponse } from '../utils/api';
 
 // HR's lists leave attendance selfies out, so a record's selfie is loaded here by its
 // `recordId` when `hasAttendanceSelfie` says there is one (unless `attendanceSelfie` is given).
+// `entry` is 'timeIn' for the Time In selfie or 'timeOut' for the Time Out selfie.
 export default function HRFaceComparison({
   employeeId,
   recordId,
   hasAttendanceSelfie = false,
   attendanceSelfie: givenAttendanceSelfie = '',
   faceVerified = false,
-  faceMatchDistance
+  faceMatchDistance,
+  entry = 'timeIn'
 }) {
+  const isTimeOut = entry === 'timeOut';
   const [enrollmentSelfie, setEnrollmentSelfie] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -31,7 +34,7 @@ export default function HRFaceComparison({
       return () => { active = false; };
     }
     setSelfieLoading(true);
-    apiFetch(`/api/dtr/action?action=record-selfie&id=${encodeURIComponent(recordId)}`, { cache: 'no-store' })
+    apiFetch(`/api/dtr/action?action=record-selfie&id=${encodeURIComponent(recordId)}${isTimeOut ? '&which=time-out' : ''}`, { cache: 'no-store' })
       .then(async response => {
         const result = await parseApiResponse(response, 'Attendance selfie request');
         if (!response.ok || !result.success) throw new Error(result.error || 'Unable to load the attendance selfie.');
@@ -44,7 +47,7 @@ export default function HRFaceComparison({
         if (active) setSelfieLoading(false);
       });
     return () => { active = false; };
-  }, [recordId, hasAttendanceSelfie, givenAttendanceSelfie, selfieReloadKey]);
+  }, [recordId, hasAttendanceSelfie, givenAttendanceSelfie, selfieReloadKey, isTimeOut]);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +82,7 @@ export default function HRFaceComparison({
   return (
     <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
       <div>
-        <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">Face Match Evidence</h4>
+        <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">{isTimeOut ? 'Time Out Face Match Evidence' : 'Face Match Evidence'}</h4>
         <p className={`mt-1 text-xs font-black ${faceVerified ? 'text-emerald-700' : 'text-amber-800'}`}>
           {faceVerified
             ? `Server face match passed${faceMatchDistance != null && Number.isFinite(Number(faceMatchDistance)) ? ` · distance ${Number(faceMatchDistance).toFixed(3)}` : ''}`
@@ -91,7 +94,7 @@ export default function HRFaceComparison({
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-2">
-          <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">Attendance selfie</p>
+          <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-blue-900">{isTimeOut ? 'Time Out selfie' : 'Attendance selfie'}</p>
           {selfieLoading ? (
             <p role="status" className="rounded-lg bg-white p-4 text-xs font-semibold text-blue-800">Loading attendance selfie...</p>
           ) : attendanceSelfie ? (
@@ -108,7 +111,7 @@ export default function HRFaceComparison({
               </button>
             </div>
           ) : (
-            <p className="rounded-lg bg-white p-4 text-xs font-semibold text-slate-500">No attendance selfie is attached to this record.</p>
+            <p className="rounded-lg bg-white p-4 text-xs font-semibold text-slate-500">{isTimeOut ? 'No Time Out selfie is attached to this record.' : 'No attendance selfie is attached to this record.'}</p>
           )}
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">

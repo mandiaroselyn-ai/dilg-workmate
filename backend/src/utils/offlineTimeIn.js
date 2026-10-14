@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { OFFLINE_TIME_IN_PREFIX, offlineTimeInText } from '../../../shared/offlineTimeIn.js';
+import { OFFLINE_TIME_IN_PREFIX, OFFLINE_TIME_OUT_PREFIX, offlineTimeInText, offlineTimeOutText } from '../../../shared/offlineTimeIn.js';
 import { verifyNativeBiometricSignature } from './nativeBiometric.js';
 
 // HR checks an offline Time In or Time Out when the phone's clock was this far from the server's.
@@ -97,6 +97,45 @@ export const checkOfflineTimeIn = ({ offline, record, employeeId, registeredKey,
     phoneClockOffsetSeconds: clock.phoneClockOffsetSeconds,
     reviewReasons: [...reviewReasons, ...clock.reviewReasons]
   };
+};
+
+// The challenge the phone signed for this Time Out (see shared/offlineTimeIn.js).
+export const offlineTimeOutChallenge = ({ employeeId, recordedAt, nonce, record }) => OFFLINE_TIME_OUT_PREFIX + sha256(offlineTimeOutText({
+  employeeId,
+  recordedAt,
+  nonce,
+  latitude: record.timeOutLatitude,
+  longitude: record.timeOutLongitude,
+  gpsAccuracy: record.timeOutGpsAccuracy,
+  selfieHash: sha256(String(record.timeOutSelfieUrl || ''))
+}));
+
+// Checks the phone's fingerprint signature (`signed`) on a Time Out made without internet in
+// the phone app, for the Time Out `record` as it was sent. Returns { error, statusCode } when
+// it was changed after it was signed. Otherwise returns whether the registered phone key
+// signed it, and why HR must review it (none when it passed).
+export const checkSignedOfflineTimeOut = ({ signed, record, employeeId, registeredKey }) => {
+  if (!signed || typeof signed !== 'object' || Array.isArray(signed)) return reject('Invalid offline Time Out data.');
+  const { recordedAt, nonce, signature, publicKey } = signed;
+  if (typeof recordedAt !== 'string' || recordedAt !== record.recordedOfflineAt
+    || typeof nonce !== 'string' || !/^[A-Za-z0-9_-]{16,64}$/.test(nonce)
+    || typeof signature !== 'string' || !signature || signature.length > 512
+    || (publicKey !== undefined && publicKey !== null && (typeof publicKey !== 'string' || publicKey.length > 512))) {
+    return reject('Invalid offline Time Out data.');
+  }
+
+  const challenge = offlineTimeOutChallenge({ employeeId, recordedAt, nonce, record });
+  const reviewReasons = [];
+  const registeredKeyMatched = Boolean(registeredKey)
+    && verifyNativeBiometricSignature({ publicKey: registeredKey, challenge, signature });
+  if (!registeredKeyMatched) {
+    if (publicKey && publicKey !== registeredKey && verifyNativeBiometricSignature({ publicKey, challenge, signature })) {
+      reviewReasons.push('The Time Out fingerprint was checked with a phone key that is not registered to this employee (a new phone, a reinstalled app, or a fingerprint added to the phone).');
+    } else {
+      return reject('The offline Time Out does not match a fingerprint check on this employee\'s phone.');
+    }
+  }
+  return { registeredKeyMatched, nonce, reviewReasons };
 };
 
 // Checks the time of a Time Out saved on the phone without internet (`recordedOfflineAt`,

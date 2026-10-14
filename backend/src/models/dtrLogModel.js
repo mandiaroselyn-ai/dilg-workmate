@@ -10,7 +10,7 @@ const OfflineEntrySchema = new mongoose.Schema({
   syncedAt: Date,
   // How far the phone's clock was from the server's when it was sent.
   phoneClockOffsetSeconds: Number,
-  // Time In only: the signed Time In's unique value.
+  // The unique value of the Time In or Time Out the phone signed.
   nonce: String,
   // Why HR must check it; empty when every check passed.
   reviewReasons: { type: [String], default: [] },
@@ -99,6 +99,12 @@ const DtrLogSchema = new mongoose.Schema({
   timeOutLatitude: { type: Number },
   timeOutLongitude: { type: Number },
   timeOutGpsAccuracy: { type: Number },
+  // Who made the Time Out: its selfie, and the checks of that selfie and of the fingerprint.
+  timeOutSelfieUrl: { type: String, default: '' },
+  timeOutFingerprintVerified: { type: Boolean, default: false },
+  timeOutFingerprintMethod: { type: String, enum: ['', 'browser', 'phone-app'], default: '' },
+  timeOutFaceVerified: { type: Boolean, default: false },
+  timeOutFaceMatchDistance: { type: Number, default: null },
   // Location History Tracking
   locationHistory: [{
     timestamp: { type: Date, default: Date.now },
@@ -162,7 +168,7 @@ const openShiftFilter = (employeeId, date) => ({
   ]
 });
 
-const EVIDENCE_FIELDS = '-selfieUrl -locationHistory -siteVisits -geofenceEvents -fingerprintHash -fingerprintProof';
+const EVIDENCE_FIELDS = '-selfieUrl -timeOutSelfieUrl -locationHistory -siteVisits -geofenceEvents -fingerprintHash -fingerprintProof';
 
 // Fields HR may change when correcting or verifying an attendance record.
 const HR_EDITABLE_FIELDS = ['timeIn', 'timeOut', 'status', 'location', 'workAssignment', 'verificationAudit', 'gpsStatus'];
@@ -176,13 +182,15 @@ const toClientLog = item => {
 };
 
 // Lists of records (HR's, and an employee's own history) leave out what makes a record
-// large: the selfie (hasSelfie says whether there is one; it is loaded when the record is
-// shown), the minute-by-minute GPS history, and the outline of the assigned barangay.
-const LIST_OMITTED_FIELDS = ['selfieUrl', 'locationHistory', 'siteVisits', 'geofenceEvents', 'fingerprintHash', 'fingerprintProof'];
+// large: the selfies (hasSelfie and hasTimeOutSelfie say whether there are any; they are
+// loaded when the record is shown), the minute-by-minute GPS history, and the outline of the
+// assigned barangay.
+const LIST_OMITTED_FIELDS = ['selfieUrl', 'timeOutSelfieUrl', 'locationHistory', 'siteVisits', 'geofenceEvents', 'fingerprintHash', 'fingerprintProof'];
 
 const toListLog = item => {
   const obj = typeof item.toObject === 'function' ? item.toObject() : { ...item };
   obj.hasSelfie = Boolean(obj.selfieUrl);
+  obj.hasTimeOutSelfie = Boolean(obj.timeOutSelfieUrl);
   for (const field of LIST_OMITTED_FIELDS) delete obj[field];
   if (obj.assignmentSite) obj.assignmentSite = { ...obj.assignmentSite, geometry: undefined };
   obj.id = obj.customId;
@@ -196,7 +204,7 @@ const findListLogs = async match => {
   const logs = await MongoDtrLog.aggregate([
     { $match: match },
     // True for a non-empty selfie; false when it is empty, null, or missing.
-    { $addFields: { hasSelfie: { $gt: ['$selfieUrl', ''] } } },
+    { $addFields: { hasSelfie: { $gt: ['$selfieUrl', ''] }, hasTimeOutSelfie: { $gt: ['$timeOutSelfieUrl', ''] } } },
     { $project: Object.fromEntries([...LIST_OMITTED_FIELDS, 'assignmentSite.geometry'].map(field => [field, 0])) },
     { $sort: { createdAt: -1 } }
   ]);
@@ -220,7 +228,7 @@ export const DtrLog = {
   findRecent: async (limit = 500) => {
     ensureConnected();
     const mongoLogs = await MongoDtrLog.find({})
-      .select('-selfieUrl -locationHistory -siteVisits -geofenceEvents')
+      .select('-selfieUrl -timeOutSelfieUrl -locationHistory -siteVisits -geofenceEvents')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -247,10 +255,10 @@ export const DtrLog = {
     return owners.length ? findListLogs({ $or: owners }) : [];
   },
 
-  // One record's selfie and whose record it is, for showing that record.
+  // One record's selfies and whose record it is, for showing that record.
   findSelfie: async id => {
     ensureConnected();
-    return MongoDtrLog.findOne({ customId: id }).select('customId selfieUrl employeeId employeeEmail').lean();
+    return MongoDtrLog.findOne({ customId: id }).select('customId selfieUrl timeOutSelfieUrl employeeId employeeEmail').lean();
   },
 
   find: async ({ includeEvidence = true } = {}) => {
@@ -262,6 +270,7 @@ export const DtrLog = {
       delete obj.fingerprintProof;
       if (!includeEvidence) {
         delete obj.selfieUrl;
+        delete obj.timeOutSelfieUrl;
         delete obj.locationHistory;
         delete obj.siteVisits;
         delete obj.geofenceEvents;
@@ -352,6 +361,12 @@ export const DtrLog = {
     return MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
   },
 
+  // True when the employee already has an attendance record dated `date`.
+  hasLogOnDate: async (employeeId, date) => {
+    ensureConnected();
+    return Boolean(await MongoDtrLog.exists({ employeeId, date }));
+  },
+
   // The employee's current open shift without selfie or tracking history, for
   // frequent checks such as live location updates.
   findActiveShift: async (employeeId) => {
@@ -377,8 +392,9 @@ export const DtrLog = {
     return logs.map(toClientLog);
   },
 
-  // `offlineTimeOut` describes a Time Out saved on the phone without internet.
-  closeActiveLog: async (timeOut, employeeId, date, location = {}, offlineTimeOut = null) => {
+  // `offlineTimeOut` describes a Time Out saved on the phone without internet, and
+  // `verification` the employee's Time Out selfie and its checks (see checkTimeOutIdentity).
+  closeActiveLog: async (timeOut, employeeId, date, location = {}, offlineTimeOut = null, verification = null) => {
     ensureConnected();
     const activeLog = await MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
     if (activeLog) {
@@ -387,6 +403,13 @@ export const DtrLog = {
       activeLog.timeOutLongitude = location.longitude ?? null;
       activeLog.timeOutGpsAccuracy = location.accuracy ?? null;
       activeLog.offlineTimeOut = offlineTimeOut;
+      if (verification) {
+        activeLog.timeOutSelfieUrl = verification.selfieUrl || '';
+        activeLog.timeOutFingerprintVerified = verification.fingerprintVerified === true;
+        activeLog.timeOutFingerprintMethod = verification.fingerprintMethod || '';
+        activeLog.timeOutFaceVerified = verification.faceVerified === true;
+        activeLog.timeOutFaceMatchDistance = verification.faceMatchDistance ?? null;
+      }
       await activeLog.save();
       const obj = activeLog.toObject();
       obj.id = obj.customId;

@@ -44,3 +44,12 @@ test('a Time In and Time Out still waiting on the phone stay on a list reloaded 
   // Nothing waiting: the list is unchanged.
   assert.deepEqual(applyQueuedAttendance([yesterday], []), [yesterday]);
 });
+
+test('a Time Out still waiting on the phone shows as not sent yet, without its fingerprint check', () => {
+  const timeOut = { id: 5, payload: { action: 'clock-out', record: { employeeId: 'E1', date: '2026-10-05', timeOut: '05:00 PM', fingerprintProof: 'proof', offlineTimeOut: { nonce: 'nonce-2' } } } };
+  const [shown] = applyQueuedAttendance([{ id: 'att-2', employeeId: 'E1', date: '2026-10-05', timeIn: '08:00 AM', timeOut: null }], [timeOut]);
+  assert.equal(shown.timeOut, '05:00 PM');
+  assert.equal(shown.timeOutNotSent, true);
+  assert.equal(shown.fingerprintProof, undefined);
+  assert.equal(shown.offlineTimeOut, undefined);
+});

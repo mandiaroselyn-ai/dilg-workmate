@@ -4,7 +4,7 @@ import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
-import { checkOfflineTimeIn, checkOfflineTimeOut } from '../utils/offlineTimeIn.js';
+import { checkOfflineTimeIn, checkOfflineTimeOut, checkSignedOfflineTimeOut } from '../utils/offlineTimeIn.js';
 import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
@@ -100,12 +100,14 @@ export const getDtrLogs = async (req, res) => {
   }
 };
 
-// One attendance record's selfie, for HR or for the employee whose record it is. Lists
-// of records leave selfies out so they stay small.
+// One attendance record's selfie, for HR or for the employee whose record it is: the Time In
+// selfie, or the Time Out selfie with `which=time-out`. Lists of records leave selfies out so
+// they stay small.
 export const getRecordSelfie = async (req, res) => {
   try {
     const id = typeof req.query.id === 'string' ? req.query.id.trim() : '';
     if (!id) return res.status(400).json({ success: false, error: 'Missing attendance record id.' });
+    const timeOut = req.query.which === 'time-out';
     const record = await DtrLog.findSelfie(id);
     const isOwn = record && (
       (record.employeeId && record.employeeId === req.user.employeeId)
@@ -115,10 +117,108 @@ export const getRecordSelfie = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Attendance record not found.' });
     }
     res.set('Cache-Control', 'no-store, private');
-    res.status(200).json({ success: true, id, selfieUrl: record.selfieUrl || '' });
+    res.status(200).json({ success: true, id, selfieUrl: (timeOut ? record.timeOutSelfieUrl : record.selfieUrl) || '' });
   } catch (error) {
     sendServerError(res, error);
   }
+};
+
+// Checks who made an employee's Time Out, the same way as a Time In: the Time Out selfie
+// (compared with the HR-approved enrollment selfie) and the fingerprint. A Time Out made
+// online that fails a check is refused, so the employee can retry. One saved without
+// internet (`offline`) cannot be redone, so it is kept and the reasons are added to
+// `offline.reviewReasons` for HR. `signedOffline` is the phone app's fingerprint signature
+// on a Time Out saved without internet. Returns { error, statusCode } or { verification }.
+const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) => {
+  const refuse = (statusCode, error) => ({ error, statusCode });
+  // Online, the refusal to send; offline, null once the reason is noted for HR.
+  const failCheck = (statusCode, error, reviewReason = error) => {
+    if (!offline) return refuse(statusCode, error);
+    offline.reviewReasons.push(reviewReason);
+    return null;
+  };
+
+  const selfie = typeof record.timeOutSelfieUrl === 'string' ? record.timeOutSelfieUrl : '';
+  if (!selfie) {
+    const refusal = failCheck(400, 'Take a selfie before Time Out.', 'No selfie was taken at Time Out.');
+    if (refusal) return refusal;
+  }
+
+  // The fingerprint: the phone's signature on a Time Out saved without internet, or a check
+  // made with the server.
+  let signed = null;
+  let proof = null;
+  if (signedOffline !== undefined && signedOffline !== null) {
+    if (!offline) return refuse(400, 'Invalid offline Time Out data.');
+    signed = checkSignedOfflineTimeOut({ signed: signedOffline, record, employeeId: user.employeeId, registeredKey: user.nativeBiometricPublicKey });
+    if (signed.error) return refuse(signed.statusCode, signed.error);
+    offline.nonce = signed.nonce;
+    offline.reviewReasons.push(...signed.reviewReasons);
+  } else {
+    proof = readVerificationProof(record.fingerprintProof, { employeeId: user.employeeId, type: 'fingerprint' });
+    if (!proof) {
+      const refusal = failCheck(400, 'Verify your fingerprint before Time Out.', 'No fingerprint check came with this Time Out, so it is not known who made it.');
+      if (refusal) return refusal;
+    }
+  }
+
+  let faceMatch = null;
+  if (selfie) {
+    const enrollment = user.biometricEnrollmentStatus === 'hr-approved'
+      ? await User.getApprovedFaceEnrollment(user.employeeId)
+      : null;
+    let enrollmentDescriptor = enrollment?.descriptor;
+    if (!isValidFaceDescriptor(enrollmentDescriptor) && enrollment?.image) {
+      try {
+        enrollmentDescriptor = await createFaceDescriptor(enrollment.image);
+        await User.saveApprovedFaceEnrollmentDescriptor(user.employeeId, enrollmentDescriptor);
+      } catch (error) {
+        if (!(error instanceof FaceImageError)) throw error;
+      }
+    }
+    if (!isValidFaceDescriptor(enrollmentDescriptor)) {
+      const refusal = failCheck(409,
+        'Your HR-approved enrollment selfie cannot be used for face matching. Contact HR to resubmit biometric enrollment.',
+        'The Time Out selfie could not be compared: there is no usable HR-approved enrollment selfie.');
+      if (refusal) return refusal;
+    } else {
+      try {
+        faceMatch = await compareEnrollmentToAttendance(enrollmentDescriptor, selfie);
+      } catch (error) {
+        // Online, a selfie without a clear face is refused and retaken.
+        if (!(error instanceof FaceImageError)) throw error;
+        const refusal = failCheck(error.statusCode, error.message, `The Time Out selfie could not be compared with the enrollment selfie: ${error.message}`);
+        if (refusal) return refusal;
+      }
+      if (faceMatch && !faceMatch.matched) {
+        await User.addFaceVerificationAudit(user.employeeId, {
+          outcome: 'attendance-face-mismatch',
+          provider: 'local-face-api-v1'
+        });
+        const refusal = failCheck(403,
+          'Your Time Out selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.',
+          'The Time Out selfie did not match the HR-approved enrollment selfie.');
+        if (refusal) return refusal;
+      }
+    }
+  }
+
+  // Each fingerprint check can be used for only one Time In or Time Out.
+  if (proof && !(await User.consumeVerificationProof(user._id, proof.jti))) {
+    const refusal = failCheck(409, 'This fingerprint verification was already used. Verify your fingerprint again.', 'The fingerprint check sent with this Time Out was already used.');
+    if (refusal) return refusal;
+    proof = null;
+  }
+
+  return {
+    verification: {
+      selfieUrl: selfie,
+      fingerprintVerified: Boolean(proof) || signed?.registeredKeyMatched === true,
+      fingerprintMethod: proof ? (proof.method === 'phone-app' ? 'phone-app' : 'browser') : signed ? 'phone-app' : '',
+      faceVerified: faceMatch?.matched === true,
+      faceMatchDistance: faceMatch?.distance ?? null
+    }
+  };
 };
 
 export const clockInOut = async (req, res) => {
@@ -280,6 +380,10 @@ export const clockInOut = async (req, res) => {
       if (existingLog) {
         return res.status(409).json({ success: false, error: 'Employee already has an active attendance record for this date.' });
       }
+      // One Time In and one Time Out per day: a day that was already timed out stays closed.
+      if (await DtrLog.hasLogOnDate(record.employeeId, record.date)) {
+        return res.status(409).json({ success: false, error: 'Attendance for this date is already complete. Only one Time In and one Time Out are allowed per day.' });
+      }
 
       if (user.biometricEnrollmentStatus !== 'hr-approved') {
         return res.status(409).json({
@@ -389,7 +493,8 @@ export const clockInOut = async (req, res) => {
       if (!activeLog) {
         return res.status(400).json({ success: false, error: 'No active clock-in found to clock out.' });
       }
-      if (req.user?.accessLevel === 'employee') {
+      const isEmployee = req.user?.accessLevel === 'employee';
+      if (isEmployee) {
         const locationError = timeOutLocationError(activeLog.assignmentSite, record);
         if (locationError) return res.status(400).json({ success: false, error: locationError });
       }
@@ -400,11 +505,18 @@ export const clockInOut = async (req, res) => {
       // A Time Out saved offline keeps the phone's time; HR checks it when the phone's clock
       // looked wrong, and until then it is left out of the DTR.
       const offline = checkOfflineTimeOut({ recordedOfflineAt: record.recordedOfflineAt, timeInAt, sentAt: req.body.sentAt });
+      // An employee's Time Out needs a selfie and a fingerprint, like their Time In.
+      let verification = null;
+      if (isEmployee) {
+        const identity = await checkTimeOutIdentity({ record, user: req.user, offline, signedOffline: record.offlineTimeOut });
+        if (identity.error) return res.status(identity.statusCode).json({ success: false, error: identity.error });
+        verification = identity.verification;
+      }
       const closedLog = await DtrLog.closeActiveLog(formatManilaClockTime(timeOutAt), record.employeeId, record.date, {
         latitude: record.timeOutLatitude,
         longitude: record.timeOutLongitude,
         accuracy: record.timeOutGpsAccuracy
-      }, offline && { ...offline, syncedAt: new Date(), decision: '' });
+      }, offline && { ...offline, syncedAt: new Date(), decision: '' }, verification);
       if (closedLog) {
         const employee = req.user?.accessLevel === 'employee' ? req.user : await User.findByEmployeeId(record.employeeId);
         const needsReview = Boolean(offline?.reviewReasons.length);

@@ -25,13 +25,14 @@ export const validateApiBody = (req, res, next) => {
     'dilgIdImage',
     'dilgIdBackImage',
     'selfieImage',
-    ...(typeof body.record?.selfieUrl === 'string' ? ['record.selfieUrl'] : [])
+    ...(typeof body.record?.selfieUrl === 'string' ? ['record.selfieUrl'] : []),
+    ...(typeof body.record?.timeOutSelfieUrl === 'string' ? ['record.timeOutSelfieUrl'] : [])
   ];
   const enrollmentImageFields = ['dilgIdImage', 'dilgIdBackImage', 'selfieImage'];
   let enrollmentImageBytes = 0;
   let biometricImageBytes = 0;
   for (const field of imageFields) {
-    const value = field === 'record.selfieUrl' ? body.record.selfieUrl : body[field];
+    const value = field.startsWith('record.') ? body.record[field.slice('record.'.length)] : body[field];
     if (typeof value === 'string' && value.length > 8 * 1024 * 1024) {
       return res.status(413).json({ success: false, error: 'Biometric image is too large.' });
     }
