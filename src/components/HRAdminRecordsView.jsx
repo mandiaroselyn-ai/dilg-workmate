@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { activeEmployees, employeeDayStatus, hasSelfie, recordsForEmployees } from '../utils/hrAttendance';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
+import HRReportsView from './HRReportsView';
 
 const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -36,7 +37,7 @@ const ShowMore = ({ shown, total, onMore }) => (total > shown ? (
   </button>
 ) : null);
 
-export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
+export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reportGeneratedBy = '' }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [shownCount, setShownCount] = useState(PAGE_SIZE);
@@ -148,7 +149,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     { id: 'overview', label: 'Overview' },
     { id: 'dtr', label: 'DTR' },
     { id: 'leaves', label: 'Leaves' },
-    { id: 'travel', label: 'Travel Orders' }
+    { id: 'travel', label: 'Travel Orders' },
+    { id: 'reports', label: 'Reports' }
   ];
 
   return (
@@ -158,7 +160,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           Centralized records for attendance, monthly performance, leave applications, approved leaves, travel orders, and DTR review.
         </p>
 
-        <div className="relative w-full max-w-lg">
+        {/* Reports have their own filters. */}
+        {activeTab !== 'reports' && <div className="relative w-full max-w-lg">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="search"
@@ -167,7 +170,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             placeholder="Search employee, date, month, or status..."
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
-        </div>
+        </div>}
 
         <div className="flex flex-wrap gap-2">
           {tabs.map((tab) => (
@@ -478,6 +481,16 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           </div>
           <ShowMore shown={shownCount} total={travelRows.length} onMore={showMore} />
         </section>
+      )}
+
+      {activeTab === 'reports' && (
+        <HRReportsView
+          employees={employees}
+          attendanceHistory={allAttendance}
+          requests={allRequests}
+          attendanceFrom={attendanceFrom}
+          generatedBy={reportGeneratedBy}
+        />
       )}
 
     </div>

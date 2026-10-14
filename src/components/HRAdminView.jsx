@@ -110,8 +110,6 @@ export default function HRAdminView({
   const [officialOICName, setOfficialOICName] = useState('JOHN ERICK J. MATINING');
   const [officialDirectorName, setOfficialDirectorName] = useState('GERMAN F. YAP, CESO V');
   const [toastMsg, setToastMsg] = useState('');
-  const [generatingReport, setGeneratingReport] = useState(false);
-  const [generatedReportUrl, setGeneratedReportUrl] = useState(null);
 
   React.useEffect(() => {
     setActiveTab(sectionTabs[section] || 'dashboard');
@@ -255,39 +253,6 @@ export default function HRAdminView({
 
   const handleSaveTemplateControls = () => {
     triggerToast('DILG official document templates & approval names settings applied globally.');
-  };
-
-  const handleGeneratePDFReports = () => {
-    setGeneratingReport(true);
-    setGeneratedReportUrl(null);
-
-    setTimeout(() => {
-      setGeneratingReport(false);
-      const randomID = Math.floor(100000 + Math.random() * 900000);
-      // Report generation is not built yet; this produces a clearly labelled sample file.
-      setGeneratedReportUrl(`DILG_REPORT_SAMPLE_${randomID}.txt`);
-      triggerToast('Sample report ready. Report generation is not available yet, so this file contains no records.');
-    }, 2000);
-  };
-
-  const handleDownloadArchive = () => {
-    if (!generatedReportUrl) return;
-
-    const content = `SAMPLE ONLY - NOT AN OFFICIAL DILG RECORD\n` +
-      `Generated on: ${new Date().toLocaleString()}\n\n` +
-      `Report generation is not available yet. This file does not contain any DTR, CSC Form 6, or travel order records.`;
-
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = generatedReportUrl;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    triggerToast(`Successfully downloaded official archive: ${generatedReportUrl}`);
   };
 
   const filteredDTRHistory = attendanceHistory.filter((rec) => {
@@ -490,6 +455,7 @@ export default function HRAdminView({
         loadedAttendanceMonths={loadedAttendanceMonths}
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         requests={requests}
+        reportGeneratedBy={user?.name || ''}
       />}
 
       {activeTab === 'requests' && <div className="hr-admin-requests-screen"><HRAdminRequestsView
