@@ -241,6 +241,7 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
                               {!notif.read && (
                                 <span className="w-2 h-2 rounded-full bg-[#1e40af]" />
                               )}
+                              {/* Finger-sized, so a tap on it does not open the notification instead. */}
                               {notif.read && onMarkNotificationUnread && (
                                 <button
                                   type="button"
@@ -248,7 +249,7 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
                                     event.stopPropagation();
                                     onMarkNotificationUnread(notif.id);
                                   }}
-                                  className="text-[10px] font-semibold text-[#1e40af] whitespace-nowrap"
+                                  className="min-h-[36px] rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-semibold text-[#1e40af] whitespace-nowrap active:bg-blue-100"
                                 >
                                   Mark unread
                                 </button>
