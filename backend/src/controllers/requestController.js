@@ -102,13 +102,15 @@ export const updateRequestStatus = async (req, res) => {
     const existing = await Leave.findByCustomId(id);
     if (!existing) return res.status(404).json({ success: false, error: 'Request ID not found.' });
     if (role === 'employee') {
-      // Employees may edit, submit, or discard their own drafts, and withdraw their own
-      // requests that have not been decided yet.
-      update = existing.status === 'Draft'
+      // Employees may edit, submit, or discard their own drafts, fix and submit again a
+      // request returned to them, and withdraw their own requests that have not been
+      // decided yet.
+      const editsOwnRequest = existing.status === 'Draft' || (existing.status === 'Returned' && req.body?.status !== 'Withdrawn');
+      update = editsOwnRequest
         ? buildEmployeeDraftUpdate(existing, req.body, req.user)
         : buildEmployeeWithdrawal(existing, req.body, req.user);
       if (!update) {
-        return res.status(403).json({ success: false, error: 'You can only change your own drafts, or withdraw your own requests before they are approved or rejected.' });
+        return res.status(403).json({ success: false, error: 'You can only change your own drafts and returned requests, or withdraw your own requests before they are approved or rejected.' });
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);

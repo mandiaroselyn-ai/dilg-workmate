@@ -211,6 +211,10 @@ export default function SupervisorView({
       setErrorMsg('Please ensure you provide the reason (remarks) for disapproving the request.');
       return;
     }
+    if (decision === 'Returned' && !remarks.trim()) {
+      setErrorMsg('Write in the remarks what the employee needs to fix before returning the request.');
+      return;
+    }
 
     const finalRemarks = remarks.trim() || (decision === 'Approved' ? 'Approved based on sufficient leave balance.' : 'Operational conflicts.');
     const sigData = getSignatureDataUrl();
@@ -218,7 +222,17 @@ export default function SupervisorView({
     let updatePayload = {};
     const today = getManilaDateString();
 
-    if (decision === 'Rejected') {
+    if (decision === 'Returned') {
+      // Returned for the employee to fix and submit again: no decision, so no signature.
+      updatePayload = {
+        status: 'Returned',
+        stage: 'Returned',
+        approver: 'Supervisor Review Desk',
+        remarks: finalRemarks,
+        supervisorRemarks: finalRemarks,
+        supervisorName: typewrittenName || user?.name || 'Supervisor'
+      };
+    } else if (decision === 'Rejected') {
       updatePayload = {
         status: 'Rejected',
         stage: 'Rejected',
@@ -247,7 +261,9 @@ export default function SupervisorView({
     setIsSavingDecision(true);
     try {
       await onUpdateRequestStatus(selectedRequest.id, updatePayload);
-      setSuccessMsg(`Application ID ${selectedRequest.id} was successfully ${decision === 'Rejected' ? 'Disapproved' : 'Approved'}.`);
+      setSuccessMsg(decision === 'Returned'
+        ? `Application ID ${selectedRequest.id} was returned to the employee to fix and submit again.`
+        : `Application ID ${selectedRequest.id} was successfully ${decision === 'Rejected' ? 'Disapproved' : 'Approved'}.`);
       setSelectedRequest(null);
       setRemarks('');
       clearCanvas();
@@ -771,6 +787,14 @@ export default function SupervisorView({
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
                     <span>{isSavingDecision ? 'Saving…' : 'Sign & Approve Request'}</span>
                   </button>
+                  {['Pending', 'Pending Review', 'For Supervisor'].includes(selectedRequest.status) && <button
+                    type="button"
+                    onClick={() => handleDecision('Returned')}
+                    disabled={isSavingDecision}
+                    className="col-span-2 py-2.5 px-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 font-bold hover:bg-amber-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 font-semibold disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <span>{isSavingDecision ? 'Saving…' : 'Return to Employee (needs changes)'}</span>
+                  </button>}
                 </div>
 
               </div>

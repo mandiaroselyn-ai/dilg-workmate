@@ -132,6 +132,36 @@ test('reviewers cannot act on drafts or withdrawn requests', () => {
 test('the supervisor approves or rejects, and remarks alone are allowed', () => {
   assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Approved' }, 'supervisor'), null);
   assert.equal(reviewUpdateProblem('Pending', { status: 'Rejected' }, 'supervisor'), null);
-  assert.match(reviewUpdateProblem('For Supervisor', { status: 'Pending' }, 'supervisor'), /approve or reject/);
+  assert.match(reviewUpdateProblem('For Supervisor', { status: 'Pending' }, 'supervisor'), /approve, reject, or return/);
   assert.equal(reviewUpdateProblem('Approved', { remarks: 'Noted.' }, 'hr_admin'), null);
+});
+
+test('HR or the supervisor can return an undecided request, saying what to fix', () => {
+  const returned = { status: 'Returned', remarks: 'Attach the medical certificate.' };
+  assert.equal(reviewUpdateProblem('Pending', returned, 'hr_admin'), null);
+  assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Returned', supervisorRemarks: 'Dates overlap the audit.' }, 'supervisor'), null);
+  // Remarks say what the employee needs to do.
+  assert.match(reviewUpdateProblem('Pending', { status: 'Returned', remarks: '  ' }, 'hr_admin'), /what the employee needs to fix/);
+  assert.match(reviewUpdateProblem('For Supervisor', { status: 'Returned' }, 'supervisor'), /what the employee needs to fix/);
+  // Only a request still waiting for HR (for HR) or undecided (for the supervisor).
+  assert.match(reviewUpdateProblem('For Supervisor', returned, 'hr_admin'), /already forwarded/);
+  assert.match(reviewUpdateProblem('Approved', returned, 'hr_admin'), /cannot be returned/);
+  assert.match(reviewUpdateProblem('Approved', returned, 'supervisor'), /cannot be returned/);
+  assert.match(reviewUpdateProblem('Returned', returned, 'supervisor'), /cannot be returned/);
+});
+
+test('employees can fix a returned request and submit it again, or save it as a draft', () => {
+  const returnedRequest = { ...draft, status: 'Returned', statusHistory: [...draft.statusHistory, { status: 'Returned', date: '2026-09-30', actor: 'HR Officer' }] };
+  const resubmitted = buildEmployeeDraftUpdate(returnedRequest, { status: 'Pending', purpose: 'Fixed purpose', approver: 'Forged' }, employee, '2026-10-01');
+  assert.equal(resubmitted.status, 'Pending');
+  assert.equal(resubmitted.purpose, 'Fixed purpose');
+  assert.equal(resubmitted.submissionDate, '2026-10-01');
+  assert.equal(resubmitted.approver, undefined);
+  assert.deepEqual(resubmitted.statusHistory.at(-1), { status: 'Pending', date: '2026-10-01', actor: employee.name });
+
+  assert.equal(buildEmployeeDraftUpdate(returnedRequest, { status: 'Draft' }, employee, '2026-10-01').status, 'Draft');
+  // A returned request is withdrawn, not discarded.
+  assert.equal(buildEmployeeDraftUpdate(returnedRequest, { status: 'Cancelled' }, employee).status, 'Draft');
+  assert.equal(buildEmployeeDraftUpdate(returnedRequest, { status: 'Pending' }, { employeeId: 'DILG-OTHER', email: 'other@dilg.gov.ph' }), null);
+  assert.equal(buildEmployeeWithdrawal(returnedRequest, { status: 'Withdrawn' }, employee, '2026-10-01').status, 'Withdrawn');
 });

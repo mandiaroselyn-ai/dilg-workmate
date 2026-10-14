@@ -1180,10 +1180,11 @@ export default function App() {
       });
     }
     // HR follows each request to the end, so it hears about the supervisor's decision too.
-    if (activeRole === 'supervisor' && ['Approved', 'Rejected'].includes(status)) {
+    if (activeRole === 'supervisor' && ['Approved', 'Rejected', 'Returned'].includes(status)) {
+      const outcome = { Approved: 'approved', Rejected: 'disapproved', Returned: 'returned to the employee' }[status];
       pushSystemNotification({
-        title: `${label} ${status === 'Approved' ? 'Approved' : 'Disapproved'} by Supervisor`,
-        message: `${data.request.employeeName || 'An employee'}'s ${label} ${id} was ${status === 'Approved' ? 'approved' : 'disapproved'} by ${user?.name || 'the supervisor'}. Remarks: ${remarks || 'none'}`,
+        title: `${label} ${{ Approved: 'Approved', Rejected: 'Disapproved', Returned: 'Returned' }[status]} by Supervisor`,
+        message: `${data.request.employeeName || 'An employee'}'s ${label} ${id} was ${outcome} by ${user?.name || 'the supervisor'}. Remarks: ${remarks || 'none'}`,
         time: 'Just now',
         type: 'request',
         recipientRole: 'hr_admin'

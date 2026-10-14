@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.5
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import {
   FileText,
@@ -59,6 +59,7 @@ export default function RequestsView({
 
   // Draft tracker ID & Editing state
   const [editingDraftId, setEditingDraftId] = useState(null);
+  const formTopRef = useRef(null);
 
   // File Attachments lists
   const [attachments, setAttachments] = useState([]);
@@ -276,6 +277,13 @@ export default function RequestsView({
     }
   };
 
+  // A request HR or the supervisor returned opens in the form, like a draft, to be fixed and
+  // submitted again.
+  const editReturnedRequest = (request) => {
+    resumeDraft(request);
+    formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   // A submitted request can be withdrawn until it is approved or rejected.
   const canWithdraw = request => WITHDRAWABLE_STATUSES.includes(request.status);
   const isClosedByEmployee = request => request.status === 'Withdrawn' || request.status === 'Cancelled';
@@ -317,6 +325,7 @@ Reason (optional):`, '');
     const hasEmployeeIdentity = request.employeeId || request.employeeEmail || request.employeeName;
     return !hasEmployeeIdentity || matchesAttendanceEmployee(request, user);
   });
+  const editingReturned = myRequests.some(request => request.id === editingDraftId && request.status === 'Returned');
   const leaveHistory = myRequests.filter(request => request.type === 'Leave Request');
   const travelHistory = myRequests.filter(request => request.type === 'Travel Order');
 
@@ -517,7 +526,7 @@ Reason (optional):`, '');
           </div>
 
           {/* Header */}
-          <div className="p-6 bg-gradient-to-r from-[#1d4ed8] to-[#1e40af] text-white space-y-1">
+          <div ref={formTopRef} className="p-6 bg-gradient-to-r from-[#1d4ed8] to-[#1e40af] text-white space-y-1">
             <div className="flex items-center gap-2">
               {activeTab2 === 'Leave' ? (
                 <FileCheck2 className="w-5.5 h-5.5 text-yellow-400" />
@@ -529,7 +538,7 @@ Reason (optional):`, '');
               </h2>
               {editingDraftId && (
                 <span className="bg-amber-400 text-slate-900 font-black text-[9px] uppercase px-1.5 py-0.5 rounded ml-2">
-                  Editing Draft
+                  {editingReturned ? 'Fixing Returned Request' : 'Editing Draft'}
                 </span>
               )}
             </div>
@@ -1046,7 +1055,7 @@ Reason (optional):`, '');
               {/* Status categories: three to a row on phones; on wider screens as many as fit,
                   wrapping onto another row when the card is narrow. They stay inside the card. */}
               <div className="grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 text-[10px] font-bold text-slate-500 sm:flex sm:flex-wrap">
-                {['All', 'Pending', 'Approved', 'Rejected', 'Draft', 'Withdrawn'].map(tab => (
+                {['All', 'Pending', 'Returned', 'Approved', 'Rejected', 'Draft', 'Withdrawn'].map(tab => (
                   <button
                     key={tab}
                     onClick={() => setStatusFilter(tab)}
@@ -1147,6 +1156,17 @@ Reason (optional):`, '');
                       </div>
                     )}
 
+                    {/* Why it was disapproved, or what to fix in a request returned to the employee */}
+                    {['Rejected', 'Returned'].includes(req.status) && (req.supervisorRemarks || req.remarks) && (
+                      <div className={`rounded-lg border px-3 py-2.5 text-left ${req.status === 'Returned' ? 'border-amber-200 bg-amber-50' : 'border-rose-100 bg-rose-50/60'}`}>
+                        <span className={`block text-[9px] font-bold uppercase tracking-widest ${req.status === 'Returned' ? 'text-amber-700' : 'text-rose-600'}`}>
+                          {req.status === 'Returned' ? 'Needs your action' : 'Reason for disapproval'}
+                        </span>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-700">
+                          {req.status === 'Returned' ? req.remarks || req.supervisorRemarks : req.supervisorRemarks || req.remarks}
+                        </p>
+                      </div>
+                    )}
                     {/* Bottom action rows based on Status: Resume Drafts or Generate CSC Form6 */}
                     <div className="flex items-center justify-between border-t border-slate-150 pt-3.5 flex-wrap gap-2.5">
                       
@@ -1183,7 +1203,7 @@ Reason (optional):`, '');
                             ) : canWithdraw(req) ? (
                               <>
                                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
-                                <span>{req.status === 'For Supervisor' ? 'Awaiting supervisor approval' : 'Awaiting Program Manager endorsement'}</span>
+                                <span>{req.status === 'Returned' ? 'Returned to you: fix it and submit again' : req.status === 'For Supervisor' ? 'Awaiting supervisor approval' : 'Awaiting Program Manager endorsement'}</span>
                               </>
                             ) : (
                               <>
@@ -1192,6 +1212,17 @@ Reason (optional):`, '');
                               </>
                             )}
                           </div>
+
+                          {req.status === 'Returned' && (
+                            <button
+                              type="button"
+                              onClick={() => editReturnedRequest(req)}
+                              className="px-3 py-2 bg-indigo-50 border border-indigo-150 hover:bg-indigo-100 text-indigo-700 text-[10px] font-black rounded-lg transition-all flex items-center gap-1"
+                            >
+                              <Edit2 className="w-3 h-3 text-indigo-700" />
+                              <span>Edit & Resubmit</span>
+                            </button>
+                          )}
 
                           {canWithdraw(req) && (
                             <button

@@ -49,25 +49,37 @@ export const pickReviewUpdate = body => REVIEW_FIELDS.reduce((update, field) => 
 }, {});
 
 const AWAITING_HR_STATUSES = ['Pending', 'Pending Review'];
-const SUPERVISOR_DECISIONS = ['Approved', 'Rejected'];
+const SUPERVISOR_DECISIONS = ['Approved', 'Rejected', 'Returned'];
 
 // Why a reviewer may not apply `update` to a request whose status is `currentStatus`, or
 // null when they may. A draft the employee has not submitted and a request the employee
 // withdrew are theirs alone. HR/Admin validates and forwards: it may only move a request
-// that is waiting for HR to the supervisor. The supervisor approves or rejects.
+// that is waiting for HR to the supervisor, or return it to the employee. The supervisor
+// approves, rejects, or returns it. A request is returned with remarks saying what the
+// employee needs to do.
 export const reviewUpdateProblem = (currentStatus, update, role) => {
   if (currentStatus === 'Draft') return 'This request is still a draft. The employee has not submitted it.';
   if (currentStatus === 'Withdrawn') return 'The employee withdrew this request.';
   const nextStatus = update?.status;
   if (nextStatus === undefined) return null;
+  if (nextStatus === 'Returned' && !String(update.supervisorRemarks || update.remarks || '').trim()) {
+    return 'Write in the remarks what the employee needs to fix before returning the request.';
+  }
   if (role === 'hr_admin') {
-    if (nextStatus !== 'For Supervisor') return 'HR/Admin can only forward requests to the supervisor. The supervisor approves or rejects them.';
+    if (!['For Supervisor', 'Returned'].includes(nextStatus)) return 'HR/Admin can only forward requests to the supervisor or return them to the employee. The supervisor approves or rejects them.';
     if (currentStatus === 'For Supervisor') return 'This request was already forwarded to the supervisor.';
-    if (!AWAITING_HR_STATUSES.includes(currentStatus)) return `This request is already ${currentStatus || 'decided'}, so it cannot be forwarded.`;
+    if (!AWAITING_HR_STATUSES.includes(currentStatus)) {
+      return `This request is already ${currentStatus || 'decided'}, so it cannot be ${nextStatus === 'Returned' ? 'returned' : 'forwarded'}.`;
+    }
     return null;
   }
   if (role === 'supervisor' && !SUPERVISOR_DECISIONS.includes(nextStatus)) {
-    return 'The supervisor can only approve or reject requests.';
+    return 'The supervisor can only approve, reject, or return requests.';
+  }
+  // Only an undecided request goes back to the employee (an approved one may already have
+  // used leave credits).
+  if (nextStatus === 'Returned' && ['Approved', 'Rejected', 'Returned'].includes(currentStatus)) {
+    return `This request is already ${currentStatus}, so it cannot be returned.`;
   }
   return null;
 };
@@ -101,11 +113,14 @@ export const isRequestOwner = (request, user) => Boolean(
 );
 
 // Builds the update for an employee editing, submitting (Pending), or discarding
-// (Cancelled) one of their own drafts. Returns null when the request is not a draft
-// that belongs to the employee.
+// (Cancelled) one of their own drafts, or fixing and submitting again (or saving as a
+// draft) a request HR or the supervisor returned to them. Returns null when the request is
+// not such a request of the employee's.
 export const buildEmployeeDraftUpdate = (existing, body, user, today = getManilaDateString()) => {
-  if (!isRequestOwner(existing, user) || existing.status !== 'Draft') return null;
-  const status = DRAFT_STATUSES.includes(body?.status) ? body.status : 'Draft';
+  if (!isRequestOwner(existing, user) || !['Draft', 'Returned'].includes(existing.status)) return null;
+  // A returned request is withdrawn rather than discarded.
+  const allowed = existing.status === 'Returned' ? ['Draft', 'Pending'] : DRAFT_STATUSES;
+  const status = allowed.includes(body?.status) ? body.status : 'Draft';
   const update = { status, remarks: DRAFT_REMARKS[status] };
   if (status !== 'Cancelled') {
     for (const field of DRAFT_CONTENT_FIELDS) {
@@ -113,7 +128,7 @@ export const buildEmployeeDraftUpdate = (existing, body, user, today = getManila
     }
   }
   if (status === 'Pending') update.submissionDate = today;
-  if (status !== 'Draft') {
+  if (status !== existing.status) {
     update.statusHistory = [
       ...(Array.isArray(existing.statusHistory) ? existing.statusHistory : []),
       { status, date: today, actor: user.name || 'Employee' }

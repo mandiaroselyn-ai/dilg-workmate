@@ -53,6 +53,12 @@ test('a request decision tells the employee what, when, who, and why', () => {
   assert.equal(requestDecisionNotice({ ...leave, status: 'Pending' }), null);
 });
 
+test('a returned request tells the employee it needs their action, and what to fix', () => {
+  const returned = requestDecisionNotice({ ...leave, status: 'Returned' }, { reviewer: 'HR Officer', remarks: 'Attach the medical certificate.' });
+  assert.equal(returned.title, 'Leave Request Needs Your Action');
+  assert.equal(returned.message, 'Your Leave Request LV-1 (Vacation Leave, Oct 5 to Oct 7, 2026) was returned to you by HR Officer. Fix it in Requests and submit it again. Remarks: Attach the medical certificate.');
+});
+
 test('the supervisor\'s decision reaches the employee from the server, at their current number', async t => {
   const sent = withSms(t);
   t.mock.method(User, 'findByEmail', async email => (email === supervisor.email ? supervisor : null));

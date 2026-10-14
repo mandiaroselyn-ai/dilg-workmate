@@ -52,7 +52,8 @@ export const requestDates = ({ startDate, endDate } = {}) => {
 const DECISIONS = {
   'For Supervisor': { title: 'Sent to Supervisor', wording: () => 'was checked by HR and sent to your supervisor for approval' },
   Approved: { title: 'Approved', wording: reviewer => `was approved by ${reviewer}` },
-  Rejected: { title: 'Disapproved', wording: reviewer => `was disapproved by ${reviewer}` }
+  Rejected: { title: 'Disapproved', wording: reviewer => `was disapproved by ${reviewer}` },
+  Returned: { title: 'Needs Your Action', wording: reviewer => `was returned to you by ${reviewer}. Fix it in Requests and submit it again` }
 };
 
 // The employee's notice when HR or the supervisor moves their request to `request.status`,

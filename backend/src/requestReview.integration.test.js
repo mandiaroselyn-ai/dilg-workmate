@@ -67,6 +67,41 @@ test('HR cannot forward decided, withdrawn, or draft requests, or approve one', 
   assert.equal(session.bulkSaves.mock.callCount(), 0);
 });
 
+test('HR returns a request to the employee only with remarks, and the employee is told what to fix', async t => {
+  const session = signInAsHr(t);
+  const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  const noRemarks = await session.patch('REQ-PENDING', { status: 'Returned' });
+  assert.equal(noRemarks.status, 409);
+  assert.equal(session.saves.mock.callCount(), 0);
+
+  const response = await session.patch('REQ-PENDING', { status: 'Returned', remarks: 'Attach the medical certificate.' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(session.saves.mock.calls[0].arguments[1].status, 'Returned');
+  const notice = notices.mock.calls.at(-1).arguments[0];
+  assert.equal(notice.employeeId, 'E1');
+  assert.equal(notice.title, 'Leave Request Needs Your Action');
+  assert.match(notice.message, /was returned to you by HR\. Fix it in Requests and submit it again\. Remarks: Attach the medical certificate\./);
+});
+
+test('the employee fixes a returned request and submits it again, and HR is told', async t => {
+  const employee = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
+  const returned = { id: 'REQ-RETURNED', status: 'Returned', type: 'Leave Request', employeeId: 'E1', employeeEmail: employee.email, statusHistory: [] };
+  t.mock.method(User, 'findByEmail', async () => employee);
+  t.mock.method(Leave, 'findByCustomId', async () => returned);
+  const saves = t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...returned, ...update }));
+  const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  const response = await request(app)
+    .patch('/api/requests/REQ-RETURNED')
+    .set('Authorization', `Bearer ${createAuthToken(employee)}`)
+    .send({ status: 'Pending', purpose: 'Leave Type: Sick Leave. With medical certificate.' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const update = saves.mock.calls[0].arguments[1];
+  assert.equal(update.status, 'Pending');
+  assert.equal(update.purpose, 'Leave Type: Sick Leave. With medical certificate.');
+  assert.equal(update.statusHistory.at(-1).status, 'Pending');
+  assert.ok(notices.mock.calls.some(call => call.arguments[0].recipientRole === 'hr_admin'));
+});
+
 test('HR does not receive employee drafts', async t => {
   const session = signInAsHr(t);
   const response = await session.get('/api/requests');
