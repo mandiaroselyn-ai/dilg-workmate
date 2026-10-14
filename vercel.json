@@ -83,6 +83,10 @@
       "destination": "/api/notifications"
     },
     {
+      "source": "/api/notifications/:id/unread",
+      "destination": "/api/notifications"
+    },
+    {
       "source": "/api/biometric/native/:path*",
       "destination": "/api/biometric"
     }
