@@ -64,6 +64,8 @@ export default function SupervisorView({
   const [activeMainTab, setActiveMainTab] = useState('requests');
 
   const [statusFilter, setStatusFilter] = useState('For Supervisor');
+  // 'All', 'Leave Request', or 'Travel Order'.
+  const [typeFilter, setTypeFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm6Request, setShowForm6Request] = useState(null);
 
@@ -78,6 +80,7 @@ export default function SupervisorView({
     if (!request) return;
     setActiveMainTab('requests');
     setStatusFilter(request.status === 'For Supervisor' ? 'For Supervisor' : 'All');
+    setTypeFilter('All');
     setSelectedRequest(request);
     setRemarks(['Pending', 'For Supervisor'].includes(request.status) ? '' : request.supervisorRemarks || '');
   }, [focus]);
@@ -279,8 +282,12 @@ export default function SupervisorView({
 
   // Stats summaries
   const pendingRequests = requests.filter(r => r.status === 'For Supervisor');
+  // What is waiting for the supervisor, leave and travel apart.
+  const pendingLeave = pendingRequests.filter(r => r.type === 'Leave Request');
+  const pendingTravel = pendingRequests.filter(r => r.type === 'Travel Order');
   const approvedRequests = requests.filter(r => r.status === 'Approved');
   const rejectedRequests = requests.filter(r => r.status === 'Rejected');
+  const isShownType = req => typeFilter === 'All' || req.type === typeFilter;
 
   // Search filter
   const filteredRequests = requests.filter(req => {
@@ -289,7 +296,7 @@ export default function SupervisorView({
     const matchesSearch = searchString.includes(searchQuery.toLowerCase());
     if (req.status === 'Draft') return false;
     const matchesStatus = statusFilter === 'All' ? true : req.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && isShownType(req);
   });
 
   return (
@@ -341,6 +348,7 @@ export default function SupervisorView({
             <div className="space-y-1.5">
               <span className="text-[10px] text-amber-700 font-extrabold uppercase tracking-wider block">Pending Evaluative Reviews</span>
               <span className="text-2xl font-black text-amber-800 tracking-tight block">{pendingRequests.length}</span>
+              <span className="text-[11px] text-amber-800 font-extrabold block">Leave: {pendingLeave.length} · Travel: {pendingTravel.length}</span>
               <span className="text-[10px] text-amber-600/80 font-bold block leading-relaxed">Awaiting Digital Signature & Endorsement</span>
             </div>
             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-amber-200 shadow-sm shrink-0">
@@ -417,7 +425,7 @@ export default function SupervisorView({
 
             <div className="flex bg-slate-100 border border-slate-200 rounded-lg p-0.5 text-[10px] font-bold text-slate-500 shrink-0 select-none self-start sm:self-auto">
               {['For Supervisor', 'Pending', 'Approved', 'Rejected', 'All'].map(tab => {
-                const count = tab === 'All' ? requests.length : requests.filter(r => r.status === tab).length;
+                const count = requests.filter(r => isShownType(r) && (tab === 'All' || r.status === tab)).length;
                 return (
                   <button
                     key={tab}
@@ -430,6 +438,25 @@ export default function SupervisorView({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Leave applications and travel orders apart */}
+          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+            <span className="uppercase tracking-wider text-slate-400">Show:</span>
+            <div className="flex bg-slate-100 border border-slate-200 rounded-lg p-0.5 select-none">
+              {[['All', 'All'], ['Leave Request', 'Leave'], ['Travel Order', 'Travel']].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setTypeFilter(value)}
+                  className={`px-3 py-1 rounded cursor-pointer transition-all border-0 font-semibold ${
+                    typeFilter === value ? 'bg-blue-800 text-white font-bold shadow-xs' : 'hover:text-slate-700 bg-transparent'
+                  }`}
+                >
+                  {label} ({value === 'All' ? pendingRequests.length : value === 'Leave Request' ? pendingLeave.length : pendingTravel.length} pending)
+                </button>
+              ))}
             </div>
           </div>
 
