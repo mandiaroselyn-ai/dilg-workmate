@@ -49,7 +49,9 @@ export default function ChangePasswordCard({ hasPassword = true }) {
     }
   };
 
-  const type = showPasswords ? 'text' : 'password';
+  // Shown as text, a field would let the phone keyboard capitalize or autocorrect what is
+  // typed, so the password saved would not be the one the person meant.
+  const passwordInputProps = { type: showPasswords ? 'text' : 'password', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false };
 
   return (
     <form onSubmit={submit} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
@@ -69,14 +71,14 @@ export default function ChangePasswordCard({ hasPassword = true }) {
       </p>
       {hasPassword && (
         <label className={labelClass}>Current password
-          <input type={type} autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} required className={inputClass} />
+          <input {...passwordInputProps} autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} required className={inputClass} />
         </label>
       )}
       <label className={labelClass}>New password (at least {MIN_PASSWORD_LENGTH} characters)
-        <input type={type} autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={256} className={inputClass} />
+        <input {...passwordInputProps} autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} required minLength={MIN_PASSWORD_LENGTH} maxLength={256} className={inputClass} />
       </label>
       <label className={labelClass}>Confirm new password
-        <input type={type} autoComplete="new-password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} required className={inputClass} />
+        <input {...passwordInputProps} autoComplete="new-password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} required className={inputClass} />
       </label>
       {message && (
         <p role={message.isError ? 'alert' : 'status'} className={`rounded-xl p-3 text-xs font-bold ${message.isError ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
