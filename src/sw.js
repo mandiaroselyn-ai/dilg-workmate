@@ -1,6 +1,13 @@
+import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute, cleanupOutdatedCaches, matchPrecache } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst } from 'workbox-strategies';
+
+// A new version takes over as soon as it is saved, and the open app reloads into it (see
+// main.jsx). Without this it waited behind the old version, which kept running in the phone
+// app, so fixes such as opening without internet did not reach it.
+self.skipWaiting();
+clientsClaim();
 
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);

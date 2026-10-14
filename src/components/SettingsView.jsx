@@ -201,6 +201,28 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Whether this phone can open WorkMate without internet: the service worker that keeps a
+  // copy of the app is running and the copy is saved. The details show why not, if not.
+  const [offlineOpen, setOfflineOpen] = useState(null); // { ready, detail }
+  useEffect(() => {
+    const check = async () => {
+      if (!('serviceWorker' in navigator) || typeof caches === 'undefined') {
+        return { ready: false, detail: 'service worker not supported' };
+      }
+      const registration = await navigator.serviceWorker.getRegistration();
+      const saved = Boolean(await caches.match('/index.html', { ignoreSearch: true }));
+      const detail = [
+        `service worker ${registration?.active ? registration.active.state : 'not installed'}`,
+        registration?.waiting ? 'update waiting' : '',
+        registration?.installing ? 'update downloading' : '',
+        navigator.serviceWorker.controller ? 'in control' : 'not in control',
+        saved ? 'copy saved' : 'no saved copy'
+      ].filter(Boolean).join(' · ');
+      return { ready: Boolean(registration?.active) && saved, detail };
+    };
+    check().then(setOfflineOpen, error => setOfflineOpen({ ready: false, detail: error?.message || 'check failed' }));
+  }, []);
+
   const syncNow = async () => {
     setSyncing(true);
     setSyncMessage(null);
@@ -277,6 +299,12 @@ export default function SettingsView({ user = {}, onViewChange, onSyncOfflineAtt
                   : `${queued} record${queued === 1 ? '' : 's'} saved on this phone, waiting to sync.`}
           </p>
           {!online && <p className="text-[11px] font-semibold text-amber-700">You are offline. Records sync when you are back online.</p>}
+          <p className={`text-xs font-bold ${offlineOpen?.ready ? 'text-emerald-700' : 'text-amber-700'}`}>
+            {offlineOpen === null ? 'Checking if this phone can open WorkMate without internet...'
+              : offlineOpen.ready ? 'This phone can open WorkMate without internet.'
+                : 'This phone cannot open WorkMate without internet yet. Keep WorkMate open with internet for a minute, then close and open it again.'}
+          </p>
+          {offlineOpen && <p className="text-[10px] font-semibold text-slate-400">{offlineOpen.detail}</p>}
           {typeof queued === 'number' && queued > 0 && (
             <Button onClick={syncNow} disabled={syncing || !online}><RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />{syncing ? 'Syncing...' : 'Sync now'}</Button>
           )}
