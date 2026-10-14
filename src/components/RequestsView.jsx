@@ -30,6 +30,16 @@ import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
 import { Plane, MapPin } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { travelDayCount, travelDurationLabel } from '../utils/travelDuration';
+import AttachmentList from './AttachmentList';
+
+// Attachments travel inside the request, which the server accepts up to about 4 MB, so one
+// file and all of them together are kept under these sizes.
+const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = 3 * 1024 * 1024;
+const megabytes = bytes => (bytes / 1024 / 1024).toFixed(1);
+// A data URL's file size, from its base64 length.
+const attachmentBytes = file => Math.round((String(file?.dataUrl || '').split(',')[1] || '').length * 0.75);
 
 // Submitted requests that are not decided yet can be withdrawn (matches the server).
 const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
@@ -130,6 +140,15 @@ export default function RequestsView({
 
   const processDocument = async (file, section) => {
     setUploadError('');
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setUploadError(`${file.name} is ${megabytes(file.size)} MB. Choose a file of ${megabytes(MAX_ATTACHMENT_BYTES)} MB or less. For a photo, take it again at a lower resolution.`);
+      return;
+    }
+    const attachedBytes = attachments.reduce((total, attached) => total + attachmentBytes(attached), 0);
+    if (attachedBytes + file.size > MAX_TOTAL_ATTACHMENT_BYTES) {
+      setUploadError(`Attachments can total up to ${megabytes(MAX_TOTAL_ATTACHMENT_BYTES)} MB. Remove a file or choose a smaller one.`);
+      return;
+    }
     setUploadTarget(section);
     try {
       const dataUrl = await new Promise((resolve, reject) => {
@@ -164,14 +183,16 @@ export default function RequestsView({
       setFormErrorMessage('Please provide the purpose or reason for your leave request.');
       return;
     }
-    if (!startDate || (activeTab2 === 'Leave' && !endDate)) {
+    if (!startDate || !endDate) {
       setFormErrorMessage(activeTab2 === 'Leave'
         ? 'Please select the start and end dates for your leave request.'
-        : 'Please select the activity date for the Provincial Order.');
+        : 'Please select the activity date and the return date for the Provincial Order.');
       return;
     }
-    if (activeTab2 === 'Leave' && new Date(endDate) < new Date(startDate)) {
-      setFormErrorMessage('The end date cannot be earlier than the start date.');
+    if (new Date(endDate) < new Date(startDate)) {
+      setFormErrorMessage(activeTab2 === 'Leave'
+        ? 'The end date cannot be earlier than the start date.'
+        : 'The return date cannot be earlier than the activity date.');
       return;
     }
     if (activeTab2 === 'Travel') {
@@ -667,7 +688,7 @@ Reason (optional):`, '');
               )}
 
               {/* Form date fields */}
-              <div className={`${activeTab2 === 'Leave' ? 'grid grid-cols-2' : 'grid grid-cols-1'} gap-4 text-left animate-none`}>
+              <div className="grid grid-cols-2 gap-4 text-left animate-none">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
                     {activeTab2 === 'Leave' ? 'Start Date' : 'Activity Date'}
@@ -679,28 +700,40 @@ Reason (optional):`, '');
                       value={startDate}
                       onChange={(e) => {
                         setStartDate(e.target.value);
-                        if (activeTab2 === 'Travel') setEndDate(e.target.value);
+                        // A one-day travel returns the same day, until a later return date is chosen.
+                        if (activeTab2 === 'Travel' && (!endDate || endDate < e.target.value)) setEndDate(e.target.value);
                       }}
                       className="w-full text-xs font-bold rounded-lg border border-slate-200 pl-9 p-3 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] font-semibold"
                     />
                   </div>
                 </div>
 
-                {activeTab2 === 'Leave' && <div className="space-y-1.5">
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                    End Date
+                    {activeTab2 === 'Leave' ? 'End Date' : 'Return Date'}
                   </label>
                   <div className="relative">
                     <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="date"
                       value={endDate}
+                      min={activeTab2 === 'Travel' ? startDate || undefined : undefined}
                       onChange={(e) => setEndDate(e.target.value)}
                       className="w-full text-xs font-bold rounded-lg border border-slate-200 pl-9 p-3 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] font-semibold"
                     />
                   </div>
-                </div>}
+                </div>
               </div>
+
+              {/* A travel order's duration, from its activity date through its return date */}
+              {activeTab2 === 'Travel' && travelDayCount(startDate, endDate) > 0 && (
+                <div className="bg-amber-50 text-amber-800 border border-amber-100 p-3 rounded-lg text-xs font-extrabold flex items-center justify-between animate-none">
+                  <span>Travel duration:</span>
+                  <span className="bg-amber-600 text-white font-black px-2 py-0.5 rounded text-[10px] animate-none font-semibold">
+                    {travelDurationLabel({ startDate, endDate })}
+                  </span>
+                </div>
+              )}
 
               {/* Dynamic Auto-calculated Days block */}
               {activeTab2 === 'Leave' && workingDays > 0 && (
@@ -1102,7 +1135,7 @@ Reason (optional):`, '');
                         <div className="flex items-center gap-2 text-slate-400 font-bold text-[9px] flex-wrap text-left">
                           <span>Filing Date: {req.submissionDate}</span>
                           <span className="w-1 h-3 border-l border-slate-205 hidden sm:inline-block"></span>
-                          <span>Span: {req.startDate} to {req.endDate}</span>
+                          <span>Span: {req.startDate} to {req.endDate}{req.type === 'Travel Order' && travelDurationLabel(req) ? ` (${travelDurationLabel(req)})` : ''}</span>
                         </div>
                       </div>
 
@@ -1128,17 +1161,12 @@ Reason (optional):`, '');
                       {req.purpose}
                     </div>
 
-                    {/* Show files listed if there are attachments inside */}
-                    {req.attachments && req.attachments.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 items-center select-none pt-1">
-                        <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        {req.attachments.map((file) => (
-                          <span key={file.id} className="bg-slate-100 text-slate-600 border border-slate-205 rounded px-2 py-0.5 text-[8.5px] font-bold">
-                            {file.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {/* Attached files, each opened by tapping it */}
+                    <AttachmentList
+                      attachments={req.attachments}
+                      className="flex flex-wrap gap-1.5 items-center pt-1"
+                      itemClassName="max-w-full bg-slate-100 text-slate-700 border border-slate-205 rounded px-2 py-0.5 text-[9px] font-bold"
+                    />
 
                     {/* Supervisor approval signature block */}
                     {req.status === 'Approved' && req.supervisorName && (

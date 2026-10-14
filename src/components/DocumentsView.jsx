@@ -22,6 +22,7 @@ import { dtrFilename, fillDTR } from '../utils/dtrForm';
 import { dataUrlToFile, downloadBytes } from '../utils/documentFiles';
 import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
+import { travelDurationLabel } from '../utils/travelDuration';
 import DocumentViewer from './DocumentViewer';
 
 // Only documents the system makes from the employee's own requests and attendance.
@@ -232,9 +233,15 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
                   icon={Plane}
                   title={request.travelActivity || request.purpose || 'Travel order'}
                   status={request.status}
-                  meta={[dateRange(request), request.travelVenue, `Filed ${formatDate(request.submissionDate)}`].filter(Boolean).join(' · ')}
+                  meta={[dateRange(request), travelDurationLabel(request), request.travelVenue, `Filed ${formatDate(request.submissionDate)}`].filter(Boolean).join(' · ')}
                 >
                   <ActionButton icon={FileText} primary onClick={() => setFormPreview(request)}>Travel Order</ActionButton>
+                  {(request.attachments || []).filter(file => file?.dataUrl).map(file => (
+                    <ActionButton key={file.id || file.name} icon={Paperclip} onClick={() => view(file.name, () => {
+                      const { type, bytes } = dataUrlToFile(file.dataUrl);
+                      return { fileName: file.name, fileType: type, bytes };
+                    })}>{file.type ? `${file.type}: ` : ''}{file.name}</ActionButton>
+                  ))}
                 </Row>
               ))}
             </ul>

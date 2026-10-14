@@ -28,6 +28,8 @@ import {
 import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { travelDurationLabel } from '../utils/travelDuration';
+import AttachmentList from './AttachmentList';
 
 export default function SupervisorView({
   user,
@@ -463,7 +465,7 @@ export default function SupervisorView({
                         )}
                       </div>
                       <p className="text-[10px] text-slate-400 font-bold text-left">
-                        Filing: {req.submissionDate} • Inclusive Dates: {req.startDate} to {req.endDate}
+                        Filing: {req.submissionDate} • Inclusive Dates: {req.startDate} to {req.endDate}{req.type === 'Travel Order' && travelDurationLabel(req) ? ` (${travelDurationLabel(req)})` : ''}
                       </p>
                       <p className="text-[11px] font-black text-slate-700">
                         {requesterName(req)} <span className="font-semibold text-slate-400">· {requesterId(req)}</span>
@@ -492,13 +494,13 @@ export default function SupervisorView({
                   </div>
 
                   {req.attachments && req.attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 items-center select-none text-[9px] text-[#1e40af] font-semibold text-left">
-                      <span className="font-bold text-slate-400 uppercase text-[8px]">Attachments:</span>
-                      {req.attachments.map((file) => (
-                        <span key={file.id} className="bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 font-bold">
-                          {file.name}
-                        </span>
-                      ))}
+                    <div className="flex flex-wrap gap-1.5 items-center text-[9px] text-[#1e40af] font-semibold text-left">
+                      <span className="font-bold text-slate-400 uppercase text-[8px]">Attachments (tap to open):</span>
+                      <AttachmentList
+                        attachments={req.attachments}
+                        className="flex flex-wrap gap-1.5"
+                        itemClassName="max-w-full bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 font-bold"
+                      />
                     </div>
                   )}
 
