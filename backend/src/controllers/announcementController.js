@@ -186,6 +186,15 @@ export const readNotification = async (req, res) => {
   }
 };
 
+export const unreadNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    res.status(200).json({ success: true, notifications: await Announcement.markNotificationUnreadFor(id, req.user) });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 // Newest first: the whole SMS log for HR's SMS list and SMS Log page, or an employee's
 // own texts for their SMS screen.
 export const getSmsAlerts = async (req, res) => {

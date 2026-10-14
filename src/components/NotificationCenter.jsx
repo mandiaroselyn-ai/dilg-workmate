@@ -30,6 +30,7 @@ export default function NotificationCenter({
   notifications = [],
   context = {},
   onMarkRead,
+  onMarkUnread,
   onMarkAllRead,
   onClearAll,
   onAction,
@@ -134,6 +135,15 @@ export default function NotificationCenter({
                         <span className="ml-auto shrink-0 whitespace-nowrap pt-0.5 text-xs text-slate-500">{notificationWhen(notification, now)}</span>
                         {unread && (
                           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600"><span className="sr-only">Unread</span></span>
+                        )}
+                        {!unread && onMarkUnread && (
+                          <button
+                            type="button"
+                            onClick={() => onMarkUnread(notification.id)}
+                            className="shrink-0 whitespace-nowrap pt-0.5 text-xs font-semibold text-blue-700 hover:underline"
+                          >
+                            Mark unread
+                          </button>
                         )}
                       </div>
                       <p className={`mt-1 break-words text-[13px] leading-snug text-slate-600 ${isPanel ? 'line-clamp-3' : ''}`}>{notification.message}</p>

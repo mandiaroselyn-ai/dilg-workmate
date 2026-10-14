@@ -1280,9 +1280,9 @@ export default function App() {
       });
   };
 
-  // Notifications togglers
-  const handleMarkNotificationRead = (id) => {
-    fetch(`/api/notifications/${id}/read`, {
+  // Notifications togglers: marks one notification read, or unread with `read` false.
+  const handleMarkNotificationRead = (id, read = true) => {
+    fetch(`/api/notifications/${id}/${read ? 'read' : 'unread'}`, {
       method: 'POST'
     })
       .then(res => res.json())
@@ -1573,6 +1573,7 @@ export default function App() {
           attendanceHistory={attendanceHistory}
           smsConfigured={smsConfigured}
           onMarkNotificationRead={handleMarkNotificationRead}
+          onMarkNotificationUnread={id => handleMarkNotificationRead(id, false)}
           onClearNotifications={handleClearNotifications}
           onDismissNotifications={handleDismissNotifications}
           onNotificationAction={handleNotificationAction}
@@ -1638,6 +1639,7 @@ export default function App() {
                 notifications={headerNotifications}
                 context={{ role: activeRole, employees, requests }}
                 onMarkRead={handleMarkNotificationRead}
+                onMarkUnread={id => handleMarkNotificationRead(id, false)}
                 onMarkAllRead={handleClearNotifications}
                 onClearAll={handleDismissNotifications}
                 onAction={handleNotificationAction}

@@ -40,6 +40,7 @@ export default function Header({
   attendanceHistory = [],
   smsConfigured,
   onMarkNotificationRead,
+  onMarkNotificationUnread,
   onClearNotifications,
   onDismissNotifications,
   onNotificationAction,
@@ -319,6 +320,7 @@ export default function Header({
                 notifications={notifications}
                 context={notificationContext}
                 onMarkRead={onMarkNotificationRead}
+                onMarkUnread={onMarkNotificationUnread}
                 onMarkAllRead={onClearNotifications}
                 onClearAll={onDismissNotifications}
                 onAction={(notification, target) => {
@@ -404,6 +406,18 @@ export default function Header({
                               {view ? 'Click to open' : 'Click to mark read'}
                             </div>
                           )}
+                          {notif.read && onMarkNotificationUnread && (
+                            <button
+                              type="button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                onMarkNotificationUnread(notif.id);
+                              }}
+                              className="mt-1 text-[9px] font-semibold text-[#1e40af] hover:underline"
+                            >
+                              Mark unread
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -451,6 +465,7 @@ export default function Header({
           notifications={notifications}
           onClose={() => setMobilePanel(null)}
           onMarkNotificationRead={onMarkNotificationRead}
+          onMarkNotificationUnread={onMarkNotificationUnread}
           onMarkAllRead={onClearNotifications}
           onOpenView={openEmployeeView}
         />

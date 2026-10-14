@@ -480,6 +480,15 @@ export const clockInOut = async (req, res) => {
           console.error('Unable to notify HR about an offline Time In for review:', error);
         }
       }
+      // The employee hears that the Time In saved on the phone reached the server.
+      if (offline) {
+        await noticeEmployee(user, {
+          title: 'Offline Time In Synced',
+          message: `Your Time In saved offline on ${newLog.date} at ${newLog.timeIn} was synced.${needsReview ? ' HR will review it before it counts in your DTR.' : ''}`,
+          type: 'attendance',
+          view: 'attendance'
+        });
+      }
       const sms = await sendAttendanceConfirmation(user, !offline
         ? `[DILG WorkMate] Clocked-In successfully on ${newLog.date} at ${newLog.timeIn} at ${newLog.location}. Have an outstanding day of service!`
         : `[DILG WorkMate] Your Time In saved offline on ${newLog.date} at ${newLog.timeIn} at ${newLog.location} was received.${needsReview ? ' HR will review it before it counts in your DTR.' : ''}`);
@@ -531,6 +540,15 @@ export const clockInOut = async (req, res) => {
           } catch (error) {
             console.error('Unable to notify HR about an offline Time Out for review:', error);
           }
+        }
+        // The employee hears that the Time Out saved on the phone reached the server.
+        if (offline && employee) {
+          await noticeEmployee(employee, {
+            title: 'Offline Time Out Synced',
+            message: `Your Time Out saved offline on ${closedLog.date} at ${closedLog.timeOut} was synced.${needsReview ? ' HR will review it before it counts in your DTR.' : ''}`,
+            type: 'attendance',
+            view: 'attendance'
+          });
         }
         const sms = await sendAttendanceConfirmation(employee,
           `[DILG WorkMate] Clocked-Out recorded on ${getManilaDateString()} at ${closedLog.timeOut}. ${needsReview ? 'HR will review this Time Out before it counts in your DTR.' : 'Operations sync complete for the day.'}`);

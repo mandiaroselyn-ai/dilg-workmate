@@ -14,6 +14,7 @@ import {
   clearNotifications,
   dismissNotifications,
   readNotification,
+  unreadNotification,
   getSmsAlerts,
   createSmsAlert,
   createEmployeeReply,
@@ -38,6 +39,7 @@ router.post('/notifications', createNotification);
 router.post('/notifications/clear', clearNotifications);
 router.post('/notifications/dismiss', dismissNotifications);
 router.post('/notifications/:id/read', readNotification);
+router.post('/notifications/:id/unread', unreadNotification);
 router.get('/sms', authorizeRoles('hr_admin', 'employee'), getSmsAlerts);
 router.post('/sms', authorizeRoles('supervisor', 'hr_admin'), createSmsAlert);
 router.post('/sms/reply', authorizeRoles('employee'), createEmployeeReply);

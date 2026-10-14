@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Announcement } from '../models/announcementModel.js';
-import { createEvent } from './announcementController.js';
+import { createEvent, unreadNotification } from './announcementController.js';
 
 const call = async (handler, body) => {
   let statusCode = 200;
@@ -51,4 +51,17 @@ test('an invalid event is rejected without notifying anyone', async t => {
   assert.equal(statusCode, 400);
   assert.equal(save.mock.callCount(), 0);
   assert.equal(notify.mock.callCount(), 0);
+});
+
+test('a read notification can be marked unread again, for that person', async t => {
+  const unread = t.mock.method(Announcement, 'markNotificationUnreadFor', async id => [{ id, read: false }]);
+  let json;
+  const res = { status() { return this; }, json(value) { json = value; return this; } };
+  const user = { employeeId: 'EMP-1', email: 'juan@dilg.gov.ph', accessLevel: 'employee' };
+
+  await unreadNotification({ user, params: { id: 'notif-1' } }, res);
+
+  assert.deepEqual(unread.mock.calls[0].arguments, ['notif-1', user]);
+  assert.equal(json.success, true);
+  assert.deepEqual(json.notifications, [{ id: 'notif-1', read: false }]);
 });

@@ -55,7 +55,7 @@ function getDateGroup(createdAt) {
   return 'Older';
 }
 
-export default function MobileNotificationsPanel({ notifications = [], onClose, onMarkNotificationRead, onMarkAllRead, onOpenView }) {
+export default function MobileNotificationsPanel({ notifications = [], onClose, onMarkNotificationRead, onMarkNotificationUnread, onMarkAllRead, onOpenView }) {
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
 
@@ -174,6 +174,18 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
           </div>
           <div className="px-4 py-5 bg-white mt-2 mx-0">
             <p className="text-sm text-slate-800 leading-7 whitespace-pre-line">{selectedNotification.message}</p>
+            {onMarkNotificationUnread && (
+              <button
+                type="button"
+                onClick={() => {
+                  onMarkNotificationUnread(selectedNotification.id);
+                  setSelectedNotification(null);
+                }}
+                className="mt-5 mr-2 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 active:bg-slate-100"
+              >
+                Mark as unread
+              </button>
+            )}
             {selectedView && VIEW_LABELS[selectedView] && onOpenView && (
               <button
                 type="button"
@@ -228,6 +240,18 @@ export default function MobileNotificationsPanel({ notifications = [], onClose, 
                               <time className="text-[10px] text-slate-400 whitespace-nowrap">{notificationWhen(notif)}</time>
                               {!notif.read && (
                                 <span className="w-2 h-2 rounded-full bg-[#1e40af]" />
+                              )}
+                              {notif.read && onMarkNotificationUnread && (
+                                <button
+                                  type="button"
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    onMarkNotificationUnread(notif.id);
+                                  }}
+                                  className="text-[10px] font-semibold text-[#1e40af] whitespace-nowrap"
+                                >
+                                  Mark unread
+                                </button>
                               )}
                             </div>
                           </div>

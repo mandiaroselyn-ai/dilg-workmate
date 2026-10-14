@@ -127,6 +127,10 @@ test('an offline Time In is saved at the time the phone recorded it, and a faile
   assert.match(saved.offlineTimeIn.reviewReasons.join(' '), /could not be compared/);
   // HR is told it needs review.
   assert.equal(Announcement.createNotification.mock.calls[0].arguments[0].recipientRole, 'hr_admin');
+  // The employee is told it was synced, and that HR reviews it.
+  const synced = Announcement.createNotification.mock.calls.map(call => call.arguments[0]).find(notice => notice.title === 'Offline Time In Synced');
+  assert.equal(synced.employeeId, employee.employeeId);
+  assert.equal(synced.message, 'Your Time In saved offline on 2026-10-05 at 09:30 AM was synced. HR will review it before it counts in your DTR.');
 });
 
 test('an online Time In with the same failed check is refused so the employee can retry', async t => {
@@ -196,6 +200,10 @@ test('a Time Out signed on the phone without internet keeps its own time and its
   // The fingerprint and the phone's clock passed; only the face cannot be compared in these tests.
   assert.equal(offlineTimeOut.reviewReasons.length, 1);
   assert.match(offlineTimeOut.reviewReasons[0], /Time Out selfie could not be compared/);
+  // The employee is told the Time Out was synced.
+  const synced = Announcement.createNotification.mock.calls.map(call => call.arguments[0]).find(notice => notice.title === 'Offline Time Out Synced');
+  assert.equal(synced.employeeId, employee.employeeId);
+  assert.match(synced.message, /^Your Time Out saved offline on 2026-10-05 at 05:00 PM was synced\./);
 });
 
 test('an offline Time Out changed after it was signed is refused', async t => {
@@ -269,4 +277,6 @@ test('a Time Out made online is not marked offline', async t => {
   const response = await send({ action: 'clock-out', record: { date: '2026-10-05', employeeId: employee.employeeId }, sentAt: new Date().toISOString() });
   assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(DtrLog.closeActiveLog.mock.calls[0].arguments[4], null);
+  // Nothing was saved offline, so there is no "synced" notice.
+  assert.equal(Announcement.createNotification.mock.calls.some(call => /Synced/.test(call.arguments[0].title)), false);
 });

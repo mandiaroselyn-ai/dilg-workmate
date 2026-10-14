@@ -310,6 +310,16 @@ export const Announcement = {
     return findVisibleNotifications(user);
   },
 
+  // Marks one notification unread again, for this person only.
+  markNotificationUnreadFor: async (id, user) => {
+    ensureConnected();
+    const key = notificationReaderKey(user);
+    if (key && typeof id === 'string') {
+      await MongoNotification.updateOne({ $and: [{ customId: id }, notificationFilter(user)] }, { $pull: { readBy: key } });
+    }
+    return findVisibleNotifications(user);
+  },
+
   // A fingerprint of the SMS log, so HR's SMS list updates without a reload.
   // With `user`, only that employee's texts; without, the whole SMS log.
   smsStamp: async (user) => {
