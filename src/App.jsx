@@ -887,14 +887,14 @@ export default function App() {
       ...(offlineTimeIn ? { offlineTimeIn } : {})
     };
 
-    submitAttendance({ action: 'clock-in', record: newRecord }, { ...newRecord, id: `offline-att-${Date.now()}` })
+    // Resolves with what was saved ({ record, queued }), which the attendance page shows like
+    // a biometric terminal, or with null when it was not saved (the reason is shown here).
+    return submitAttendance({ action: 'clock-in', record: newRecord }, { ...newRecord, id: `offline-att-${Date.now()}` })
       .then((data) => {
         if (data.record) {
           if (!data.queued) setAttendanceHistory(prev => [data.record, ...prev]);
-          if (data.queued) {
-            window.alert('No connection. Time In saved on this phone and will be sent automatically when internet returns.');
-            return;
-          }
+          // Saved on this phone: the attendance page says it will be sent when online.
+          if (data.queued) return data;
 
           // Create system notification
           const newNotif = {
@@ -920,9 +920,11 @@ export default function App() {
           // The server sends the SMS confirmation and returns it when one was sent.
           if (data.sms) setSmsAlerts(prev => [data.sms, ...prev]);
         }
+        return data;
       })
       .catch(error => {
         window.alert(`Unable to record Time In: ${error.message}`);
+        return null;
       });
   };
 
@@ -996,7 +998,10 @@ export default function App() {
       ? { offlineTimeOut: providedGps.offlineTimeOut, recordedOfflineAt: providedGps.offlineTimeOut.recordedAt }
       : { fingerprintProof: providedGps.fingerprintProof || '' };
 
-    submitAttendance({ action: 'clock-out', record: { ...clockOutRecord, ...fingerprint } }, {
+    // Resolves with what was saved ({ record, queued, afterQueuedTimeIn }), which the attendance
+    // page shows like a biometric terminal (with the offline notes), or with null when it was not
+    // saved (the reason is shown here).
+    return submitAttendance({ action: 'clock-out', record: { ...clockOutRecord, ...fingerprint } }, {
       ...activeRecord,
       ...clockOutRecord,
       id: activeRecord?.id || `offline-att-${Date.now()}`
@@ -1004,11 +1009,6 @@ export default function App() {
         if (data.record) {
           if (!data.queued) {
             setAttendanceHistory(prev => prev.map(record => record.id === data.record.id || (record.employeeId === data.record.employeeId && !record.timeOut && record.date === data.record.date) ? data.record : record));
-          }
-          if (data.queued) {
-            window.alert(data.afterQueuedTimeIn
-              ? 'Your Time In saved offline is still being sent. Your Time Out was saved on this phone and will be sent right after it.'
-              : 'No connection. Time Out saved offline and will sync automatically when internet returns.');
           }
 
           // Create notification
@@ -1036,9 +1036,11 @@ export default function App() {
           // The server sends the SMS confirmation and returns it when one was sent.
           if (data.sms) setSmsAlerts(prev => [data.sms, ...prev]);
         }
+        return data;
       })
       .catch(error => {
         window.alert(`Unable to record Time Out: ${error.message}`);
+        return null;
       });
   };
 

@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 import { hasSelfie, isLate } from '../utils/hrAttendance';
 import { clockMinutes, durationText, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
 import { isServerClockSynced, serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
+import PunchReceipt from './PunchReceipt';
 
 import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 const fetch = apiFetch;
@@ -303,9 +304,18 @@ export default function AttendanceView({
   // True when a browser has no internet at Time Out. A browser checks the fingerprint with
   // the server, so the Time Out is saved on this phone without it, and HR reviews it.
   const [unverifiedOfflineTimeOut, setUnverifiedOfflineTimeOut] = useState(false);
-  // A Lunch Out or Lunch In being sent, and the note shown once one is saved.
+  // A Lunch Out or Lunch In being sent.
   const [lunchSaving, setLunchSaving] = useState(false);
-  const [punchNotice, setPunchNotice] = useState('');
+  // When the fingerprint was verified (the server's time), shown with the check.
+  const [fingerprintVerifiedAt, setFingerprintVerifiedAt] = useState(null);
+  // The punch just saved, shown like a biometric terminal's screen (see PunchReceipt).
+  const [punchReceipt, setPunchReceipt] = useState(null);
+  const closePunchReceipt = useCallback(() => setPunchReceipt(null), []);
+  // `saved` is what saving the punch resolved with: { record, queued, afterQueuedTimeIn }, or
+  // null when it was not saved.
+  const showPunchReceipt = (punch, saved) => {
+    if (saved?.record) setPunchReceipt({ punch, record: saved.record, queued: Boolean(saved.queued), afterQueuedTimeIn: Boolean(saved.afterQueuedTimeIn) });
+  };
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
@@ -599,6 +609,7 @@ export default function AttendanceView({
         setFingerprintProof(verification.verificationProof);
         setFingerprintScanning(false);
         setFingerprintVerified(true);
+        setFingerprintVerifiedAt(serverNow());
         setFingerprintProgress(100);
         fingerprintScanInFlightRef.current = false;
         return;
@@ -660,6 +671,7 @@ export default function AttendanceView({
       setFingerprintProof(verification.verificationProof);
       setFingerprintScanning(false);
       setFingerprintVerified(true);
+      setFingerprintVerifiedAt(serverNow());
       setFingerprintProgress(100);
       fingerprintScanInFlightRef.current = false;
     } catch (error) {
@@ -937,7 +949,7 @@ export default function AttendanceView({
         }
 
         const timeIn = offlineProof => {
-          onTimeIn(
+          Promise.resolve(onTimeIn(
             effectiveLocation,
             effectiveBarangay,
             effectiveTask,
@@ -959,7 +971,7 @@ export default function AttendanceView({
             assignmentSite,
             accuracy,
             offlineProof
-          );
+          )).then(saved => showPunchReceipt('timeIn', saved));
           setCapturedSelfie(null);
           setFingerprintVerified(false);
           setFingerprintProof('');
@@ -1055,7 +1067,6 @@ export default function AttendanceView({
       setFingerprintError(`Verify your ${biometricLabel} before Time Out.`);
       return;
     }
-    setPunchNotice('');
     // A whole day needs its noon break in the DTR; without it, HR reviews the day.
     if (isOnLunch && !window.confirm(`You are still out for lunch: there is no Lunch In since your Lunch Out at ${todayRecord.lunchOut}. Time Out now records that you did not come back this afternoon, and HR will review your DTR. Time Out anyway?`)) return;
     if (canLunchOut && getManilaMinutesOfDay(serverNow()) > OFFICE_HOURS.pmStart && !window.confirm('You have no Lunch Out today, so your DTR will show the noon break as missing and HR will review it. Time Out anyway?')) return;
@@ -1063,12 +1074,12 @@ export default function AttendanceView({
     locatePunch('Time Out').then(fix => {
       if (!fix) return;
       const timeOut = offlineTimeOutProof => {
-        onTimeOut({
+        Promise.resolve(onTimeOut({
           ...fix,
           selfie: capturedSelfie,
           fingerprintProof,
           offlineTimeOut: offlineTimeOutProof
-        });
+        })).then(saved => showPunchReceipt('timeOut', saved));
         setCapturedSelfie(null);
         handleResetFingerprint();
       };
@@ -1100,7 +1111,6 @@ export default function AttendanceView({
   // new selfie, the fingerprint, and GPS at the assigned area, but only online.
   const executeLunch = action => {
     const punch = action === 'lunch-out' ? 'Lunch Out' : 'Lunch In';
-    setPunchNotice('');
     if (!navigator.onLine || offlineTimeIn || unverifiedOfflineTimeOut) {
       setLocationError(`${punch} needs internet. Reconnect, then take the selfie and verify your ${biometricLabel} again.`);
       return;
@@ -1127,8 +1137,7 @@ export default function AttendanceView({
         .then(record => {
           setCapturedSelfie(null);
           handleResetFingerprint();
-          const time = action === 'lunch-out' ? record?.lunchOut : record?.lunchIn;
-          setPunchNotice(`${punch} recorded${time ? ` at ${time}` : ''}.`);
+          showPunchReceipt(action === 'lunch-out' ? 'lunchOut' : 'lunchIn', { record });
         })
         .catch(error => setLocationError(`Unable to record ${punch}: ${error.message}`))
         .finally(() => setLunchSaving(false));
@@ -1196,6 +1205,9 @@ export default function AttendanceView({
   // would count if made now, so the employee sees it before punching.
   const clockText = clockNow.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
   const clockDateText = clockNow.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+  const verifiedTimeText = fingerprintVerifiedAt
+    ? fingerprintVerifiedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
+    : '';
   const nowMinutes = getManilaMinutesOfDay(clockNow);
   const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
   const standing = todayRecord ? punchStanding(todayRecord) : {};
@@ -1560,7 +1572,7 @@ export default function AttendanceView({
                       </span>
                       {fingerprintVerified ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">
-                          ✓ THUMB VERIFIED
+                          ✓ VERIFIED{verifiedTimeText ? ` ${verifiedTimeText}` : ''}
                         </span>
                       ) : offlineTimeIn || unverifiedOfflineTimeOut ? (
                         <span className="text-[10px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full font-black border border-amber-200">
@@ -1582,9 +1594,15 @@ export default function AttendanceView({
                           </div>
                           <div className="space-y-1">
                             <p className="text-xs font-black text-emerald-400 uppercase tracking-widest leading-none">BIOMETRIC TOUCH CONFIRMED</p>
+                            {verifiedTimeText && (
+                              <p className="font-mono text-3xl font-black tabular-nums text-white">{verifiedTimeText}</p>
+                            )}
                             <p className="text-[10px] text-slate-400">
                               {hasNativeBridge ? `${biometricLabel} challenge verified by the server` : 'Device biometric credential accepted'}
                             </p>
+                            {!isDoneForToday && (
+                              <p className="text-[10px] font-bold text-emerald-300">Tap {punchLabel} below to save the log. Its time is shown when it is saved.</p>
+                            )}
                             <button
                               onClick={handleResetFingerprint}
                               className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline font-black mt-2 cursor-pointer block mx-auto"
@@ -1809,7 +1827,7 @@ export default function AttendanceView({
                 </span>
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${fingerprintVerified ? 'text-emerald-700 bg-emerald-50' : offlineTimeIn || unverifiedOfflineTimeOut ? 'text-amber-700 bg-amber-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
                   {fingerprintVerified
-                    ? `✓ ${biometricLabel} Authenticated`
+                    ? `✓ ${biometricLabel} Authenticated${verifiedTimeText ? ` · ${verifiedTimeText}` : ''}`
                     : offlineTimeIn
                       ? `${biometricLabel} at ${offlinePunchLabel} (offline)`
                       : unverifiedOfflineTimeOut
@@ -1822,11 +1840,6 @@ export default function AttendanceView({
             {(locationError || cameraError) && (
               <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                 {locationError || cameraError}
-              </p>
-            )}
-            {punchNotice && !(locationError || cameraError) && (
-              <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-                {punchNotice}
               </p>
             )}
           </div>
@@ -2459,6 +2472,7 @@ export default function AttendanceView({
         </div>
       </div>
 
+      {punchReceipt && <PunchReceipt receipt={punchReceipt} employee={user} onClose={closePunchReceipt} />}
     </div>
   );
 }
