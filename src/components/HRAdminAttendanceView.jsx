@@ -37,8 +37,10 @@ const statusStyles = {
 };
 
 // The app sends an employee's phone GPS every minute while it is open. When none comes (app
-// closed, phone locked, or weak GPS), HR sees the last position the app sent.
+// closed, phone locked, or weak GPS), HR sees the last position the app sent, and after
+// 15 minutes the map fades that dot so HR knows it is not live.
 const LIVE_REFRESH_MS = 30000;
+const NO_SIGNAL_AFTER_SECONDS = 15 * 60;
 
 const accuracyText = value => {
   const accuracy = Number(value);
@@ -90,6 +92,9 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const [locationStatus, setLocationStatus] = useState('All Status');
   const [lastGpsRefresh, setLastGpsRefreshText] = useState('Not refreshed');
   const [liveLocations, setLiveLocations] = useState([]);
+  // When the live locations arrived, and the time of the latest refresh, to tell a lost signal.
+  const [liveFetchedAt, setLiveFetchedAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
   // Place names for Time In positions, such as "Brgy. Bangbang, Gasan" ('' if unknown).
   const [placeNames, setPlaceNames] = useState({});
   const [issueSearch, setIssueSearch] = useState('');
@@ -105,10 +110,13 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
         throw new Error(result.error || 'Unable to load live employee locations.');
       }
       setLiveLocations(result.locations);
+      setLiveFetchedAt(Date.now());
       setLastGpsRefreshText(new Date().toLocaleTimeString());
     } catch (error) {
       setLastGpsRefreshText(`Refresh failed: ${error.message || 'Unable to load live employee locations.'}`);
     }
+    // Even when the refresh fails, the GPS that came before keeps getting older.
+    setNow(Date.now());
   }, []);
   const setLastGpsRefresh = refreshLiveGps;
 
@@ -201,11 +209,13 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
     const gpsState = !record ? 'Not Timed In'
       : !liveRecord && attendanceRecord?.timeOut ? 'Timed Out'
         : /in range/i.test(record.gpsStatus || '') ? 'Inside Assigned Area' : 'Outside Geofence';
+    const gpsAgeSeconds = liveRecord ? Number(liveRecord.lastGpsAgeSeconds) + Math.max(0, now - liveFetchedAt) / 1000 : null;
     return {
       employee,
       record,
       live: Boolean(liveRecord),
       gpsState,
+      noSignal: Boolean(liveRecord) && gpsAgeSeconds > NO_SIGNAL_AFTER_SECONDS,
       distance: record?.distanceToAssignmentMeters,
       verified: hasSelfie(attendanceRecord) && attendanceRecord?.fingerprintVerified ? 'Verified' : 'Not verified'
     };
@@ -248,7 +258,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   };
 
   // Where an employee is on the map: their latest phone GPS, green inside their assigned
-  // area, red outside it, gray after Time Out.
+  // area, red outside it, gray after Time Out, faded when no GPS has come for 15 minutes.
   const mapPointFor = row => {
     const { record } = row;
     if (!record) return null;
@@ -263,9 +273,11 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
       latitude,
       longitude,
       state,
+      noSignal: row.noSignal,
       place: currentPlaceOf(row),
       details: [
         statusTextFor(row),
+        ...(row.noSignal ? [`No live signal since ${clockText(record.lastGpsAt)} (app closed, phone locked, or weak GPS). This is the last known location.`] : []),
         `${!row.live ? 'Place at Time In' : 'Now at'}: ${currentPlaceOf(row)}`,
         ...(row.live ? [`Last GPS: ${describeLastGps(row)}`, `Place at Time In: ${timeInPlaceOf(row)} (${describeTimeInGps(row)})`] : [describeTimeInGps(row)]),
         `Assigned: ${area?.label || record.location || 'Not recorded'}`

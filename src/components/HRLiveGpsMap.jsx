@@ -30,9 +30,11 @@ const loadGoogleMaps = key => {
 
 // HR's map of employees on duty. Each dot is the employee's latest phone GPS, which the app
 // sends every minute while it is open: green inside their assigned area, red outside it.
+// When no GPS has come for 15 minutes the dot stays at the last known location, faded.
 // Someone picked after timing out is gray, at where they timed in.
 
 const COLORS = { inside: '#16a34a', outside: '#dc2626', done: '#94a3b8' };
+const NO_SIGNAL_OPACITY = 0.4;
 const MARINDUQUE = [13.4, 121.95];
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
@@ -58,7 +60,7 @@ const popupFor = point => {
 };
 
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'done',
-//            place, details: [lines for the popup] }]
+//            noSignal, place, details: [lines for the popup] }]
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -135,10 +137,11 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
         radius: isSelected ? 11 : 8,
         color: '#ffffff',
         weight: isSelected ? 3 : 2,
+        dashArray: point.noSignal ? '3 3' : null,
         fillColor: COLORS[point.state],
-        fillOpacity: 0.95
+        fillOpacity: point.noSignal ? NO_SIGNAL_OPACITY : 0.95
       })
-        .bindTooltip(labelFor(point), { permanent: true, direction: 'top', offset: [0, -10] })
+        .bindTooltip(labelFor(point), { permanent: true, direction: 'top', offset: [0, -10], opacity: point.noSignal ? 0.6 : 0.9 })
         .bindPopup(popupFor(point))
         .on('click', () => onSelectRef.current?.(point.key))
         .addTo(layer);
@@ -213,6 +216,12 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
           {/* Leaflet adds its own classes to this div, so its className must never change:
               React would wipe them and the map tiles would disappear. */}
           <div ref={containerRef} className="h-full w-full" />
+        </div>
+        <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-600">
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-slate-700" style={{ backgroundColor: COLORS.inside, opacity: NO_SIGNAL_OPACITY }} />Faded: no live signal (15+ min), last known location</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
         </div>
       </div>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
