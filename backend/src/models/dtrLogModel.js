@@ -568,7 +568,13 @@ export const DtrLog = {
         geofenceEvents: { $slice: -1 },
         lastLocationUpdate: 1,
         createdAt: 1,
-        'assignmentSite.label': 1
+        'assignmentSite.mode': 1,
+        'assignmentSite.label': 1,
+        'assignmentSite.latitude': 1,
+        'assignmentSite.longitude': 1,
+        'assignmentSite.geometry': 1,
+        'assignmentSite.bounds': 1,
+        'assignmentSite.fallbackToRadius': 1
       }
     ).sort({ lastLocationUpdate: -1, createdAt: -1 }).lean();
 
@@ -683,8 +689,9 @@ export const liveLocationFromLog = (log, now = new Date()) => {
     },
     date: log.date,
     timeIn: log.timeIn,
-    // The name of the area the employee chose at Time In, shown on HR's live map.
-    assignmentArea: log.assignmentSite?.label ? { label: log.assignmentSite.label } : null
+    // The area the employee chose at Time In: its name, and its shape, which HR's live map
+    // outlines for the picked employee.
+    assignmentArea: log.assignmentSite || null
   };
 };
 

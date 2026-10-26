@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import GoogleMutant from 'leaflet.gridlayer.googlemutant';
+import polygonClipping from 'polygon-clipping';
 import 'leaflet/dist/leaflet.css';
+// Marinduque's land (the main island and its islets) from OpenStreetMap (ODbL),
+// simplified to about 20 m.
+import marinduqueLand from '../assets/marinduque-land.json';
 
 // With a Google Maps API key (VITE_GOOGLE_MAPS_API_KEY, set on Vercel), the map uses
 // Google's satellite view through Google's official Maps JavaScript API. Without one, or
@@ -31,11 +35,20 @@ const loadGoogleMaps = key => {
 // HR's map of employees on duty. Each dot is the employee's latest phone GPS, which the app
 // sends every minute while it is open: green inside their assigned area, red outside it.
 // When no GPS has come for 15 minutes the dot stays at the last known location, faded.
-// Someone picked after timing out is gray, at where they timed in.
+// Someone picked after timing out is gray, at where they timed in. The picked employee's
+// assigned area is outlined, so HR can see whether they are really there.
 
 const COLORS = { inside: '#16a34a', outside: '#dc2626', done: '#94a3b8' };
 const NO_SIGNAL_OPACITY = 0.4;
 const MARINDUQUE = [13.4, 121.95];
+// A light blue that stays visible on both satellite imagery and the street map.
+const AREA_STYLE = { color: '#38bdf8', weight: 3, dashArray: '8 5', fillColor: '#38bdf8', fillOpacity: 0.12 };
+// How far from an office or home address still counts as there, as in the Time In check
+// (shared/assignmentGeofence.js). Within this distance of a barangay's edge also counts.
+const ALLOWANCE_METERS = 150;
+// Areas up to this size across (a barangay is about 6 km) are shown whole when an
+// employee is picked.
+const SMALL_AREA_METERS = 7000;
 
 // Text for Leaflet labels and popups, which are HTML: names come from user input.
 const textElement = (tag, text, className = '') => {
@@ -59,9 +72,55 @@ const popupFor = point => {
   return wrapper;
 };
 
+// The land part of an area. Town outlines on OpenStreetMap include their municipal
+// waters, and a barangay that is only a point on the map gets a box that can reach into
+// the sea, so assigned areas looked like they were in the sea. Only what HR sees is
+// trimmed; the Time In check still uses the whole area. When nothing would be left, the
+// area is shown as it is.
+const landOnly = polygons => {
+  try {
+    const land = polygonClipping.intersection(polygons, marinduqueLand.coordinates);
+    return land.length ? { type: 'MultiPolygon', coordinates: land } : null;
+  } catch {
+    return null;
+  }
+};
+
+// The area chosen at Time In, drawn the way the Time In check reads it: 150 m around an
+// office or home address, a barangay or town outline, or the extent of a barangay that is
+// only a point on the map. Nothing when its shape is not known.
+const areaLayerFor = area => {
+  if (!area) return null;
+  const hasCenter = Number.isFinite(area.latitude) && Number.isFinite(area.longitude);
+  const circle = () => (hasCenter ? L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: ALLOWANCE_METERS }) : null);
+  if (area.mode !== 'field') return circle();
+  const type = area.geometry?.type;
+  if (type === 'Polygon' || type === 'MultiPolygon') {
+    const polygons = type === 'Polygon' ? [area.geometry.coordinates] : area.geometry.coordinates;
+    return L.geoJSON(landOnly(polygons) || area.geometry, { style: AREA_STYLE });
+  }
+  if (!area.fallbackToRadius) return null;
+  const { south, north, west, east } = area.bounds || {};
+  if ([south, north, west, east].every(Number.isFinite)) {
+    const box = [[[west, south], [east, south], [east, north], [west, north], [west, south]]];
+    const land = landOnly([box]);
+    return land ? L.geoJSON(land, { style: AREA_STYLE }) : L.rectangle([[south, west], [north, east]], AREA_STYLE);
+  }
+  return circle();
+};
+
+// The area's extent, measured without adding it to the map: a Leaflet circle can only
+// measure itself once it is on a map, so its extent is worked out from its radius.
+const areaBoundsFor = area => {
+  const layer = areaLayerFor(area);
+  if (!layer) return null;
+  return layer instanceof L.Circle ? layer.getLatLng().toBounds(layer.getRadius() * 2) : layer.getBounds();
+};
+
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'done',
-//            noSignal, place, details: [lines for the popup] }]
-export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
+//            noSignal, area, place, details: [lines for the popup] }]
+// compact: a shorter map, for the Monitoring page.
+export default function HRLiveGpsMap({ points, selectedKey, onSelect, compact = false }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
@@ -124,12 +183,17 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     };
   }, []);
 
-  // Redraws the dots whenever the data changes.
+  // Redraws the dots and the picked employee's area whenever the data changes.
   useEffect(() => {
     const map = mapRef.current;
     const layer = layerRef.current;
     if (!map || !layer) return;
     layer.clearLayers();
+
+    // Drawn first, so the dots stay on top of it.
+    const picked = points.find(point => point.key === selectedKey);
+    const area = picked ? areaLayerFor(picked.area) : null;
+    if (area) area.addTo(layer);
 
     points.forEach(point => {
       const isSelected = point.key === selectedKey;
@@ -159,7 +223,10 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     }
   }, [points, selectedKey]);
 
-  // Zooms in on the selected employee, or back out to everyone when the selection is cleared.
+  // Zooms to the selected employee, or back out to everyone when the selection is cleared.
+  // A small assigned area (an office or a barangay) is shown whole with the employee. A
+  // large one, such as a whole town, would zoom far out, so the map centers on the
+  // employee close up instead.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -168,7 +235,14 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
       if (points.length) map.fitBounds(L.latLngBounds(points.map(point => [point.latitude, point.longitude])).pad(0.3), { maxZoom: 16 });
       return;
     }
-    map.setView([selected.latitude, selected.longitude], 16);
+    const position = L.latLng(selected.latitude, selected.longitude);
+    const areaBounds = areaBoundsFor(selected.area);
+    const smallArea = areaBounds && areaBounds.getNorthWest().distanceTo(areaBounds.getSouthEast()) <= SMALL_AREA_METERS;
+    if (smallArea) {
+      map.fitBounds(L.latLngBounds([position]).extend(areaBounds).pad(0.15), { maxZoom: 17 });
+    } else {
+      map.setView(position, 16);
+    }
     fittedRef.current = true;
     // Only when HR picks a different employee, not on every refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -212,7 +286,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
             {fullScreen ? 'Close full screen' : 'Full screen'}
           </button>
         </div>
-        <div className={`relative isolate z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${fullScreen ? 'min-h-0 flex-1' : 'h-[55vh] min-h-[22rem] sm:h-[70vh]'}`}>
+        <div className={`relative isolate z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${fullScreen ? 'min-h-0 flex-1' : compact ? 'h-[40vh] min-h-[18rem] sm:h-[50vh]' : 'h-[55vh] min-h-[22rem] sm:h-[70vh]'}`}>
           {/* Leaflet adds its own classes to this div, so its className must never change:
               React would wipe them and the map tiles would disappear. */}
           <div ref={containerRef} className="h-full w-full" />
@@ -222,6 +296,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-slate-700" style={{ backgroundColor: COLORS.inside, opacity: NO_SIGNAL_OPACITY }} />Faded: no live signal (15+ min), last known location</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed" style={{ borderColor: AREA_STYLE.color, backgroundColor: `${AREA_STYLE.color}1f` }} />Picked employee's assigned area (field areas allow 150 m past the edge)</span>
         </div>
       </div>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}

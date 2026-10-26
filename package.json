@@ -39,6 +39,7 @@
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "pngjs": "^7.0.0",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^6.2.3",

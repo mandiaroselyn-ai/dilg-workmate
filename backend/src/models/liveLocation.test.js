@@ -17,7 +17,13 @@ const openLog = {
   locationHistory: [{ latitude: 13.3443, longitude: 121.8246, accuracy: 12, timestamp: '2026-09-30T00:14:00Z' }],
   lastLocationUpdate: '2026-09-30T00:14:00Z',
   createdAt: '2026-09-30T00:14:00Z',
-  assignmentSite: { label: 'Brgy. Libtangin, Gasan, Marinduque, Philippines' }
+  assignmentSite: {
+    mode: 'field',
+    label: 'Brgy. Libtangin, Gasan, Marinduque, Philippines',
+    latitude: 13.344,
+    longitude: 121.825,
+    geometry: { type: 'Polygon', coordinates: [[[121.82, 13.34], [121.83, 13.34], [121.83, 13.35], [121.82, 13.34]]] }
+  }
 };
 // The phone's GPS at 10:02, after the employee walked out of Libtangin.
 const trackedOutside = {
@@ -41,7 +47,7 @@ test('before any tracked GPS arrives, HR sees the Time In position and its time'
   assert.equal(entry.lastGpsAgeSeconds, 120);
   assert.equal(entry.leftAreaAt, null);
   assert.deepEqual(entry.timeInGps, { latitude: 13.3443, longitude: 121.8246, gpsStatus: 'In Range', accuracy: 12 });
-  assert.deepEqual(entry.assignmentArea, { label: 'Brgy. Libtangin, Gasan, Marinduque, Philippines' });
+  assert.deepEqual(entry.assignmentArea, openLog.assignmentSite, 'with its shape, which the map outlines');
 });
 
 test('HR sees the latest phone GPS, outside the area since the employee left it', () => {
