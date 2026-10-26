@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucid
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
-import { dtrDayLogs, dtrUndertimeMinutes, usesLunchLogs } from '../utils/dtrDay';
+import { dtrDayLogs, dtrUndertimeMinutes, durationText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
@@ -31,8 +31,15 @@ const LUNCH_PUNCHES = [
   { field: 'lunchOut', label: 'Lunch Out', hasSelfieField: 'hasLunchOutSelfie' },
   { field: 'lunchIn', label: 'Lunch In', hasSelfieField: 'hasLunchInSelfie' }
 ];
-// Minutes as "1h 05m", or "None".
-const formatMinutes = minutes => (minutes ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : 'None');
+// Minutes as "7 min" or "1h 05m", or "None".
+const formatMinutes = minutes => (minutes ? durationText(minutes) : 'None');
+// A punch's time with how it stood, such as "08:07 AM (late 7 min)", or "-" when not made.
+const punchText = (time, standing) => {
+  if (!time) return '-';
+  if (standing?.late) return `${time} (late ${durationText(standing.late)})`;
+  if (standing?.early) return `${time} (undertime ${durationText(standing.early)})`;
+  return time;
+};
 
 // HR's review of one DTR record: Mark Verified records that HR checked it, and a
 // correction changes its times, status, or location with a reason. The first recorded
@@ -300,10 +307,13 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <span>Position: <b>{selected.employee?.role || '-'}</b></span>
         <span>Office: <b>{selected.office}</b></span>
         <span>Date: <b>{selected.record.date || '-'}</b></span>
-        <span>Time In: <b>{selected.record.timeIn || '-'}</b></span>
-        <span>Lunch Out: <b>{selected.record.lunchOut || '-'}</b></span>
-        <span>Lunch In: <b>{selected.record.lunchIn || '-'}</b></span>
-        <span>Time Out: <b>{selected.record.timeOut || '-'}</b></span>
+        {(() => {
+          // Records with lunch logs show how each punch stood against 8–12 and 1–5.
+          const standing = usesLunchLogs(selected.record) ? punchStanding(selected.record) : {};
+          return [['timeIn', 'Time In'], ['lunchOut', 'Lunch Out'], ['lunchIn', 'Lunch In'], ['timeOut', 'Time Out']].map(([field, label]) => (
+            <span key={field}>{label}: <b>{punchText(selected.record[field], standing[field])}</b></span>
+          ));
+        })()}
         <span>Total Hours: <b>{totalHoursWorked(selected.record) || '-'}</b></span>
         {usesLunchLogs(selected.record) && (
           <span>Tardiness &amp; undertime (8–12, 1–5): <b>{formatMinutes(dtrUndertimeMinutes(dtrDayLogs(selected.record)))}</b></span>

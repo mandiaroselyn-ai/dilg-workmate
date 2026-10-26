@@ -6,8 +6,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
-import { hasSelfie } from '../utils/hrAttendance';
-import { clockMinutes, OFFICE_HOURS, usesLunchLogs } from '../utils/dtrDay';
+import { hasSelfie, isLate } from '../utils/hrAttendance';
+import { clockMinutes, durationText, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
+import { isServerClockSynced, serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 
 import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
@@ -454,24 +455,20 @@ export default function AttendanceView({
     return () => window.removeEventListener('dilg-location-result', handleMobileLocationResult);
   }, []);
 
-  const [currentTime, setCurrentTime] = useState(() => new Date().toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true
-  }));
+  // The clock above the punch buttons: the server's time in the Philippines, since the server
+  // is what saves each punch. It follows this phone's clock until the server's is known.
+  const [clockNow, setClockNow] = useState(() => serverNow());
+  const [clockSynced, setClockSynced] = useState(isServerClockSynced());
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true
-      }));
-    }, 1000);
-
-    return () => clearInterval(timer);
+    const sync = () => syncServerClock().then(() => setClockSynced(isServerClockSynced()));
+    sync();
+    const timer = setInterval(() => setClockNow(serverNow()), 1000);
+    window.addEventListener('online', sync);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('online', sync);
+    };
   }, []);
 
   const toBase64Url = (buffer) => {
@@ -1061,7 +1058,7 @@ export default function AttendanceView({
     setPunchNotice('');
     // A whole day needs its noon break in the DTR; without it, HR reviews the day.
     if (isOnLunch && !window.confirm(`You are still out for lunch: there is no Lunch In since your Lunch Out at ${todayRecord.lunchOut}. Time Out now records that you did not come back this afternoon, and HR will review your DTR. Time Out anyway?`)) return;
-    if (canLunchOut && getManilaMinutesOfDay() > OFFICE_HOURS.pmStart && !window.confirm('You have no Lunch Out today, so your DTR will show the noon break as missing and HR will review it. Time Out anyway?')) return;
+    if (canLunchOut && getManilaMinutesOfDay(serverNow()) > OFFICE_HOURS.pmStart && !window.confirm('You have no Lunch Out today, so your DTR will show the noon break as missing and HR will review it. Time Out anyway?')) return;
 
     locatePunch('Time Out').then(fix => {
       if (!fix) return;
@@ -1120,7 +1117,7 @@ export default function AttendanceView({
       setFingerprintError(`Verify your ${biometricLabel} before ${punch}.`);
       return;
     }
-    if (action === 'lunch-out' && getManilaMinutesOfDay() < OFFICE_HOURS.noon
+    if (action === 'lunch-out' && getManilaMinutesOfDay(serverNow()) < OFFICE_HOURS.noon
       && !window.confirm('It is not yet 12:00 NN. Leaving for lunch now counts as undertime in your DTR. Record Lunch Out now?')) return;
 
     locatePunch(punch).then(fix => {
@@ -1194,6 +1191,51 @@ export default function AttendanceView({
     }
   };
 
+  // Today's four logs above the punch buttons: each one's office time, the time recorded, and
+  // whether it was on time (late or undertime, in minutes). A log still to be made shows how it
+  // would count if made now, so the employee sees it before punching.
+  const clockText = clockNow.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
+  const clockDateText = clockNow.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+  const nowMinutes = getManilaMinutesOfDay(clockNow);
+  const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
+  const standing = todayRecord ? punchStanding(todayRecord) : {};
+  const afternoonOnly = timeInMinutes !== null && timeInMinutes >= noon;
+  const missingLunch = isDoneForToday ? missingLunchLog(todayRecord) : null;
+  const lateIfNow = start => ({ late: Math.max(0, nowMinutes - start) });
+  const earlyIfNow = end => ({ early: Math.max(0, end - nowMinutes) });
+  const halfDayNote = afternoonOnly ? 'Half day: no lunch' : '';
+  const dayLogs = [
+    {
+      key: 'timeIn', label: 'Time In', time: todayRecord?.timeIn, standing: standing.timeIn,
+      scheduled: afternoonOnly || (!todayRecord && nowMinutes >= noon) ? pmStart : amStart,
+      ifNow: !todayRecord ? lateIfNow(nowMinutes >= noon ? pmStart : amStart) : null
+    },
+    {
+      key: 'lunchOut', label: 'Lunch Out', time: todayRecord?.lunchOut, standing: standing.lunchOut, scheduled: noon,
+      ifNow: canLunchOut ? earlyIfNow(noon) : null,
+      note: halfDayNote || (missingLunch === 'Missing Lunch Out' ? 'Missing' : '')
+    },
+    {
+      key: 'lunchIn', label: 'Lunch In', time: todayRecord?.lunchIn, standing: standing.lunchIn, scheduled: pmStart,
+      ifNow: isOnLunch ? lateIfNow(pmStart) : null,
+      note: halfDayNote || (missingLunch ? 'Missing' : '')
+    },
+    {
+      key: 'timeOut', label: 'Time Out', time: todayRecord?.timeOut, standing: standing.timeOut, scheduled: pmEnd,
+      // Before 1:00 PM without a Lunch Out, a Time Out ends a morning-only day at noon.
+      ifNow: isCurrentlyActive && !isOnLunch ? earlyIfNow(canLunchOut && nowMinutes <= pmStart ? noon : pmEnd) : null
+    }
+  ];
+  const describeStanding = ({ late, early }) => (late ? { text: `Late · ${durationText(late)}`, tone: 'text-rose-600' }
+    : early ? { text: `Undertime · ${durationText(early)}`, tone: 'text-amber-600' }
+      : { text: 'On time', tone: 'text-emerald-600' });
+  const remarkFor = log => {
+    if (log.time) return log.standing ? describeStanding(log.standing) : { text: '', tone: '' };
+    if (log.note) return { text: log.note, tone: log.note === 'Missing' ? 'text-rose-600' : 'text-slate-400' };
+    if (!log.ifNow) return { text: '', tone: '' };
+    const { text } = describeStanding(log.ifNow);
+    return { text: `If now: ${text}`, tone: 'text-slate-500' };
+  };
 
   return (
     <div className="p-4 sm:p-8 pb-24 md:pb-8 space-y-8 overflow-y-auto flex-1 id-attendance-view">
@@ -1641,6 +1683,33 @@ export default function AttendanceView({
 
           {/* Core Action Punch Block */}
           <div className="pt-5 border-t border-slate-100 flex flex-col gap-3.5">
+            {/* The time now (the server's, which is what each log saves) and today's four logs
+                against office hours. */}
+            <div className="rounded-2xl bg-slate-900 px-4 py-3 text-white flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Philippine Standard Time</p>
+                <p className="font-mono text-2xl sm:text-3xl font-black tabular-nums">{clockText}</p>
+                <p className="text-[11px] font-semibold text-slate-300">{clockDateText}</p>
+              </div>
+              <div className="text-left sm:text-right text-[10px] font-semibold text-slate-400 leading-relaxed">
+                <p>Office hours: <span className="text-slate-200">{officeTimeText(amStart)} – {officeTimeText(noon)}, {officeTimeText(pmStart)} – {officeTimeText(pmEnd)}</span></p>
+                <p>{clockSynced ? 'Server time: the time each log saves' : "This phone's time (server time not reached yet)"}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {dayLogs.map(log => {
+                const remark = remarkFor(log);
+                return (
+                  <div key={log.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-600">{log.label}</p>
+                    <p className="text-[10px] font-semibold text-slate-400">Schedule {officeTimeText(log.scheduled)}</p>
+                    <p className={`mt-1 font-mono text-sm font-black ${log.time ? 'text-slate-900' : 'text-slate-300'}`}>{log.time || '--:--'}</p>
+                    <p className={`min-h-[15px] text-[10px] font-bold ${remark.tone}`}>{remark.text}</p>
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="flex flex-wrap gap-4 items-center justify-between">
               <div className="text-xs text-slate-500 font-semibold">
                 {isOnLunch ? (
@@ -2179,9 +2248,10 @@ export default function AttendanceView({
                     <p className="text-sm font-extrabold text-slate-900">{log.date}</p>
                   </div>
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                    log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
+                    isLate(log) ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                      : log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
                   }`}>
-                    {log.status}
+                    {isLate(log) ? `Late${punchStanding(log).timeIn?.late ? ` · ${durationText(punchStanding(log).timeIn.late)}` : ''}` : log.status}
                   </span>
                 </div>
 
@@ -2372,9 +2442,10 @@ export default function AttendanceView({
                     </td>
                     <td className="p-3 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold ${
-                        log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-110' : 'bg-red-50 text-red-700 border border-red-110'
+                        isLate(log) ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                          : log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-110' : 'bg-red-50 text-red-700 border border-red-110'
                       }`}>
-                        {log.status}
+                        {isLate(log) ? `Late${punchStanding(log).timeIn?.late ? ` · ${durationText(punchStanding(log).timeIn.late)}` : ''}` : log.status}
                       </span>
                       {offlineStatuses(log).map(status => (
                         <span key={status} className="mt-1 block text-[9px] font-semibold text-amber-700">{status}</span>

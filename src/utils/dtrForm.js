@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { countsInDtr, dtrTimeOut } from './hrAttendance.js';
-import { dtrDayLogs, dtrUndertimeMinutes, usesLunchLogs } from './dtrDay.js';
+import { dtrDayLogs, dtrUndertimeMinutes, officeHoursText, usesLunchLogs } from './dtrDay.js';
 
 // Fills both duplicates on each page of the CSC Form No. 48 DTR template
 // (src/assets/template/dtr-template.pdf) with one employee's monthly attendance data.
@@ -32,6 +32,7 @@ const COLS = [
   {
     nameCenter: 187, nameY: 658.4, nameMaxWidth: 208,
     monthCenter: 215.5, monthY: 638.6, // sits on the blank line x 136.4–294.4, y 637.2
+    hoursCenter: 164.5, hoursY: 631.4, hoursMaxWidth: 80, // blank x 122.8–206.2 before "(Regular days"
     dayNameX: 91,                   // x where day abbreviation text is placed
     dayCell: [86.9, 101.81],        // inside of the day-name cell, between its grid lines
     amArr: 127, amDep: 162, pmArr: 197, pmDep: 230,
@@ -42,6 +43,7 @@ const COLS = [
   {
     nameCenter: 420, nameY: 658.4, nameMaxWidth: 208,
     monthCenter: 450.5, monthY: 638.6, // sits on the blank line x 372.9–528.0, y 637.2
+    hoursCenter: 399.1, hoursY: 631.4, hoursMaxWidth: 84, // blank x 355.2–443.0 before "(Regular days"
     dayNameX: 323,
     dayCell: [320.28, 338.28],
     amArr: 359, amDep: 394, pmArr: 429, pmDep: 462,
@@ -169,6 +171,12 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
       font: bold,
       color: black,
     });
+
+    // --- Official hours for arrival and departure (regular days) ---
+    const hoursText = officeHoursText();
+    const hoursSz = fitSize(hoursText, font, col.hoursMaxWidth, 5);
+    const hoursW = font.widthOfTextAtSize(hoursText, hoursSz);
+    page.drawText(hoursText, { x: col.hoursCenter - hoursW / 2, y: col.hoursY, size: hoursSz, font, color: black });
 
     // --- Day rows ---
     for (let d = 1; d <= 31; d++) {

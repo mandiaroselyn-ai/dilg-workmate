@@ -23,7 +23,8 @@ export const requestCoversDate = (request, date) => {
   return Boolean(start) && start <= date && date <= end;
 };
 
-const isLate = record => Boolean(record?.late || /late/i.test(record?.status || ''));
+// A Time In after the office start time (the server marks it `late`), or a record HR set to Late.
+export const isLate = record => Boolean(record?.late || /late/i.test(record?.status || ''));
 
 // A Time In or Time Out made in the phone app without internet that failed a check when it
 // was sent waits for HR: it counts in the DTR only once HR decides it (a Time Out can also

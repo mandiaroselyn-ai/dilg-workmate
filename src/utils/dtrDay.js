@@ -43,17 +43,52 @@ export const dtrDayLogs = (record, timeOut = record?.timeOut) => {
   };
 };
 
+// Minutes an arrival was after `start`, or a departure before `end` (0 when on time or none).
+export const minutesLate = (value, start) => (clockMinutes(value) === null ? 0 : Math.max(0, clockMinutes(value) - start));
+export const minutesEarly = (value, end) => (clockMinutes(value) === null ? 0 : Math.max(0, end - clockMinutes(value)));
+
 // Minutes of tardiness and undertime the four logs show: arriving after 8:00 AM or 1:00 PM,
 // and leaving before 12:00 NN or 5:00 PM. A half day counts only the half that was worked;
 // the other half is a leave or an absence, not undertime.
-export const dtrUndertimeMinutes = logs => {
-  const late = (value, start) => (clockMinutes(value) === null ? 0 : Math.max(0, clockMinutes(value) - start));
-  const early = (value, end) => (clockMinutes(value) === null ? 0 : Math.max(0, end - clockMinutes(value)));
-  return late(logs.amArrival, OFFICE_HOURS.amStart)
-    + early(logs.amDeparture, OFFICE_HOURS.noon)
-    + late(logs.pmArrival, OFFICE_HOURS.pmStart)
-    + early(logs.pmDeparture, OFFICE_HOURS.pmEnd);
+export const dtrUndertimeMinutes = logs => minutesLate(logs.amArrival, OFFICE_HOURS.amStart)
+  + minutesEarly(logs.amDeparture, OFFICE_HOURS.noon)
+  + minutesLate(logs.pmArrival, OFFICE_HOURS.pmStart)
+  + minutesEarly(logs.pmDeparture, OFFICE_HOURS.pmEnd);
+
+// How each punch of a record stands against office hours, as the DTR reads it (see
+// dtrDayLogs): minutes `late` for Time In and Lunch In, minutes `early` for Lunch Out and Time
+// Out, or null for a punch not made. A Time In from noon on is an afternoon arrival, and a
+// Time Out that ends a morning-only day is a noon departure.
+export const punchStanding = record => {
+  const logs = dtrDayLogs(record);
+  const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
+  const timeOutEnd = !record?.timeOut ? null
+    : logs.pmDeparture === record.timeOut ? pmEnd
+      : logs.amDeparture === record.timeOut ? noon : null;
+  return {
+    timeIn: record?.timeIn ? { late: logs.amArrival ? minutesLate(logs.amArrival, amStart) : minutesLate(logs.pmArrival, pmStart) } : null,
+    lunchOut: record?.lunchOut ? { early: minutesEarly(record.lunchOut, noon) } : null,
+    lunchIn: record?.lunchIn ? { late: minutesLate(record.lunchIn, pmStart) } : null,
+    timeOut: timeOutEnd === null ? null : { early: minutesEarly(record.timeOut, timeOutEnd) }
+  };
 };
+
+// An office time as shown: "8:00 AM", "12:00 NN", "1:00 PM".
+export const officeTimeText = minutes => {
+  const hour = Math.floor(minutes / 60);
+  const minute = String(minutes % 60).padStart(2, '0');
+  return minutes === OFFICE_HOURS.noon ? `12:${minute} NN` : `${hour % 12 || 12}:${minute} ${hour < 12 ? 'AM' : 'PM'}`;
+};
+
+// The office hours as CSC Form 48 writes them: "8:00–12:00, 1:00–5:00".
+export const officeHoursText = () => {
+  const short = minutes => `${Math.floor(minutes / 60) % 12 || 12}:${String(minutes % 60).padStart(2, '0')}`;
+  const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
+  return `${short(amStart)}–${short(noon)}, ${short(pmStart)}–${short(pmEnd)}`;
+};
+
+// A number of minutes as "7 min" or "1h 05m".
+export const durationText = minutes => (minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`);
 
 // The lunch log a finished whole day lacks: 'Missing Lunch Out', 'Missing Lunch In', or null.
 // A day is whole when it starts before noon and ends after 1:00 PM.

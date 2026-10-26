@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dtrDayLogs, dtrUndertimeMinutes, LUNCH_LOGS_FROM, missingLunchLog, usesLunchLogs } from './dtrDay.js';
+import { dtrDayLogs, dtrUndertimeMinutes, durationText, LUNCH_LOGS_FROM, missingLunchLog, officeHoursText, officeTimeText, punchStanding, usesLunchLogs } from './dtrDay.js';
 import { dtrIssue, dtrRecordStatus, missingDtrLog, totalHoursWorked } from './hrAttendance.js';
 
 const day = LUNCH_LOGS_FROM;
@@ -63,6 +63,25 @@ test('records from before lunch logs keep the old DTR and are not flagged', () =
   assert.equal(usesLunchLogs(old), false);
   assert.equal(missingLunchLog(old), null);
   assert.equal(usesLunchLogs({ ...old, lunchOut: '12:00 PM' }), true);
+});
+
+test('each punch shows how late or early it was against office hours', () => {
+  assert.deepEqual(punchStanding({ ...wholeDay, timeIn: '08:07 AM', lunchOut: '11:45 AM', lunchIn: '01:12 PM', timeOut: '05:00 PM' }), {
+    timeIn: { late: 7 }, lunchOut: { early: 15 }, lunchIn: { late: 12 }, timeOut: { early: 0 }
+  });
+  // An afternoon-only day arrives against 1:00 PM; a morning-only day leaves against noon.
+  assert.deepEqual(punchStanding({ date: day, timeIn: '01:20 PM' }), { timeIn: { late: 20 }, lunchOut: null, lunchIn: null, timeOut: null });
+  assert.deepEqual(punchStanding({ date: day, timeIn: '08:00 AM', timeOut: '11:30 AM' }).timeOut, { early: 30 });
+  assert.equal(punchStanding({ date: day, timeIn: '08:00 AM', lunchOut: '12:00 PM', timeOut: '12:20 PM' }).timeOut, null);
+});
+
+test('office hours are written the way the DTR and the app show them', () => {
+  assert.equal(officeTimeText(8 * 60), '8:00 AM');
+  assert.equal(officeTimeText(12 * 60), '12:00 NN');
+  assert.equal(officeTimeText(13 * 60), '1:00 PM');
+  assert.equal(officeHoursText(), '8:00–12:00, 1:00–5:00');
+  assert.equal(durationText(7), '7 min');
+  assert.equal(durationText(65), '1h 05m');
 });
 
 test('the lunch break is deducted from the hours worked', () => {
