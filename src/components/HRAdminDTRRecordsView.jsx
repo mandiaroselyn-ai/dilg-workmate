@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { dtrDayLogs, dtrUndertimeMinutes, usesLunchLogs } from '../utils/dtrDay';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
@@ -25,6 +26,14 @@ const auditTime = value => {
 
 const fieldClass = 'mt-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500';
 
+// The noon break's two punches, each with its own selfie and checks.
+const LUNCH_PUNCHES = [
+  { field: 'lunchOut', label: 'Lunch Out', hasSelfieField: 'hasLunchOutSelfie' },
+  { field: 'lunchIn', label: 'Lunch In', hasSelfieField: 'hasLunchInSelfie' }
+];
+// Minutes as "1h 05m", or "None".
+const formatMinutes = minutes => (minutes ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m` : 'None');
+
 // HR's review of one DTR record: Mark Verified records that HR checked it, and a
 // correction changes its times, status, or location with a reason. The first recorded
 // times are kept in the audit. The server decides again whether a corrected Time In is late.
@@ -38,6 +47,8 @@ function DtrReview({ record, reviewerName, onSave }) {
     setResult({ text: '', error: false });
     setForm({
       timeIn: toInputTime(record.timeIn),
+      lunchOut: toInputTime(record.lunchOut),
+      lunchIn: toInputTime(record.lunchIn),
       timeOut: toInputTime(record.timeOut),
       status: record.status || 'Present',
       location: record.location || record.workAssignment?.location || '',
@@ -71,14 +82,22 @@ function DtrReview({ record, reviewerName, onSave }) {
       setResult({ text: 'Enter the Time In.', error: true });
       return;
     }
+    if (Boolean(form.lunchIn) && !form.lunchOut) {
+      setResult({ text: 'Enter the Lunch Out before the Lunch In.', error: true });
+      return;
+    }
     send({
       timeIn: fromInputTime(form.timeIn),
+      lunchOut: form.lunchOut ? fromInputTime(form.lunchOut) : null,
+      lunchIn: form.lunchIn ? fromInputTime(form.lunchIn) : null,
       timeOut: form.timeOut ? fromInputTime(form.timeOut) : null,
       status: form.status,
       location: form.location.trim(),
       workAssignment: { ...(record.workAssignment || {}), location: form.location.trim(), task: form.task.trim() }
     }, {
       originalTimeIn: audit?.originalTimeIn ?? record.timeIn ?? null,
+      originalLunchOut: audit?.originalLunchOut ?? record.lunchOut ?? null,
+      originalLunchIn: audit?.originalLunchIn ?? record.lunchIn ?? null,
       originalTimeOut: audit?.originalTimeOut ?? record.timeOut ?? null,
       correctionReason: form.reason.trim(),
       correctedBy: reviewerName,
@@ -100,12 +119,18 @@ function DtrReview({ record, reviewerName, onSave }) {
       </div>
       <p className="mt-2 text-xs text-slate-600">
         {audit?.verifiedAt ? <>Verified by <b>{audit.verifiedBy || 'HR'}</b> on {auditTime(audit.verifiedAt)}.</> : 'Not yet verified by HR.'}
-        {audit?.correctedAt && <> Corrected by <b>{audit.correctedBy || 'HR'}</b> on {auditTime(audit.correctedAt)}: {(audit.correctionReason || 'no reason given').replace(/[.\s]+$/, '')}. First recorded: Time In {audit.originalTimeIn || '-'}, Time Out {audit.originalTimeOut || '-'}.</>}
+        {audit?.correctedAt && <> Corrected by <b>{audit.correctedBy || 'HR'}</b> on {auditTime(audit.correctedAt)}: {(audit.correctionReason || 'no reason given').replace(/[.\s]+$/, '')}. First recorded: Time In {audit.originalTimeIn || '-'}{'originalLunchOut' in audit ? `, Lunch Out ${audit.originalLunchOut || '-'}, Lunch In ${audit.originalLunchIn || '-'}` : ''}, Time Out {audit.originalTimeOut || '-'}.</>}
       </p>
       {form && (
         <form onSubmit={saveCorrection} className="mt-3 grid gap-2 sm:grid-cols-2">
           <label className="text-[11px] font-black text-slate-600">Time In
             <input type="time" name="timeIn" value={form.timeIn} onChange={change} required className={fieldClass} />
+          </label>
+          <label className="text-[11px] font-black text-slate-600">Lunch Out (A.M. departure; empty if none)
+            <input type="time" name="lunchOut" value={form.lunchOut} onChange={change} className={fieldClass} />
+          </label>
+          <label className="text-[11px] font-black text-slate-600">Lunch In (P.M. arrival; empty if none)
+            <input type="time" name="lunchIn" value={form.lunchIn} onChange={change} className={fieldClass} />
           </label>
           <label className="text-[11px] font-black text-slate-600">Time Out (leave empty if none)
             <input type="time" name="timeOut" value={form.timeOut} onChange={change} className={fieldClass} />
@@ -276,8 +301,13 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <span>Office: <b>{selected.office}</b></span>
         <span>Date: <b>{selected.record.date || '-'}</b></span>
         <span>Time In: <b>{selected.record.timeIn || '-'}</b></span>
+        <span>Lunch Out: <b>{selected.record.lunchOut || '-'}</b></span>
+        <span>Lunch In: <b>{selected.record.lunchIn || '-'}</b></span>
         <span>Time Out: <b>{selected.record.timeOut || '-'}</b></span>
         <span>Total Hours: <b>{totalHoursWorked(selected.record) || '-'}</b></span>
+        {usesLunchLogs(selected.record) && (
+          <span>Tardiness &amp; undertime (8–12, 1–5): <b>{formatMinutes(dtrUndertimeMinutes(dtrDayLogs(selected.record)))}</b></span>
+        )}
         <span>Attendance Status: <b>{selected.status}</b></span>
         <span>Record Status: <b>{hasSelfie(selected.record) && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
         <span>Face liveness: <b>{selected.record.faceLivenessVerified ? `${Number(selected.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
@@ -289,6 +319,12 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
             <span>Time Out fingerprint: <b>{describeFingerprintCheck({ fingerprintVerified: selected.record.timeOutFingerprintVerified, fingerprintMethod: selected.record.timeOutFingerprintMethod })}</b></span>
           </>
         )}
+        {LUNCH_PUNCHES.filter(({ field }) => selected.record[field]).map(({ field, label }) => (
+          <React.Fragment key={field}>
+            <span>{label} face match: <b>{selected.record[`${field}FaceVerified`] ? `Matched · distance ${Number(selected.record[`${field}FaceMatchDistance`] || 0).toFixed(3)}` : 'Not performed'}</b></span>
+            <span>{label} fingerprint: <b>{describeFingerprintCheck({ fingerprintVerified: selected.record[`${field}FingerprintVerified`], fingerprintMethod: selected.record[`${field}FingerprintMethod`] })}</b></span>
+          </React.Fragment>
+        ))}
         <span>Face-match time: <b>{selected.record.faceVerifiedAt ? new Date(selected.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
         <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
       </div>
@@ -324,6 +360,18 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         faceVerified={selected.record.faceVerified}
         faceMatchDistance={selected.record.faceMatchDistance}
       />
+      {LUNCH_PUNCHES.filter(({ field }) => selected.record[field]).map(({ field, hasSelfieField }) => (
+        <HRFaceComparison
+          key={field}
+          entry={field}
+          employeeId={selected.employee?.employeeId || selected.record.employeeId}
+          recordId={selected.record.id}
+          hasAttendanceSelfie={Boolean(selected.record[hasSelfieField] || selected.record[`${field}SelfieUrl`])}
+          attendanceSelfie={selected.record[`${field}SelfieUrl`]}
+          faceVerified={selected.record[`${field}FaceVerified`]}
+          faceMatchDistance={selected.record[`${field}FaceMatchDistance`]}
+        />
+      ))}
       {selected.record.timeOut && (
         <HRFaceComparison
           entry="timeOut"
@@ -391,11 +439,17 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
                       {offlineRowLabels(row.record).map(label => <p key={label} className="mt-1 text-xs font-black text-amber-700">{label}</p>)}
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
-                      {row.status === 'Incomplete' ? (row.record.timeIn ? 'Missing Time Out' : 'Missing Time In') : row.status}
+                      {row.status === 'Incomplete' ? missingDtrLog(row.record) : row.status}
                     </span>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">
                     <span>Time In: <b className="text-slate-700">{row.record.timeIn || '-'}</b></span>
+                    {usesLunchLogs(row.record) && (
+                      <>
+                        <span>Lunch Out: <b className="text-slate-700">{row.record.lunchOut || '-'}</b></span>
+                        <span>Lunch In: <b className="text-slate-700">{row.record.lunchIn || '-'}</b></span>
+                      </>
+                    )}
                     <span>Time Out: <b className="text-slate-700">{row.record.timeOut || '-'}</b></span>
                     <span>Total Hours: <b className="text-slate-700">{totalHoursWorked(row.record) || '-'}</b></span>
                     <span>Office: <b className="text-slate-700">{row.office}</b></span>

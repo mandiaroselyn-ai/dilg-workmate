@@ -18,7 +18,7 @@ import {
 import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { monthAttendanceSummary } from '../utils/hrAttendance';
+import { monthAttendanceSummary, totalHoursWorked } from '../utils/hrAttendance';
 
 const DashboardSection = ({ title, actionLabel, onAction, meta, children }) => (
   <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -108,46 +108,11 @@ export default function DashboardView({
   const today = getManilaDateString();
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user)) || {};
 
-  const formatDuration = (startTime, endTime) => {
-    try {
-      const [start, startPeriod] = startTime.split(' ');
-      const [startHourStr, startMinuteStr] = start.split(':');
-      const [end, endPeriod] = endTime.split(' ');
-      const [endHourStr, endMinuteStr] = end.split(':');
-
-      let startHour = Number(startHourStr);
-      const startMinute = Number(startMinuteStr);
-      let endHour = Number(endHourStr);
-      const endMinute = Number(endMinuteStr);
-
-      if (startPeriod === 'PM' && startHour !== 12) startHour += 12;
-      if (startPeriod === 'AM' && startHour === 12) startHour = 0;
-      if (endPeriod === 'PM' && endHour !== 12) endHour += 12;
-      if (endPeriod === 'AM' && endHour === 12) endHour = 0;
-
-      const startDate = new Date();
-      startDate.setHours(startHour, startMinute, 0, 0);
-      const endDate = new Date();
-      endDate.setHours(endHour, endMinute, 0, 0);
-
-      const diffMs = Math.max(0, endDate - startDate);
-      const diffMins = Math.floor(diffMs / 60000);
-      const hoursCount = Math.floor(diffMins / 60);
-      const minsCount = diffMins % 60;
-      return `${hoursCount}h ${minsCount}m`;
-    } catch {
-      return '--';
-    }
-  };
-
+  // Hours worked once timed out, without the lunch break.
   useEffect(() => {
-    if (!todayRecord?.timeIn || !todayRecord?.timeOut) {
-      setElapsedText('--');
-      return;
-    }
-
-    setElapsedText(formatDuration(todayRecord.timeIn, todayRecord.timeOut));
-  }, [todayRecord?.timeIn, todayRecord?.timeOut]);
+    setElapsedText(totalHoursWorked(todayRecord) || '--');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayRecord?.timeIn, todayRecord?.timeOut, todayRecord?.lunchOut, todayRecord?.lunchIn]);
 
   useEffect(() => {
     const updateTime = () => {

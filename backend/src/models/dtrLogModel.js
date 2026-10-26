@@ -21,6 +21,21 @@ const OfflineEntrySchema = new mongoose.Schema({
   decidedAt: Date
 }, { _id: false });
 
+// The fields of a Lunch Out or Lunch In (`prefix`), such as lunchOut ("12:02 PM"),
+// lunchOutAt, lunchOutLatitude, and lunchOutSelfieUrl.
+const lunchFields = prefix => ({
+  [prefix]: { type: String, default: null },
+  [`${prefix}At`]: { type: Date, default: null },
+  [`${prefix}Latitude`]: { type: Number },
+  [`${prefix}Longitude`]: { type: Number },
+  [`${prefix}GpsAccuracy`]: { type: Number },
+  [`${prefix}SelfieUrl`]: { type: String, default: '' },
+  [`${prefix}FingerprintVerified`]: { type: Boolean, default: false },
+  [`${prefix}FingerprintMethod`]: { type: String, enum: ['', 'browser', 'phone-app'], default: '' },
+  [`${prefix}FaceVerified`]: { type: Boolean, default: false },
+  [`${prefix}FaceMatchDistance`]: { type: Number, default: null }
+});
+
 const DtrLogSchema = new mongoose.Schema({
   customId: { type: String, required: true },
   date: { type: String, required: true },
@@ -105,6 +120,10 @@ const DtrLogSchema = new mongoose.Schema({
   timeOutFingerprintMethod: { type: String, enum: ['', 'browser', 'phone-app'], default: '' },
   timeOutFaceVerified: { type: Boolean, default: false },
   timeOutFaceMatchDistance: { type: Number, default: null },
+  // The noon break (CSC Form 48's A.M. departure and P.M. arrival), each made like a Time Out:
+  // when, where, its selfie, and the checks of that selfie and of the fingerprint.
+  ...lunchFields('lunchOut'),
+  ...lunchFields('lunchIn'),
   // Location History Tracking
   locationHistory: [{
     timestamp: { type: Date, default: Date.now },
@@ -168,10 +187,10 @@ const openShiftFilter = (employeeId, date) => ({
   ]
 });
 
-const EVIDENCE_FIELDS = '-selfieUrl -timeOutSelfieUrl -locationHistory -siteVisits -geofenceEvents -fingerprintHash -fingerprintProof';
+const EVIDENCE_FIELDS = '-selfieUrl -timeOutSelfieUrl -lunchOutSelfieUrl -lunchInSelfieUrl -locationHistory -siteVisits -geofenceEvents -fingerprintHash -fingerprintProof';
 
 // Fields HR may change when correcting or verifying an attendance record.
-const HR_EDITABLE_FIELDS = ['timeIn', 'timeOut', 'status', 'location', 'workAssignment', 'verificationAudit', 'gpsStatus'];
+const HR_EDITABLE_FIELDS = ['timeIn', 'lunchOut', 'lunchIn', 'timeOut', 'status', 'location', 'workAssignment', 'verificationAudit', 'gpsStatus'];
 
 const toClientLog = item => {
   const obj = typeof item.toObject === 'function' ? item.toObject() : { ...item };
@@ -182,15 +201,17 @@ const toClientLog = item => {
 };
 
 // Lists of records (HR's, and an employee's own history) leave out what makes a record
-// large: the selfies (hasSelfie and hasTimeOutSelfie say whether there are any; they are
-// loaded when the record is shown), the minute-by-minute GPS history, and the outline of the
-// assigned barangay.
-const LIST_OMITTED_FIELDS = ['selfieUrl', 'timeOutSelfieUrl', 'locationHistory', 'siteVisits', 'geofenceEvents', 'fingerprintHash', 'fingerprintProof'];
+// large: the selfies (hasSelfie, hasTimeOutSelfie, hasLunchOutSelfie, and hasLunchInSelfie
+// say whether there are any; they are loaded when the record is shown), the minute-by-minute
+// GPS history, and the outline of the assigned barangay.
+const LIST_OMITTED_FIELDS = ['selfieUrl', 'timeOutSelfieUrl', 'lunchOutSelfieUrl', 'lunchInSelfieUrl', 'locationHistory', 'siteVisits', 'geofenceEvents', 'fingerprintHash', 'fingerprintProof'];
 
 const toListLog = item => {
   const obj = typeof item.toObject === 'function' ? item.toObject() : { ...item };
   obj.hasSelfie = Boolean(obj.selfieUrl);
   obj.hasTimeOutSelfie = Boolean(obj.timeOutSelfieUrl);
+  obj.hasLunchOutSelfie = Boolean(obj.lunchOutSelfieUrl);
+  obj.hasLunchInSelfie = Boolean(obj.lunchInSelfieUrl);
   for (const field of LIST_OMITTED_FIELDS) delete obj[field];
   if (obj.assignmentSite) obj.assignmentSite = { ...obj.assignmentSite, geometry: undefined };
   obj.id = obj.customId;
@@ -204,7 +225,12 @@ const findListLogs = async match => {
   const logs = await MongoDtrLog.aggregate([
     { $match: match },
     // True for a non-empty selfie; false when it is empty, null, or missing.
-    { $addFields: { hasSelfie: { $gt: ['$selfieUrl', ''] }, hasTimeOutSelfie: { $gt: ['$timeOutSelfieUrl', ''] } } },
+    { $addFields: {
+      hasSelfie: { $gt: ['$selfieUrl', ''] },
+      hasTimeOutSelfie: { $gt: ['$timeOutSelfieUrl', ''] },
+      hasLunchOutSelfie: { $gt: ['$lunchOutSelfieUrl', ''] },
+      hasLunchInSelfie: { $gt: ['$lunchInSelfieUrl', ''] }
+    } },
     { $project: Object.fromEntries([...LIST_OMITTED_FIELDS, 'assignmentSite.geometry'].map(field => [field, 0])) },
     { $sort: { createdAt: -1 } }
   ]);
@@ -212,23 +238,25 @@ const findListLogs = async match => {
 };
 
 export const DtrLog = {
-  // Changes on every Time In (a new record) and Time Out (a record closed). The location
-  // updates sent every minute during a shift are left out, so HR's attendance list is
-  // not downloaded again for each of them.
+  // Changes on every Time In (a new record), Lunch Out, Lunch In, and Time Out (a record
+  // closed). The location updates sent every minute during a shift are left out, so HR's
+  // attendance list is not downloaded again for each of them.
   updateStamp: async () => {
     ensureConnected();
-    const [count, closed, newest] = await Promise.all([
+    const [count, closed, lunchOuts, lunchIns, newest] = await Promise.all([
       MongoDtrLog.countDocuments(),
       MongoDtrLog.countDocuments({ timeOut: { $ne: null } }),
+      MongoDtrLog.countDocuments({ lunchOut: { $ne: null } }),
+      MongoDtrLog.countDocuments({ lunchIn: { $ne: null } }),
       MongoDtrLog.findOne().sort({ createdAt: -1 }).select('createdAt').lean()
     ]);
-    return `${count}:${closed}:${newest?.createdAt ? new Date(newest.createdAt).getTime() : 0}`;
+    return `${count}:${closed}:${lunchOuts}:${lunchIns}:${newest?.createdAt ? new Date(newest.createdAt).getTime() : 0}`;
   },
 
   findRecent: async (limit = 500) => {
     ensureConnected();
     const mongoLogs = await MongoDtrLog.find({})
-      .select('-selfieUrl -timeOutSelfieUrl -locationHistory -siteVisits -geofenceEvents')
+      .select('-selfieUrl -timeOutSelfieUrl -lunchOutSelfieUrl -lunchInSelfieUrl -locationHistory -siteVisits -geofenceEvents')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -258,7 +286,7 @@ export const DtrLog = {
   // One record's selfies and whose record it is, for showing that record.
   findSelfie: async id => {
     ensureConnected();
-    return MongoDtrLog.findOne({ customId: id }).select('customId selfieUrl timeOutSelfieUrl employeeId employeeEmail').lean();
+    return MongoDtrLog.findOne({ customId: id }).select('customId selfieUrl timeOutSelfieUrl lunchOutSelfieUrl lunchInSelfieUrl employeeId employeeEmail').lean();
   },
 
   find: async ({ includeEvidence = true } = {}) => {
@@ -271,6 +299,8 @@ export const DtrLog = {
       if (!includeEvidence) {
         delete obj.selfieUrl;
         delete obj.timeOutSelfieUrl;
+        delete obj.lunchOutSelfieUrl;
+        delete obj.lunchInSelfieUrl;
         delete obj.locationHistory;
         delete obj.siteVisits;
         delete obj.geofenceEvents;
@@ -418,6 +448,33 @@ export const DtrLog = {
     return null;
   },
 
+  // Saves the open shift's Lunch Out or Lunch In (`which`: 'lunchOut' or 'lunchIn') made at
+  // `time` ("12:02 PM"), with where it was made and its selfie and checks. Each is saved once,
+  // and a Lunch In only after a Lunch Out; null when the shift is not ready for it.
+  recordLunch: async (which, time, employeeId, date, location = {}, verification = {}) => {
+    ensureConnected();
+    const ready = which === 'lunchOut' ? { lunchOut: null } : { lunchOut: { $ne: null }, lunchIn: null };
+    const log = await MongoDtrLog.findOneAndUpdate(
+      { ...openShiftFilter(employeeId, date), ...ready },
+      {
+        $set: {
+          [which]: time,
+          [`${which}At`]: new Date(),
+          [`${which}Latitude`]: location.latitude ?? null,
+          [`${which}Longitude`]: location.longitude ?? null,
+          [`${which}GpsAccuracy`]: location.accuracy ?? null,
+          [`${which}SelfieUrl`]: verification.selfieUrl || '',
+          [`${which}FingerprintVerified`]: verification.fingerprintVerified === true,
+          [`${which}FingerprintMethod`]: verification.fingerprintMethod || '',
+          [`${which}FaceVerified`]: verification.faceVerified === true,
+          [`${which}FaceMatchDistance`]: verification.faceMatchDistance ?? null
+        }
+      },
+      { new: true, sort: { createdAt: -1 } }
+    );
+    return log ? toClientLog(log) : null;
+  },
+
   // Applies HR corrections, verifications, and decisions (see hrUpdateOperations).
   bulkUpdate: async (updates, { reviewer = '' } = {}) => {
     ensureConnected();
@@ -562,6 +619,8 @@ export const DtrLog = {
         currentAccuracy: 1,
         date: 1,
         timeIn: 1,
+        lunchOut: 1,
+        lunchIn: 1,
         // The first point is the one recorded at Time In.
         locationHistory: { $slice: 1 },
         // The latest time the employee left or came back to their assigned area.
@@ -615,6 +674,12 @@ export const hrUpdateOperations = (updates, reviewer = '', now = new Date()) => 
     }
     if (changes.timeOut != null && clockTextMinutes(changes.timeOut) === null) {
       throw new Error('Time Out must be a time such as 05:00 PM, or left empty.');
+    }
+    if (changes.lunchOut != null && clockTextMinutes(changes.lunchOut) === null) {
+      throw new Error('Lunch Out must be a time such as 12:00 PM, or left empty.');
+    }
+    if (changes.lunchIn != null && clockTextMinutes(changes.lunchIn) === null) {
+      throw new Error('Lunch In must be a time such as 01:00 PM, or left empty.');
     }
 
     const operations = Object.keys(changes).length ? [{ id, filter: { customId: id }, changes }] : [];
@@ -689,6 +754,10 @@ export const liveLocationFromLog = (log, now = new Date()) => {
     },
     date: log.date,
     timeIn: log.timeIn,
+    lunchOut: log.lunchOut || null,
+    lunchIn: log.lunchIn || null,
+    // Out for lunch: a Lunch Out without a Lunch In yet.
+    onLunch: Boolean(log.lunchOut && !log.lunchIn),
     // The area the employee chose at Time In: its name, and its shape, which HR's live map
     // outlines for the picked employee.
     assignmentArea: log.assignmentSite || null

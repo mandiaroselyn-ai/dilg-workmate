@@ -1,4 +1,5 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
+import { clockMinutes, missingLunchLog } from './dtrDay.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -83,7 +84,8 @@ export const monthAttendanceSummary = (employee, { records = [], requests = [], 
 export const hasSelfie = record => Boolean(record?.hasSelfie || record?.selfieUrl);
 
 // Why a record needs HR review, or null. A shift that is still open today is not an issue;
-// it becomes "Missing Time Out" once its day is over.
+// it becomes "Missing Time Out" once its day is over. A finished whole day without its
+// Lunch Out or Lunch In needs HR to enter it (see missingLunchLog).
 export const dtrIssue = (record, today) => {
   if (!record?.timeIn) return record?.status === 'Absent' ? null : 'Missing Time In';
   if (isOfflineReviewPending(record)) return 'Offline Time In for Review';
@@ -95,34 +97,36 @@ export const dtrIssue = (record, today) => {
   if (!approvedOffline && !hasSelfie(record)) return 'Missing Selfie Verification';
   if (!approvedOffline && !record.fingerprintVerified) return 'Missing Biometric Verification';
   if (!record.timeOut) return record.date && record.date < today ? 'Missing Time Out' : null;
-  return null;
-};
-
-// "08:05 AM" (how Time In and Time Out are saved) as minutes after midnight, or null.
-const clockMinutes = value => {
-  const match = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(value || '').trim());
-  if (!match || Number(match[1]) > 12 || Number(match[2]) > 59) return null;
-  const hour = (Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0);
-  return hour * 60 + Number(match[2]);
+  return missingLunchLog(record);
 };
 
 // Time between Time In and Time Out, such as "8h 05m", or '' until both are recorded.
 // A Time Out earlier than the Time In is past midnight, since a record keeps its Time In
-// date. No lunch break is deducted.
+// date. The time between Lunch Out and Lunch In is deducted when both are recorded.
 export const totalHoursWorked = record => {
   const start = clockMinutes(record?.timeIn);
   const end = clockMinutes(record?.timeOut);
   if (start === null || end === null) return '';
-  const minutes = (end - start + 24 * 60) % (24 * 60);
+  const lunchOut = clockMinutes(record.lunchOut);
+  const lunchIn = clockMinutes(record.lunchIn);
+  const lunch = lunchOut !== null && lunchIn !== null ? Math.max(0, lunchIn - lunchOut) : 0;
+  const minutes = Math.max(0, ((end - start + 24 * 60) % (24 * 60)) - lunch);
   return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
 };
 
-// A record's DTR status: On Duty (open today), Incomplete, Late, or Complete.
+// A record's DTR status: On Duty (open today), Incomplete (a missing Time In, Time Out,
+// Lunch Out, or Lunch In), Late, or Complete.
 export const dtrRecordStatus = (record, today) => {
   if (record?.timeIn && !record.timeOut && record.date === today) return 'On Duty';
-  if (!record?.timeIn || !record.timeOut) return 'Incomplete';
+  if (!record?.timeIn || !record.timeOut || missingLunchLog(record)) return 'Incomplete';
   return isLate(record) ? 'Late' : 'Complete';
 };
+
+// What an Incomplete record lacks, for its label: 'Missing Time In', 'Missing Time Out',
+// 'Missing Lunch Out', or 'Missing Lunch In'.
+export const missingDtrLog = record => (!record?.timeIn ? 'Missing Time In'
+  : !record.timeOut ? 'Missing Time Out'
+    : missingLunchLog(record) || '');
 
 // HR's attendance holds the records from `windowStart` (the first day of the previous
 // month) on, plus the earlier months HR loaded (`loadedMonths`, a Set of "YYYY-MM").

@@ -9,6 +9,8 @@ export default function AttendanceTodayCard({
   onViewDetails = () => {}
 }) {
   const status = (() => {
+    // Out for lunch: a Lunch Out without a Lunch In yet
+    if (todayRecord?.timeIn && !todayRecord?.timeOut && todayRecord?.lunchOut && !todayRecord?.lunchIn) return { label: 'ON LUNCH', color: 'amber' };
     // Show ON DUTY if user has timeIn and hasn't timed out yet
     if (todayRecord?.timeIn && !todayRecord?.timeOut) return { label: 'ON DUTY', color: 'emerald' };
     // If user has both timeIn and timeOut, consider them OFF DUTY for the day
@@ -105,6 +107,11 @@ export default function AttendanceTodayCard({
             <div className="mt-1 font-extrabold text-sm text-amber-700">{elapsedText || '--'}</div>
           </div>
         </div>
+        {todayRecord?.lunchOut && (
+          <div className="border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600">
+            Lunch: <b className="text-slate-800">{todayRecord.lunchOut}</b> to <b className="text-slate-800">{todayRecord.lunchIn || (todayRecord.timeOut ? 'no Lunch In' : 'now')}</b>
+          </div>
+        )}
       </div>
 
       {/* Action button */}

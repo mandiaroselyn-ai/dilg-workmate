@@ -33,12 +33,12 @@ const loadGoogleMaps = key => {
 };
 
 // HR's map of employees on duty. Each dot is the employee's latest phone GPS, which the app
-// sends every minute while it is open: green inside their assigned area, red outside it.
-// When no GPS has come for 15 minutes the dot stays at the last known location, faded.
-// Someone picked after timing out is gray, at where they timed in. The picked employee's
-// assigned area is outlined, so HR can see whether they are really there.
+// sends every minute while it is open: green inside their assigned area, red outside it,
+// blue while out for lunch. When no GPS has come for 15 minutes the dot stays at the last
+// known location, faded. Someone picked after timing out is gray, at where they timed in.
+// The picked employee's assigned area is outlined, so HR can see whether they are really there.
 
-const COLORS = { inside: '#16a34a', outside: '#dc2626', done: '#94a3b8' };
+const COLORS = { inside: '#16a34a', outside: '#dc2626', lunch: '#0284c7', done: '#94a3b8' };
 const NO_SIGNAL_OPACITY = 0.4;
 const MARINDUQUE = [13.4, 121.95];
 // A light blue that stays visible on both satellite imagery and the street map.
@@ -117,7 +117,7 @@ const areaBoundsFor = area => {
   return layer instanceof L.Circle ? layer.getLatLng().toBounds(layer.getRadius() * 2) : layer.getBounds();
 };
 
-// points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'done',
+// points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'lunch' | 'done',
 //            noSignal, area, place, details: [lines for the popup] }]
 // compact: a shorter map, for the Monitoring page.
 export default function HRLiveGpsMap({ points, selectedKey, onSelect, compact = false }) {
@@ -294,6 +294,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect, compact = 
         <div className="flex flex-wrap gap-3 text-[10px] font-bold text-slate-600">
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.inside }} />Inside assigned area</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.outside }} />Outside assigned area</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.lunch }} />On lunch</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-slate-700" style={{ backgroundColor: COLORS.inside, opacity: NO_SIGNAL_OPACITY }} />Faded: no live signal (15+ min), last known location</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed" style={{ borderColor: AREA_STYLE.color, backgroundColor: `${AREA_STYLE.color}1f` }} />Picked employee's assigned area (field areas allow 150 m past the edge)</span>

@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { countsInDtr, dtrTimeOut } from './hrAttendance.js';
+import { dtrDayLogs, dtrUndertimeMinutes, usesLunchLogs } from './dtrDay.js';
 
 // Fills both duplicates on each page of the CSC Form No. 48 DTR template
 // (src/assets/template/dtr-template.pdf) with one employee's monthly attendance data.
@@ -73,7 +74,8 @@ function fmt(t) {
   return `${t.h % 12 || 12}:${String(t.min).padStart(2, '0')}`;
 }
 
-// Breaks a day's timeIn/timeOut into the four DTR columns.
+// Breaks a day's timeIn/timeOut into the four DTR columns, for a record from before Lunch
+// Out and Lunch In were recorded (see usesLunchLogs): a whole day shows the usual noon break.
 function dtrTimes(timeIn, timeOut) {
   const tin = parseTime(timeIn);
   const tout = parseTime(timeOut);
@@ -91,7 +93,8 @@ function dtrTimes(timeIn, timeOut) {
   return { amArr: '', amDep: '', pmArr: fmt(tin), pmDep: tout ? fmt(tout) : '' };
 }
 
-// Undertime in minutes for one day (0 if none or if record is incomplete).
+// Undertime in minutes for one day (0 if none or if record is incomplete), for a record from
+// before Lunch Out and Lunch In were recorded.
 function undertimeMins(timeIn, timeOut) {
   const tin = parseTime(timeIn);
   const tout = parseTime(timeOut);
@@ -102,6 +105,21 @@ function undertimeMins(timeIn, timeOut) {
   const worked = toutM - tinM - (isFullDay ? 60 : 0); // subtract lunch break
   const required = isFullDay ? 480 : 240;             // 8h or 4h
   return Math.max(0, required - worked);
+}
+
+// One day's four DTR cells and its undertime in minutes. A record with Lunch Out and Lunch
+// In shows its own four logs, with tardiness and undertime against 8–12 and 1–5.
+function dayEntry(rec) {
+  if (!usesLunchLogs(rec)) return { ...dtrTimes(rec.timeIn, rec.timeOut), undertime: undertimeMins(rec.timeIn, rec.timeOut) };
+  const logs = dtrDayLogs(rec);
+  const cell = value => fmt(parseTime(value));
+  return {
+    amArr: cell(logs.amArrival),
+    amDep: cell(logs.amDeparture),
+    pmArr: cell(logs.pmArrival),
+    pmDep: cell(logs.pmDeparture),
+    undertime: dtrUndertimeMinutes(logs)
+  };
 }
 
 // Largest font size (down to 4.5 pt) at which `text` fits `maxWidth` in `font`.
@@ -121,7 +139,7 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
   let totalUT = 0;
   for (let d = 1; d <= totalDays; d++) {
     const rec = recordsByDay[d];
-    if (rec?.timeIn) totalUT += undertimeMins(rec.timeIn, rec.timeOut);
+    if (rec?.timeIn) totalUT += dayEntry(rec).undertime;
   }
   const totalUTHrs = Math.floor(totalUT / 60);
   const totalUTMin = totalUT % 60;
@@ -172,8 +190,7 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
       const rec = recordsByDay[d];
       if (!rec?.timeIn) continue;
 
-      const { amArr, amDep, pmArr, pmDep } = dtrTimes(rec.timeIn, rec.timeOut);
-      const ut = undertimeMins(rec.timeIn, rec.timeOut);
+      const { amArr, amDep, pmArr, pmDep, undertime: ut } = dayEntry(rec);
 
       // Write each time value centred in its column.
       for (const [cx, text] of [

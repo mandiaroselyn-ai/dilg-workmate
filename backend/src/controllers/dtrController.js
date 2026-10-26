@@ -9,7 +9,7 @@ import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssi
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { attendanceReviewNotices, noticeEmployee } from '../services/employeeNotices.js';
-import { isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
+import { clockTextMinutes, isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
 import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
 import {
   compareEnrollmentToAttendance,
@@ -101,13 +101,14 @@ export const getDtrLogs = async (req, res) => {
 };
 
 // One attendance record's selfie, for HR or for the employee whose record it is: the Time In
-// selfie, or the Time Out selfie with `which=time-out`. Lists of records leave selfies out so
+// selfie, or the Time Out, Lunch Out, or Lunch In selfie with `which=time-out`, `lunch-out`, or
+// `lunch-in`. Lists of records leave selfies out so
 // they stay small.
 export const getRecordSelfie = async (req, res) => {
   try {
     const id = typeof req.query.id === 'string' ? req.query.id.trim() : '';
     if (!id) return res.status(400).json({ success: false, error: 'Missing attendance record id.' });
-    const timeOut = req.query.which === 'time-out';
+    const field = { 'time-out': 'timeOutSelfieUrl', 'lunch-out': 'lunchOutSelfieUrl', 'lunch-in': 'lunchInSelfieUrl' }[req.query.which] || 'selfieUrl';
     const record = await DtrLog.findSelfie(id);
     const isOwn = record && (
       (record.employeeId && record.employeeId === req.user.employeeId)
@@ -117,7 +118,7 @@ export const getRecordSelfie = async (req, res) => {
       return res.status(404).json({ success: false, error: 'Attendance record not found.' });
     }
     res.set('Cache-Control', 'no-store, private');
-    res.status(200).json({ success: true, id, selfieUrl: (timeOut ? record.timeOutSelfieUrl : record.selfieUrl) || '' });
+    res.status(200).json({ success: true, id, selfieUrl: record[field] || '' });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -128,8 +129,10 @@ export const getRecordSelfie = async (req, res) => {
 // online that fails a check is refused, so the employee can retry. One saved without
 // internet (`offline`) cannot be redone, so it is kept and the reasons are added to
 // `offline.reviewReasons` for HR. `signedOffline` is the phone app's fingerprint signature
-// on a Time Out saved without internet. Returns { error, statusCode } or { verification }.
-const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) => {
+// on a Time Out saved without internet. A Lunch Out or Lunch In is checked the same way
+// (`punch` names it, and `selfie` is its selfie), online only. Returns { error, statusCode }
+// or { verification }.
+const checkTimeOutIdentity = async ({ record, user, offline, signedOffline, punch = 'Time Out', selfie: punchSelfie = record.timeOutSelfieUrl }) => {
   const refuse = (statusCode, error) => ({ error, statusCode });
   // Online, the refusal to send; offline, null once the reason is noted for HR.
   const failCheck = (statusCode, error, reviewReason = error) => {
@@ -138,9 +141,9 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) =>
     return null;
   };
 
-  const selfie = typeof record.timeOutSelfieUrl === 'string' ? record.timeOutSelfieUrl : '';
+  const selfie = typeof punchSelfie === 'string' ? punchSelfie : '';
   if (!selfie) {
-    const refusal = failCheck(400, 'Take a selfie before Time Out.', 'No selfie was taken at Time Out.');
+    const refusal = failCheck(400, `Take a selfie before ${punch}.`, `No selfie was taken at ${punch}.`);
     if (refusal) return refusal;
   }
 
@@ -157,7 +160,7 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) =>
   } else {
     proof = readVerificationProof(record.fingerprintProof, { employeeId: user.employeeId, type: 'fingerprint' });
     if (!proof) {
-      const refusal = failCheck(400, 'Verify your fingerprint before Time Out.', 'No fingerprint check came with this Time Out, so it is not known who made it.');
+      const refusal = failCheck(400, `Verify your fingerprint before ${punch}.`, `No fingerprint check came with this ${punch}, so it is not known who made it.`);
       if (refusal) return refusal;
     }
   }
@@ -179,7 +182,7 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) =>
     if (!isValidFaceDescriptor(enrollmentDescriptor)) {
       const refusal = failCheck(409,
         'Your HR-approved enrollment selfie cannot be used for face matching. Contact HR to resubmit biometric enrollment.',
-        'The Time Out selfie could not be compared: there is no usable HR-approved enrollment selfie.');
+        `The ${punch} selfie could not be compared: there is no usable HR-approved enrollment selfie.`);
       if (refusal) return refusal;
     } else {
       try {
@@ -187,7 +190,7 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) =>
       } catch (error) {
         // Online, a selfie without a clear face is refused and retaken.
         if (!(error instanceof FaceImageError)) throw error;
-        const refusal = failCheck(error.statusCode, error.message, `The Time Out selfie could not be compared with the enrollment selfie: ${error.message}`);
+        const refusal = failCheck(error.statusCode, error.message, `The ${punch} selfie could not be compared with the enrollment selfie: ${error.message}`);
         if (refusal) return refusal;
       }
       if (faceMatch && !faceMatch.matched) {
@@ -196,16 +199,16 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline }) =>
           provider: 'local-face-api-v1'
         });
         const refusal = failCheck(403,
-          'Your Time Out selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.',
-          'The Time Out selfie did not match the HR-approved enrollment selfie.');
+          `Your ${punch} selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.`,
+          `The ${punch} selfie did not match the HR-approved enrollment selfie.`);
         if (refusal) return refusal;
       }
     }
   }
 
-  // Each fingerprint check can be used for only one Time In or Time Out.
+  // Each fingerprint check can be used for only one Time In, Lunch Out, Lunch In, or Time Out.
   if (proof && !(await User.consumeVerificationProof(user._id, proof.jti))) {
-    const refusal = failCheck(409, 'This fingerprint verification was already used. Verify your fingerprint again.', 'The fingerprint check sent with this Time Out was already used.');
+    const refusal = failCheck(409, 'This fingerprint verification was already used. Verify your fingerprint again.', `The fingerprint check sent with this ${punch} was already used.`);
     if (refusal) return refusal;
     proof = null;
   }
@@ -556,6 +559,41 @@ export const clockInOut = async (req, res) => {
       } else {
         res.status(400).json({ success: false, error: 'No active clock-in found to clock out.' });
       }
+    } else if (action === 'lunch-out' || action === 'lunch-in') {
+      // The noon break: CSC Form 48's A.M. departure (Lunch Out) and P.M. arrival (Lunch In).
+      // The employee makes each one online, at their assigned area, with a selfie and a
+      // fingerprint, like a Time Out. HR enters a missing one in DTR Records.
+      const which = action === 'lunch-out' ? 'lunchOut' : 'lunchIn';
+      const punch = action === 'lunch-out' ? 'Lunch Out' : 'Lunch In';
+      if (req.user?.accessLevel !== 'employee') {
+        return res.status(403).json({ success: false, error: `Only employees record their own ${punch}. HR enters it with Correct Record in DTR Records.` });
+      }
+      const activeLog = await DtrLog.findActiveByEmployee(record.employeeId, record.date);
+      if (!activeLog) {
+        return res.status(400).json({ success: false, error: `Time In first. There is no open Time In to record ${punch} for.` });
+      }
+      const refusal = which === 'lunchOut'
+        ? activeLog.lunchOut ? `Lunch Out was already recorded at ${activeLog.lunchOut}.`
+          : clockTextMinutes(activeLog.timeIn) >= 12 * 60 ? 'You timed in this afternoon, so there is no lunch break to record. Tap Time Out when you leave.' : ''
+        : !activeLog.lunchOut ? 'Lunch Out first. Lunch In records your return from lunch.'
+          : activeLog.lunchIn ? `Lunch In was already recorded at ${activeLog.lunchIn}.` : '';
+      if (refusal) return res.status(400).json({ success: false, error: refusal });
+
+      const location = { latitude: record.latitude, longitude: record.longitude, accuracy: record.gpsAccuracy };
+      const locationError = timeOutLocationError(activeLog.assignmentSite, {
+        timeOutLatitude: location.latitude,
+        timeOutLongitude: location.longitude,
+        timeOutGpsAccuracy: location.accuracy
+      }, punch);
+      if (locationError) return res.status(400).json({ success: false, error: locationError });
+      const identity = await checkTimeOutIdentity({ record, user: req.user, offline: null, punch, selfie: record.selfieUrl });
+      if (identity.error) return res.status(identity.statusCode).json({ success: false, error: identity.error });
+
+      const savedLog = await DtrLog.recordLunch(which, formatManilaClockTime(new Date()), record.employeeId, record.date, location, identity.verification);
+      if (!savedLog) {
+        return res.status(409).json({ success: false, error: `${punch} was not saved because your attendance changed. Refresh the page and try again.` });
+      }
+      res.status(200).json({ success: true, record: savedLog });
     } else {
       res.status(400).json({ success: false, error: 'Invalid attendance action specified.' });
     }

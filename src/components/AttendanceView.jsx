@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { getManilaDateString } from '../../shared/localDate';
+import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 import { hasSelfie } from '../utils/hrAttendance';
+import { clockMinutes, OFFICE_HOURS, usesLunchLogs } from '../utils/dtrDay';
 import RecordSelfie from './RecordSelfie';
 
 import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
@@ -36,7 +37,9 @@ import {
   Download,
   ShieldCheck,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Utensils,
+  LogIn
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
@@ -83,6 +86,7 @@ export default function AttendanceView({
   attendanceHistory,
   onTimeIn,
   onTimeOut,
+  onLunch,
   onUpdateUser
 }) {
   // Input states with Philippine defaults from mockup
@@ -249,8 +253,16 @@ export default function AttendanceView({
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
   // One Time In and one Time Out per day: once today is timed out, Time In stays closed.
   const isDoneForToday = Boolean(todayRecord?.timeOut);
-  // What the selfie and fingerprint below are for.
-  const punchLabel = isCurrentlyActive ? 'Time Out' : 'Time In';
+  // The noon break of a shift that started this morning (CSC Form 48's A.M. departure and
+  // P.M. arrival): Lunch Out, then Lunch In. An afternoon-only shift has none.
+  const timeInMinutes = clockMinutes(todayRecord?.timeIn);
+  const timedInThisMorning = Boolean(isCurrentlyActive && timeInMinutes !== null && timeInMinutes < OFFICE_HOURS.noon);
+  const canLunchOut = timedInThisMorning && !todayRecord.lunchOut;
+  const isOnLunch = Boolean(isCurrentlyActive && todayRecord.lunchOut && !todayRecord.lunchIn);
+  // What the selfie and fingerprint below are for, and which of those can be saved on the
+  // phone without internet (a Lunch Out or Lunch In cannot).
+  const punchLabel = !isCurrentlyActive ? 'Time In' : isOnLunch ? 'Lunch In' : canLunchOut ? 'Lunch Out or Time Out' : 'Time Out';
+  const offlinePunchLabel = isCurrentlyActive ? 'Time Out' : 'Time In';
 
   // DTR export states
   const [dtrExportMonth, setDtrExportMonth] = useState(() => {
@@ -290,6 +302,9 @@ export default function AttendanceView({
   // True when a browser has no internet at Time Out. A browser checks the fingerprint with
   // the server, so the Time Out is saved on this phone without it, and HR reviews it.
   const [unverifiedOfflineTimeOut, setUnverifiedOfflineTimeOut] = useState(false);
+  // A Lunch Out or Lunch In being sent, and the note shown once one is saved.
+  const [lunchSaving, setLunchSaving] = useState(false);
+  const [punchNotice, setPunchNotice] = useState('');
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
     && Boolean(window.ReactNativeWebView && window.dilgNativeBiometricSupported === true);
@@ -988,23 +1003,12 @@ export default function AttendanceView({
       });
   };
 
-  const executeClockOut = () => {
-    if (!navigator.geolocation || !siteLocation) {
-      setLocationError('Selected assignment location is not available for GPS verification.');
-      return;
-    }
-    // Like Time In, Time Out needs a selfie and the fingerprint.
-    if (!capturedSelfie) {
-      setCameraError('Take a selfie before Time Out.');
-      return;
-    }
-    if (!fingerprintVerified && !offlineTimeIn && !unverifiedOfflineTimeOut) {
-      setFingerprintError(`Verify your ${biometricLabel} before Time Out.`);
-      return;
-    }
-
+  // An accurate GPS fix for a Time Out, Lunch Out, or Lunch In (`punch`), which are all made at
+  // the assigned area. Shows the fix and resolves with it, or with null after showing why the
+  // punch cannot be made here.
+  const locatePunch = punch => {
     setGpsLoading(true);
-    getAccuratePosition(showRoughGps)
+    return getAccuratePosition(showRoughGps)
       .then(position => {
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
@@ -1020,57 +1024,118 @@ export default function AttendanceView({
         syncGeofenceStatus(lat, lon, siteLocation);
 
         if (!Number.isFinite(accuracy) || accuracy > GPS_ACCURACY_REQUIRED_METERS) {
-          setLocationError(`GPS accuracy is still ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'} after trying for a while. Move outdoors or near a window and tap Time Out again; ${GPS_ACCURACY_REQUIRED_METERS}m or better is needed.`);
-          return;
+          setLocationError(`GPS accuracy is still ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'} after trying for a while. Move outdoors or near a window and tap ${punch} again; ${GPS_ACCURACY_REQUIRED_METERS}m or better is needed.`);
+          return null;
         }
         setLocationError('');
 
         if (verdict !== 'In Range') {
-          setLocationError(`Time Out blocked: your GPS location is outside ${siteLocation.label}.`);
-          return;
+          setLocationError(`${punch} blocked: your GPS location is outside ${siteLocation.label}.`);
+          return null;
         }
-
-        const gpsAccuracyMeters = Number(position.coords.accuracy || 0);
-        const timeOut = offlineTimeOutProof => {
-          onTimeOut({
-            latitude: lat,
-            longitude: lon,
-            gpsAccuracy: gpsAccuracyMeters,
-            selfie: capturedSelfie,
-            fingerprintProof,
-            offlineTimeOut: offlineTimeOutProof
-          });
-          setCapturedSelfie(null);
-          handleResetFingerprint();
-        };
-        if (!offlineTimeIn) {
-          timeOut(null);
-          return;
-        }
-
-        // No internet in the phone app: the phone signs this exact Time Out (with this GPS and
-        // selfie) with its fingerprint key, and it is saved on the phone until it can be sent.
-        setFingerprintScanning(true);
-        setFingerprintError(null);
-        signOfflineTimeOut({
-          employeeId: user?.employeeId,
-          keyId: readPhoneKey(user?.employeeId),
-          latitude: lat,
-          longitude: lon,
-          gpsAccuracy: gpsAccuracyMeters,
-          selfie: capturedSelfie,
-          sign: requestNativeBiometricSignature
-        })
-          .then(timeOut)
-          .catch(error => setFingerprintError(describeTimeInFingerprintError(error)))
-          .finally(() => setFingerprintScanning(false));
+        return { latitude: lat, longitude: lon, gpsAccuracy: Number(position.coords.accuracy || 0) };
       })
       .catch(error => {
         setGpsLoading(false);
         setLocationError(error.code === 1
-          ? 'GPS permission is required before Time Out. Allow location access in your browser settings.'
+          ? `GPS permission is required before ${punch}. Allow location access in your browser settings.`
           : 'GPS could not get a fix. Turn on Location Services, then retry. If this page is open inside Messenger, open it in Chrome.');
+        return null;
       });
+  };
+
+  const executeClockOut = () => {
+    if (!navigator.geolocation || !siteLocation) {
+      setLocationError('Selected assignment location is not available for GPS verification.');
+      return;
+    }
+    // Like Time In, Time Out needs a selfie and the fingerprint.
+    if (!capturedSelfie) {
+      setCameraError('Take a selfie before Time Out.');
+      return;
+    }
+    if (!fingerprintVerified && !offlineTimeIn && !unverifiedOfflineTimeOut) {
+      setFingerprintError(`Verify your ${biometricLabel} before Time Out.`);
+      return;
+    }
+    setPunchNotice('');
+    // A whole day needs its noon break in the DTR; without it, HR reviews the day.
+    if (isOnLunch && !window.confirm(`You are still out for lunch: there is no Lunch In since your Lunch Out at ${todayRecord.lunchOut}. Time Out now records that you did not come back this afternoon, and HR will review your DTR. Time Out anyway?`)) return;
+    if (canLunchOut && getManilaMinutesOfDay() > OFFICE_HOURS.pmStart && !window.confirm('You have no Lunch Out today, so your DTR will show the noon break as missing and HR will review it. Time Out anyway?')) return;
+
+    locatePunch('Time Out').then(fix => {
+      if (!fix) return;
+      const timeOut = offlineTimeOutProof => {
+        onTimeOut({
+          ...fix,
+          selfie: capturedSelfie,
+          fingerprintProof,
+          offlineTimeOut: offlineTimeOutProof
+        });
+        setCapturedSelfie(null);
+        handleResetFingerprint();
+      };
+      if (!offlineTimeIn) {
+        timeOut(null);
+        return;
+      }
+
+      // No internet in the phone app: the phone signs this exact Time Out (with this GPS and
+      // selfie) with its fingerprint key, and it is saved on the phone until it can be sent.
+      setFingerprintScanning(true);
+      setFingerprintError(null);
+      signOfflineTimeOut({
+        employeeId: user?.employeeId,
+        keyId: readPhoneKey(user?.employeeId),
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+        gpsAccuracy: fix.gpsAccuracy,
+        selfie: capturedSelfie,
+        sign: requestNativeBiometricSignature
+      })
+        .then(timeOut)
+        .catch(error => setFingerprintError(describeTimeInFingerprintError(error)))
+        .finally(() => setFingerprintScanning(false));
+    });
+  };
+
+  // Lunch Out or Lunch In (`action`: 'lunch-out' or 'lunch-in'): made like a Time Out, with a
+  // new selfie, the fingerprint, and GPS at the assigned area, but only online.
+  const executeLunch = action => {
+    const punch = action === 'lunch-out' ? 'Lunch Out' : 'Lunch In';
+    setPunchNotice('');
+    if (!navigator.onLine || offlineTimeIn || unverifiedOfflineTimeOut) {
+      setLocationError(`${punch} needs internet. Reconnect, then take the selfie and verify your ${biometricLabel} again.`);
+      return;
+    }
+    if (!navigator.geolocation || !siteLocation) {
+      setLocationError('Selected assignment location is not available for GPS verification.');
+      return;
+    }
+    if (!capturedSelfie) {
+      setCameraError(`Take a selfie before ${punch}.`);
+      return;
+    }
+    if (!fingerprintVerified) {
+      setFingerprintError(`Verify your ${biometricLabel} before ${punch}.`);
+      return;
+    }
+    if (action === 'lunch-out' && getManilaMinutesOfDay() < OFFICE_HOURS.noon
+      && !window.confirm('It is not yet 12:00 NN. Leaving for lunch now counts as undertime in your DTR. Record Lunch Out now?')) return;
+
+    locatePunch(punch).then(fix => {
+      if (!fix) return;
+      setLunchSaving(true);
+      onLunch(action, { ...fix, selfie: capturedSelfie, fingerprintProof })
+        .then(record => {
+          setCapturedSelfie(null);
+          handleResetFingerprint();
+          const time = action === 'lunch-out' ? record?.lunchOut : record?.lunchIn;
+          setPunchNotice(`${punch} recorded${time ? ` at ${time}` : ''}.`);
+        })
+        .catch(error => setLocationError(`Unable to record ${punch}: ${error.message}`))
+        .finally(() => setLunchSaving(false));
+    });
   };
 
   useEffect(() => {
@@ -1500,9 +1565,9 @@ export default function AttendanceView({
                       ) : offlineTimeIn ? (
                         <div className="text-center space-y-3 flex flex-col items-center justify-center max-w-xs">
                           <BiometricIcon className="w-12 h-12 text-amber-400" />
-                          <p className="text-xs font-black text-amber-300 uppercase tracking-wider">No internet: Offline {punchLabel}</p>
+                          <p className="text-xs font-black text-amber-300 uppercase tracking-wider">No internet: Offline {offlinePunchLabel}</p>
                           <p className="text-[10px] text-slate-400 leading-relaxed">
-                            Tap {punchLabel}, then use your {biometricLabel}. Your {punchLabel} is saved on this phone and sent when you are back online. If a check fails then, HR reviews it before it counts in your DTR.
+                            Tap {offlinePunchLabel}, then use your {biometricLabel}. Your {offlinePunchLabel} is saved on this phone and sent when you are back online. If a check fails then, HR reviews it before it counts in your DTR.
                           </p>
                           <button
                             onClick={handleResetFingerprint}
@@ -1578,36 +1643,68 @@ export default function AttendanceView({
           <div className="pt-5 border-t border-slate-100 flex flex-col gap-3.5">
             <div className="flex flex-wrap gap-4 items-center justify-between">
               <div className="text-xs text-slate-500 font-semibold">
-                {isCurrentlyActive ? (
+                {isOnLunch ? (
+                  <span className="flex items-center gap-1.5 text-sky-700 font-bold bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-100">
+                    <Utensils className="w-3.5 h-3.5 shrink-0" />
+                    Out for lunch since {todayRecord.lunchOut}. Tap Lunch In when you are back.
+                  </span>
+                ) : isCurrentlyActive ? (
                   <span className="flex items-center gap-1.5 text-emerald-700 font-bold bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Clocked In: {todayRecord.timeIn}
+                    Clocked In: {todayRecord.timeIn}{todayRecord.lunchIn ? ` · Lunch ${todayRecord.lunchOut} – ${todayRecord.lunchIn}` : ''}
                   </span>
                 ) : isDoneForToday ? (
-                  <span className="text-slate-600 font-bold">Today's attendance is complete: {todayRecord.timeIn} to {todayRecord.timeOut}. Time In opens again tomorrow.</span>
+                  <span className="text-slate-600 font-bold">
+                    Today's attendance is complete: {todayRecord.timeIn} to {todayRecord.timeOut}
+                    {todayRecord.lunchOut ? `, with lunch from ${todayRecord.lunchOut} to ${todayRecord.lunchIn || '(no Lunch In)'}` : ''}. Time In opens again tomorrow.
+                  </span>
                 ) : (
                   <span className="text-amber-600 font-bold">DTR terminal is open for punching</span>
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2 justify-between">
+              {/* The day's four logs, in the order of CSC Form 48: A.M. arrival (Time In), A.M.
+                  departure (Lunch Out), P.M. arrival (Lunch In), P.M. departure (Time Out). */}
+              <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
                 {/* Time In Button */}
                 <button
                   id="btn-punch-in"
                   onClick={executeClockIn}
                   disabled={isCurrentlyActive || isDoneForToday || !capturedSelfie || !(fingerprintVerified || offlineTimeIn) || gpsLoading || fingerprintScanning}
-                  className="flex-1 min-w-[42%] max-w-[48%] px-4 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                  className="px-4 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
                 >
                   <Play className="w-4 h-4 fill-white shrink-0" />
                   <span>Time In</span>
+                </button>
+
+                {/* Lunch Out Button */}
+                <button
+                  id="btn-lunch-out"
+                  onClick={() => executeLunch('lunch-out')}
+                  disabled={!canLunchOut || !capturedSelfie || !fingerprintVerified || gpsLoading || fingerprintScanning || lunchSaving}
+                  className="px-4 py-2.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                >
+                  <Utensils className="w-4 h-4 shrink-0" />
+                  <span>{todayRecord?.lunchOut ? `Lunch Out ${todayRecord.lunchOut}` : 'Lunch Out'}</span>
+                </button>
+
+                {/* Lunch In Button */}
+                <button
+                  id="btn-lunch-in"
+                  onClick={() => executeLunch('lunch-in')}
+                  disabled={!isOnLunch || !capturedSelfie || !fingerprintVerified || gpsLoading || fingerprintScanning || lunchSaving}
+                  className="px-4 py-2.5 text-xs font-bold bg-sky-600 hover:bg-sky-700 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                >
+                  <LogIn className="w-4 h-4 shrink-0" />
+                  <span>{todayRecord?.lunchIn ? `Lunch In ${todayRecord.lunchIn}` : 'Lunch In'}</span>
                 </button>
 
                 {/* Time Out Button */}
                 <button
                   id="btn-punch-out"
                   onClick={executeClockOut}
-                  disabled={!isCurrentlyActive || !capturedSelfie || !(fingerprintVerified || offlineTimeIn || unverifiedOfflineTimeOut) || gpsLoading || fingerprintScanning}
-                  className="flex-1 min-w-[42%] max-w-[48%] px-4 py-2.5 text-xs font-bold bg-[#e11d48] hover:bg-red-700 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                  disabled={!isCurrentlyActive || !capturedSelfie || !(fingerprintVerified || offlineTimeIn || unverifiedOfflineTimeOut) || gpsLoading || fingerprintScanning || lunchSaving}
+                  className="px-4 py-2.5 text-xs font-bold bg-[#e11d48] hover:bg-red-700 active:scale-[0.98] disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer shadow-sm disabled:cursor-not-allowed"
                 >
                   <Clock className="w-4 h-4 shrink-0" />
                   <span>Time Out</span>
@@ -1619,6 +1716,13 @@ export default function AttendanceView({
             {isCurrentlyActive && (
               <p className="text-[11px] font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                 While you are on duty, HR sees your phone's location on the Live GPS Map every minute that WorkMate is open. Keep the app open during fieldwork. If it is closed or your phone is locked, HR sees the last location WorkMate sent.
+              </p>
+            )}
+
+            {/* The noon break, as government office hours count it. */}
+            {timedInThisMorning && !todayRecord.lunchIn && (
+              <p className="text-[11px] font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                Lunch break is 12:00 NN to 1:00 PM. Tap Lunch Out when you leave and Lunch In when you are back, each with a new selfie and {biometricLabel} at your assigned area, and with internet. Leaving before 12:00 or coming back after 1:00 counts as undertime in your DTR.
               </p>
             )}
 
@@ -1638,7 +1742,7 @@ export default function AttendanceView({
                   {fingerprintVerified
                     ? `✓ ${biometricLabel} Authenticated`
                     : offlineTimeIn
-                      ? `${biometricLabel} at ${punchLabel} (offline)`
+                      ? `${biometricLabel} at ${offlinePunchLabel} (offline)`
                       : unverifiedOfflineTimeOut
                         ? `No ${biometricLabel} (offline): HR reviews`
                         : `✗ ${biometricLabel} Required`}
@@ -1649,6 +1753,11 @@ export default function AttendanceView({
             {(locationError || cameraError) && (
               <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                 {locationError || cameraError}
+              </p>
+            )}
+            {punchNotice && !(locationError || cameraError) && (
+              <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                {punchNotice}
               </p>
             )}
           </div>
@@ -2099,6 +2208,18 @@ export default function AttendanceView({
                     <p className="text-[9px] uppercase tracking-[0.2em] text-slate-400">Time In</p>
                     <p className="font-semibold text-slate-800 mt-1">{log.timeIn}</p>
                   </div>
+                  {usesLunchLogs(log) && (
+                    <>
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <p className="text-[9px] uppercase tracking-[0.2em] text-slate-400">Lunch Out</p>
+                        <p className="font-semibold text-slate-800 mt-1">{log.lunchOut || '—'}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        <p className="text-[9px] uppercase tracking-[0.2em] text-slate-400">Lunch In</p>
+                        <p className="font-semibold text-slate-800 mt-1">{log.lunchIn || (log.lunchOut && !log.timeOut ? 'AT LUNCH' : '—')}</p>
+                      </div>
+                    </>
+                  )}
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-[9px] uppercase tracking-[0.2em] text-slate-400">Time Out</p>
                     <p className="font-semibold text-slate-800 mt-1">{log.timeOut || 'ON DUTY'}</p>
@@ -2196,6 +2317,11 @@ export default function AttendanceView({
                       <span className="bg-blue-50 text-[#1e40af] border border-blue-100 px-2 py-1 rounded font-mono font-bold text-[11px] sm:text-xs">
                         {log.timeIn}
                       </span>
+                      {(log.lunchOut || log.lunchIn) && (
+                        <span className="mt-1.5 block text-[9px] font-bold text-sky-700 whitespace-nowrap">
+                          Lunch {log.lunchOut || '—'} – {log.lunchIn || (log.timeOut ? '—' : 'now')}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-center">
                       {log.timeOut ? (

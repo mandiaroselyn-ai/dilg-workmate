@@ -694,7 +694,9 @@ export default function App() {
 
   // A Time In can be saved on the phone only when the phone signed it with its fingerprint
   // key (an offline Time In); any other Time In needs the server to check the fingerprint.
-  const canSaveOnPhone = payload => payload.action !== 'clock-in' || Boolean(payload.record?.offlineTimeIn);
+  // A Lunch Out or Lunch In is never saved on the phone: it needs internet.
+  const canSaveOnPhone = payload => payload.action === 'clock-out' || (payload.action === 'clock-in' && Boolean(payload.record?.offlineTimeIn));
+  const punchNames = { 'clock-in': 'Time In', 'lunch-out': 'Lunch Out', 'lunch-in': 'Lunch In', 'clock-out': 'Time Out' };
 
   const submitAttendance = async (payload, optimisticRecord) => {
     const saveOnPhone = async (details = {}) => {
@@ -710,7 +712,7 @@ export default function App() {
 
     if (!navigator.onLine) {
       if (!canSaveOnPhone(payload)) {
-        throw new Error('An internet connection is required to verify your fingerprint and submit Time In. Reconnect and try again.');
+        throw new Error(`An internet connection is required to verify your fingerprint and submit ${punchNames[payload.action] || 'attendance'}. Reconnect and try again.`);
       }
       return saveOnPhone();
     }
@@ -922,6 +924,29 @@ export default function App() {
       .catch(error => {
         window.alert(`Unable to record Time In: ${error.message}`);
       });
+  };
+
+  // Lunch Out or Lunch In (`action`: 'lunch-out' or 'lunch-in'), made online with the GPS, the
+  // `selfie`, and the server's fingerprint check (`fingerprintProof`) in `punch`. Resolves
+  // once it is saved, or rejects with why it was not.
+  const handleLunch = async (action, punch) => {
+    const data = await submitAttendance({
+      action,
+      record: {
+        date: getManilaDateString(),
+        employeeId: user?.employeeId || user?.email,
+        employeeEmail: user?.email || null,
+        latitude: punch.latitude,
+        longitude: punch.longitude,
+        gpsAccuracy: punch.gpsAccuracy,
+        selfieUrl: punch.selfie,
+        fingerprintProof: punch.fingerprintProof || ''
+      }
+    });
+    if (data.record) {
+      setAttendanceHistory(previous => previous.map(record => (record.id === data.record.id ? data.record : record)));
+    }
+    return data.record;
   };
 
   // Clock out handle. `providedGps` also carries the Time Out `selfie` and the fingerprint: a
@@ -1580,6 +1605,7 @@ export default function App() {
               attendanceHistory={visibleEmployeeRecords}
               onTimeIn={handleTimeIn}
               onTimeOut={handleTimeOut}
+              onLunch={handleLunch}
               onUpdateUser={handleUpdateUser}
             />
           )}
