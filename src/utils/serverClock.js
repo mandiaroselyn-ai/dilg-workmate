@@ -3,11 +3,9 @@
 // set wrong. Until it is known (or without internet), this device's clock is used.
 
 let offsetMs = 0;
-let synced = false;
 let syncing = null;
 
 export const serverNow = () => new Date(Date.now() + offsetMs);
-export const isServerClockSynced = () => synced;
 
 // Reads the server's time from the Date header of a HEAD request for the site, which goes to
 // the network (the service worker only answers GET requests). Resolves once done or failed.
@@ -21,7 +19,6 @@ export const syncServerClock = () => {
         const receivedAt = Date.now();
         // The header is in whole seconds, so on average half a second was dropped.
         offsetMs = serverTime + 500 + (receivedAt - sentAt) / 2 - receivedAt;
-        synced = true;
       })
       .catch(() => {})
       .finally(() => {

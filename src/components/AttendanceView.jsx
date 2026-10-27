@@ -8,7 +8,7 @@ import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDa
 import { apiFetch } from '../utils/api';
 import { hasSelfie, isLate } from '../utils/hrAttendance';
 import { clockMinutes, durationText, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
-import { isServerClockSynced, serverNow, syncServerClock } from '../utils/serverClock';
+import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 import PunchReceipt from './PunchReceipt';
 
@@ -465,19 +465,17 @@ export default function AttendanceView({
     return () => window.removeEventListener('dilg-location-result', handleMobileLocationResult);
   }, []);
 
-  // The clock above the punch buttons: the server's time in the Philippines, since the server
+  // The time now, for how a log still to be made would count: the server's, since the server
   // is what saves each punch. It follows this phone's clock until the server's is known.
   const [clockNow, setClockNow] = useState(() => serverNow());
-  const [clockSynced, setClockSynced] = useState(isServerClockSynced());
 
   useEffect(() => {
-    const sync = () => syncServerClock().then(() => setClockSynced(isServerClockSynced()));
-    sync();
+    syncServerClock();
     const timer = setInterval(() => setClockNow(serverNow()), 1000);
-    window.addEventListener('online', sync);
+    window.addEventListener('online', syncServerClock);
     return () => {
       clearInterval(timer);
-      window.removeEventListener('online', sync);
+      window.removeEventListener('online', syncServerClock);
     };
   }, []);
 
@@ -1203,8 +1201,6 @@ export default function AttendanceView({
   // Today's four logs above the punch buttons: each one's office time, the time recorded, and
   // whether it was on time (late or undertime, in minutes). A log still to be made shows how it
   // would count if made now, so the employee sees it before punching.
-  const clockText = clockNow.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Manila' });
-  const clockDateText = clockNow.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
   const verifiedTimeText = fingerprintVerifiedAt
     ? fingerprintVerifiedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
     : '';
@@ -1701,19 +1697,7 @@ export default function AttendanceView({
 
           {/* Core Action Punch Block */}
           <div className="pt-5 border-t border-slate-100 flex flex-col gap-3.5">
-            {/* The time now (the server's, which is what each log saves) and today's four logs
-                against office hours. */}
-            <div className="rounded-2xl bg-slate-900 px-4 py-3 text-white flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Philippine Standard Time</p>
-                <p className="font-mono text-2xl sm:text-3xl font-black tabular-nums">{clockText}</p>
-                <p className="text-[11px] font-semibold text-slate-300">{clockDateText}</p>
-              </div>
-              <div className="text-left sm:text-right text-[10px] font-semibold text-slate-400 leading-relaxed">
-                <p>Office hours: <span className="text-slate-200">{officeTimeText(amStart)} – {officeTimeText(noon)}, {officeTimeText(pmStart)} – {officeTimeText(pmEnd)}</span></p>
-                <p>{clockSynced ? 'Server time: the time each log saves' : "This phone's time (server time not reached yet)"}</p>
-              </div>
-            </div>
+            {/* Today's four logs against office hours. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {dayLogs.map(log => {
                 const remark = remarkFor(log);
