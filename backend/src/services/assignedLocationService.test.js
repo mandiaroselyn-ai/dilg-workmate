@@ -18,9 +18,10 @@ test('field geofence accepts points inside the barangay polygon', () => {
   assert.equal(isWithinAssignedLocation(13.0005, 121.0005, barangayLocation), true);
 });
 
-test('field geofence tolerates up to 150m outside the barangay boundary', () => {
-  assert.equal(isWithinAssignedLocation(13.0005, 121.0019, barangayLocation), true);
-  assert.equal(isWithinAssignedLocation(13.0005, 121.003, barangayLocation), false);
+test('field geofence tolerates up to 50m outside the barangay boundary', () => {
+  // The east edge is at 121.001; 0.0004° of longitude here is about 43 m, 0.0009° about 98 m.
+  assert.equal(isWithinAssignedLocation(13.0005, 121.0014, barangayLocation), true);
+  assert.equal(isWithinAssignedLocation(13.0005, 121.0019, barangayLocation), false);
 });
 
 test('field geofence respects polygon holes and multiple polygons', () => {
@@ -43,10 +44,11 @@ test('field geofence respects polygon holes and multiple polygons', () => {
   assert.equal(isWithinAssignedLocation(13.0005, 121.0005, multiPolygon), true);
 });
 
-test('WFH and office geofences use a 150m radius around the resolved address', () => {
+test('WFH and office geofences use a 50m radius around the resolved address', () => {
   const address = { mode: 'office', latitude: 13, longitude: 121 };
-  assert.equal(isWithinAssignedLocation(13.0005, 121, address), true);
-  assert.equal(isWithinAssignedLocation(13.002, 121, address), false);
+  // 0.0004° of latitude is about 44 m, 0.0005° about 56 m.
+  assert.equal(isWithinAssignedLocation(13.0004, 121, address), true);
+  assert.equal(isWithinAssignedLocation(13.0005, 121, address), false);
   assert.equal(isWithinAssignedLocation(13, 121, { ...address, mode: 'wfh' }), true);
 });
 
@@ -62,7 +64,7 @@ test('field geofence uses the resolved point when the map has no administrative 
     geometry: { type: 'Point', coordinates: [121, 13] },
     fallbackToRadius: true
   };
-  assert.equal(isWithinAssignedLocation(13.0005, 121, pointLocation), true);
+  assert.equal(isWithinAssignedLocation(13.0004, 121, pointLocation), true);
   assert.equal(isWithinAssignedLocation(13.002, 121, pointLocation), false);
 });
 
@@ -82,7 +84,8 @@ test('field geofence uses the geocoder extent when only a barangay place pin is 
   };
 
   assert.equal(isWithinAssignedLocation(13.46, 121.845, tanzaLocation), true);
-  assert.equal(isWithinAssignedLocation(13.477, 121.8429609, tanzaLocation), true);
+  // About 40 m past the extent's north edge.
+  assert.equal(isWithinAssignedLocation(13.4768, 121.8429609, tanzaLocation), true);
   assert.equal(isWithinAssignedLocation(13.479, 121.8429609, tanzaLocation), false);
 });
 

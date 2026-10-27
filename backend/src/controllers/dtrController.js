@@ -11,6 +11,7 @@ import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { attendanceReviewNotices, noticeEmployee } from '../services/employeeNotices.js';
 import { clockTextMinutes, isLateClockIn, isLateLunchIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
 import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
+import { GEOFENCE_METERS } from '../../../shared/assignmentGeofence.js';
 import {
   compareEnrollmentToAttendance,
   createFaceDescriptor,
@@ -18,7 +19,8 @@ import {
   isValidFaceDescriptor
 } from '../services/faceMatchingService.js';
 
-const GEO_THRESHOLD_METERS = 150;
+// The geofence (shared/assignmentGeofence.js), also used when a record has no stored area.
+const GEO_THRESHOLD_METERS = GEOFENCE_METERS;
 
 const ASSIGNED_LOCATION_MAP = {
   Boac: { lat: 13.4474, lon: 121.8344 },
@@ -656,7 +658,7 @@ export const updateLocationTracking = async (req, res) => {
 
     const distance = computeDistanceMeters(Number(latitude), Number(longitude), Number(assignedCoords.lat), Number(assignedCoords.lon));
     // Use the same assignment area as Time In (a field assignment covers the whole
-    // barangay, not just 150 m around its center).
+    // barangay, not just the geofence distance around its center).
     const withinGeofence = Number.isFinite(Number(activeLog?.assignmentSite?.latitude))
       ? isWithinAssignedLocation(latitude, longitude, activeLog.assignmentSite)
       : distance <= GEO_THRESHOLD_METERS;

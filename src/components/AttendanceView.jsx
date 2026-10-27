@@ -47,7 +47,7 @@ import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
-import { isWithinAssignedLocation } from '../../shared/assignmentGeofence';
+import { GEOFENCE_METERS, isWithinAssignedLocation } from '../../shared/assignmentGeofence';
 import { takeAccuratePosition } from '../utils/accuratePosition';
 import {
   canSignOffline,
@@ -129,7 +129,7 @@ export default function AttendanceView({
     }
   }, [user]);
 
-  const GEO_THRESHOLD_METERS = 150;
+  const GEO_THRESHOLD_METERS = GEOFENCE_METERS;
   const municipalities = Object.keys(MARINDUQUE_MUNICIPALITIES);
 
   const buildAssignmentSite = () => {
@@ -890,11 +890,11 @@ export default function AttendanceView({
   const isAssignmentVerified = isWithinAssignment && gpsAccuracy !== null && gpsAccuracy <= 50;
   const geofenceDescription = assignmentMode === 'field'
     ? siteLocation?.fallbackToRadius && siteLocation.bounds
-      ? 'Approximate assigned-area map extent + 150m GPS tolerance'
+      ? `Approximate assigned-area map extent + ${GEOFENCE_METERS}m GPS tolerance`
       : siteLocation?.fallbackToRadius
-        ? '150m from approximate assigned-area map pin'
-        : 'Barangay boundary + 150m GPS tolerance'
-    : '150m from assigned address';
+        ? `${GEOFENCE_METERS}m from approximate assigned-area map pin`
+        : `Barangay boundary + ${GEOFENCE_METERS}m GPS tolerance`
+    : `${GEOFENCE_METERS}m from assigned address`;
 
   const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
   const embedZoom = 17;

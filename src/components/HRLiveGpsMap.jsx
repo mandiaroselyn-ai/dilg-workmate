@@ -7,6 +7,7 @@ import 'leaflet/dist/leaflet.css';
 // Marinduque's land (the main island and its islets) from OpenStreetMap (ODbL),
 // simplified to about 20 m.
 import marinduqueLand from '../assets/marinduque-land.json';
+import { GEOFENCE_METERS } from '../../shared/assignmentGeofence';
 
 // With a Google Maps API key (VITE_GOOGLE_MAPS_API_KEY, set on Vercel), the map uses
 // Google's satellite view through Google's official Maps JavaScript API. Without one, or
@@ -45,7 +46,7 @@ const MARINDUQUE = [13.4, 121.95];
 const AREA_STYLE = { color: '#38bdf8', weight: 3, dashArray: '8 5', fillColor: '#38bdf8', fillOpacity: 0.12 };
 // How far from an office or home address still counts as there, as in the Time In check
 // (shared/assignmentGeofence.js). Within this distance of a barangay's edge also counts.
-const ALLOWANCE_METERS = 150;
+const ALLOWANCE_METERS = GEOFENCE_METERS;
 // Areas up to this size across (a barangay is about 6 km) are shown whole when an
 // employee is picked.
 const SMALL_AREA_METERS = 7000;
@@ -86,7 +87,7 @@ const landOnly = polygons => {
   }
 };
 
-// The area chosen at Time In, drawn the way the Time In check reads it: 150 m around an
+// The area chosen at Time In, drawn the way the Time In check reads it: the geofence around an
 // office or home address, a barangay or town outline, or the extent of a barangay that is
 // only a point on the map. Nothing when its shape is not known.
 const areaLayerFor = area => {
@@ -297,7 +298,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect, compact = 
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.lunch }} />On lunch</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-slate-700" style={{ backgroundColor: COLORS.inside, opacity: NO_SIGNAL_OPACITY }} />Faded: no live signal (15+ min), last known location</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed" style={{ borderColor: AREA_STYLE.color, backgroundColor: `${AREA_STYLE.color}1f` }} />Picked employee's assigned area (field areas allow 150 m past the edge)</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed" style={{ borderColor: AREA_STYLE.color, backgroundColor: `${AREA_STYLE.color}1f` }} />Picked employee's assigned area (field areas allow {GEOFENCE_METERS} m past the edge)</span>
         </div>
       </div>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}

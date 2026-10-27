@@ -1,5 +1,10 @@
 const EARTH_RADIUS_METERS = 6371000;
 
+// The geofence: how far from the assigned site still counts as being there. For an office or a
+// work-from-home address it is the radius around the address; for field work, the distance
+// past the barangay's (or town's) boundary.
+export const GEOFENCE_METERS = 50;
+
 const distanceMeters = (latitudeA, longitudeA, latitudeB, longitudeB) => {
   const toRadians = value => value * Math.PI / 180;
   const latitudeDelta = toRadians(latitudeB - latitudeA);
@@ -68,7 +73,7 @@ const getValidBounds = bounds => {
   return bounds;
 };
 
-export const isWithinAssignedLocation = (latitude, longitude, location, bufferMeters = 150) => {
+export const isWithinAssignedLocation = (latitude, longitude, location, bufferMeters = GEOFENCE_METERS) => {
   const lat = Number(latitude);
   const lon = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !location) return false;
