@@ -84,6 +84,21 @@ export const Leave = {
     });
   },
 
+  // One employee's leave requests and travel orders (any status), for checking that their dates
+  // do not overlap.
+  findAbsencesOfEmployee: async ({ employeeId, email }) => {
+    ensureConnected();
+    const owners = [
+      ...(employeeId ? [{ employeeId }] : []),
+      ...(email ? [{ employeeEmail: email }] : [])
+    ];
+    if (!owners.length) return [];
+    const list = await MongoRequest.find({ type: { $in: ['Leave Request', 'Travel Order'] }, $or: owners })
+      .select('customId type status startDate endDate employeeId employeeEmail')
+      .lean();
+    return list.map(item => ({ ...item, id: item.customId }));
+  },
+
   findAllRequests: async () => {
     ensureConnected();
     const mongoList = await MongoRequest.find().sort({ createdAt: -1 });

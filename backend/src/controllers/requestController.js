@@ -7,6 +7,7 @@ import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
 import { noticeRequestDecision } from '../services/employeeNotices.js';
+import { overlapMessage, overlappingRequest } from '../../../shared/requestOverlap.js';
 
 const reviewerName = req => req.user?.name || (req.user?.accessLevel === 'supervisor' ? 'your supervisor' : 'HR');
 const reviewRemarks = update => update?.supervisorRemarks || update?.remarks || '';
@@ -79,11 +80,22 @@ export const getRequests = async (req, res) => {
   }
 };
 
+// Why a leave or travel order being submitted (`request`, not a draft) overlaps the employee's
+// other leave or travel, or null (see overlappingRequest).
+const overlapProblem = async request => {
+  if (!['Leave Request', 'Travel Order'].includes(request?.type) || request.status === 'Draft' || !request.startDate) return null;
+  const absences = await Leave.findAbsencesOfEmployee({ employeeId: request.employeeId, email: request.employeeEmail });
+  const other = overlappingRequest(request, absences);
+  return other ? overlapMessage(other) : null;
+};
+
 export const createRequest = async (req, res) => {
   try {
     const requestBody = req.user?.accessLevel === 'employee'
       ? buildEmployeeRequest(req.body, req.user)
       : { ...req.body };
+    const overlap = await overlapProblem(requestBody);
+    if (overlap) return res.status(409).json({ success: false, error: overlap });
     const newReq = await Leave.create(requestBody);
     if (req.user?.accessLevel === 'employee' && newReq.status === 'Pending') {
       await notifyHrOfSubmission(newReq, req.user);
@@ -111,6 +123,12 @@ export const updateRequestStatus = async (req, res) => {
         : buildEmployeeWithdrawal(existing, req.body, req.user);
       if (!update) {
         return res.status(403).json({ success: false, error: 'You can only change your own drafts and returned requests, or withdraw your own requests before they are approved or rejected.' });
+      }
+      // A draft submitted, or a returned request submitted again, may not overlap other leave
+      // or travel.
+      if (update.status === 'Pending') {
+        const overlap = await overlapProblem({ ...existing, ...update });
+        if (overlap) return res.status(409).json({ success: false, error: overlap });
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);

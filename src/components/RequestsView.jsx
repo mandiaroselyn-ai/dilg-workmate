@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
+import { overlapMessage, overlappingRequest } from '../../shared/requestOverlap';
 import {
   FileText,
   Calendar,
@@ -198,6 +199,22 @@ export default function RequestsView({
         ? 'The end date cannot be earlier than the start date.'
         : 'The return date cannot be earlier than the activity date.');
       return;
+    }
+    // A submitted leave or travel order may not share a day with the employee's other
+    // submitted or approved leave or travel (the server checks this too).
+    if (!isDraftMode) {
+      const other = overlappingRequest({
+        id: editingDraftId || undefined,
+        type: activeTab2 === 'Leave' ? 'Leave Request' : 'Travel Order',
+        startDate,
+        endDate,
+        employeeId: user?.employeeId,
+        employeeEmail: user?.email
+      }, requests);
+      if (other) {
+        setFormErrorMessage(overlapMessage(other));
+        return;
+      }
     }
     if (activeTab2 === 'Travel') {
       const missingTravelField = [
