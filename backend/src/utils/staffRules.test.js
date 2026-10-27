@@ -42,6 +42,7 @@ test('validates new staff accounts', () => {
 
 test('HR keeps a staff member\'s region and employment details, not their personal details', () => {
   const { value } = normalizeStaffInput({ region: ' MIMAROPA ', dateHired: '2019-02-01', salaryGrade: 'SG 26', immediateSupervisor: 'Regional Director', gsisNumber: '123' }, { partial: true });
-  assert.deepEqual(value, { region: 'MIMAROPA', dateHired: '2019-02-01', salaryGrade: 'SG 26', immediateSupervisor: 'Regional Director' });
+  // The monthly salary comes from the salary schedule (SG 26, Step 1), never typed.
+  assert.deepEqual(value, { region: 'MIMAROPA', dateHired: '2019-02-01', salaryGrade: 'SG 26', salaryStep: 'Step 1', salary: 'PHP 131,807', immediateSupervisor: 'Regional Director' });
   assert.match(normalizeStaffInput({ division: 42 }, { partial: true }).error, /must be text/);
 });

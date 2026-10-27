@@ -155,6 +155,7 @@ const HR_FIELD_LABELS = {
   division: 'Division / Unit',
   plantillaItemNumber: 'Plantilla item no.',
   salaryGrade: 'Salary grade',
+  salaryStep: 'Salary step',
   salary: 'Monthly salary',
   immediateSupervisor: 'Immediate supervisor'
 };

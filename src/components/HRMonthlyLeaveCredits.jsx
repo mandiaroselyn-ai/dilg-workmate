@@ -3,6 +3,7 @@ import { ChevronDown, Scale } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import { monthlyEarnedCredits, monthWithoutPayDays } from '../../shared/leaveCalc';
+import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import { apiFetch } from '../utils/api';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { durationText } from '../utils/dtrDay';
@@ -175,7 +176,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                       <span className="text-slate-600">1. Late &amp; undertime: {row.minutes ? `${durationText(row.minutes)} = ${daysText(row.days)}` : 'none'}</span>
                       {row.charged ? (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">
-                          Charged {daysText(row.charged.days)}{row.charged.withoutPayDays ? ` · ${daysText(row.charged.withoutPayDays)} without pay` : ''}
+                          Charged {daysText(row.charged.days)}{row.charged.withoutPayDays ? ` · ${daysText(row.charged.withoutPayDays)} without pay${withoutPayAmount(row.employee, row.charged.withoutPayDays) ? ` (${pesoText(withoutPayAmount(row.employee, row.charged.withoutPayDays))})` : ''}` : ''}
                         </span>
                       ) : (
                         <button type="button" onClick={() => charge([row])} disabled={saving} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 font-black text-blue-700 disabled:opacity-50">Charge</button>

@@ -3,6 +3,8 @@
 // profile pages and HR's forms show them, so a field added here is saved and shown
 // everywhere.
 
+import { SALARY_GRADE_OPTIONS, SALARY_STEP_OPTIONS, salaryFields } from './salarySchedule.js';
+
 export const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
 export const CIVIL_STATUS_OPTIONS = ['Single', 'Married', 'Widowed', 'Separated', 'Others'];
 
@@ -33,12 +35,21 @@ export const GOVERNMENT_ID_FIELDS = [
 ];
 
 // Kept by HR, like the position, office, region, and employee ID. The salary goes on
-// CSC Form No. 6.
+// CSC Form No. 6. HR chooses the salary grade and step; the monthly salary is never typed:
+// it comes from the government salary schedule (shared/salarySchedule.js), so it is read-only
+// here and `derive` shows it from the chosen grade and step.
 export const EMPLOYMENT_FIELDS = [
   { key: 'division', label: 'Division / Unit' },
   { key: 'plantillaItemNumber', label: 'Plantilla Item No.', max: 80 },
-  { key: 'salaryGrade', label: 'Salary Grade', placeholder: 'e.g. SG 15, Step 1', max: 40 },
-  { key: 'salary', label: 'Monthly Salary', placeholder: 'e.g. PHP 36,619', max: 40 },
+  { key: 'salaryGrade', label: 'Salary Grade', options: SALARY_GRADE_OPTIONS, max: 40 },
+  { key: 'salaryStep', label: 'Step', options: SALARY_STEP_OPTIONS, max: 20 },
+  {
+    key: 'salary',
+    label: 'Monthly Salary',
+    readOnly: true,
+    placeholder: 'Set by the salary grade and step',
+    derive: values => salaryFields(values?.salaryGrade, values?.salaryStep).salary || ''
+  },
   { key: 'immediateSupervisor', label: 'Immediate Supervisor', max: 160 }
 ];
 
@@ -49,12 +60,20 @@ const DEFAULT_LIMIT = 250;
 export const readProfileFields = (body = {}, fields) => {
   const value = {};
   for (const field of fields) {
+    // A read-only field, such as the monthly salary, is never taken from what was sent.
+    if (field.readOnly) continue;
     const raw = body?.[field.key];
     if (raw === undefined || raw === null) continue;
     if (typeof raw !== 'string') return { error: `${field.label} must be text.` };
     const text = raw.trim();
     if (text.length > (field.max || DEFAULT_LIMIT)) return { error: `${field.label} is too long.` };
     value[field.key] = text;
+  }
+  // A salary grade or step sent sets the monthly salary from the salary schedule.
+  if ('salaryGrade' in value || 'salaryStep' in value) {
+    const salary = salaryFields(value.salaryGrade, value.salaryStep);
+    if (salary.error) return { error: salary.error };
+    Object.assign(value, salary);
   }
   return { value };
 };

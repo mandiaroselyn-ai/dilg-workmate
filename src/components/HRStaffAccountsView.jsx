@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../utils/api.js';
 import HRResetPasswordCard from './HRResetPasswordCard';
+import { ProfileFieldInput } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, profileFieldValues } from '../../shared/profileFields';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
@@ -227,9 +228,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
               <input name="password" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} maxLength={256} value={form.password} onChange={updateFormField} className={inputClass} />
             </label>
             {STAFF_EMPLOYMENT_FIELDS.map(field => (
-              <label key={field.key} className={labelClass}>{field.label}
-                <input name={field.key} type={field.type || 'text'} maxLength={field.max || 250} placeholder={field.placeholder} value={form[field.key]} onChange={updateFormField} className={inputClass} />
-              </label>
+              <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={updateFormField} />
             ))}
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
@@ -249,9 +248,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             <label className={labelClass}>Office<input name="office" required maxLength={160} value={editing.fields.office} onChange={updateEditField} className={inputClass} /></label>
             <label className={labelClass}>Mobile number<input name="phoneNumber" maxLength={250} value={editing.fields.phoneNumber} onChange={updateEditField} placeholder="Supervisors get an SMS when a request is forwarded" className={inputClass} /></label>
             {STAFF_EMPLOYMENT_FIELDS.map(field => (
-              <label key={field.key} className={labelClass}>{field.label}
-                <input name={field.key} type={field.type || 'text'} maxLength={field.max || 250} placeholder={field.placeholder} value={editing.fields[field.key]} onChange={updateEditField} className={inputClass} />
-              </label>
+              <ProfileFieldInput key={field.key} item={field} value={editing.fields[field.key]} values={editing.fields} onChange={updateEditField} />
             ))}
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}

@@ -710,7 +710,7 @@ This cannot be undone.`
                 <div key={title} className="sm:col-span-2 xl:col-span-4">
                   <p className="text-[11px] font-black text-slate-700">{title}</p>
                   <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {fields.map(field => <ProfileFieldInput key={field.key} item={field} value={form[field.key]} onChange={handleChange} />)}
+                    {fields.map(field => <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={handleChange} />)}
                   </div>
                 </div>
               ))}

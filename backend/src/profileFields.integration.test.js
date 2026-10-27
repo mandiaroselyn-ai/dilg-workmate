@@ -60,11 +60,14 @@ test('supervisors also leave their employment details to HR', async t => {
 });
 
 test('an HR/Admin keeps their own position, office, and employment details', async t => {
-  const { response, saved } = await saveProfile(t, hr, { name: 'HR Officer', role: 'HRMO III', office: 'Provincial Office', dateHired: '2020-01-06', salaryGrade: 'SG 18', plantillaItemNumber: 'DILGB-HRMO3-1-2020' });
+  const { response, saved } = await saveProfile(t, hr, { name: 'HR Officer', role: 'HRMO III', office: 'Provincial Office', dateHired: '2020-01-06', salaryGrade: 'SG 18', salaryStep: 'Step 2', salary: 'PHP 999,999', plantillaItemNumber: 'DILGB-HRMO3-1-2020' });
   assert.equal(response.status, 200);
   assert.equal(saved.role, 'HRMO III');
   assert.equal(saved.dateHired, '2020-01-06');
   assert.equal(saved.salaryGrade, 'SG 18');
+  // The salary sent is ignored: it comes from SG 18, Step 2 in the salary schedule.
+  assert.equal(saved.salaryStep, 'Step 2');
+  assert.equal(saved.salary, 'PHP 54,371');
   assert.equal(saved.plantillaItemNumber, 'DILGB-HRMO3-1-2020');
 });
 
@@ -138,17 +141,19 @@ test('HR saving an employee changes only the profile details the form sent', asy
       employmentStatus: 'ACTIVE',
       accountStatus: 'Active',
       civilStatus: 'Single',
-      salary: 'PHP 36,619'
+      salaryGrade: 'SG 13',
+      salaryStep: 'Step 2'
     });
   assert.equal(response.status, 200);
   const saved = update.mock.calls[0].arguments[1];
   assert.equal(saved.civilStatus, 'Single');
-  assert.equal(saved.salary, 'PHP 36,619');
+  // SG 13, Step 2 in the salary schedule.
+  assert.equal(saved.salary, 'PHP 36,283');
   assert.equal('gsisNumber' in saved, false);
-  assert.equal(response.body.employee.salary, 'PHP 36,619');
+  assert.equal(response.body.employee.salary, 'PHP 36,283');
   // The employee is told what HR changed.
   const notice = notify.mock.calls[0].arguments[0];
   assert.equal(notice.title, 'Profile Updated by HR');
-  assert.equal(notice.message, 'HR updated your profile: Monthly salary. See your Profile for the details.');
+  assert.equal(notice.message, 'HR updated your profile: Salary grade, Salary step, Monthly salary. See your Profile for the details.');
   assert.equal(notice.view, 'profile');
 });

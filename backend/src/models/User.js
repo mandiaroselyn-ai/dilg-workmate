@@ -49,6 +49,7 @@ const UserSchema = new mongoose.Schema({
   division: { type: String, default: '' },
   plantillaItemNumber: { type: String, default: '' },
   salaryGrade: { type: String, default: '' },
+  salaryStep: { type: String, default: '' },
   salary: { type: String, default: '' },
   immediateSupervisor: { type: String, default: '' },
   approvedWfhLocation: {

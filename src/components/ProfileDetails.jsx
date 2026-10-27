@@ -24,10 +24,20 @@ const wfhLocation = location => [location?.street, location?.barangay, location?
 
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#1551b5] focus:bg-white';
 
-export const ProfileFieldInput = ({ item, value, onChange }) => (
+// `values` are the whole form's, for a read-only field worked out from others (`derive`), such as
+// the monthly salary from the salary grade and step.
+export const ProfileFieldInput = ({ item, value, onChange, values }) => (
   <label className={`block min-w-0 text-[11px] font-bold text-slate-600 ${item.wide ? 'sm:col-span-2' : ''}`}>
     {item.label}
-    {item.options ? (
+    {item.readOnly ? (
+      <input
+        name={item.key}
+        readOnly
+        placeholder={item.placeholder}
+        value={(item.derive && values ? item.derive(values) : value) || ''}
+        className={`${inputClass} cursor-not-allowed bg-slate-100 text-slate-600`}
+      />
+    ) : item.options ? (
       <select name={item.key} value={value || ''} onChange={onChange} className={inputClass}>
         <option value="">Select</option>
         {/* A value saved before the choices were set stays selectable. */}
@@ -70,7 +80,9 @@ const Section = ({ title, note, children }) => (
 // `attendanceAssignment` adds the station, LGU, and approved WFH location, which only
 // employees who time in have.
 export default function ProfileDetails({ person = {}, form = {}, onChange, editing = false, employmentEditable = false, attendanceAssignment = false }) {
-  const show = (item, value = form[item.key] ?? person[item.key]) => (editing && !item.readOnly
+  // A worked-out field (`derive`, such as the monthly salary) follows the form while it is edited.
+  const current = item => (editing && item.derive ? item.derive({ ...person, ...form }) || person[item.key] : form[item.key] ?? person[item.key]);
+  const show = (item, value = current(item)) => (editing && !item.readOnly
     ? <ProfileFieldInput key={item.key} item={item} value={value} onChange={onChange} />
     : <Row key={item.key} label={item.label} value={item.type === 'date' ? formatProfileDate(value) : value} wide={item.wide} />);
 

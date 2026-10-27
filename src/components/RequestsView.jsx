@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { overlapMessage, overlappingRequest } from '../../shared/requestOverlap';
 import { countLeaveDays } from '../../shared/leaveCalc';
+import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import {
   FileText,
   Calendar,
@@ -480,7 +481,7 @@ Reason (optional):`, '');
                       Charged: {[
                         request.creditCharge.sickLeaveDays && `${Number(request.creditCharge.sickLeaveDays)} SL`,
                         request.creditCharge.vacationLeaveDays && `${Number(request.creditCharge.vacationLeaveDays)} VL`,
-                        request.creditCharge.withoutPayDays && `${Number(request.creditCharge.withoutPayDays)} without pay`
+                        request.creditCharge.withoutPayDays && `${Number(request.creditCharge.withoutPayDays)} without pay${withoutPayAmount(user, request.creditCharge.withoutPayDays) ? ` (${pesoText(withoutPayAmount(user, request.creditCharge.withoutPayDays))})` : ''}`
                       ].filter(Boolean).join(', ') || 'nothing'}
                     </p>
                   )}
