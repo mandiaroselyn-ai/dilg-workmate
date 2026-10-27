@@ -107,7 +107,7 @@ export default function AttendanceTodayCard({
         <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-2">
           <span className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase text-slate-500">
             <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-500 text-white"><ClockIcon className="w-3.5 h-3.5" /></span>
-            Total hours (without lunch)
+            Total hours
           </span>
           <span className="font-extrabold text-sm text-amber-700">{elapsedText || '--'}</span>
         </div>
