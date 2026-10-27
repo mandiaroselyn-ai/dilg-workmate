@@ -1214,8 +1214,10 @@ export default function AttendanceView({
   const halfDayNote = afternoonOnly ? 'Half day: no lunch' : '';
   const dayLogs = [
     {
-      key: 'timeIn', label: 'Time In', time: todayRecord?.timeIn, standing: standing.timeIn,
-      scheduled: afternoonOnly || (!todayRecord && nowMinutes >= noon) ? pmStart : amStart,
+      // Always scheduled in the morning. A Time In from noon on starts a half day, counted
+      // against the 1:00 PM start, and says so.
+      key: 'timeIn', label: 'Time In', time: todayRecord?.timeIn, standing: standing.timeIn, scheduled: amStart,
+      halfDay: afternoonOnly || (!todayRecord && nowMinutes >= noon),
       ifNow: !todayRecord ? lateIfNow(nowMinutes >= noon ? pmStart : amStart) : null
     },
     {
@@ -1238,11 +1240,16 @@ export default function AttendanceView({
     : early ? { text: `Undertime · ${durationText(early)}`, tone: 'text-amber-600' }
       : { text: 'On time', tone: 'text-emerald-600' });
   const remarkFor = log => {
-    if (log.time) return log.standing ? describeStanding(log.standing) : { text: '', tone: '' };
+    const halfDay = log.halfDay ? 'Half day · ' : '';
+    if (log.time) {
+      if (!log.standing) return { text: '', tone: '' };
+      const { text, tone } = describeStanding(log.standing);
+      return { text: `${halfDay}${text}`, tone };
+    }
     if (log.note) return { text: log.note, tone: log.note === 'Missing' ? 'text-rose-600' : 'text-slate-400' };
     if (!log.ifNow) return { text: '', tone: '' };
     const { text } = describeStanding(log.ifNow);
-    return { text: `If now: ${text}`, tone: 'text-slate-500' };
+    return { text: `If now: ${halfDay}${text}`, tone: 'text-slate-500' };
   };
 
   return (

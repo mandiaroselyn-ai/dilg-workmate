@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { CheckCircle2, CloudOff } from 'lucide-react';
-import { durationText, punchStanding } from '../utils/dtrDay';
+import { clockMinutes, durationText, OFFICE_HOURS, punchStanding } from '../utils/dtrDay';
 
 const PUNCH_LABELS = { timeIn: 'Time In', lunchOut: 'Lunch Out', lunchIn: 'Lunch In', timeOut: 'Time Out' };
 
@@ -23,10 +23,12 @@ export default function PunchReceipt({ receipt, employee, onClose }) {
 
   const { punch, record, queued, afterQueuedTimeIn } = receipt;
   const standing = punchStanding(record)[punch];
+  // A Time In from noon on starts a half day, counted against the 1:00 PM start.
+  const halfDay = punch === 'timeIn' && clockMinutes(record.timeIn) >= OFFICE_HOURS.noon ? 'Half day · ' : '';
   const status = !standing ? null
-    : standing.late ? { text: `Late · ${durationText(standing.late)}`, tone: 'bg-rose-50 text-rose-700' }
+    : standing.late ? { text: `${halfDay}Late · ${durationText(standing.late)}`, tone: 'bg-rose-50 text-rose-700' }
       : standing.early ? { text: `Undertime · ${durationText(standing.early)}`, tone: 'bg-amber-50 text-amber-700' }
-        : { text: 'On time', tone: 'bg-emerald-50 text-emerald-700' };
+        : { text: `${halfDay}On time`, tone: 'bg-emerald-50 text-emerald-700' };
   const dateText = record.date
     ? new Date(`${record.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
     : '';
