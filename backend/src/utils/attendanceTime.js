@@ -1,6 +1,9 @@
 import { getManilaMinutesOfDay } from '../../../shared/localDate.js';
+import { OFFICE_HOURS } from '../../../shared/officeHours.js';
 
-const DEFAULT_OFFICE_START_TIME = '08:00';
+// The office start time as HH:MM (24-hour clock), from the office hours the app and the DTR
+// use too, so a Time In the server marks late is late in the DTR as well.
+const OFFICE_START_TIME = `${String(Math.floor(OFFICE_HOURS.amStart / 60)).padStart(2, '0')}:${String(OFFICE_HOURS.amStart % 60).padStart(2, '0')}`;
 
 // Parses an HH:MM office start time (24-hour clock) into minutes since midnight.
 const parseOfficeStart = value => {
@@ -9,10 +12,10 @@ const parseOfficeStart = value => {
   return Number(match[1]) * 60 + Number(match[2]);
 };
 
-// A Time In is late when it is after the office start time in Manila. The start time
-// comes from OFFICE_START_TIME (HH:MM, 24-hour clock) and defaults to 08:00.
-export const isLateClockIn = (date = new Date(), officeStartTime = process.env.OFFICE_START_TIME) => {
-  const startMinutes = parseOfficeStart(officeStartTime) ?? parseOfficeStart(DEFAULT_OFFICE_START_TIME);
+// A Time In is late when it is after the office start time in Manila (`officeStartTime`,
+// HH:MM, defaults to the office hours' start).
+export const isLateClockIn = (date = new Date(), officeStartTime = OFFICE_START_TIME) => {
+  const startMinutes = parseOfficeStart(officeStartTime) ?? OFFICE_HOURS.amStart;
   return getManilaMinutesOfDay(date) > startMinutes;
 };
 
@@ -26,10 +29,10 @@ export const clockTextMinutes = value => {
 
 // Whether a saved Time In such as "08:05 AM" is late, by the same rule as isLateClockIn,
 // or null when it is not a time.
-export const isLateTimeText = (value, officeStartTime = process.env.OFFICE_START_TIME) => {
+export const isLateTimeText = (value, officeStartTime = OFFICE_START_TIME) => {
   const minutes = clockTextMinutes(value);
   if (minutes === null) return null;
-  const startMinutes = parseOfficeStart(officeStartTime) ?? parseOfficeStart(DEFAULT_OFFICE_START_TIME);
+  const startMinutes = parseOfficeStart(officeStartTime) ?? OFFICE_HOURS.amStart;
   return minutes > startMinutes;
 };
 

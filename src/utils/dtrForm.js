@@ -110,7 +110,7 @@ function undertimeMins(timeIn, timeOut) {
 }
 
 // One day's four DTR cells and its undertime in minutes. A record with Lunch Out and Lunch
-// In shows its own four logs, with tardiness and undertime against 8–12 and 1–5.
+// In shows its own four logs, with tardiness and undertime against the office hours.
 function dayEntry(rec) {
   if (!usesLunchLogs(rec)) return { ...dtrTimes(rec.timeIn, rec.timeOut), undertime: undertimeMins(rec.timeIn, rec.timeOut) };
   const logs = dtrDayLogs(rec);

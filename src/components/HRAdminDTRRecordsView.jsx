@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucid
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
-import { dtrDayLogs, dtrUndertimeMinutes, durationText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
+import { dtrDayLogs, dtrUndertimeMinutes, durationText, officeHoursText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
@@ -308,7 +308,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <span>Office: <b>{selected.office}</b></span>
         <span>Date: <b>{selected.record.date || '-'}</b></span>
         {(() => {
-          // Records with lunch logs show how each punch stood against 8–12 and 1–5.
+          // Records with lunch logs show how each punch stood against the office hours.
           const standing = usesLunchLogs(selected.record) ? punchStanding(selected.record) : {};
           return [['timeIn', 'Time In'], ['lunchOut', 'Lunch Out'], ['lunchIn', 'Lunch In'], ['timeOut', 'Time Out']].map(([field, label]) => (
             <span key={field}>{label}: <b>{punchText(selected.record[field], standing[field])}</b></span>
@@ -316,7 +316,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         })()}
         <span>Total Hours: <b>{totalHoursWorked(selected.record) || '-'}</b></span>
         {usesLunchLogs(selected.record) && (
-          <span>Tardiness &amp; undertime (8–12, 1–5): <b>{formatMinutes(dtrUndertimeMinutes(dtrDayLogs(selected.record)))}</b></span>
+          <span>Tardiness &amp; undertime ({officeHoursText()}): <b>{formatMinutes(dtrUndertimeMinutes(dtrDayLogs(selected.record)))}</b></span>
         )}
         <span>Attendance Status: <b>{selected.status}</b></span>
         <span>Record Status: <b>{hasSelfie(selected.record) && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>

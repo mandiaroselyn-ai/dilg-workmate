@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { BookOpen, ChevronDown, ChevronUp, HelpCircle, PhoneCall, Search, Send, ShieldCheck } from 'lucide-react';
 import { SUPPORT_DETAILS_MAX, SUPPORT_SUBJECT_MAX, SUPPORT_TOPICS } from '../../shared/supportTopics';
 import { apiFetch } from '../utils/api';
+import { OFFICE_HOURS, officeTimeText } from '../utils/dtrDay';
 
 // Answers match how WorkMate works; update them when a feature changes.
 const faqs = [
@@ -269,7 +270,7 @@ export default function HelpView({ user }) {
         <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="flex items-center gap-2 text-sm font-black text-slate-900"><PhoneCall className="h-4 w-4 text-[#1e40af]" />Contact the office</h2>
           <p className="text-xs text-slate-600">DILG Provincial Office hotline: <span className="select-all font-bold text-slate-900">(042) 332-1543</span></p>
-          <p className="text-xs text-slate-500">Monday to Friday, 8:00 AM to 5:00 PM</p>
+          <p className="text-xs text-slate-500">Monday to Friday, {officeTimeText(OFFICE_HOURS.amStart)} to {officeTimeText(OFFICE_HOURS.pmEnd)}</p>
         </section>
 
         <section id="privacy" className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">

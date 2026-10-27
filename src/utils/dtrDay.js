@@ -1,8 +1,10 @@
+import { OFFICE_HOURS } from '../../shared/officeHours.js';
+
 // One day of a Daily Time Record (CSC Form No. 48): its four logs (A.M. arrival and
 // departure, P.M. arrival and departure) and the minutes of tardiness and undertime they
-// show against government office hours, 8:00 AM to 12:00 NN and 1:00 PM to 5:00 PM.
+// show against the office hours (shared/officeHours.js).
 
-export const OFFICE_HOURS = { amStart: 8 * 60, noon: 12 * 60, pmStart: 13 * 60, pmEnd: 17 * 60 };
+export { OFFICE_HOURS };
 
 // Lunch Out and Lunch In are recorded from this day on. Earlier records have only a Time In
 // and a Time Out, and their DTR keeps showing the usual noon break, as it did before.
@@ -47,9 +49,9 @@ export const dtrDayLogs = (record, timeOut = record?.timeOut) => {
 export const minutesLate = (value, start) => (clockMinutes(value) === null ? 0 : Math.max(0, clockMinutes(value) - start));
 export const minutesEarly = (value, end) => (clockMinutes(value) === null ? 0 : Math.max(0, end - clockMinutes(value)));
 
-// Minutes of tardiness and undertime the four logs show: arriving after 8:00 AM or 1:00 PM,
-// and leaving before 12:00 NN or 5:00 PM. A half day counts only the half that was worked;
-// the other half is a leave or an absence, not undertime.
+// Minutes of tardiness and undertime the four logs show: arriving after the morning or
+// afternoon start, and leaving before noon or the end of the day. A half day counts only the
+// half that was worked; the other half is a leave or an absence, not undertime.
 export const dtrUndertimeMinutes = logs => minutesLate(logs.amArrival, OFFICE_HOURS.amStart)
   + minutesEarly(logs.amDeparture, OFFICE_HOURS.noon)
   + minutesLate(logs.pmArrival, OFFICE_HOURS.pmStart)
@@ -73,14 +75,14 @@ export const punchStanding = record => {
   };
 };
 
-// An office time as shown: "8:00 AM", "12:00 NN", "1:00 PM".
+// An office time as shown: "7:00 AM", "12:00 NN", "4:30 PM".
 export const officeTimeText = minutes => {
   const hour = Math.floor(minutes / 60);
   const minute = String(minutes % 60).padStart(2, '0');
   return minutes === OFFICE_HOURS.noon ? `12:${minute} NN` : `${hour % 12 || 12}:${minute} ${hour < 12 ? 'AM' : 'PM'}`;
 };
 
-// The office hours as CSC Form 48 writes them: "8:00–12:00, 1:00–5:00".
+// The office hours as CSC Form 48 writes them: "7:00–12:00, 1:00–4:30".
 export const officeHoursText = () => {
   const short = minutes => `${Math.floor(minutes / 60) % 12 || 12}:${String(minutes % 60).padStart(2, '0')}`;
   const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
