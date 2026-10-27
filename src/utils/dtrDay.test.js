@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dtrDayLogs, dtrUndertimeMinutes, durationText, LUNCH_LOGS_FROM, missingLunchLog, officeHoursText, officeTimeText, punchStanding, usesLunchLogs } from './dtrDay.js';
-import { dtrIssue, dtrRecordStatus, missingDtrLog, totalHoursWorked } from './hrAttendance.js';
+import { dtrDayLogs, dtrUndertimeMinutes, durationText, LUNCH_LOGS_FROM, missingLunchLog, officeHoursText, officeTimeText, punchStanding, tardiness, tardinessText, usesLunchLogs } from './dtrDay.js';
+import { dtrIssue, dtrRecordStatus, isLate, missingDtrLog, totalHoursWorked } from './hrAttendance.js';
 
 const day = LUNCH_LOGS_FROM;
 const wholeDay = {
@@ -73,6 +73,23 @@ test('each punch shows how late or early it was against office hours', () => {
   assert.deepEqual(punchStanding({ date: day, timeIn: '01:20 PM' }), { timeIn: { late: 20 }, lunchOut: null, lunchIn: null, timeOut: null });
   assert.deepEqual(punchStanding({ date: day, timeIn: '07:00 AM', timeOut: '11:30 AM' }).timeOut, { early: 30 });
   assert.equal(punchStanding({ date: day, timeIn: '08:00 AM', lunchOut: '12:00 PM', timeOut: '12:20 PM' }).timeOut, null);
+});
+
+test('a late day has a late arrival, in the morning or back from lunch', () => {
+  assert.equal(isLate(wholeDay), false);
+  assert.equal(isLate({ ...wholeDay, timeIn: '07:07 AM' }), true);
+  assert.equal(isLate({ ...wholeDay, lunchIn: '01:15 PM' }), true);
+  assert.equal(dtrRecordStatus({ ...wholeDay, lunchIn: '01:15 PM' }, '2026-12-01'), 'Late');
+  assert.deepEqual(tardiness({ ...wholeDay, timeIn: '07:07 AM', lunchIn: '01:15 PM' }), { am: 7, pm: 15 });
+  assert.equal(tardinessText({ ...wholeDay, timeIn: '07:07 AM', lunchIn: '01:15 PM' }), 'AM 7 min · PM 15 min');
+  // An afternoon-only day is late only after 1:00 PM, whatever was saved at Time In.
+  assert.equal(isLate({ date: day, timeIn: '12:50 PM', late: true }), false);
+  assert.equal(isLate({ date: day, timeIn: '01:20 PM' }), true);
+  assert.equal(tardinessText({ date: day, timeIn: '01:20 PM' }), 'PM 20 min');
+  // Records from before lunch logs keep the late saved at Time In; HR can set Late too.
+  assert.equal(isLate({ date: '2026-10-20', timeIn: '07:30 AM', late: false }), false);
+  assert.equal(isLate({ date: '2026-10-20', timeIn: '08:30 AM', late: true }), true);
+  assert.equal(isLate({ ...wholeDay, status: 'Late' }), true);
 });
 
 test('office hours are written the way the DTR and the app show them', () => {

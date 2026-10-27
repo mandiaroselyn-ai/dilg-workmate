@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
-import { clockTextMinutes, isLateTimeText } from '../utils/attendanceTime.js';
+import { clockTextMinutes, isLateLunchIn, isLateTimeText } from '../utils/attendanceTime.js';
 
 // A Time In or Time Out made in the phone app without internet and sent later.
 const OfflineEntrySchema = new mongoose.Schema({
@@ -450,8 +450,9 @@ export const DtrLog = {
 
   // Saves the open shift's Lunch Out or Lunch In (`which`: 'lunchOut' or 'lunchIn') made at
   // `time` ("12:02 PM"), with where it was made and its selfie and checks. Each is saved once,
-  // and a Lunch In only after a Lunch Out; null when the shift is not ready for it.
-  recordLunch: async (which, time, employeeId, date, location = {}, verification = {}) => {
+  // and a Lunch In only after a Lunch Out; null when the shift is not ready for it. `alsoSet`
+  // holds other fields to save with it, such as `late` for a Lunch In after 1:00 PM.
+  recordLunch: async (which, time, employeeId, date, location = {}, verification = {}, alsoSet = {}) => {
     ensureConnected();
     const ready = which === 'lunchOut' ? { lunchOut: null } : { lunchOut: { $ne: null }, lunchIn: null };
     const log = await MongoDtrLog.findOneAndUpdate(
@@ -467,7 +468,8 @@ export const DtrLog = {
           [`${which}FingerprintVerified`]: verification.fingerprintVerified === true,
           [`${which}FingerprintMethod`]: verification.fingerprintMethod || '',
           [`${which}FaceVerified`]: verification.faceVerified === true,
-          [`${which}FaceMatchDistance`]: verification.faceMatchDistance ?? null
+          [`${which}FaceMatchDistance`]: verification.faceMatchDistance ?? null,
+          ...alsoSet
         }
       },
       { new: true, sort: { createdAt: -1 } }
@@ -666,11 +668,12 @@ export const hrUpdateOperations = (updates, reviewer = '', now = new Date()) => 
     for (const field of HR_EDITABLE_FIELDS) {
       if (update[field] !== undefined) changes[field] = update[field];
     }
-    // A corrected Time In decides again whether the employee was late.
+    // A corrected Time In decides again whether the employee was late, with the Lunch In sent
+    // with it (back after 1:00 PM is late too).
     if (changes.timeIn !== undefined) {
       const late = isLateTimeText(changes.timeIn);
       if (late === null) throw new Error('Time In must be a time such as 08:05 AM.');
-      changes.late = late;
+      changes.late = late || isLateLunchIn(changes.lunchIn) === true;
     }
     if (changes.timeOut != null && clockTextMinutes(changes.timeOut) === null) {
       throw new Error('Time Out must be a time such as 05:00 PM, or left empty.');

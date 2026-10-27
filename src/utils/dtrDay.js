@@ -75,6 +75,22 @@ export const punchStanding = record => {
   };
 };
 
+// Minutes late of the day's arrivals, as government DTRs count tardiness: `am` for a morning
+// Time In after the office start, and `pm` for an afternoon-only Time In or a Lunch In after
+// 1:00 PM.
+export const tardiness = record => {
+  const standing = punchStanding(record);
+  const timeInLate = standing.timeIn?.late || 0;
+  const morning = (clockMinutes(record?.timeIn) ?? 0) < OFFICE_HOURS.noon;
+  return { am: morning ? timeInLate : 0, pm: (morning ? 0 : timeInLate) + (standing.lunchIn?.late || 0) };
+};
+
+// A day's tardiness as shown, such as "AM 7 min · PM 15 min", or '' when on time.
+export const tardinessText = record => {
+  const { am, pm } = tardiness(record);
+  return [am && `AM ${durationText(am)}`, pm && `PM ${durationText(pm)}`].filter(Boolean).join(' · ');
+};
+
 // An office time as shown: "7:00 AM", "12:00 NN", "4:30 PM".
 export const officeTimeText = minutes => {
   const hour = Math.floor(minutes / 60);

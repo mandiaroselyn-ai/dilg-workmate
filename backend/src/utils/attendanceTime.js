@@ -12,12 +12,18 @@ const parseOfficeStart = value => {
   return Number(match[1]) * 60 + Number(match[2]);
 };
 
-// A Time In is late when it is after the office start time in Manila (`officeStartTime`,
-// HH:MM, defaults to the office hours' start).
-export const isLateClockIn = (date = new Date(), officeStartTime = OFFICE_START_TIME) => {
-  const startMinutes = parseOfficeStart(officeStartTime) ?? OFFICE_HOURS.amStart;
-  return getManilaMinutesOfDay(date) > startMinutes;
-};
+// Whether an arrival at `minutes` after midnight is late, as government DTRs count tardiness:
+// after the office start (`officeStartTime`, HH:MM) in the morning, or after 1:00 PM from
+// noon on, when a Time In starts an afternoon-only half day.
+const isLateArrival = (minutes, officeStartTime) => minutes > (minutes >= OFFICE_HOURS.noon
+  ? OFFICE_HOURS.pmStart
+  : parseOfficeStart(officeStartTime) ?? OFFICE_HOURS.amStart);
+
+// A Time In is late when it is after the start of its half of the day in Manila (the
+// morning start is `officeStartTime`, HH:MM, and defaults to the office hours' 7:00 AM).
+export const isLateClockIn = (date = new Date(), officeStartTime = OFFICE_START_TIME) => (
+  isLateArrival(getManilaMinutesOfDay(date), officeStartTime)
+);
 
 // "08:05 AM" (how Time In and Time Out are saved) as minutes after midnight, or null.
 export const clockTextMinutes = value => {
@@ -31,9 +37,14 @@ export const clockTextMinutes = value => {
 // or null when it is not a time.
 export const isLateTimeText = (value, officeStartTime = OFFICE_START_TIME) => {
   const minutes = clockTextMinutes(value);
-  if (minutes === null) return null;
-  const startMinutes = parseOfficeStart(officeStartTime) ?? OFFICE_HOURS.amStart;
-  return minutes > startMinutes;
+  return minutes === null ? null : isLateArrival(minutes, officeStartTime);
+};
+
+// Whether a Lunch In such as "01:15 PM" is late: back after 1:00 PM, the end of the noon
+// break, which is tardiness too. null when it is not a time.
+export const isLateLunchIn = value => {
+  const minutes = clockTextMinutes(value);
+  return minutes === null ? null : minutes > OFFICE_HOURS.pmStart;
 };
 
 // When a Time Out happened. An online Time Out uses the server clock. A Time Out that was

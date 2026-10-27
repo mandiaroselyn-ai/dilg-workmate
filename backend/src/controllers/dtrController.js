@@ -9,7 +9,7 @@ import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssi
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { attendanceReviewNotices, noticeEmployee } from '../services/employeeNotices.js';
-import { clockTextMinutes, isLateClockIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
+import { clockTextMinutes, isLateClockIn, isLateLunchIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
 import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
 import {
   compareEnrollmentToAttendance,
@@ -589,7 +589,10 @@ export const clockInOut = async (req, res) => {
       const identity = await checkTimeOutIdentity({ record, user: req.user, offline: null, punch, selfie: record.selfieUrl });
       if (identity.error) return res.status(identity.statusCode).json({ success: false, error: identity.error });
 
-      const savedLog = await DtrLog.recordLunch(which, formatManilaClockTime(new Date()), record.employeeId, record.date, location, identity.verification);
+      const time = formatManilaClockTime(new Date());
+      // Back from lunch after 1:00 PM is tardiness, so the day is late.
+      const alsoSet = which === 'lunchIn' && isLateLunchIn(time) ? { late: true } : {};
+      const savedLog = await DtrLog.recordLunch(which, time, record.employeeId, record.date, location, identity.verification, alsoSet);
       if (!savedLog) {
         return res.status(409).json({ success: false, error: `${punch} was not saved because your attendance changed. Refresh the page and try again.` });
       }

@@ -1,5 +1,5 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
-import { clockMinutes, missingLunchLog } from './dtrDay.js';
+import { clockMinutes, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -23,8 +23,16 @@ export const requestCoversDate = (request, date) => {
   return Boolean(start) && start <= date && date <= end;
 };
 
-// A Time In after the office start time (the server marks it `late`), or a record HR set to Late.
-export const isLate = record => Boolean(record?.late || /late/i.test(record?.status || ''));
+// A late day: an arrival after the start of its half of the day (a Time In after 7:00 AM, or
+// after 1:00 PM for an afternoon-only day) or back from lunch after 1:00 PM, or a record HR set
+// to Late. Records with lunch logs are read from their own times, as their DTR is; earlier ones
+// use the `late` the server saved at Time In.
+export const isLate = record => {
+  if (/late/i.test(record?.status || '')) return true;
+  if (!usesLunchLogs(record)) return Boolean(record?.late);
+  const { am, pm } = tardiness(record);
+  return am + pm > 0;
+};
 
 // A Time In or Time Out made in the phone app without internet that failed a check when it
 // was sent waits for HR: it counts in the DTR only once HR decides it (a Time Out can also

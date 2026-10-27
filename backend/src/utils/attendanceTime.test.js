@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clockTextMinutes, isLateClockIn, isLateTimeText, resolveTimeOutMoment } from './attendanceTime.js';
+import { clockTextMinutes, isLateClockIn, isLateLunchIn, isLateTimeText, resolveTimeOutMoment } from './attendanceTime.js';
 
 // Manila is UTC+8, so 00:00Z is 8:00 AM in Manila.
 test('a Time In at or before 8:00 AM Manila time is on time', () => {
@@ -15,6 +15,22 @@ test('a Time In after 8:00 AM Manila time is late', () => {
 test('uses the given office start time and falls back to the office hours\' 7:00 AM when it is invalid', () => {
   assert.equal(isLateClockIn(new Date('2026-09-29T00:30:00Z'), '09:00'), false);
   assert.equal(isLateClockIn(new Date('2026-09-29T00:30:00Z'), 'nine'), true);
+});
+
+test('a Time In from noon on starts a half day, late only after 1:00 PM', () => {
+  // 04:50Z is 12:50 PM in Manila; 05:20Z is 1:20 PM.
+  assert.equal(isLateClockIn(new Date('2026-09-29T04:50:00Z')), false);
+  assert.equal(isLateClockIn(new Date('2026-09-29T05:20:00Z')), true);
+  assert.equal(isLateTimeText('12:50 PM'), false);
+  assert.equal(isLateTimeText('01:00 PM'), false);
+  assert.equal(isLateTimeText('01:20 PM'), true);
+});
+
+test('back from lunch after 1:00 PM is late', () => {
+  assert.equal(isLateLunchIn('12:58 PM'), false);
+  assert.equal(isLateLunchIn('01:00 PM'), false);
+  assert.equal(isLateLunchIn('01:15 PM'), true);
+  assert.equal(isLateLunchIn('soon'), null);
 });
 
 test('by default, a Time In is late after 7:00 AM, the start of the office hours', () => {

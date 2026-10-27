@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 import { hasSelfie, isLate } from '../utils/hrAttendance';
-import { clockMinutes, durationText, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
+import { clockMinutes, durationText, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, tardinessText, usesLunchLogs } from '../utils/dtrDay';
 import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 import PunchReceipt from './PunchReceipt';
@@ -82,6 +82,13 @@ const offlineStatuses = log => [
     ? 'Time Out saved on this phone · not sent yet'
     : offlineEntryStatus(log?.offlineTimeOut, 'Time Out')
 ].filter(Boolean);
+
+// A late day's badge in the history, such as "Late · AM 7 min · PM 15 min" (just "Late" for a
+// record from before lunch logs, kept under the office hours of its day).
+const lateLabel = log => {
+  const minutes = usesLunchLogs(log) ? tardinessText(log) : '';
+  return minutes ? `Late · ${minutes}` : 'Late';
+};
 
 export default function AttendanceView({
   user,
@@ -2255,7 +2262,7 @@ export default function AttendanceView({
                     isLate(log) ? 'bg-amber-50 text-amber-700 border border-amber-100'
                       : log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
                   }`}>
-                    {isLate(log) ? `Late${punchStanding(log).timeIn?.late ? ` · ${durationText(punchStanding(log).timeIn.late)}` : ''}` : log.status}
+                    {isLate(log) ? lateLabel(log) : log.status}
                   </span>
                 </div>
 
@@ -2449,7 +2456,7 @@ export default function AttendanceView({
                         isLate(log) ? 'bg-amber-50 text-amber-700 border border-amber-100'
                           : log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-110' : 'bg-red-50 text-red-700 border border-red-110'
                       }`}>
-                        {isLate(log) ? `Late${punchStanding(log).timeIn?.late ? ` · ${durationText(punchStanding(log).timeIn.late)}` : ''}` : log.status}
+                        {isLate(log) ? lateLabel(log) : log.status}
                       </span>
                       {offlineStatuses(log).map(status => (
                         <span key={status} className="mt-1 block text-[9px] font-semibold text-amber-700">{status}</span>

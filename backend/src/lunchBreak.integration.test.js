@@ -98,6 +98,11 @@ test('HR does not punch lunch for an employee; it is entered with Correct Record
 test('HR can correct Lunch Out and Lunch In, which must be times', () => {
   const [correction] = hrUpdateOperations([{ id: 'att-9', lunchOut: '12:00 PM', lunchIn: '01:00 PM' }], 'HR Ana');
   assert.deepEqual(correction.changes, { lunchOut: '12:00 PM', lunchIn: '01:00 PM' });
+  // A correction decides lateness again: on time in the morning, but back late from lunch.
+  const [lateBack] = hrUpdateOperations([{ id: 'att-9', timeIn: '06:58 AM', lunchOut: '12:00 PM', lunchIn: '01:15 PM' }], 'HR Ana');
+  assert.equal(lateBack.changes.late, true);
+  const [onTime] = hrUpdateOperations([{ id: 'att-9', timeIn: '06:58 AM', lunchOut: '12:00 PM', lunchIn: '12:59 PM' }], 'HR Ana');
+  assert.equal(onTime.changes.late, false);
   assert.deepEqual(hrUpdateOperations([{ id: 'att-9', lunchIn: null }], 'HR Ana')[0].changes, { lunchIn: null });
   assert.throws(() => hrUpdateOperations([{ id: 'att-9', lunchOut: 'noon' }]), /Lunch Out must be a time/);
   assert.throws(() => hrUpdateOperations([{ id: 'att-9', lunchIn: '13:00' }]), /Lunch In must be a time/);
