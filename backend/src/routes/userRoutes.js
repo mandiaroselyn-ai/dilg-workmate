@@ -9,6 +9,7 @@ import {
   deleteEmployee,
   updateEmployeeLeaveCredits,
   deductTardinessCredits,
+  creditLeaveEarnings,
   changePassword,
   loginUser,
   seedDefaultUsers,
@@ -102,6 +103,8 @@ router.delete('/employees/:identifier', requireAdmin, deleteEmployee);
 router.patch('/employees/:identifier/leave-credits', requireAdmin, updateEmployeeLeaveCredits);
 // One ended month's tardiness and undertime charged to vacation leave (see deductTardinessCredits).
 router.post('/employees/tardiness-deductions', requireAdmin, deductTardinessCredits);
+// One ended month's earned leave credited (see creditLeaveEarnings).
+router.post('/employees/leave-earnings', requireAdmin, creditLeaveEarnings);
 router.post('/login', loginUser);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset-hr-request', requestHrPasswordReset);

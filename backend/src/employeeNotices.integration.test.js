@@ -17,6 +17,7 @@ globalThis.fetch = async (url, options) => {
 const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { Leave } = await import('./models/leaveModel.js');
+const { Holiday } = await import('./models/holidayModel.js');
 const { DtrLog } = await import('./models/dtrLogModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
@@ -63,7 +64,8 @@ test('the supervisor\'s decision reaches the employee from the server, at their 
   const sent = withSms(t);
   t.mock.method(User, 'findByEmail', async email => (email === supervisor.email ? supervisor : null));
   t.mock.method(User, 'findByEmployeeId', async () => employee);
-  t.mock.method(User, 'deductLeaveCredits', async () => null);
+  t.mock.method(User, 'chargeApprovedLeave', async () => null);
+  t.mock.method(Holiday, 'findAll', async () => []);
   t.mock.method(Leave, 'findByCustomId', async () => ({ ...leave, status: 'For Supervisor' }));
   t.mock.method(Leave, 'updateStatus', async (_id, update) => ({ ...leave, ...update }));
   t.mock.method(Leave, 'markCreditsDeducted', async () => true);

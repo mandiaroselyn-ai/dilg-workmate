@@ -84,6 +84,8 @@ export default function App() {
   const loadedAttendanceMonthsRef = useRef(new Set());
   const [requests, setRequests] = useState([]);
   const [events, setEvents] = useState([]);
+  // HR's holidays, which are not counted as leave days.
+  const [holidays, setHolidays] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [smsAlerts, setSmsAlerts] = useState([]);
@@ -220,6 +222,7 @@ export default function App() {
           }
           if (data.requests) setRequests(data.requests);
           if (data.events) setEvents(data.events);
+          if (Array.isArray(data.holidays)) setHolidays(data.holidays);
           if (data.announcements) setAnnouncements(data.announcements);
           if (data.notifications) {
             setNotifications(data.notifications);
@@ -549,6 +552,7 @@ export default function App() {
     setAttendanceHistory([]);
     setRequests([]);
     setEvents([]);
+    setHolidays([]);
     setAnnouncements([]);
     setNotifications([]);
     setSmsAlerts([]);
@@ -1619,6 +1623,7 @@ export default function App() {
               requests={visibleEmployeeRequests}
               onSubmitRequest={handleSubmitRequest}
               onUpdateOwnRequest={handleUpdateOwnRequest}
+              holidays={holidays}
             />
           )}
 
@@ -1671,6 +1676,8 @@ export default function App() {
               onUpdateRequestStatus={handleUpdateRequestStatus}
               onViewChange={handleViewChange}
               onEmployeesChange={setEmployees}
+              holidays={holidays}
+              onHolidaysChange={setHolidays}
               onUpdateUser={handleUpdateUser}
               onAdminNotification={handleAdminNotification}
               announcements={announcements}

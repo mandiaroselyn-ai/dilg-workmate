@@ -9,6 +9,7 @@ process.env.HTTPSMS_API_KEY = '';
 const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { Leave } = await import('./models/leaveModel.js');
+const { Holiday } = await import('./models/holidayModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 
@@ -88,6 +89,7 @@ test('the employee fixes a returned request and submits it again, and HR is told
   const returned = { id: 'REQ-RETURNED', status: 'Returned', type: 'Leave Request', employeeId: 'E1', employeeEmail: employee.email, statusHistory: [] };
   t.mock.method(User, 'findByEmail', async () => employee);
   t.mock.method(Leave, 'findByCustomId', async () => returned);
+  t.mock.method(Holiday, 'findAll', async () => []);
   // Its own dates are not an overlap with itself.
   t.mock.method(Leave, 'findAbsencesOfEmployee', async () => [returned]);
   const saves = t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...returned, ...update }));
@@ -101,6 +103,8 @@ test('the employee fixes a returned request and submits it again, and HR is told
   assert.equal(update.status, 'Pending');
   assert.equal(update.purpose, 'Leave Type: Sick Leave. With medical certificate.');
   assert.equal(update.statusHistory.at(-1).status, 'Pending');
+  // Tue Nov 3 and Wed Nov 4, 2026, counted by the server.
+  assert.equal(update.workingDays, 2);
   assert.ok(notices.mock.calls.some(call => call.arguments[0].recipientRole === 'hr_admin'));
 });
 
@@ -109,6 +113,7 @@ test('a leave or travel order that overlaps another submitted leave of the emplo
   const approved = { id: 'REQ-NOV', type: 'Leave Request', status: 'Approved', startDate: '2026-11-03', endDate: '2026-11-05', employeeId: 'E1' };
   t.mock.method(User, 'findByEmail', async () => employee);
   t.mock.method(Leave, 'findAbsencesOfEmployee', async () => [approved]);
+  t.mock.method(Holiday, 'findAll', async () => []);
   const creates = t.mock.method(Leave, 'create', async request => ({ ...request, id: 'REQ-NEW' }));
   t.mock.method(Announcement, 'createNotification', async notice => notice);
   const send = body => request(app).post('/api/requests').set('Authorization', `Bearer ${createAuthToken(employee)}`).send(body);
@@ -183,4 +188,46 @@ test('a failed supervisor text does not stop the forward', async t => {
   assert.equal(response.status, 200);
   assert.equal(session.saves.mock.callCount(), 1);
   assert.equal(sms.saved.mock.calls[0].arguments[0].status, 'Failed');
+});
+
+test('a leave\'s working days are counted by the server, without holidays, whatever the form sent', async t => {
+  const employee = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
+  t.mock.method(User, 'findByEmail', async () => employee);
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async () => []);
+  t.mock.method(Holiday, 'findAll', async () => [{ date: '2026-11-30', name: 'Bonifacio Day' }]);
+  const creates = t.mock.method(Leave, 'create', async request => ({ ...request, id: 'REQ-DAYS' }));
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  // Fri Nov 27 to Tue Dec 1: Fri, Mon (a holiday), and Tue.
+  const response = await request(app).post('/api/requests').set('Authorization', `Bearer ${createAuthToken(employee)}`)
+    .send({ type: 'Leave Request', startDate: '2026-11-27', endDate: '2026-12-01', purpose: 'Leave Type: Vacation Leave. Trip.', leaveType: 'Vacation Leave', workingDays: 0, status: 'Pending' });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  assert.equal(creates.mock.calls[0].arguments[0].workingDays, 2);
+});
+
+test('approved sick leave is charged to sick leave, then vacation leave, then without pay', async t => {
+  const supervisor = { _id: 's-1', email: 'boss@dilg.gov.ph', employeeId: 'S1', name: 'Ana Reyes', accessLevel: 'supervisor', accountStatus: 'Active' };
+  // Mon Nov 2 to Thu Nov 5, 2026: 4 days.
+  const leave = { id: 'REQ-SICK', type: 'Leave Request', leaveType: 'Sick Leave', status: 'For Supervisor', startDate: '2026-11-02', endDate: '2026-11-05', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', workingDays: 1 };
+  t.mock.method(User, 'findByEmail', async email => (email === supervisor.email ? supervisor : null));
+  t.mock.method(User, 'findByEmployeeId', async () => null);
+  t.mock.method(Holiday, 'findAll', async () => []);
+  t.mock.method(Leave, 'findByCustomId', async () => leave);
+  t.mock.method(Leave, 'updateStatus', async (_id, update) => ({ ...leave, ...update }));
+  t.mock.method(Leave, 'markCreditsDeducted', async () => true);
+  const saved = t.mock.method(Leave, 'saveCreditCharge', async () => {});
+  const charges = t.mock.method(User, 'chargeApprovedLeave', async (owner, { field, days, reason }) => {
+    const charge = { days, sickLeaveDays: 2, vacationLeaveDays: 1.5, withoutPayDays: 0.5, vacationLeaveCredits: 0, sickLeaveCredits: 0 };
+    return { employee: { employeeId: 'E1', email: owner.email, reasonWritten: reason(charge) }, charge };
+  });
+  const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+
+  const response = await request(app).patch('/api/requests/REQ-SICK').set('Authorization', `Bearer ${createAuthToken(supervisor)}`)
+    .send({ status: 'Approved', supervisorRemarks: 'Get well.' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  // The 4 days come from the dates, not the 1 on the request.
+  assert.deepEqual(charges.mock.calls[0].arguments[1].field, 'sickLeaveCredits');
+  assert.equal(charges.mock.calls[0].arguments[1].days, 4);
+  assert.equal(saved.mock.calls[0].arguments[1].withoutPayDays, 0.5);
+  const notice = notices.mock.calls.map(call => call.arguments[0]).find(item => item.title === 'Leave Credits Charged');
+  assert.match(notice.message, /2 days sick leave, 1\.5 days vacation leave, 0\.5 days without pay/);
 });

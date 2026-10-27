@@ -55,7 +55,19 @@ const RequestSchema = new mongoose.Schema({
   directorName: { type: String, default: '' },
   statusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
   // Set once leave credits have been deducted for this request's approval.
-  creditsDeducted: { type: Boolean, default: false }
+  creditsDeducted: { type: Boolean, default: false },
+  // How the approved leave was charged: the working days, the days taken from sick and from
+  // vacation leave, and the days without pay that the balances could not cover.
+  creditCharge: {
+    type: {
+      days: Number,
+      sickLeaveDays: Number,
+      vacationLeaveDays: Number,
+      withoutPayDays: Number,
+      chargedAt: Date
+    },
+    default: null
+  }
 }, { timestamps: true });
 
 export const MongoRequest = mongoose.models.Request || mongoose.model('Request', RequestSchema);
@@ -94,7 +106,7 @@ export const Leave = {
     ];
     if (!owners.length) return [];
     const list = await MongoRequest.find({ type: { $in: ['Leave Request', 'Travel Order'] }, $or: owners })
-      .select('customId type status startDate endDate employeeId employeeEmail')
+      .select('customId type status startDate endDate employeeId employeeEmail leaveType creditCharge')
       .lean();
     return list.map(item => ({ ...item, id: item.customId }));
   },
@@ -173,6 +185,14 @@ export const Leave = {
     const obj = mongoRequest.toObject();
     obj.id = obj.customId;
     return obj;
+  },
+
+  // Saves how an approved leave was charged (see creditCharge).
+  saveCreditCharge: async (id, { days, sickLeaveDays, vacationLeaveDays, withoutPayDays }) => {
+    ensureConnected();
+    await MongoRequest.updateOne({ customId: id }, {
+      $set: { creditCharge: { days, sickLeaveDays, vacationLeaveDays, withoutPayDays, chargedAt: new Date() }, workingDays: days }
+    });
   },
 
   // Marks the request's credits as deducted. Returns false when they already were.

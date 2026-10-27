@@ -1,24 +1,39 @@
+import { countLeaveDays, leaveCreditField } from '../../../shared/leaveCalc.js';
+
+export { leaveCreditField };
+
 // Annual leave entitlement under CSC rules: 15 days vacation leave and 15 days sick leave.
 export const DEFAULT_LEAVE_CREDITS = 15;
 
-// Which credit balance an approved leave type is charged to. Mandatory/Forced Leave is
-// charged to vacation leave. Other leave types (maternity, special privilege, and so on)
-// have their own entitlements and are not deducted here.
-export const leaveCreditField = leaveType => {
-  const type = String(leaveType || '').toLowerCase();
-  if (type.includes('sick')) return 'sickLeaveCredits';
-  if (type.includes('vacation') || type.includes('mandatory') || type.includes('forced')) return 'vacationLeaveCredits';
-  return null;
-};
-
 // Returns the deduction for a request that has just become Approved, or null when no
-// credits should be deducted (not a leave request, already approved, or no chargeable days).
-export const leaveCreditDeduction = (previous, updated) => {
+// credits should be deducted (not a leave request, already approved, a leave type with its own
+// entitlement, or no working days). The days are counted from the leave's dates (Monday to
+// Friday, without `holidays`), never taken from what the request says, so they cannot be
+// changed by whoever sent it.
+export const leaveCreditDeduction = (previous, updated, holidays = []) => {
   if (updated?.type !== 'Leave Request' || updated.status !== 'Approved' || previous?.status === 'Approved') return null;
   const field = leaveCreditField(updated.leaveType);
-  const days = Number(updated.workingDays);
-  if (!field || !Number.isFinite(days) || days <= 0) return null;
+  const days = countLeaveDays(updated.startDate, updated.endDate, holidays);
+  if (!field || days <= 0) return null;
   return { field, days };
+};
+
+// Validates HR's holidays: { holidays: [{ date: 'YYYY-MM-DD', name }] }.
+export const normalizeHolidays = body => {
+  const list = Array.isArray(body?.holidays) ? body.holidays : null;
+  if (!list?.length) return { error: 'Add at least one holiday.' };
+  if (list.length > 100) return { error: 'Add at most 100 holidays at a time.' };
+  const holidays = [];
+  for (const item of list) {
+    const date = typeof item?.date === 'string' ? item.date.trim() : '';
+    const name = typeof item?.name === 'string' ? item.name.trim() : '';
+    const valid = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)
+      && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+    if (!valid) return { error: 'Each holiday needs a real date, like 2026-12-25.' };
+    if (!name || name.length > 100) return { error: 'Each holiday needs a name of 100 characters or fewer.' };
+    holidays.push({ date, name });
+  }
+  return { holidays };
 };
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -41,6 +56,20 @@ export const tardinessCharge = (vacationLeaveCredits, days) => {
     withoutPayDays: round(days - deductedDays),
     vacationLeaveCredits: round(available - deductedDays)
   };
+};
+
+// Validates HR's crediting of one month's earned leave: { month: 'YYYY-MM', identifiers: [...] }
+// (each an employee ID or email). Only a month that has ended can be credited. `currentMonth`
+// is this month, as YYYY-MM.
+export const normalizeLeaveEarnings = (body, currentMonth) => {
+  const month = typeof body?.month === 'string' ? body.month.trim() : '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { error: 'The month must be written like 2026-10.' };
+  if (month >= currentMonth) return { error: 'Only a month that has ended can be credited. Credit this month once it is over.' };
+  const identifiers = Array.isArray(body?.identifiers) ? body.identifiers.map(value => (typeof value === 'string' ? value.trim() : '')) : [];
+  if (!identifiers.length) return { error: 'Choose at least one employee to credit.' };
+  if (identifiers.length > 1000) return { error: 'Credit at most 1000 employees at a time.' };
+  if (identifiers.some(value => !value)) return { error: 'Each employee to credit needs an employee ID or email.' };
+  return { month, identifiers };
 };
 
 // Validates HR's charging of one month's tardiness and undertime to vacation leave:

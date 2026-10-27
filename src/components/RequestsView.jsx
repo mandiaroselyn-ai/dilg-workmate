@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { overlapMessage, overlappingRequest } from '../../shared/requestOverlap';
+import { countLeaveDays } from '../../shared/leaveCalc';
 import {
   FileText,
   Calendar,
@@ -53,7 +54,8 @@ export default function RequestsView({
   user,
   requests,
   onSubmitRequest,
-  onUpdateOwnRequest
+  onUpdateOwnRequest,
+  holidays = []
 }) {
   // Configured view state
   const [activeTab2, setActiveTab2] = useState('Leave');
@@ -95,28 +97,14 @@ export default function RequestsView({
   // Dynamic computation of Working Days (Excluding Sat/Sun)
   const [workingDays, setWorkingDays] = useState(0);
 
+  // Monday to Friday without HR's holidays, as the server counts them when it saves the leave.
   useEffect(() => {
-    if (startDate && endDate) {
-      const s = new Date(startDate);
-      const e = new Date(endDate);
-      if (e >= s) {
-        let count = 0;
-        const cur = new Date(s);
-        while (cur <= e) {
-          const day = cur.getDay();
-          if (day !== 0 && day !== 6) { // Mon - Fri
-            count++;
-          }
-          cur.setDate(cur.getDate() + 1);
-        }
-        setWorkingDays(count);
-      } else {
-        setWorkingDays(0);
-      }
-    } else {
-      setWorkingDays(0);
-    }
-  }, [startDate, endDate]);
+    setWorkingDays(startDate && endDate ? countLeaveDays(startDate, endDate, holidays) : 0);
+  }, [startDate, endDate, holidays]);
+  // The holidays on weekdays of the leave, which are not counted.
+  const holidaysInLeave = startDate && endDate
+    ? holidays.filter(holiday => holiday.date >= startDate && holiday.date <= endDate && countLeaveDays(holiday.date, holiday.date) === 1)
+    : [];
 
   // Handle Drag-and-Drop parameters
   const handleDragOver = (e) => {
@@ -390,10 +378,15 @@ Reason (optional):`, '');
     { label: 'Vacation Leave', field: 'vacationLeaveCredits', color: 'text-blue-700', bar: 'bg-blue-600' },
     { label: 'Sick Leave', field: 'sickLeaveCredits', color: 'text-emerald-700', bar: 'bg-emerald-600' }
   ].map((credit) => {
+    // The approved leave taken out of this balance: from each leave's saved charge (sick leave
+    // can spill into vacation leave), or, for one approved before charges were saved, its days
+    // when its type matches.
+    const chargedDays = credit.field === 'vacationLeaveCredits' ? 'vacationLeaveDays' : 'sickLeaveDays';
     const used = myRequests
       .filter(request => request.type === 'Leave Request' && request.status === 'Approved')
-      .filter(request => (request.leaveType || '').toLowerCase().includes(credit.label.toLowerCase().replace(' leave', '')))
-      .reduce((total, request) => total + Number(request.workingDays || 0), 0);
+      .reduce((total, request) => total + (request.creditCharge
+        ? Number(request.creditCharge[chargedDays]) || 0
+        : (request.leaveType || '').toLowerCase().includes(credit.label.toLowerCase().replace(' leave', '')) ? Number(request.workingDays || 0) : 0), 0);
     // The server deducts approved leave from the stored balance, which can exceed 15 days.
     const remaining = Math.max(0, Number(user?.[credit.field] ?? 15));
     return { ...credit, used, remaining, max: Math.max(15, remaining) };
@@ -482,6 +475,15 @@ Reason (optional):`, '');
                 <div className="min-w-0">
                   <p className="truncate text-xs font-black text-slate-800">{request.leaveType || 'Leave Request'}</p>
                   <p className="mt-1 text-[10px] font-semibold text-slate-500">{request.startDate} to {request.endDate} · {request.workingDays || 0} day(s)</p>
+                  {request.creditCharge && (
+                    <p className="mt-0.5 text-[10px] font-bold text-slate-600">
+                      Charged: {[
+                        request.creditCharge.sickLeaveDays && `${Number(request.creditCharge.sickLeaveDays)} SL`,
+                        request.creditCharge.vacationLeaveDays && `${Number(request.creditCharge.vacationLeaveDays)} VL`,
+                        request.creditCharge.withoutPayDays && `${Number(request.creditCharge.withoutPayDays)} without pay`
+                      ].filter(Boolean).join(', ') || 'nothing'}
+                    </p>
+                  )}
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : request.status === 'Draft' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>{request.status}</span>
               </div>
@@ -761,7 +763,12 @@ Reason (optional):`, '');
               {/* Dynamic Auto-calculated Days block */}
               {activeTab2 === 'Leave' && workingDays > 0 && (
                 <div className="bg-emerald-50 text-emerald-800 border border-emerald-100 p-3 rounded-lg text-xs font-extrabold flex items-center justify-between animate-none">
-                  <span>Computed span:</span>
+                  <span>
+                    Computed span:
+                    {holidaysInLeave.length > 0 && (
+                      <span className="block text-[10px] font-semibold text-emerald-700">Holidays not counted: {holidaysInLeave.map(holiday => holiday.name).join(', ')}</span>
+                    )}
+                  </span>
                   <span className="bg-emerald-600 text-white font-black px-2 py-0.5 rounded text-[10px] animate-none font-semibold">
                     {workingDays} Working Days
                   </span>

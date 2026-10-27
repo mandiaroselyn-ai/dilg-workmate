@@ -300,8 +300,10 @@ export default function DashboardView({
                   {(() => {
                     const [year, month] = today.split('-').map(Number);
                     const minutes = monthUndertimeMinutes(personalAttendanceHistory, year, month);
+                    const monthName = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
                     const last = (user?.tardinessDeductions || []).at(-1);
-                    const lastMonth = last ? new Date(`${last.month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+                    const lastMonth = last ? monthName(last.month) : '';
+                    const lastEarned = (user?.leaveEarnings || []).at(-1);
                     return (
                       <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
                         <p>
@@ -313,6 +315,11 @@ export default function DashboardView({
                           <p className="mt-1">
                             Last charged: <b className="text-slate-800">{lastMonth}</b>, {Number(last.days).toFixed(3)} day
                             {last.withoutPayDays ? ` (${Number(last.withoutPayDays).toFixed(3)} day without pay)` : ''}.
+                          </p>
+                        )}
+                        {lastEarned && (
+                          <p className="mt-1">
+                            Last earned: <b className="text-slate-800">{monthName(lastEarned.month)}</b>, +{Number(lastEarned.earned).toFixed(3)} day vacation and sick leave each.
                           </p>
                         )}
                       </div>

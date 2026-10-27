@@ -63,6 +63,8 @@ export default function HRAdminView({
   onUpdateRequestStatus,
   onViewChange,
   onEmployeesChange,
+  holidays = [],
+  onHolidaysChange,
   onUpdateUser,
   onAdminNotification,
   announcements = [],
@@ -396,6 +398,9 @@ export default function HRAdminView({
         reviewerName={user?.name || 'HR/Admin'}
         onSaveRecord={onUpdateAttendance ? update => onUpdateAttendance([update]) : undefined}
         onEmployeesChange={onEmployeesChange}
+        requests={requests}
+        holidays={holidays}
+        onHolidaysChange={onHolidaysChange}
         onBack={() => setActiveTab('dtr')}
       />}
 

@@ -8,6 +8,8 @@ import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
 import { noticeRequestDecision } from '../services/employeeNotices.js';
 import { overlapMessage, overlappingRequest } from '../../../shared/requestOverlap.js';
+import { countLeaveDays } from '../../../shared/leaveCalc.js';
+import { Holiday } from '../models/holidayModel.js';
 
 const reviewerName = req => req.user?.name || (req.user?.accessLevel === 'supervisor' ? 'your supervisor' : 'HR');
 const reviewRemarks = update => update?.supervisorRemarks || update?.remarks || '';
@@ -89,11 +91,45 @@ const overlapProblem = async request => {
   return other ? overlapMessage(other) : null;
 };
 
+// The working days of a leave, counted by the server from its dates (Monday to Friday, without
+// HR's holidays), so the number the form sent is never trusted.
+const serverLeaveDays = async request => countLeaveDays(request.startDate, request.endDate, await Holiday.findAll());
+
+const daysText = days => `${Number(days.toFixed(3))} day${days === 1 ? '' : 's'}`;
+// How an approved leave was charged, such as "2 days sick leave, 1 day vacation leave".
+const chargeText = charge => [
+  charge.sickLeaveDays && `${daysText(charge.sickLeaveDays)} sick leave`,
+  charge.vacationLeaveDays && `${daysText(charge.vacationLeaveDays)} vacation leave`,
+  charge.withoutPayDays && `${daysText(charge.withoutPayDays)} without pay`
+].filter(Boolean).join(', ') || 'nothing';
+
+// Charges a leave that has just been approved to the employee's credits by the CSC rules (see
+// leaveCharge), saves how on the request, and tells the employee.
+const chargeApprovedLeave = async (request, { field, days }) => {
+  const label = `${request.leaveType || 'leave'} ${request.id} (${daysText(days)})`;
+  const result = await User.chargeApprovedLeave(
+    { employeeId: request.employeeId, email: request.employeeEmail },
+    { field, days, reason: charge => `Approved ${label}: ${chargeText(charge)}` }
+  );
+  if (!result) return;
+  await Leave.saveCreditCharge(request.id, result.charge);
+  await Announcement.createNotification({
+    title: 'Leave Credits Charged',
+    message: `Your approved ${label} was charged: ${chargeText(result.charge)}.`
+      + (result.charge.withoutPayDays ? ' The days without pay are because your leave credits were not enough.' : ''),
+    type: 'system',
+    view: 'dashboard',
+    employeeId: result.employee.employeeId || '',
+    employeeEmail: result.employee.email || ''
+  }).catch(error => console.error('Unable to notify the employee about the leave charge:', error));
+};
+
 export const createRequest = async (req, res) => {
   try {
     const requestBody = req.user?.accessLevel === 'employee'
       ? buildEmployeeRequest(req.body, req.user)
       : { ...req.body };
+    if (requestBody.type === 'Leave Request' && requestBody.startDate) requestBody.workingDays = await serverLeaveDays(requestBody);
     const overlap = await overlapProblem(requestBody);
     if (overlap) return res.status(409).json({ success: false, error: overlap });
     const newReq = await Leave.create(requestBody);
@@ -124,6 +160,11 @@ export const updateRequestStatus = async (req, res) => {
       if (!update) {
         return res.status(403).json({ success: false, error: 'You can only change your own drafts and returned requests, or withdraw your own requests before they are approved or rejected.' });
       }
+      // An edited leave's working days are counted again from its dates.
+      const edited = { ...existing, ...update };
+      if (editsOwnRequest && edited.type === 'Leave Request' && edited.startDate && update.status !== 'Cancelled') {
+        update.workingDays = await serverLeaveDays(edited);
+      }
       // A draft submitted, or a returned request submitted again, may not overlap other leave
       // or travel.
       if (update.status === 'Pending') {
@@ -139,11 +180,13 @@ export const updateRequestStatus = async (req, res) => {
     }
     const updated = await Leave.updateStatus(id, update);
 
-    // Deduct leave credits the first time a leave request is approved. The flag on the
-    // request makes sure two approvals at the same moment cannot deduct twice.
-    const deduction = leaveCreditDeduction(existing, updated);
+    // Charge leave credits the first time a leave request is approved, for the working days
+    // counted from its dates. The flag on the request makes sure two approvals at the same
+    // moment cannot charge twice.
+    const newlyApprovedLeave = updated?.type === 'Leave Request' && updated.status === 'Approved' && existing.status !== 'Approved';
+    const deduction = newlyApprovedLeave ? leaveCreditDeduction(existing, updated, await Holiday.findAll()) : null;
     if (deduction && await Leave.markCreditsDeducted(id)) {
-      await User.deductLeaveCredits({ employeeId: updated.employeeId, email: updated.employeeEmail }, deduction.field, deduction.days);
+      await chargeApprovedLeave(updated, deduction);
     }
 
     if (updated && role === 'employee' && updated.status === 'Pending') {

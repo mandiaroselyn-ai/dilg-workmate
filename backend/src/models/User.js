@@ -6,6 +6,7 @@ import path from 'path';
 import { hashPassword, isPasswordHash, verifyPassword as checkPassword } from '../utils/passwordSecurity.js';
 import { resubmittableEnrollmentFilter } from '../utils/biometricEnrollment.js';
 import { DEFAULT_LEAVE_CREDITS, tardinessCharge } from '../utils/leaveCredits.js';
+import { leaveCharge } from '../../../shared/leaveCalc.js';
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, default: 'Lara Montiano' },
@@ -153,6 +154,19 @@ const UserSchema = new mongoose.Schema({
     }],
     default: []
   },
+  // Each month of service whose leave credits were earned (once a month): the days of leave
+  // without pay that month and the vacation and sick leave earned, each 1.25 days less 1.25/30
+  // for each day without pay (CSC table).
+  leaveEarnings: {
+    type: [{
+      month: { type: String, required: true }, // YYYY-MM
+      withoutPayDays: Number,
+      earned: Number,
+      creditedAt: { type: Date, default: Date.now },
+      creditedBy: { type: String, default: '' }
+    }],
+    default: []
+  },
   // IDs of fingerprint proofs already used for a Time In, so each proof works only once.
   usedVerificationProofIds: { type: [String], default: [], select: false }
 }, { timestamps: true });
@@ -238,8 +252,11 @@ export const User = {
     return MongoUser.find(query).sort({ name: 1 });
   },
 
-  // Deducts approved leave days from one credit balance, never going below zero.
-  deductLeaveCredits: async ({ employeeId, email }, field, days) => {
+  // Charges `days` of approved leave to the balances by the CSC rules (see leaveCharge): sick
+  // leave from sick leave and then vacation leave, vacation leave from vacation leave, and the
+  // rest without pay. The change is added to the leave credit history (`reason` is written from
+  // the charge). Returns { employee, charge }, or null when no account matches.
+  chargeApprovedLeave: async ({ employeeId, email }, { field, days, reason }) => {
     ensureConnected();
     if (!['vacationLeaveCredits', 'sickLeaveCredits'].includes(field) || !(days > 0)) return null;
     const owners = [
@@ -247,12 +264,24 @@ export const User = {
       ...(email ? [{ email: email.toLowerCase() }] : [])
     ];
     if (!owners.length) return null;
-    return MongoUser.findOneAndUpdate(
-      { $or: owners },
-      [{ $set: { [field]: { $max: [0, { $subtract: [{ $ifNull: [`$${field}`, DEFAULT_LEAVE_CREDITS] }, days] }] } } }],
-      // Mongoose 9 only runs update pipelines (like this one) when asked to.
-      { new: true, updatePipeline: true }
-    );
+    const employee = await MongoUser.findOne({ $or: owners });
+    if (!employee) return null;
+    const previousVacation = Number(employee.vacationLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
+    const previousSick = Number(employee.sickLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
+    const charge = { days, ...leaveCharge({ field, days, vacation: previousVacation, sick: previousSick }) };
+    employee.vacationLeaveCredits = charge.vacationLeaveCredits;
+    employee.sickLeaveCredits = charge.sickLeaveCredits;
+    employee.leaveCreditHistory = [...(employee.leaveCreditHistory || []), {
+      changedAt: new Date(),
+      changedBy: 'Approved leave',
+      reason: typeof reason === 'function' ? reason(charge) : reason,
+      vacationLeaveCredits: charge.vacationLeaveCredits,
+      sickLeaveCredits: charge.sickLeaveCredits,
+      previousVacationLeaveCredits: previousVacation,
+      previousSickLeaveCredits: previousSick
+    }].slice(-50);
+    await employee.save();
+    return { employee: employee.toObject(), charge };
   },
 
   setNotificationsClearedAt: async (userId, clearedAt) => {
@@ -812,6 +841,53 @@ export const User = {
       const latest = await MongoUser.findById(employee._id);
       const charged = (latest?.tardinessDeductions || []).find(item => item.month === month);
       return charged ? { alreadyDeducted: charged.toObject ? charged.toObject() : charged } : null;
+    }
+    return { employee: updated.toObject(), entry };
+  },
+
+  // Credits one month's earned leave (`earned` days, after `withoutPayDays` of leave without
+  // pay) to an employee's vacation and sick leave, once per month, and adds it to the leave
+  // credit history. Returns { employee, entry }, { alreadyCredited: entry } when the month was
+  // already credited, or null when no employee account matches.
+  creditMonthlyEarnings: async (identifier, { month, withoutPayDays, earned, reason }, { changedBy }) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const employee = await MongoUser.findOne({
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    });
+    if (!employee) return null;
+    const plain = item => (item?.toObject ? item.toObject() : item);
+    const done = (employee.leaveEarnings || []).find(item => item.month === month);
+    if (done) return { alreadyCredited: plain(done) };
+
+    const round = number => Math.round(number * 1000) / 1000;
+    const previousVacation = Number(employee.vacationLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
+    const previousSick = Number(employee.sickLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
+    const entry = { month, withoutPayDays, earned, creditedAt: new Date(), creditedBy: changedBy };
+    const balances = { vacationLeaveCredits: round(previousVacation + earned), sickLeaveCredits: round(previousSick + earned) };
+    const history = earned > 0 ? [{
+      changedAt: entry.creditedAt,
+      changedBy,
+      reason,
+      ...balances,
+      previousVacationLeaveCredits: previousVacation,
+      previousSickLeaveCredits: previousSick
+    }] : [];
+    // Only when the month is still not credited, so two HR clicks never credit it twice.
+    const updated = await MongoUser.findOneAndUpdate(
+      { _id: employee._id, 'leaveEarnings.month': { $ne: month } },
+      { $set: balances, $push: { leaveEarnings: entry, leaveCreditHistory: { $each: history, $slice: -50 } } },
+      { new: true }
+    );
+    if (!updated) {
+      const latest = await MongoUser.findById(employee._id);
+      const credited = (latest?.leaveEarnings || []).find(item => item.month === month);
+      return credited ? { alreadyCredited: plain(credited) } : null;
     }
     return { employee: updated.toObject(), entry };
   },

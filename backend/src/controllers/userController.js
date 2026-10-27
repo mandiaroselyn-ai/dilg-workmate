@@ -12,13 +12,15 @@ import {
 import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
 import { isSmsConfigured, toPhilippineMobile } from '../services/smsService.js';
 import { changedRecordFields, noticeEmployee } from '../services/employeeNotices.js';
-import { minutesText, monthLabel, normalizeLeaveCreditInput, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
+import { minutesText, monthLabel, normalizeLeaveCreditInput, normalizeLeaveEarnings, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
+import { monthlyEarnedCredits, monthWithoutPayDays } from '../../../shared/leaveCalc.js';
 import { minutesToLeaveDays } from '../../../shared/leaveConversion.js';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
 import { DtrLog } from '../models/dtrLogModel.js';
 import { Leave } from '../models/leaveModel.js';
+import { Holiday } from '../models/holidayModel.js';
 import { isConnected } from '../config/db.js';
 import { toRequesterProfile, toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/authToken.js';
@@ -365,6 +367,57 @@ export const deductTardinessCredits = async (req, res) => {
   }
 };
 
+// Credits one ended month of service to each listed employee, as the CSC leave rules earn
+// it: 1.25 days of vacation leave and 1.25 of sick leave, less 1.25/30 for each day of leave
+// without pay that month. The days without pay are read here from the employee's approved
+// leave and tardiness charged that month (so charge the month's tardiness first). Each month is
+// credited once per employee, and each employee credited is notified.
+export const creditLeaveEarnings = async (req, res) => {
+  try {
+    const { month, identifiers, error } = normalizeLeaveEarnings(req.body, getManilaDateString().slice(0, 7));
+    if (error) return res.status(400).json({ success: false, error });
+    const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
+    const label = monthLabel(month);
+    const results = [];
+    for (const identifier of identifiers) {
+      const account = (await User.findByEmployeeId(identifier)) || (await User.findByEmail(identifier));
+      if (!account || !['employee', undefined, null].includes(account.accessLevel)) {
+        results.push({ identifier, status: 'not-found' });
+        continue;
+      }
+      const leaves = await Leave.findAbsencesOfEmployee({ employeeId: account.employeeId, email: account.email });
+      const withoutPayDays = monthWithoutPayDays(month, { requests: leaves, tardinessDeductions: account.tardinessDeductions || [] });
+      const earned = monthlyEarnedCredits(withoutPayDays);
+      const reason = `Leave earned for ${label}: ${earned.toFixed(3)} day vacation leave and ${earned.toFixed(3)} day sick leave`
+        + (withoutPayDays ? ` (${withoutPayDays.toFixed(3)} day without pay that month)` : '');
+      const result = await User.creditMonthlyEarnings(account.employeeId || account.email, { month, withoutPayDays, earned, reason }, { changedBy });
+      if (!result) {
+        results.push({ identifier, status: 'not-found' });
+        continue;
+      }
+      if (result.alreadyCredited) {
+        results.push({ identifier, status: 'already-credited', entry: result.alreadyCredited });
+        continue;
+      }
+      if (earned > 0) {
+        await Announcement.createNotification({
+          title: 'Leave Credits Earned',
+          message: `You earned ${earned.toFixed(3)} day of vacation leave and ${earned.toFixed(3)} day of sick leave for ${label}`
+            + (withoutPayDays ? `, less for ${withoutPayDays.toFixed(3)} day without pay that month.` : '.'),
+          type: 'system',
+          view: 'dashboard',
+          employeeId: result.employee.employeeId || '',
+          employeeEmail: result.employee.email || ''
+        }).catch(notifyError => console.error('Unable to notify the employee about earned leave:', notifyError));
+      }
+      results.push({ identifier, status: 'credited', entry: result.entry, employee: employeeResponse(result.employee) });
+    }
+    res.status(200).json({ success: true, month, results });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const deleteEmployee = async (req, res) => {
   try {
     const result = await User.deleteEmployee(req.params.identifier);
@@ -543,7 +596,7 @@ export const getFullState = async (req, res) => {
     // way the lists leave out selfies and GPS history; a selfie loads with its record.
     // Supervisors only decide requests, so they get no attendance.
     const accessLevel = req.user?.accessLevel;
-    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements] = await Promise.all([
+    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements, holidays] = await Promise.all([
       req.user || User.get(),
       accessLevel === 'employee' ? DtrLog.findListForEmployee(req.user) : accessLevel === 'hr_admin' ? DtrLog.findForHrList({ since: attendanceWindowStart() }) : [],
       Leave.findAllRequests(),
@@ -551,7 +604,9 @@ export const getFullState = async (req, res) => {
       Announcement.findNotificationsFor(req.user),
       Announcement.findSmsAlerts(),
       Announcement.getAcknowledged(req.user),
-      Announcement.findAnnouncementPosts()
+      Announcement.findAnnouncementPosts(),
+      // Holidays are not counted as leave days.
+      Holiday.findAll()
     ]);
     // Supervisors do not load the employee list, only how many employees can log in.
     const activeEmployeeCount = accessLevel === 'supervisor' ? await User.countActiveEmployees() : undefined;
@@ -585,6 +640,7 @@ export const getFullState = async (req, res) => {
       smsAlerts: visibleSmsAlerts,
       acknowledged,
       announcements,
+      holidays,
       activeEmployeeCount,
       // HR's SMS panel says whether texts can be sent at all.
       ...(accessLevel === 'hr_admin' ? { smsConfigured: isSmsConfigured() } : {})

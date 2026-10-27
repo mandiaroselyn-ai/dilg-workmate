@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { leaveCreditDeduction, leaveCreditField, minutesText, monthLabel, normalizeTardinessDeductions, tardinessCharge } from './leaveCredits.js';
+import { leaveCreditDeduction, leaveCreditField, minutesText, monthLabel, normalizeHolidays, normalizeTardinessDeductions, tardinessCharge } from './leaveCredits.js';
 
 test('charges vacation, forced, and sick leave to the right balance', () => {
   assert.equal(leaveCreditField('Vacation Leave'), 'vacationLeaveCredits');
@@ -10,12 +10,28 @@ test('charges vacation, forced, and sick leave to the right balance', () => {
 });
 
 test('deducts credits only when a leave request first becomes Approved', () => {
-  const approved = { type: 'Leave Request', status: 'Approved', leaveType: 'Vacation Leave', workingDays: 3 };
+  // Wed Nov 4 to Fri Nov 6, 2026: 3 working days.
+  const approved = { type: 'Leave Request', status: 'Approved', leaveType: 'Vacation Leave', startDate: '2026-11-04', endDate: '2026-11-06' };
   assert.deepEqual(leaveCreditDeduction({ status: 'Pending' }, approved), { field: 'vacationLeaveCredits', days: 3 });
   assert.equal(leaveCreditDeduction({ status: 'Approved' }, approved), null);
   assert.equal(leaveCreditDeduction({ status: 'Pending' }, { ...approved, status: 'Rejected' }), null);
   assert.equal(leaveCreditDeduction({ status: 'Pending' }, { ...approved, type: 'Travel Order' }), null);
-  assert.equal(leaveCreditDeduction({ status: 'Pending' }, { ...approved, workingDays: 0 }), null);
+  // A weekend-only leave has no working days.
+  assert.equal(leaveCreditDeduction({ status: 'Pending' }, { ...approved, startDate: '2026-11-07', endDate: '2026-11-08' }), null);
+});
+
+test('the days charged come from the dates, not from what the request says', () => {
+  const approved = { type: 'Leave Request', status: 'Approved', leaveType: 'Sick Leave', startDate: '2026-11-27', endDate: '2026-11-30', workingDays: 0 };
+  // Fri Nov 27 and Mon Nov 30; Bonifacio Day is a holiday.
+  assert.deepEqual(leaveCreditDeduction({ status: 'Pending' }, approved), { field: 'sickLeaveCredits', days: 2 });
+  assert.deepEqual(leaveCreditDeduction({ status: 'Pending' }, approved, [{ date: '2026-11-30', name: 'Bonifacio Day' }]), { field: 'sickLeaveCredits', days: 1 });
+});
+
+test('validates HR holidays', () => {
+  assert.deepEqual(normalizeHolidays({ holidays: [{ date: '2026-12-25', name: ' Christmas Day ' }] }), { holidays: [{ date: '2026-12-25', name: 'Christmas Day' }] });
+  assert.match(normalizeHolidays({ holidays: [{ date: '2026-02-30', name: 'Not a day' }] }).error, /real date/);
+  assert.match(normalizeHolidays({ holidays: [{ date: '2026-12-25', name: '' }] }).error, /name/);
+  assert.match(normalizeHolidays({ holidays: [] }).error, /at least one/);
 });
 
 test('validates HR leave credit adjustments', async () => {
