@@ -12,7 +12,8 @@ import {
 import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
 import { isSmsConfigured, toPhilippineMobile } from '../services/smsService.js';
 import { changedRecordFields, noticeEmployee } from '../services/employeeNotices.js';
-import { normalizeLeaveCreditInput } from '../utils/leaveCredits.js';
+import { minutesText, monthLabel, normalizeLeaveCreditInput, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
+import { minutesToLeaveDays } from '../../../shared/leaveConversion.js';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
@@ -314,6 +315,51 @@ export const updateEmployeeLeaveCredits = async (req, res) => {
       employeeEmail: updated.email || ''
     }).catch(notifyError => console.error('Unable to notify the employee about leave credits:', notifyError));
     res.status(200).json({ success: true, employee: employeeResponse(updated) });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+// Charges one month's tardiness and undertime to each listed employee's vacation leave, as
+// government DTRs are charged: the minutes are each employee's DTR total for that month, and
+// the CSC table converts them into days. Each month is charged once per employee, and each
+// employee charged is notified.
+export const deductTardinessCredits = async (req, res) => {
+  try {
+    const { month, deductions, error } = normalizeTardinessDeductions(req.body, getManilaDateString().slice(0, 7));
+    if (error) return res.status(400).json({ success: false, error });
+    const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
+    const label = monthLabel(month);
+    const results = [];
+    for (const { identifier, minutes } of deductions) {
+      const days = minutesToLeaveDays(minutes);
+      const reason = entry => `Tardiness and undertime, ${label}: ${minutesText(minutes)} = ${entry.days.toFixed(3)} day`
+        + (entry.withoutPayDays ? `; ${entry.withoutPayDays.toFixed(3)} day without pay (not enough vacation leave)` : '');
+      const result = await User.deductTardiness(identifier, { month, minutes, days, reason }, { changedBy });
+      if (!result) {
+        results.push({ identifier, status: 'not-found' });
+        continue;
+      }
+      if (result.alreadyDeducted) {
+        results.push({ identifier, status: 'already-deducted', entry: result.alreadyDeducted });
+        continue;
+      }
+      const { employee, entry } = result;
+      if (entry.days > 0) {
+        await Announcement.createNotification({
+          title: 'Leave Credits Deducted',
+          message: `Your tardiness and undertime for ${label}, ${minutesText(minutes)}, equal ${entry.days.toFixed(3)} day under the CSC table. `
+            + `${entry.deductedDays.toFixed(3)} day was deducted from your vacation leave`
+            + (entry.withoutPayDays ? `, and ${entry.withoutPayDays.toFixed(3)} day is without pay because your vacation leave was not enough.` : '.'),
+          type: 'system',
+          view: 'dashboard',
+          employeeId: employee.employeeId || '',
+          employeeEmail: employee.email || ''
+        }).catch(notifyError => console.error('Unable to notify the employee about the tardiness deduction:', notifyError));
+      }
+      results.push({ identifier, status: 'deducted', entry, employee: employeeResponse(employee) });
+    }
+    res.status(200).json({ success: true, month, results });
   } catch (error) {
     sendServerError(res, error);
   }

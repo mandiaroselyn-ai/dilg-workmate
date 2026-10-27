@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { hashPassword, isPasswordHash, verifyPassword as checkPassword } from '../utils/passwordSecurity.js';
 import { resubmittableEnrollmentFilter } from '../utils/biometricEnrollment.js';
-import { DEFAULT_LEAVE_CREDITS } from '../utils/leaveCredits.js';
+import { DEFAULT_LEAVE_CREDITS, tardinessCharge } from '../utils/leaveCredits.js';
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, default: 'Lara Montiano' },
@@ -135,6 +135,21 @@ const UserSchema = new mongoose.Schema({
       sickLeaveCredits: Number,
       previousVacationLeaveCredits: Number,
       previousSickLeaveCredits: Number
+    }],
+    default: []
+  },
+  // Each month whose tardiness and undertime were charged to vacation leave (once a month):
+  // the minutes, the days they convert to, how much of that came out of vacation leave, and
+  // the rest without pay when vacation leave was not enough.
+  tardinessDeductions: {
+    type: [{
+      month: { type: String, required: true }, // YYYY-MM
+      minutes: Number,
+      days: Number,
+      deductedDays: Number,
+      withoutPayDays: Number,
+      deductedAt: { type: Date, default: Date.now },
+      deductedBy: { type: String, default: '' }
     }],
     default: []
   },
@@ -748,6 +763,57 @@ export const User = {
     employee.leaveCreditHistory = [...(employee.leaveCreditHistory || []), entry].slice(-50);
     await employee.save();
     return employee.toObject();
+  },
+
+  // Charges one month's tardiness and undertime (`minutes`, which convert to `days`) to an
+  // employee's vacation leave, once per month. When vacation leave is not enough it goes to
+  // zero and the rest is without pay. The change is added to the leave credit history (when
+  // anything is charged). Returns { employee, entry }, { alreadyDeducted: entry } when the
+  // month was already charged, or null when no employee account matches.
+  deductTardiness: async (identifier, { month, minutes, days, reason }, { changedBy }) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const owner = {
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    };
+    const employee = await MongoUser.findOne(owner);
+    if (!employee) return null;
+    const done = (employee.tardinessDeductions || []).find(item => item.month === month);
+    if (done) return { alreadyDeducted: done.toObject ? done.toObject() : done };
+
+    const previousVacation = Number(employee.vacationLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
+    const { deductedDays, withoutPayDays, vacationLeaveCredits } = tardinessCharge(previousVacation, days);
+    const entry = { month, minutes, days, deductedDays, withoutPayDays, deductedAt: new Date(), deductedBy: changedBy };
+    const history = days > 0 ? [{
+      changedAt: entry.deductedAt,
+      changedBy,
+      // `reason` may be written from the entry, to say how much is without pay.
+      reason: typeof reason === 'function' ? reason(entry) : reason,
+      vacationLeaveCredits,
+      sickLeaveCredits: employee.sickLeaveCredits,
+      previousVacationLeaveCredits: previousVacation,
+      previousSickLeaveCredits: employee.sickLeaveCredits
+    }] : [];
+    // Only when the month is still not charged, so two HR clicks never charge it twice.
+    const updated = await MongoUser.findOneAndUpdate(
+      { _id: employee._id, 'tardinessDeductions.month': { $ne: month } },
+      {
+        $set: { vacationLeaveCredits },
+        $push: { tardinessDeductions: entry, leaveCreditHistory: { $each: history, $slice: -50 } }
+      },
+      { new: true }
+    );
+    if (!updated) {
+      const latest = await MongoUser.findById(employee._id);
+      const charged = (latest?.tardinessDeductions || []).find(item => item.month === month);
+      return charged ? { alreadyDeducted: charged.toObject ? charged.toObject() : charged } : null;
+    }
+    return { employee: updated.toObject(), entry };
   },
 
   // Permanently deletes an employee account that is not Active. Returns

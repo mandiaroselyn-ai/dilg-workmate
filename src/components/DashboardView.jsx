@@ -19,6 +19,9 @@ import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { monthAttendanceSummary, totalHoursWorked } from '../utils/hrAttendance';
+import { durationText } from '../utils/dtrDay';
+import { monthUndertimeMinutes } from '../utils/dtrMonth';
+import { minutesToLeaveDays } from '../../shared/leaveConversion';
 
 const DashboardSection = ({ title, actionLabel, onAction, meta, children }) => (
   <section className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -292,6 +295,29 @@ export default function DashboardView({
                       color={credit.color}
                     />
                   ))}
+                  {/* This month's tardiness and undertime, which HR charges to vacation leave once
+                      the month ends (CSC table), and the last month charged. */}
+                  {(() => {
+                    const [year, month] = today.split('-').map(Number);
+                    const minutes = monthUndertimeMinutes(personalAttendanceHistory, year, month);
+                    const last = (user?.tardinessDeductions || []).at(-1);
+                    const lastMonth = last ? new Date(`${last.month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+                    return (
+                      <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <p>
+                          Late &amp; undertime this month:{' '}
+                          <b className="text-slate-800">{minutes ? `${durationText(minutes)} = ${minutesToLeaveDays(minutes).toFixed(3)} day` : 'none'}</b>
+                          {minutes ? ', charged to vacation leave after the month ends.' : ''}
+                        </p>
+                        {last && (
+                          <p className="mt-1">
+                            Last charged: <b className="text-slate-800">{lastMonth}</b>, {Number(last.days).toFixed(3)} day
+                            {last.withoutPayDays ? ` (${Number(last.withoutPayDays).toFixed(3)} day without pay)` : ''}.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </DashboardSection>
 

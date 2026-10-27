@@ -395,6 +395,7 @@ export default function HRAdminView({
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         reviewerName={user?.name || 'HR/Admin'}
         onSaveRecord={onUpdateAttendance ? update => onUpdateAttendance([update]) : undefined}
+        onEmployeesChange={onEmployeesChange}
         onBack={() => setActiveTab('dtr')}
       />}
 

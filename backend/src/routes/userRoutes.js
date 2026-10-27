@@ -8,6 +8,7 @@ import {
   updateEmployeeAccountStatus,
   deleteEmployee,
   updateEmployeeLeaveCredits,
+  deductTardinessCredits,
   changePassword,
   loginUser,
   seedDefaultUsers,
@@ -99,6 +100,8 @@ router.patch('/employees/:identifier', requireAdmin, updateEmployee);
 router.patch('/employees/:identifier/status', requireAdmin, updateEmployeeAccountStatus);
 router.delete('/employees/:identifier', requireAdmin, deleteEmployee);
 router.patch('/employees/:identifier/leave-credits', requireAdmin, updateEmployeeLeaveCredits);
+// One ended month's tardiness and undertime charged to vacation leave (see deductTardinessCredits).
+router.post('/employees/tardiness-deductions', requireAdmin, deductTardinessCredits);
 router.post('/login', loginUser);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset-hr-request', requestHrPasswordReset);

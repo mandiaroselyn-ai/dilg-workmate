@@ -6,6 +6,7 @@ import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOffline
 import { dtrDayLogs, dtrUndertimeMinutes, durationText, officeHoursText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
+import HRTardinessDeductions from './HRTardinessDeductions';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 
 // "08:05 AM" (how Time In and Time Out are saved) as "08:05" for a time input, and back.
@@ -260,7 +261,7 @@ const offlineRowLabels = record => [
   record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
 ].filter(Boolean);
 
-export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onBack }) {
+export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
@@ -405,6 +406,14 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         <h2 className="text-xl font-black text-slate-900">DTR Records</h2>
       </div>
       <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
+      <HRTardinessDeductions
+        employees={employees}
+        attendanceHistory={attendanceHistory}
+        attendanceFrom={attendanceFrom}
+        loadedMonths={loadedAttendanceMonths}
+        onLoadMonth={onLoadAttendanceMonth}
+        onEmployeesChange={onEmployeesChange}
+      />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ['Total Records', records.length, 'text-slate-900'],

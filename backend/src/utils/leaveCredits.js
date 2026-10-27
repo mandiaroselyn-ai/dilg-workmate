@@ -21,6 +21,52 @@ export const leaveCreditDeduction = (previous, updated) => {
   return { field, days };
 };
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// "2026-10" as "October 2026".
+export const monthLabel = month => `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
+
+// Minutes as "2h 15m" or "45 min".
+export const minutesText = minutes => (minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`);
+
+// How one month's tardiness and undertime (`days`) is charged to an employee's vacation leave
+// (`vacationLeaveCredits`): as much as vacation leave covers, and the rest without pay, as the
+// CSC leave rules charge it. Values to three places.
+export const tardinessCharge = (vacationLeaveCredits, days) => {
+  const round = number => Math.round(number * 1000) / 1000;
+  const available = Math.max(0, Number(vacationLeaveCredits) || 0);
+  const deductedDays = Math.min(days, available);
+  return {
+    deductedDays: round(deductedDays),
+    withoutPayDays: round(days - deductedDays),
+    vacationLeaveCredits: round(available - deductedDays)
+  };
+};
+
+// Validates HR's charging of one month's tardiness and undertime to vacation leave:
+// { month: 'YYYY-MM', deductions: [{ identifier, minutes }] }, where the minutes are each
+// employee's DTR total for that month. Only a month that has ended can be charged, so a DTR
+// still being filled in is never charged. `currentMonth` is this month, as YYYY-MM.
+export const normalizeTardinessDeductions = (body, currentMonth) => {
+  const month = typeof body?.month === 'string' ? body.month.trim() : '';
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { error: 'The month must be written like 2026-10.' };
+  if (month >= currentMonth) return { error: 'Only a month that has ended can be charged. Charge this month once it is over.' };
+  const list = Array.isArray(body?.deductions) ? body.deductions : null;
+  if (!list?.length) return { error: 'Choose at least one employee to charge.' };
+  if (list.length > 1000) return { error: 'Charge at most 1000 employees at a time.' };
+  const deductions = [];
+  for (const item of list) {
+    const identifier = typeof item?.identifier === 'string' ? item.identifier.trim() : '';
+    const minutes = Number(item?.minutes);
+    if (!identifier) return { error: 'Each employee to charge needs an employee ID or email.' };
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 100000) {
+      return { error: 'Tardiness and undertime must be a whole number of minutes from 0 to 100000.' };
+    }
+    deductions.push({ identifier, minutes });
+  }
+  return { month, deductions };
+};
+
 // Validates HR's manual adjustment of an employee's balances. Credits may be fractional
 // (monthly accrual is 1.25 days) and can accumulate past one year's entitlement.
 export const normalizeLeaveCreditInput = body => {

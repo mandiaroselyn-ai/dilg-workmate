@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { countsInDtr, dtrTimeOut } from './hrAttendance.js';
-import { dtrDayLogs, dtrUndertimeMinutes, officeHoursText, usesLunchLogs } from './dtrDay.js';
+import { officeHoursText } from './dtrDay.js';
+import { dayEntry, dtrRecordsByDay, totalUndertimeMinutes } from './dtrMonth.js';
 
 // Fills both duplicates on each page of the CSC Form No. 48 DTR template
 // (src/assets/template/dtr-template.pdf) with one employee's monthly attendance data.
@@ -62,68 +62,6 @@ function monthDayOfWeeks(year, month) {
   return Array.from({ length: days }, (_, i) => new Date(year, month - 1, i + 1).getDay());
 }
 
-// Parses "08:05 AM" → { h: 8, min: 5 } in 24-hour values, or null.
-function parseTime(value) {
-  const m = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(value || '').trim());
-  if (!m) return null;
-  const h = (Number(m[1]) % 12) + (m[3].toUpperCase() === 'PM' ? 12 : 0);
-  return { h, min: Number(m[2]) };
-}
-
-// Formats as "8:05" (no AM/PM, no seconds), as used in Philippine DTR forms.
-function fmt(t) {
-  if (!t) return '';
-  return `${t.h % 12 || 12}:${String(t.min).padStart(2, '0')}`;
-}
-
-// Breaks a day's timeIn/timeOut into the four DTR columns, for a record from before Lunch
-// Out and Lunch In were recorded (see usesLunchLogs): a whole day shows the usual noon break.
-function dtrTimes(timeIn, timeOut) {
-  const tin = parseTime(timeIn);
-  const tout = parseTime(timeOut);
-  if (!tin) return { amArr: '', amDep: '', pmArr: '', pmDep: '' };
-
-  if (tin.h < 12 && tout && tout.h >= 13) {
-    // Full day: morning arrival, afternoon departure.
-    return { amArr: fmt(tin), amDep: '12:00', pmArr: '1:00', pmDep: fmt(tout) };
-  }
-  if (tin.h < 12) {
-    // Morning only, or incomplete (no time-out).
-    return { amArr: fmt(tin), amDep: tout ? fmt(tout) : '', pmArr: '', pmDep: '' };
-  }
-  // Afternoon only.
-  return { amArr: '', amDep: '', pmArr: fmt(tin), pmDep: tout ? fmt(tout) : '' };
-}
-
-// Undertime in minutes for one day (0 if none or if record is incomplete), for a record from
-// before Lunch Out and Lunch In were recorded.
-function undertimeMins(timeIn, timeOut) {
-  const tin = parseTime(timeIn);
-  const tout = parseTime(timeOut);
-  if (!tin || !tout) return 0;
-  const tinM = tin.h * 60 + tin.min;
-  const toutM = tout.h * 60 + tout.min;
-  const isFullDay = tin.h < 12 && tout.h >= 13;
-  const worked = toutM - tinM - (isFullDay ? 60 : 0); // subtract lunch break
-  const required = isFullDay ? 480 : 240;             // 8h or 4h
-  return Math.max(0, required - worked);
-}
-
-// One day's four DTR cells and its undertime in minutes. A record with Lunch Out and Lunch
-// In shows its own four logs, with tardiness and undertime against the office hours.
-function dayEntry(rec) {
-  if (!usesLunchLogs(rec)) return { ...dtrTimes(rec.timeIn, rec.timeOut), undertime: undertimeMins(rec.timeIn, rec.timeOut) };
-  const logs = dtrDayLogs(rec);
-  const cell = value => fmt(parseTime(value));
-  return {
-    amArr: cell(logs.amArrival),
-    amDep: cell(logs.amDeparture),
-    pmArr: cell(logs.pmArrival),
-    pmDep: cell(logs.pmDeparture),
-    undertime: dtrUndertimeMinutes(logs)
-  };
-}
-
 // Largest font size (down to 4.5 pt) at which `text` fits `maxWidth` in `font`.
 function fitSize(text, font, maxWidth, maxSz = NAME_SIZE) {
   for (let sz = maxSz; sz >= 4.5; sz -= 0.25) {
@@ -138,11 +76,7 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
   const totalDays = dowByDay.length;
 
   // Total undertime for the month.
-  let totalUT = 0;
-  for (let d = 1; d <= totalDays; d++) {
-    const rec = recordsByDay[d];
-    if (rec?.timeIn) totalUT += dayEntry(rec).undertime;
-  }
+  const totalUT = totalUndertimeMinutes(recordsByDay);
   const totalUTHrs = Math.floor(totalUT / 60);
   const totalUTMin = totalUT % 60;
 
@@ -253,16 +187,8 @@ export async function fillDTR(templateBytes, employee = {}, year, month, attenda
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  // Index records by day-of-month for quick lookup. An offline Time In that HR has not
-  // approved (or rejected) is left out, and so is an offline Time Out waiting for HR.
-  const recordsByDay = {};
-  for (const rec of attendanceRecords) {
-    if (!rec.date || !countsInDtr(rec)) continue;
-    const date = new Date(`${rec.date}T00:00:00`);
-    if (date.getFullYear() === year && date.getMonth() + 1 === month) {
-      recordsByDay[date.getDate()] = { ...rec, timeOut: dtrTimeOut(rec) };
-    }
-  }
+  // Index records by day-of-month for quick lookup (see dtrRecordsByDay).
+  const recordsByDay = dtrRecordsByDay(attendanceRecords, year, month);
 
   for (let i = 0; i < pages.length; i++) {
     if (i % 2 === 0) {
