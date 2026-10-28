@@ -12,7 +12,7 @@ test('a Time In after 8:00 AM Manila time is late', () => {
   assert.equal(isLateClockIn(new Date('2026-09-29T00:01:00Z'), '08:00'), true);
 });
 
-test('uses the given office start time and falls back to the office hours\' 7:00 AM when it is invalid', () => {
+test('uses the given office start time and falls back to the office hours\' 8:00 AM when it is invalid', () => {
   assert.equal(isLateClockIn(new Date('2026-09-29T00:30:00Z'), '09:00'), false);
   assert.equal(isLateClockIn(new Date('2026-09-29T00:30:00Z'), 'nine'), true);
 });
@@ -33,12 +33,12 @@ test('back from lunch after 1:00 PM is late', () => {
   assert.equal(isLateLunchIn('soon'), null);
 });
 
-test('by default, a Time In is late after 7:00 AM, the start of the office hours', () => {
-  // 23:00Z is 7:00 AM in Manila.
-  assert.equal(isLateClockIn(new Date('2026-09-28T23:00:00Z')), false);
-  assert.equal(isLateClockIn(new Date('2026-09-28T23:01:00Z')), true);
-  assert.equal(isLateTimeText('07:00 AM'), false);
-  assert.equal(isLateTimeText('07:05 AM'), true);
+test('by default, a Time In is late after 8:00 AM, the start of the government office hours', () => {
+  assert.equal(isLateClockIn(new Date('2026-09-28T23:30:00Z')), false);
+  assert.equal(isLateClockIn(new Date('2026-09-29T00:00:00Z')), false);
+  assert.equal(isLateClockIn(new Date('2026-09-29T00:01:00Z')), true);
+  assert.equal(isLateTimeText('08:00 AM'), false);
+  assert.equal(isLateTimeText('08:05 AM'), true);
 });
 
 test('an online Time Out uses the server clock, not the phone', () => {

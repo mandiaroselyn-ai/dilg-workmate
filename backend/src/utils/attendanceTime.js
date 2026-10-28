@@ -20,7 +20,7 @@ const isLateArrival = (minutes, officeStartTime) => minutes > (minutes >= OFFICE
   : parseOfficeStart(officeStartTime) ?? OFFICE_HOURS.amStart);
 
 // A Time In is late when it is after the start of its half of the day in Manila (the
-// morning start is `officeStartTime`, HH:MM, and defaults to the office hours' 7:00 AM).
+// morning start is `officeStartTime`, HH:MM, and defaults to the office hours' 8:00 AM).
 export const isLateClockIn = (date = new Date(), officeStartTime = OFFICE_START_TIME) => (
   isLateArrival(getManilaMinutesOfDay(date), officeStartTime)
 );

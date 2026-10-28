@@ -91,14 +91,14 @@ export const tardinessText = record => {
   return [am && `AM ${durationText(am)}`, pm && `PM ${durationText(pm)}`].filter(Boolean).join(' · ');
 };
 
-// An office time as shown: "7:00 AM", "12:00 NN", "4:30 PM".
+// An office time as shown: "8:00 AM", "12:00 NN", "5:00 PM".
 export const officeTimeText = minutes => {
   const hour = Math.floor(minutes / 60);
   const minute = String(minutes % 60).padStart(2, '0');
   return minutes === OFFICE_HOURS.noon ? `12:${minute} NN` : `${hour % 12 || 12}:${minute} ${hour < 12 ? 'AM' : 'PM'}`;
 };
 
-// The office hours as CSC Form 48 writes them: "7:00–12:00, 1:00–4:30".
+// The office hours as CSC Form 48 writes them: "8:00–12:00, 1:00–5:00".
 export const officeHoursText = () => {
   const short = minutes => `${Math.floor(minutes / 60) % 12 || 12}:${String(minutes % 60).padStart(2, '0')}`;
   const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
