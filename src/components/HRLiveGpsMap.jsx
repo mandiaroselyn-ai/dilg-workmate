@@ -120,8 +120,7 @@ const areaBoundsFor = area => {
 
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'lunch' | 'done',
 //            noSignal, area, place, details: [lines for the popup] }]
-// compact: a shorter map, for the Monitoring page.
-export default function HRLiveGpsMap({ points, selectedKey, onSelect, compact = false }) {
+export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
@@ -287,7 +286,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect, compact = 
             {fullScreen ? 'Close full screen' : 'Full screen'}
           </button>
         </div>
-        <div className={`relative isolate z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${fullScreen ? 'min-h-0 flex-1' : compact ? 'h-[40vh] min-h-[18rem] sm:h-[50vh]' : 'h-[55vh] min-h-[22rem] sm:h-[70vh]'}`}>
+        <div className={`relative isolate z-0 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 ${fullScreen ? 'min-h-0 flex-1' : 'h-[55vh] min-h-[22rem] sm:h-[70vh]'}`}>
           {/* Leaflet adds its own classes to this div, so its className must never change:
               React would wipe them and the map tiles would disappear. */}
           <div ref={containerRef} className="h-full w-full" />
