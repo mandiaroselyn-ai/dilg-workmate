@@ -27,6 +27,23 @@ const saveProfile = async (t, person, body) => {
   return { response, saved: update.mock.calls[0]?.arguments[0] };
 };
 
+test('an account HR makes is Active at once, with no approval', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  const make = accountStatus => request(app)
+    .post('/api/employees')
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ name: 'Pedro Santos', email: 'pedro@dilg.gov.ph', employeeId: 'DILG-2026-9', role: 'LGOO II', office: 'Boac', employmentStatus: 'ACTIVE', accountStatus, password: 'a-long-initial-password' });
+
+  const response = await make('Pending');
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  assert.equal(creates.mock.calls[0].arguments[0].accountStatus, 'Active');
+  assert.equal(response.body.employee.accountStatus, 'Active');
+  // HR may still make one Inactive.
+  await make('Inactive');
+  assert.equal(creates.mock.calls[1].arguments[0].accountStatus, 'Inactive');
+});
+
 test('employees save their own personal details and ID numbers, but not HR\'s employment details', async t => {
   const { response, saved } = await saveProfile(t, employee, {
     name: 'Juan Dela Cruz',

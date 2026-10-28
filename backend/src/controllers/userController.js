@@ -255,6 +255,9 @@ export const createEmployee = async (req, res) => {
     const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
     const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
     if (error) return res.status(400).json({ success: false, error });
+    // HR making the account is its approval, so it is Active at once (or Inactive, when HR
+    // chose that). Pending and Rejected are only for accounts people sign up for themselves.
+    if (employee.accountStatus !== 'Inactive') employee.accountStatus = 'Active';
     const password = req.body.password;
     if (typeof password !== 'string' || password.trim().length < 10 || password.length > 256) {
       return res.status(400).json({ success: false, error: 'Set an initial employee password of 10 to 256 characters.' });

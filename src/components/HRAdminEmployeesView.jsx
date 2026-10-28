@@ -41,7 +41,8 @@ const emptyForm = {
   role: '',
   office: '',
   employmentStatus: 'ACTIVE',
-  accountStatus: 'Pending',
+  // An account HR makes is Active at once (no approval needed).
+  accountStatus: 'Active',
   dateHired: '',
   assignedStation: '',
   assignedLGU: '',
@@ -381,7 +382,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
         role: form.role || 'Employee',
         office: form.office || 'Administrative Office',
         employmentStatus: form.employmentStatus || 'ACTIVE',
-        accountStatus: form.accountStatus || 'Pending',
+        accountStatus: form.accountStatus || 'Active',
         email: (form.email || '').trim().toLowerCase(),
         phoneNumber: form.phoneNumber || ''
       }),
@@ -391,7 +392,7 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       role: form.role || 'Employee',
       office: form.office || 'Administrative Office',
       employmentStatus: form.employmentStatus || 'ACTIVE',
-      accountStatus: form.accountStatus || 'Pending',
+      accountStatus: form.accountStatus || 'Active',
       accessLevel: 'employee',
       approvedWfhLocation: {
         municipality: form.approvedWfhMunicipality,
@@ -684,8 +685,9 @@ This cannot be undone.`
               <label className="text-[11px] font-black text-slate-600">Account Status
                 <select name="accountStatus" value={form.accountStatus} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
                   <option value="Active">Active</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Rejected">Rejected</option>
+                  {/* An account HR makes needs no approval; Pending and Rejected are for sign-ups. */}
+                  {editingId && <option value="Pending">Pending</option>}
+                  {editingId && <option value="Rejected">Rejected</option>}
                   <option value="Inactive">Inactive</option>
                 </select>
               </label>
