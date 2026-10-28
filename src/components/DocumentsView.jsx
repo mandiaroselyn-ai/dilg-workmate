@@ -133,7 +133,7 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
     setError('');
     try {
       const file = await makeDtr(month);
-      downloadBytes(file.bytes, file.fileName, file.fileType);
+      await downloadBytes(file.bytes, file.fileName, file.fileType);
     } catch (errorValue) {
       setError(errorValue.message || 'Unable to prepare the DTR. Please try again.');
     } finally {

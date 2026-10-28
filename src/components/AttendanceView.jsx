@@ -46,6 +46,7 @@ import {
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
+import { downloadBytes } from '../utils/documentFiles';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import { GEOFENCE_METERS, isWithinAssignedLocation } from '../../shared/assignmentGeofence';
 import { takeAccuratePosition } from '../utils/accuratePosition';
@@ -279,6 +280,7 @@ export default function AttendanceView({
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [dtrExporting, setDtrExporting] = useState(false);
+  const [dtrExportError, setDtrExportError] = useState('');
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState('');
@@ -1183,23 +1185,19 @@ export default function AttendanceView({
   });
 
   // Generates the employee's Civil Service Form No. 48 (Daily Time Record) for the
-  // selected month and triggers a browser download.
+  // selected month and downloads it (in the Android app, into the phone's Downloads).
   const handleExportDTR = async () => {
     setDtrExporting(true);
+    setDtrExportError('');
     try {
       const [year, month] = dtrExportMonth.split('-').map(Number);
       const response = await fetch(dtrTemplate);
       const templateBytes = await response.arrayBuffer();
       const pdfBytes = await fillDTR(templateBytes, user || { name: fillName, role: fillRole, office: fillOffice, employeeId: fillId }, year, month, attendanceHistory);
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = dtrFilename(user?.name || fillName, year, month);
-      link.click();
-      URL.revokeObjectURL(url);
+      await downloadBytes(pdfBytes, dtrFilename(user?.name || fillName, year, month), 'application/pdf');
     } catch (err) {
       console.error('DTR export failed:', err);
+      setDtrExportError(err.message || 'Unable to export the DTR. Please try again.');
     } finally {
       setDtrExporting(false);
     }
@@ -2196,6 +2194,7 @@ export default function AttendanceView({
                 <Download className="w-3.5 h-3.5 text-white" />
                 <span>{dtrExporting ? 'Generating…' : 'Export DTR'}</span>
               </button>
+              {dtrExportError && <p role="alert" className="max-w-xs text-xs font-semibold text-rose-600">{dtrExportError}</p>}
             </div>
 
             {/* Find Search Input */}

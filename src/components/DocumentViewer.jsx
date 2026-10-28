@@ -9,6 +9,13 @@ import { downloadBytes, isPdf, isViewable, objectUrlFor } from '../utils/documen
 export default function DocumentViewer({ title, load, onClose }) {
   const [file, setFile] = useState(null); // { fileName, fileType, bytes, url }
   const [error, setError] = useState('');
+  const [downloadError, setDownloadError] = useState('');
+  const download = () => {
+    if (!file) return;
+    setDownloadError('');
+    downloadBytes(file.bytes, file.fileName, file.fileType)
+      .catch(errorValue => setDownloadError(errorValue.message || 'Unable to download this document.'));
+  };
 
   useEffect(() => {
     let active = true;
@@ -40,10 +47,11 @@ export default function DocumentViewer({ title, load, onClose }) {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {canView && <button type="button" onClick={() => window.open(file.url, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold"><Printer className="h-4 w-4" />Print</button>}
-            <button type="button" onClick={() => file && downloadBytes(file.bytes, file.fileName, file.fileType)} disabled={!file} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold disabled:opacity-50"><Download className="h-4 w-4" />Download</button>
+            <button type="button" onClick={download} disabled={!file} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold disabled:opacity-50"><Download className="h-4 w-4" />Download</button>
             <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-300 hover:bg-slate-700" aria-label="Close"><X className="h-5 w-5" /></button>
           </div>
         </div>
+        {downloadError && <p role="alert" className="shrink-0 bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-800">{downloadError}</p>}
         <div className="min-h-0 flex-1 bg-slate-500 p-2 sm:p-5">
           {error ? <p className="rounded-lg bg-rose-100 p-4 text-sm text-rose-800">{error}</p>
             : !file ? <div className="flex h-full items-center justify-center text-sm text-white">Opening document...</div>

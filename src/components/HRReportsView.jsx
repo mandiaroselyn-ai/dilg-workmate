@@ -56,9 +56,13 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
 
   const fileName = extension => `DILG-${report.title.replace(/\s+/g, '-')}-${filters.from || 'start'}-to-${filters.to || today}.${extension}`;
 
-  const exportCsv = () => {
-    downloadBytes(new TextEncoder().encode(reportCsv(report)), fileName('csv'), 'text/csv');
-    setMessage(`Exported ${report.rows.length} row${report.rows.length === 1 ? '' : 's'} as ${fileName('csv')}.`);
+  const exportCsv = async () => {
+    try {
+      await downloadBytes(new TextEncoder().encode(reportCsv(report)), fileName('csv'), 'text/csv');
+      setMessage(`Exported ${report.rows.length} row${report.rows.length === 1 ? '' : 's'} as ${fileName('csv')}.`);
+    } catch (exportError) {
+      setMessage(exportError.message || 'Unable to export the report.');
+    }
   };
 
   const printReport = () => {

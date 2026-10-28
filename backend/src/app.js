@@ -7,6 +7,7 @@ import travelRoutes from './routes/travelRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import holidayRoutes from './routes/holidayRoutes.js';
+import downloadRoutes from './routes/downloadRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
@@ -74,7 +75,9 @@ export function createApiApp() {
       req.method === 'POST' && ['/login', '/register', '/password-reset-request', '/password-reset-hr-request', '/password-reset', '/auth/google/exchange'].includes(apiPath),
       req.method === 'GET' && apiPath.startsWith('/auth/google'),
       req.method === 'POST' && apiPath === '/sms/webhook',
-      req.method === 'GET' && apiPath === '/push/vapid-public-key'
+      req.method === 'GET' && apiPath === '/push/vapid-public-key',
+      // The phone's download manager fetches the file with its link only (see downloadRoutes).
+      req.method === 'GET' && apiPath === '/downloads'
     ];
     if (publicRoutes.some(Boolean)) return next();
     return authenticate(req, res, next);
@@ -89,6 +92,7 @@ export function createApiApp() {
   app.use('/api', announcementRoutes);
   app.use('/api', supportRoutes);
   app.use('/api', holidayRoutes);
+  app.use('/api', downloadRoutes);
   app.use('/api/auth', googleAuthRoutes);
   app.use('/api', apiNotFound);
   app.use(apiErrorHandler);

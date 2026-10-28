@@ -59,7 +59,7 @@ export default function HREmployeeDocuments({ employee, requests = [], attendanc
     setError('');
     try {
       const file = await makeDtr();
-      downloadBytes(file.bytes, file.fileName, file.fileType);
+      await downloadBytes(file.bytes, file.fileName, file.fileType);
     } catch (errorValue) {
       setError(errorValue.message || 'Unable to prepare the DTR. Please try again.');
     } finally {
