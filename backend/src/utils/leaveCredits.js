@@ -2,8 +2,10 @@ import { countLeaveDays, leaveCreditField } from '../../../shared/leaveCalc.js';
 
 export { leaveCreditField };
 
-// Annual leave entitlement under CSC rules: 15 days vacation leave and 15 days sick leave.
-export const DEFAULT_LEAVE_CREDITS = 15;
+// A new account's vacation and sick leave. Under the CSC rules leave is earned month by month
+// (1.25 days each), so a new employee starts with none; HR enters a transferee's or an existing
+// employee's balance from their leave card.
+export const DEFAULT_LEAVE_CREDITS = 0;
 
 // Returns the deduction for a request that has just become Approved, or null when no
 // credits should be deducted (not a leave request, already approved, a leave type with its own

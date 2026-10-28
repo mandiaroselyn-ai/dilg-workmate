@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ChevronDown, Scale } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
-import { monthlyEarnedCredits, monthWithoutPayDays } from '../../shared/leaveCalc';
+import { monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from '../../shared/leaveCalc';
 import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import { apiFetch } from '../utils/api';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -26,8 +26,9 @@ const lastEndedMonth = () => {
 // in two steps for each ended month and employee:
 // 1. the month's tardiness and undertime (the DTR total) charged to vacation leave by the CSC
 //    table (1 minute = 0.002 day, 1 hour = 0.125 day), and the rest without pay;
-// 2. the month's earned leave credited: 1.25 days of vacation and of sick leave, less 1.25/30 for
-//    each day without pay that month (unpaid leave and unpaid tardiness, so step 1 comes first).
+// 2. the month's earned leave credited: 1.25 days of vacation and of sick leave (1.25/30 for each
+//    day of service in the month the employee was hired), less 1.25/30 for each day without pay
+//    that month (unpaid leave and unpaid tardiness, so step 1 comes first).
 // Each step is done once per month and employee, and the employee is notified.
 export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange }) {
   const [open, setOpen] = useState(false);
@@ -52,6 +53,8 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
       requests: requests.filter(request => matchesAttendanceEmployee(request, employee)),
       tardinessDeductions: employee.tardinessDeductions || []
     });
+    // Days of service this month, from the date hired: fewer than 30 in the month hired.
+    const serviceDays = monthServiceDays(month, employee.dateHired);
     return {
       employee,
       minutes,
@@ -59,7 +62,9 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
       charged,
       credited,
       withoutPayDays,
-      earned: monthlyEarnedCredits(withoutPayDays),
+      // As credited (months credited before days of service were kept were full months).
+      shownServiceDays: credited ? credited.serviceDays ?? 30 : serviceDays,
+      earned: monthlyEarnedCredits(withoutPayDays, serviceDays),
       issues: records.filter(record => dtrIssue(record, today)).length
     };
   });
@@ -116,7 +121,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
   const credit = creditRows => {
     if (!creditRows.length || saving) return;
     const who = creditRows.length === 1 ? creditRows[0].employee.name || 'this employee' : `${creditRows.length} employees`;
-    if (!window.confirm(`Credit the leave earned in ${monthLabel(month)} to ${who} (1.25 days of vacation and of sick leave each, less for days without pay)? Each month is credited once and cannot be undone here.`)) return;
+    if (!window.confirm(`Credit the leave earned in ${monthLabel(month)} to ${who} (1.25 days of vacation and of sick leave each, less for days without pay, and for each day of service in the month an employee was hired)? Each month is credited once and cannot be undone here.`)) return;
     post('/api/employees/leave-earnings', { month, identifiers: creditRows.map(row => employeeId(row.employee)) }, 'credited', 'credited');
   };
 
@@ -150,7 +155,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
             )}
           </div>
           <p className="text-xs text-slate-500">
-            Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge step 1 first.
+            Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge step 1 first. In the month an employee was hired, they earn 1.25/30 for each day from their Date Hired (CSC Table II), so fill in each new employee's Date Hired first.
           </p>
           {!monthLoaded ? (
             <div className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
@@ -169,7 +174,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                   <div key={employeeId(row.employee)} className="space-y-1.5 rounded-xl border border-slate-200 p-3 text-xs">
                     <p className="font-black text-slate-800">
                       {row.employee.name || 'Employee'}
-                      <span className="font-semibold text-slate-500"> · VL {Number(row.employee.vacationLeaveCredits ?? 15).toFixed(3)} · SL {Number(row.employee.sickLeaveCredits ?? 15).toFixed(3)}</span>
+                      <span className="font-semibold text-slate-500"> · VL {Number(row.employee.vacationLeaveCredits ?? 0).toFixed(3)} · SL {Number(row.employee.sickLeaveCredits ?? 0).toFixed(3)}</span>
                       {row.issues > 0 && <span className="font-bold text-amber-700"> · {row.issues} to review</span>}
                     </p>
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -185,6 +190,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-slate-600">
                         2. Earned: +{daysText(row.credited ? row.credited.earned : row.earned)} VL and SL
+                        {row.shownServiceDays < 30 ? ` (${row.shownServiceDays} of 30 days of service)` : ''}
                         {(row.credited ? row.credited.withoutPayDays : row.withoutPayDays) ? ` (${daysText(row.credited ? row.credited.withoutPayDays : row.withoutPayDays)} without pay that month)` : ''}
                       </span>
                       {row.credited ? (

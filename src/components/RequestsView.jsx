@@ -389,7 +389,7 @@ Reason (optional):`, '');
         ? Number(request.creditCharge[chargedDays]) || 0
         : (request.leaveType || '').toLowerCase().includes(credit.label.toLowerCase().replace(' leave', '')) ? Number(request.workingDays || 0) : 0), 0);
     // The server deducts approved leave from the stored balance, which can exceed 15 days.
-    const remaining = Math.max(0, Number(user?.[credit.field] ?? 15));
+    const remaining = Math.max(0, Number(user?.[credit.field] ?? 0));
     return { ...credit, used, remaining, max: Math.max(15, remaining) };
   });
 

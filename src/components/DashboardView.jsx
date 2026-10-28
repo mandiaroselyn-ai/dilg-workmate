@@ -153,8 +153,8 @@ export default function DashboardView({
   // The server keeps each balance and deducts approved leave, so it is already the
   // remaining balance. Balances can exceed one year's 15 days when credits accumulate.
   const leaveCredits = [
-    { title: 'Vacation Leave', available: Number(user?.vacationLeaveCredits ?? 15), color: 'bg-[#0B4EA2]' },
-    { title: 'Sick Leave', available: Number(user?.sickLeaveCredits ?? 15), color: 'bg-emerald-600' }
+    { title: 'Vacation Leave', available: Number(user?.vacationLeaveCredits ?? 0), color: 'bg-[#0B4EA2]' },
+    { title: 'Sick Leave', available: Number(user?.sickLeaveCredits ?? 0), color: 'bg-emerald-600' }
   ].map((credit) => {
     const remaining = Math.max(0, credit.available);
     return { ...credit, remaining, max: Math.max(15, remaining) };

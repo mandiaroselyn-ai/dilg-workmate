@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { countLeaveDays, fixedHolidays, leaveCharge, leaveCreditField, monthlyEarnedCredits, monthWithoutPayDays } from './leaveCalc.js';
+import { countLeaveDays, fixedHolidays, leaveCharge, leaveCreditField, monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from './leaveCalc.js';
 
 test('a leave counts Monday to Friday, without holidays', () => {
   // Mon Nov 2 to Fri Nov 6, 2026.
@@ -23,6 +23,35 @@ test('a month of service earns 1.25 days, less for days without pay, as the CSC 
   assert.equal(monthlyEarnedCredits(15), 0.625);
   assert.equal(monthlyEarnedCredits(30), 0);
   assert.equal(monthlyEarnedCredits(31), 0);
+});
+
+test('a month only partly in service earns 1.25/30 day for each day of service, as CSC Table II has it', () => {
+  assert.equal(monthlyEarnedCredits(0, 1), 0.042);
+  assert.equal(monthlyEarnedCredits(0, 15), 0.625);
+  assert.equal(monthlyEarnedCredits(0, 16), 0.667);
+  assert.equal(monthlyEarnedCredits(0, 22), 0.917);
+  assert.equal(monthlyEarnedCredits(0, 24), 1);
+  assert.equal(monthlyEarnedCredits(0, 30), 1.25);
+  assert.equal(monthlyEarnedCredits(0, 0), 0);
+  // Days without pay come out of the days of service.
+  assert.equal(monthlyEarnedCredits(1, 16), 0.625);
+  assert.equal(monthlyEarnedCredits(20, 16), 0);
+});
+
+test('the days of service in a month count from the day hired to the end of the month, at most 30', () => {
+  // Hired before the month, on its first day, or on a date not known: a full month.
+  assert.equal(monthServiceDays('2026-10', '2020-01-06'), 30);
+  assert.equal(monthServiceDays('2026-10', '2026-10-01'), 30);
+  assert.equal(monthServiceDays('2026-10', ''), 30);
+  assert.equal(monthServiceDays('2026-10', 'January 6, 2020'), 30);
+  // Hired during the month: October 16 to 31 is 16 days, June 16 to 30 is 15.
+  assert.equal(monthServiceDays('2026-10', '2026-10-16'), 16);
+  assert.equal(monthServiceDays('2026-06', '2026-06-16'), 15);
+  assert.equal(monthServiceDays('2026-02', '2026-02-15'), 14);
+  assert.equal(monthServiceDays('2026-10', '2026-10-31'), 1);
+  assert.equal(monthServiceDays('2026-10', '2026-10-02'), 30);
+  // Hired after the month: no service that month.
+  assert.equal(monthServiceDays('2026-10', '2026-11-03'), 0);
 });
 
 test('a month\'s days without pay come from uncovered approved leave and tardiness charged without pay', () => {

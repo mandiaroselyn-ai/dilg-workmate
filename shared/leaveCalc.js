@@ -21,13 +21,29 @@ export const countLeaveDays = (startDate, endDate, holidays = []) => {
   return days;
 };
 
-// Leave credits earned for one month of service: 1.25 days of vacation leave and 1.25 of sick
-// leave, less 1.25/30 day for each day of leave without pay that month, as the CSC table of
-// credits earned (based on a 30-day month) has them: 1 day without pay earns 1.208, 2 days
-// 1.167, and 30 days nothing.
-export const monthlyEarnedCredits = (withoutPayDays = 0) => {
-  const days = Math.min(30, Math.max(0, Number(withoutPayDays) || 0));
-  return round3(1.25 * (30 - days) / 30);
+// Leave credits earned for one month: 1.25 days of vacation leave and 1.25 of sick leave for a
+// full month of service, and 1.25/30 day for each day of service in a month only partly served
+// (`serviceDays`, as CSC Table II earns them: 1 day 0.042, 15 days 0.625, 16 days 0.667), less
+// 1.25/30 day for each day of leave without pay that month, as the CSC table of credits earned
+// (based on a 30-day month) has them: 1 day without pay earns 1.208, 2 days 1.167, and 30 days
+// nothing.
+export const monthlyEarnedCredits = (withoutPayDays = 0, serviceDays = 30) => {
+  const service = Math.min(30, Math.max(0, Number(serviceDays) || 0));
+  const days = Math.min(service, Math.max(0, Number(withoutPayDays) || 0));
+  return round3(1.25 * (service - days) / 30);
+};
+
+// An employee's days of service in a month (YYYY-MM), for the leave earned that month: 30, a
+// full month, when they were hired (`dateHired`, YYYY-MM-DD) before the month or on its first
+// day, or the date is not known; the calendar days from the day hired to the end of the month,
+// at most 30, when hired during it; and 0 when hired after it.
+export const monthServiceDays = (month, dateHired) => {
+  const hired = dayOf(dateHired);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(hired) || hired <= `${month}-01`) return 30;
+  if (hired.slice(0, 7) > month) return 0;
+  const [year, monthNumber] = month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return Math.max(0, Math.min(30, lastDay - Number(hired.slice(8, 10)) + 1));
 };
 
 // One employee's days of leave without pay in a month (YYYY-MM), which lower that month's

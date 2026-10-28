@@ -578,8 +578,8 @@ This cannot be undone.`
   };
 
   const creditsOf = employee => ({
-    vacationLeaveCredits: Number(employee?.vacationLeaveCredits ?? 15),
-    sickLeaveCredits: Number(employee?.sickLeaveCredits ?? 15)
+    vacationLeaveCredits: Number(employee?.vacationLeaveCredits ?? 0),
+    sickLeaveCredits: Number(employee?.sickLeaveCredits ?? 0)
   });
 
   const startCreditAdjustment = () => {

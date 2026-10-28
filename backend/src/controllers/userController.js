@@ -12,8 +12,8 @@ import {
 import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
 import { isSmsConfigured, toPhilippineMobile } from '../services/smsService.js';
 import { changedRecordFields, noticeEmployee } from '../services/employeeNotices.js';
-import { minutesText, monthLabel, normalizeLeaveCreditInput, normalizeLeaveEarnings, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
-import { monthlyEarnedCredits, monthWithoutPayDays } from '../../../shared/leaveCalc.js';
+import { DEFAULT_LEAVE_CREDITS, minutesText, monthLabel, normalizeLeaveCreditInput, normalizeLeaveEarnings, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
+import { monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from '../../../shared/leaveCalc.js';
 import { minutesToLeaveDays } from '../../../shared/leaveConversion.js';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
@@ -371,10 +371,11 @@ export const deductTardinessCredits = async (req, res) => {
 };
 
 // Credits one ended month of service to each listed employee, as the CSC leave rules earn
-// it: 1.25 days of vacation leave and 1.25 of sick leave, less 1.25/30 for each day of leave
-// without pay that month. The days without pay are read here from the employee's approved
-// leave and tardiness charged that month (so charge the month's tardiness first). Each month is
-// credited once per employee, and each employee credited is notified.
+// it: 1.25 days of vacation leave and 1.25 of sick leave, or 1.25/30 for each day of service
+// when the employee was hired during the month (from their date hired), less 1.25/30 for each
+// day of leave without pay that month. The days without pay are read here from the employee's
+// approved leave and tardiness charged that month (so charge the month's tardiness first). Each
+// month is credited once per employee, and each employee credited is notified.
 export const creditLeaveEarnings = async (req, res) => {
   try {
     const { month, identifiers, error } = normalizeLeaveEarnings(req.body, getManilaDateString().slice(0, 7));
@@ -390,10 +391,16 @@ export const creditLeaveEarnings = async (req, res) => {
       }
       const leaves = await Leave.findAbsencesOfEmployee({ employeeId: account.employeeId, email: account.email });
       const withoutPayDays = monthWithoutPayDays(month, { requests: leaves, tardinessDeductions: account.tardinessDeductions || [] });
-      const earned = monthlyEarnedCredits(withoutPayDays);
+      const serviceDays = monthServiceDays(month, account.dateHired);
+      const earned = monthlyEarnedCredits(withoutPayDays, serviceDays);
+      const serviceText = `${serviceDays} day${serviceDays === 1 ? '' : 's'} of service`;
+      const notes = [
+        serviceDays < 30 ? `${serviceText}, hired ${account.dateHired}` : '',
+        withoutPayDays ? `${withoutPayDays.toFixed(3)} day without pay that month` : ''
+      ].filter(Boolean);
       const reason = `Leave earned for ${label}: ${earned.toFixed(3)} day vacation leave and ${earned.toFixed(3)} day sick leave`
-        + (withoutPayDays ? ` (${withoutPayDays.toFixed(3)} day without pay that month)` : '');
-      const result = await User.creditMonthlyEarnings(account.employeeId || account.email, { month, withoutPayDays, earned, reason }, { changedBy });
+        + (notes.length ? ` (${notes.join('; ')})` : '');
+      const result = await User.creditMonthlyEarnings(account.employeeId || account.email, { month, withoutPayDays, serviceDays, earned, reason }, { changedBy });
       if (!result) {
         results.push({ identifier, status: 'not-found' });
         continue;
@@ -406,6 +413,7 @@ export const creditLeaveEarnings = async (req, res) => {
         await Announcement.createNotification({
           title: 'Leave Credits Earned',
           message: `You earned ${earned.toFixed(3)} day of vacation leave and ${earned.toFixed(3)} day of sick leave for ${label}`
+            + (serviceDays < 30 ? `, for ${serviceText}` : '')
             + (withoutPayDays ? `, less for ${withoutPayDays.toFixed(3)} day without pay that month.` : '.'),
           type: 'system',
           view: 'dashboard',
@@ -559,8 +567,8 @@ export const getEmployees = async (req, res) => {
           provider: event.provider
         })),
         id: plain.employeeId || String(plain._id),
-        vacationLeaveCredits: plain.vacationLeaveCredits ?? 15.0,
-        sickLeaveCredits: plain.sickLeaveCredits ?? 15.0,
+        vacationLeaveCredits: plain.vacationLeaveCredits ?? DEFAULT_LEAVE_CREDITS,
+        sickLeaveCredits: plain.sickLeaveCredits ?? DEFAULT_LEAVE_CREDITS,
         lastActive: plain.lastActive || (plain.createdAt ? getManilaDateString(new Date(plain.createdAt)) : '')
       };
     });

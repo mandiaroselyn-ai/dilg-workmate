@@ -155,12 +155,14 @@ const UserSchema = new mongoose.Schema({
     }],
     default: []
   },
-  // Each month of service whose leave credits were earned (once a month): the days of leave
-  // without pay that month and the vacation and sick leave earned, each 1.25 days less 1.25/30
-  // for each day without pay (CSC table).
+  // Each month of service whose leave credits were earned (once a month): the days of service
+  // (30 for a full month, fewer in the month hired), the days of leave without pay that month,
+  // and the vacation and sick leave earned, each 1.25/30 for each day of service less 1.25/30
+  // for each day without pay (CSC tables).
   leaveEarnings: {
     type: [{
       month: { type: String, required: true }, // YYYY-MM
+      serviceDays: Number,
       withoutPayDays: Number,
       earned: Number,
       creditedAt: { type: Date, default: Date.now },
@@ -846,11 +848,11 @@ export const User = {
     return { employee: updated.toObject(), entry };
   },
 
-  // Credits one month's earned leave (`earned` days, after `withoutPayDays` of leave without
-  // pay) to an employee's vacation and sick leave, once per month, and adds it to the leave
-  // credit history. Returns { employee, entry }, { alreadyCredited: entry } when the month was
+  // Credits one month's earned leave (`earned` days, for `serviceDays` of service and after
+  // `withoutPayDays` of leave without pay) to an employee's vacation and sick leave, once per
+  // month, and adds it to the leave credit history. Returns { employee, entry }, { alreadyCredited: entry } when the month was
   // already credited, or null when no employee account matches.
-  creditMonthlyEarnings: async (identifier, { month, withoutPayDays, earned, reason }, { changedBy }) => {
+  creditMonthlyEarnings: async (identifier, { month, withoutPayDays, serviceDays = 30, earned, reason }, { changedBy }) => {
     ensureConnected();
     const value = identifier?.toString().trim();
     if (!value) return null;
@@ -869,7 +871,7 @@ export const User = {
     const round = number => Math.round(number * 1000) / 1000;
     const previousVacation = Number(employee.vacationLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
     const previousSick = Number(employee.sickLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
-    const entry = { month, withoutPayDays, earned, creditedAt: new Date(), creditedBy: changedBy };
+    const entry = { month, serviceDays, withoutPayDays, earned, creditedAt: new Date(), creditedBy: changedBy };
     const balances = { vacationLeaveCredits: round(previousVacation + earned), sickLeaveCredits: round(previousSick + earned) };
     const history = earned > 0 ? [{
       changedAt: entry.creditedAt,

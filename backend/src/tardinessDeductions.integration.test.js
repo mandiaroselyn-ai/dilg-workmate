@@ -98,6 +98,29 @@ test('HR credits a month of earned leave, less for the days without pay that mon
   assert.match(thisMonth.body.error, /month that has ended/);
 });
 
+test('in the month an employee was hired, HR credits 1.25/30 day for each day of service', async t => {
+  const { Leave } = await import('./models/leaveModel.js');
+  const send = body => request(app).post('/api/employees/leave-earnings').set('Authorization', `Bearer ${createAuthToken(hrAdmin)}`).send(body);
+  t.mock.method(User, 'findByEmail', async email => (email === hrAdmin.email ? hrAdmin : null));
+  t.mock.method(User, 'findByEmployeeId', async () => ({ ...employee, dateHired: '2026-10-16', tardinessDeductions: [] }));
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async () => []);
+  const credits = t.mock.method(User, 'creditMonthlyEarnings', async (identifier, { month, serviceDays, withoutPayDays, earned }) => ({
+    employee: { ...employee, vacationLeaveCredits: earned },
+    entry: { month, serviceDays, withoutPayDays, earned }
+  }));
+  const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-03T02:00:00Z') });
+
+  const response = await send({ month: '2026-10', identifiers: ['EMP-4'] });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const [, credit] = credits.mock.calls[0].arguments;
+  // October 16 to 31 is 16 days of service: 1.25 × 16 / 30, as CSC Table II has it.
+  assert.equal(credit.serviceDays, 16);
+  assert.equal(credit.earned, 0.667);
+  assert.match(credit.reason, /Leave earned for October 2026: 0\.667 day vacation leave and 0\.667 day sick leave \(16 days of service, hired 2026-10-16\)/);
+  assert.match(notices.mock.calls[0].arguments[0].message, /0\.667 day of sick leave for October 2026, for 16 days of service\./);
+});
+
 test('everyone sees the holidays; only HR adds or removes them', async t => {
   const { Holiday } = await import('./models/holidayModel.js');
   t.mock.method(User, 'findByEmail', async email => (email === hrAdmin.email ? hrAdmin : employee));
