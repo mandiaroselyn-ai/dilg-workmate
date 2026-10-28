@@ -3,6 +3,7 @@ import { ChevronDown, Scale } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import { monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from '../../shared/leaveCalc';
+import { earnsLeaveCredits } from '../../shared/profileFields';
 import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import { apiFetch } from '../utils/api';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -29,7 +30,9 @@ const lastEndedMonth = () => {
 // 2. the month's earned leave credited: 1.25 days of vacation and of sick leave (1.25/30 for each
 //    day of service in the month the employee was hired), less 1.25/30 for each day without pay
 //    that month (unpaid leave and unpaid tardiness, so step 1 comes first).
-// Each step is done once per month and employee, and the employee is notified.
+// Each step is done once per month and employee, and the employee is notified. Contract of
+// service and job order workers earn no leave credits, so step 2 leaves them out; their
+// tardiness in step 1 is all without pay.
 export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(lastEndedMonth);
@@ -55,6 +58,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
     });
     // Days of service this month, from the date hired: fewer than 30 in the month hired.
     const serviceDays = monthServiceDays(month, employee.dateHired);
+    const earnsLeave = earnsLeaveCredits(employee);
     return {
       employee,
       minutes,
@@ -64,12 +68,13 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
       withoutPayDays,
       // As credited (months credited before days of service were kept were full months).
       shownServiceDays: credited ? credited.serviceDays ?? 30 : serviceDays,
-      earned: monthlyEarnedCredits(withoutPayDays, serviceDays),
+      earnsLeave,
+      earned: earnsLeave ? monthlyEarnedCredits(withoutPayDays, serviceDays) : 0,
       issues: records.filter(record => dtrIssue(record, today)).length
     };
   });
   const toCharge = rows.filter(row => !row.charged);
-  const toCredit = rows.filter(row => row.charged && !row.credited);
+  const toCredit = rows.filter(row => row.earnsLeave && row.charged && !row.credited);
   const issueCount = rows.reduce((total, row) => total + row.issues, 0);
   const issueWarning = issueCount ? `\n\n${issueCount} DTR record${issueCount === 1 ? '' : 's'} this month still need review in DTR Records; the charge uses the DTR as it is now.` : '';
 
@@ -195,6 +200,8 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                       </span>
                       {row.credited ? (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">Credited</span>
+                      ) : !row.earnsLeave ? (
+                        <span className="text-[11px] font-semibold text-slate-400">{row.employee.appointmentStatus}: no leave credits</span>
                       ) : row.charged ? (
                         <button type="button" onClick={() => credit([row])} disabled={saving} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-black text-emerald-700 disabled:opacity-50">Credit</button>
                       ) : (

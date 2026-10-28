@@ -8,6 +8,22 @@ import { SALARY_GRADE_OPTIONS, SALARY_STEP_OPTIONS, salaryFields } from './salar
 export const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
 export const CIVIL_STATUS_OPTIONS = ['Single', 'Married', 'Widowed', 'Separated', 'Others'];
 
+// How the person is engaged in DILG: the statuses of appointment of the 2017 Omnibus Rules on
+// Appointments and Other Human Resource Actions (Sec. 9) that DILG offices issue, and the
+// contract of service and job order engagements, which are not appointments. Fixed Term (for
+// terms set by law, such as commission members and SUC presidents) and Provisional (for
+// teachers without eligibility) are left out, as no DILG position has them.
+export const NO_LEAVE_CREDIT_ENGAGEMENTS = ['Contract of Service', 'Job Order'];
+export const APPOINTMENT_STATUS_OPTIONS = [
+  'Permanent', 'Temporary', 'Coterminous', 'Contractual', 'Casual', 'Substitute',
+  ...NO_LEAVE_CREDIT_ENGAGEMENTS
+];
+
+// Contract of service and job order work is not government service (CSC-COA-DBM Joint
+// Circulars on COS and JO workers), so it earns no vacation or sick leave. Everyone else,
+// including a person whose status of appointment is not filled in yet, does.
+export const earnsLeaveCredits = person => !NO_LEAVE_CREDIT_ENGAGEMENTS.includes(person?.appointmentStatus);
+
 // The person keeps these up to date on their own profile; HR can fill them in too.
 // The name parts go on official forms such as CSC Form No. 6. The full name stays as
 // typed, because attendance records are matched by it.
@@ -39,6 +55,8 @@ export const GOVERNMENT_ID_FIELDS = [
 // it comes from the government salary schedule (shared/salarySchedule.js), so it is read-only
 // here and `derive` shows it from the chosen grade and step.
 export const EMPLOYMENT_FIELDS = [
+  // Only one of the listed choices is saved (`strict`).
+  { key: 'appointmentStatus', label: 'Status of Appointment', options: APPOINTMENT_STATUS_OPTIONS, strict: true, max: 40 },
   { key: 'division', label: 'Division / Unit' },
   { key: 'plantillaItemNumber', label: 'Plantilla Item No.', max: 80 },
   { key: 'salaryGrade', label: 'Salary Grade', options: SALARY_GRADE_OPTIONS, max: 40 },
@@ -67,6 +85,7 @@ export const readProfileFields = (body = {}, fields) => {
     if (typeof raw !== 'string') return { error: `${field.label} must be text.` };
     const text = raw.trim();
     if (text.length > (field.max || DEFAULT_LIMIT)) return { error: `${field.label} is too long.` };
+    if (field.strict && text && !field.options.includes(text)) return { error: `Choose a ${field.label} from the list.` };
     value[field.key] = text;
   }
   // A salary grade or step sent sets the monthly salary from the salary schedule.

@@ -98,6 +98,31 @@ export const normalizeTardinessDeductions = (body, currentMonth) => {
   return { month, deductions };
 };
 
+// Validates the balances HR may enter from the leave card when creating an account (for a
+// transferee, or an employee who already has earned leave): { openingVacationLeaveCredits,
+// openingSickLeaveCredits }, each blank or a number from 0 to 1000. Returns { value: null }
+// when both are blank or 0 (a new employee starts with none), { value } with the balances, or
+// { error }.
+export const normalizeOpeningLeaveCredits = body => {
+  const value = {};
+  for (const [field, key, label] of [
+    ['vacationLeaveCredits', 'openingVacationLeaveCredits', 'vacation leave'],
+    ['sickLeaveCredits', 'openingSickLeaveCredits', 'sick leave']
+  ]) {
+    const raw = body?.[key];
+    if (raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '')) {
+      value[field] = 0;
+      continue;
+    }
+    const number = typeof raw === 'string' ? Number(raw) : raw;
+    if (typeof number !== 'number' || !Number.isFinite(number) || number < 0 || number > 1000) {
+      return { error: `The opening ${label} balance must be a number from 0 to 1000.` };
+    }
+    value[field] = Math.round(number * 1000) / 1000;
+  }
+  return { value: value.vacationLeaveCredits || value.sickLeaveCredits ? value : null };
+};
+
 // Validates HR's manual adjustment of an employee's balances. Credits may be fractional
 // (monthly accrual is 1.25 days) and can accumulate past one year's entitlement.
 export const normalizeLeaveCreditInput = body => {

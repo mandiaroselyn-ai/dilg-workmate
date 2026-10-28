@@ -27,13 +27,21 @@ const saveProfile = async (t, person, body) => {
   return { response, saved: update.mock.calls[0]?.arguments[0] };
 };
 
+// What HR fills in for a new employee account.
+const newAccount = {
+  name: 'Pedro Santos', email: 'pedro@dilg.gov.ph', employeeId: 'DILG-2026-9', role: 'LGOO II', office: 'Boac',
+  region: 'DILG Region IV-B - MIMAROPA', employmentStatus: 'ACTIVE', dateHired: '2026-10-16', appointmentStatus: 'Permanent',
+  password: 'a-long-initial-password'
+};
+const createAccount = body => request(app).post('/api/employees').set('Authorization', `Bearer ${createAuthToken(hr)}`).send(body);
+
 test('an account HR makes is Active at once, with no approval', async t => {
   t.mock.method(User, 'findByEmail', async () => hr);
   const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
   const make = accountStatus => request(app)
     .post('/api/employees')
     .set('Authorization', `Bearer ${createAuthToken(hr)}`)
-    .send({ name: 'Pedro Santos', email: 'pedro@dilg.gov.ph', employeeId: 'DILG-2026-9', role: 'LGOO II', office: 'Boac', employmentStatus: 'ACTIVE', accountStatus, password: 'a-long-initial-password' });
+    .send({ ...newAccount, accountStatus });
 
   const response = await make('Pending');
   assert.equal(response.status, 201, JSON.stringify(response.body));
@@ -42,6 +50,83 @@ test('an account HR makes is Active at once, with no approval', async t => {
   // HR may still make one Inactive.
   await make('Inactive');
   assert.equal(creates.mock.calls[1].arguments[0].accountStatus, 'Inactive');
+});
+
+test('a new account needs its job designation, office, date hired, and status of appointment', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  for (const [field, message] of [
+    ['role', /job designation, and office are required/],
+    ['office', /job designation, and office are required/],
+    ['dateHired', /date hired/],
+    ['appointmentStatus', /status of appointment/]
+  ]) {
+    const response = await createAccount({ ...newAccount, [field]: '' });
+    assert.equal(response.status, 400, field);
+    assert.match(response.body.error, message);
+  }
+  assert.equal((await createAccount({ ...newAccount, dateHired: '2026-02-30' })).status, 400);
+  const unlisted = await createAccount({ ...newAccount, appointmentStatus: 'Regular' });
+  assert.equal(unlisted.status, 400);
+  assert.match(unlisted.body.error, /Choose a Status of Appointment from the list/);
+  assert.equal(creates.mock.callCount(), 0);
+
+  const response = await createAccount(newAccount);
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const saved = creates.mock.calls[0].arguments[0];
+  assert.equal(saved.region, 'DILG Region IV-B - MIMAROPA');
+  assert.equal(saved.appointmentStatus, 'Permanent');
+  assert.equal(saved.dateHired, '2026-10-16');
+  // A new employee starts with no leave credits.
+  assert.equal('vacationLeaveCredits' in saved, false);
+});
+
+test('a new account left without an employee ID is given one like DILG-2026-123456', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findAccount', async () => null);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-10-28T02:00:00Z') });
+
+  const response = await createAccount({ ...newAccount, employeeId: '' });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  assert.match(creates.mock.calls[0].arguments[0].employeeId, /^DILG-2026-\d{6}$/);
+});
+
+test('HR enters a transferee\'s leave balance from the leave card, but none for COS or JO workers', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+
+  const response = await createAccount({ ...newAccount, openingVacationLeaveCredits: '23.5', openingSickLeaveCredits: '41.25' });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const saved = creates.mock.calls[0].arguments[0];
+  assert.equal(saved.vacationLeaveCredits, 23.5);
+  assert.equal(saved.sickLeaveCredits, 41.25);
+  assert.equal(saved.leaveCreditHistory.length, 1);
+  assert.equal(saved.leaveCreditHistory[0].reason, 'Opening balance from the leave card');
+  assert.equal(saved.leaveCreditHistory[0].changedBy, 'HR Officer');
+  assert.equal(saved.leaveCreditHistory[0].previousVacationLeaveCredits, 0);
+
+  assert.equal((await createAccount({ ...newAccount, openingVacationLeaveCredits: '-1' })).status, 400);
+  const jobOrder = await createAccount({ ...newAccount, appointmentStatus: 'Job Order', openingVacationLeaveCredits: '5' });
+  assert.equal(jobOrder.status, 400);
+  assert.match(jobOrder.body.error, /do not earn leave credits/);
+  // Without a balance, a job order worker's account is made.
+  assert.equal((await createAccount({ ...newAccount, appointmentStatus: 'Job Order' })).status, 201);
+});
+
+test('HR cannot give a COS or JO worker leave credits by adjustment, only clear them', async t => {
+  const worker = { ...employee, appointmentStatus: 'Contract of Service', vacationLeaveCredits: 3, sickLeaveCredits: 0 };
+  t.mock.method(User, 'findByEmail', async email => (email === hr.email ? hr : null));
+  t.mock.method(User, 'findAccount', async () => worker);
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  const sets = t.mock.method(User, 'setLeaveCredits', async (identifier, value) => ({ ...worker, ...value }));
+  const adjust = body => request(app).patch(`/api/employees/${worker.employeeId}/leave-credits`).set('Authorization', `Bearer ${createAuthToken(hr)}`).send(body);
+
+  const given = await adjust({ vacationLeaveCredits: 5, sickLeaveCredits: 0, reason: 'Leave card' });
+  assert.equal(given.status, 400);
+  assert.match(given.body.error, /do not earn leave credits/);
+  assert.equal(sets.mock.callCount(), 0);
+  assert.equal((await adjust({ vacationLeaveCredits: 0, sickLeaveCredits: 0, reason: 'Cleared: job order' })).status, 200);
 });
 
 test('employees save their own personal details and ID numbers, but not HR\'s employment details', async t => {

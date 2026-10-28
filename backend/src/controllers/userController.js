@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString } from '../../../shared/localDate.js';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
   announceAccountApproved,
@@ -12,7 +12,7 @@ import {
 import { createTransporter, sendGoogleAccountRecoveryEmail } from '../services/emailService.js';
 import { isSmsConfigured, toPhilippineMobile } from '../services/smsService.js';
 import { changedRecordFields, noticeEmployee } from '../services/employeeNotices.js';
-import { DEFAULT_LEAVE_CREDITS, minutesText, monthLabel, normalizeLeaveCreditInput, normalizeLeaveEarnings, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
+import { DEFAULT_LEAVE_CREDITS, minutesText, monthLabel, normalizeLeaveCreditInput, normalizeLeaveEarnings, normalizeOpeningLeaveCredits, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
 import { monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from '../../../shared/leaveCalc.js';
 import { minutesToLeaveDays } from '../../../shared/leaveConversion.js';
 import mongoose from 'mongoose';
@@ -164,7 +164,8 @@ export const registerUser = async (req, res) => {
 // (Active) or rejects (Rejected) them; HR deactivates an account with Inactive or Suspended.
 const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Pending', 'Suspended', 'Rejected'];
 
-const normalizeEmployeeInput = (body, reviewer) => {
+// `creating`: a new account, whose employee ID may be left blank for the server to assign.
+const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
   const stringFields = [
     'name',
     'email',
@@ -193,7 +194,7 @@ const normalizeEmployeeInput = (body, reviewer) => {
   employee.accessLevel = 'employee';
   employee.accountStatus = body.accountStatus || 'Pending';
 
-  if (!employee.name || !employee.email || !employee.employeeId || !employee.role || !employee.office) {
+  if (!employee.name || !employee.email || (!employee.employeeId && !creating) || !employee.role || !employee.office) {
     return { error: 'Name, email, employee ID, job designation, and office are required.' };
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employee.email)) {
@@ -250,11 +251,37 @@ const employeeResponse = employee => ({
   id: employee.employeeId || String(employee._id)
 });
 
+// An employee ID no account uses yet, like those given to people who sign up themselves
+// (DILG-2026-123456), or '' when none was found.
+const unusedEmployeeId = async () => {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const employeeId = `DILG-${getManilaDateString().slice(0, 4)}-${crypto.randomInt(100000, 1000000)}`;
+    if (!(await User.findAccount(employeeId))) return employeeId;
+  }
+  return '';
+};
+
+const isRealDate = value => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value)
+  && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+
 export const createEmployee = async (req, res) => {
   try {
     const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
-    const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
+    const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer, { creating: true });
     if (error) return res.status(400).json({ success: false, error });
+    // The leave earned in the month hired counts from this date (see monthServiceDays).
+    if (!isRealDate(employee.dateHired)) {
+      return res.status(400).json({ success: false, error: 'Enter the date hired, like 2026-10-16. The leave earned in the first month counts from it.' });
+    }
+    // It decides whether the employee earns leave credits (see earnsLeaveCredits).
+    if (!employee.appointmentStatus) {
+      return res.status(400).json({ success: false, error: 'Choose the status of appointment (or contract of service or job order).' });
+    }
+    const opening = normalizeOpeningLeaveCredits(req.body);
+    if (opening.error) return res.status(400).json({ success: false, error: opening.error });
+    if (opening.value && !earnsLeaveCredits(employee)) {
+      return res.status(400).json({ success: false, error: 'Contract of service and job order workers do not earn leave credits, so leave their opening balances blank.' });
+    }
     // HR making the account is its approval, so it is Active at once (or Inactive, when HR
     // chose that). Pending and Rejected are only for accounts people sign up for themselves.
     if (employee.accountStatus !== 'Inactive') employee.accountStatus = 'Active';
@@ -262,8 +289,24 @@ export const createEmployee = async (req, res) => {
     if (typeof password !== 'string' || password.trim().length < 10 || password.length > 256) {
       return res.status(400).json({ success: false, error: 'Set an initial employee password of 10 to 256 characters.' });
     }
+    if (!employee.employeeId) {
+      employee.employeeId = await unusedEmployeeId();
+      if (!employee.employeeId) return res.status(500).json({ success: false, error: 'Unable to assign an employee ID. Enter one, or try again.' });
+    }
+    // Balances from the leave card start the account's credit history.
+    const credits = opening.value ? {
+      ...opening.value,
+      leaveCreditHistory: [{
+        changedAt: new Date(),
+        changedBy: req.user?.name || req.user?.email || 'HR/Admin',
+        reason: 'Opening balance from the leave card',
+        ...opening.value,
+        previousVacationLeaveCredits: 0,
+        previousSickLeaveCredits: 0
+      }]
+    } : {};
 
-    const created = await User.createEmployee({ ...employee, password: password.trim() });
+    const created = await User.createEmployee({ ...employee, ...credits, password: password.trim() });
     if (created?.conflict) {
       return res.status(409).json({ success: false, error: 'An employee already uses this email address or employee ID.' });
     }
@@ -308,6 +351,11 @@ export const updateEmployeeLeaveCredits = async (req, res) => {
   try {
     const { value, reason, error } = normalizeLeaveCreditInput(req.body);
     if (error) return res.status(400).json({ success: false, error });
+    // A contract of service or job order worker's balances can only be cleared.
+    const account = await User.findAccount(req.params.identifier);
+    if (account && !earnsLeaveCredits(account) && (value.vacationLeaveCredits || value.sickLeaveCredits)) {
+      return res.status(400).json({ success: false, error: 'Contract of service and job order workers do not earn leave credits.' });
+    }
     const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
     const updated = await User.setLeaveCredits(req.params.identifier, value, { reason, changedBy });
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
@@ -375,7 +423,8 @@ export const deductTardinessCredits = async (req, res) => {
 // when the employee was hired during the month (from their date hired), less 1.25/30 for each
 // day of leave without pay that month. The days without pay are read here from the employee's
 // approved leave and tardiness charged that month (so charge the month's tardiness first). Each
-// month is credited once per employee, and each employee credited is notified.
+// month is credited once per employee, and each employee credited is notified. Contract of
+// service and job order workers earn no leave credits and are left out ('no-leave-credits').
 export const creditLeaveEarnings = async (req, res) => {
   try {
     const { month, identifiers, error } = normalizeLeaveEarnings(req.body, getManilaDateString().slice(0, 7));
@@ -387,6 +436,10 @@ export const creditLeaveEarnings = async (req, res) => {
       const account = (await User.findByEmployeeId(identifier)) || (await User.findByEmail(identifier));
       if (!account || !['employee', undefined, null].includes(account.accessLevel)) {
         results.push({ identifier, status: 'not-found' });
+        continue;
+      }
+      if (!earnsLeaveCredits(account)) {
+        results.push({ identifier, status: 'no-leave-credits' });
         continue;
       }
       const leaves = await Leave.findAbsencesOfEmployee({ employeeId: account.employeeId, email: account.email });

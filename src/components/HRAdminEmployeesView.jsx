@@ -19,13 +19,18 @@ import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { ProfileFieldInput } from './ProfileDetails';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, profileFieldValues } from '../../shared/profileFields';
 
 // Profile details the form below shows in sections of their own; the name parts, birthday,
 // gender, and address already have their own inputs.
 const OWN_INPUT_KEYS = ['firstName', 'middleName', 'lastName', 'dateOfBirth', 'gender', 'address'];
 const MORE_PERSONAL_FIELDS = PERSONAL_FIELDS.filter(field => !OWN_INPUT_KEYS.includes(field.key));
 const PROFILE_FORM_FIELDS = [...MORE_PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS];
+const DEFAULT_REGION = 'DILG Region IV-B - MIMAROPA';
+const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500';
+
+// The full name as shown and as attendance records are matched: the name parts and suffix.
+const fullNameOf = form => [form.firstName, form.middleName, form.lastName, form.suffix].map(part => (part || '').trim()).filter(Boolean).join(' ');
 
 const emptyForm = {
   ...profileFieldValues({}, PROFILE_FORM_FIELDS),
@@ -40,6 +45,7 @@ const emptyForm = {
   employeeId: '',
   role: '',
   office: '',
+  region: DEFAULT_REGION,
   employmentStatus: 'ACTIVE',
   // An account HR makes is Active at once (no approval needed).
   accountStatus: 'Active',
@@ -50,7 +56,10 @@ const emptyForm = {
   approvedWfhBarangay: '',
   approvedWfhStreet: '',
   approvedWfhLandmark: '',
-  password: ''
+  password: '',
+  // From the leave card, for a transferee or an employee who already has earned leave.
+  openingVacationLeaveCredits: '',
+  openingSickLeaveCredits: ''
 };
 
 const employeeName = (employee = {}) =>
@@ -82,8 +91,10 @@ const normalizeEmployee = (employee = {}) => {
     lastName: employee.lastName || parts.slice(1).join(' ') || '',
     name,
     employeeId: employee.employeeId || employee.id || '',
-    role: employee.role || 'Employee',
-    office: employee.office || 'Administrative Office',
+    // Left blank when not saved, so HR fills them in rather than keeping a made-up value.
+    role: employee.role || '',
+    office: employee.office || '',
+    region: employee.region || DEFAULT_REGION,
     email: employee.email || '',
     phoneNumber: employee.phoneNumber || employee.phone || '',
     address: employee.address || '',
@@ -356,6 +367,10 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       setForm(previous => ({ ...previous, [name]: value, approvedWfhBarangay: '' }));
       return;
     }
+    if (name === 'appointmentStatus' && !earnsLeaveCredits({ appointmentStatus: value })) {
+      setForm(previous => ({ ...previous, [name]: value, openingVacationLeaveCredits: '', openingSickLeaveCredits: '' }));
+      return;
+    }
     setForm((previous) => ({ ...previous, [name]: value }));
   };
 
@@ -369,18 +384,15 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     // Attendance records are matched by the full name, so an edit keeps it unless HR
     // changed the name parts.
     const original = existingEmployee ? normalizeEmployee(existingEmployee) : null;
-    const nameChanged = !original || ['firstName', 'middleName', 'lastName'].some(key => (form[key] || '').trim() !== (original[key] || '').trim());
-    const fullName = nameChanged || !existingEmployee.name
-      ? [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ')
-      : existingEmployee.name;
-    const employeeId = form.employeeId.trim() || `DILG-${Date.now().toString().slice(-6)}`;
+    const nameChanged = !original || ['firstName', 'middleName', 'lastName', 'suffix'].some(key => (form[key] || '').trim() !== (original[key] || '').trim());
+    const fullName = nameChanged || !existingEmployee.name ? fullNameOf(form) : existingEmployee.name;
+    // Left blank on a new account, the server assigns one (DILG-2026-123456).
+    const employeeId = form.employeeId.trim();
     const normalized = {
       ...normalizeEmployee({
         ...form,
         name: fullName,
         employeeId,
-        role: form.role || 'Employee',
-        office: form.office || 'Administrative Office',
         employmentStatus: form.employmentStatus || 'ACTIVE',
         accountStatus: form.accountStatus || 'Active',
         email: (form.email || '').trim().toLowerCase(),
@@ -389,8 +401,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       name: fullName,
       email: (form.email || '').trim().toLowerCase(),
       employeeId,
-      role: form.role || 'Employee',
-      office: form.office || 'Administrative Office',
+      role: form.role.trim(),
+      office: form.office.trim(),
+      region: form.region.trim(),
       employmentStatus: form.employmentStatus || 'ACTIVE',
       accountStatus: form.accountStatus || 'Active',
       accessLevel: 'employee',
@@ -413,7 +426,12 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       const response = await apiFetch(endpoint, {
         method: editingId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingId ? normalized : { ...normalized, password: form.password })
+        body: JSON.stringify(editingId ? normalized : {
+          ...normalized,
+          password: form.password,
+          openingVacationLeaveCredits: form.openingVacationLeaveCredits,
+          openingSickLeaveCredits: form.openingSickLeaveCredits
+        })
       });
       const data = await response.json();
       if (!response.ok || !data.success || !data.employee) {
@@ -635,7 +653,7 @@ This cannot be undone.`
                 <input name="lastName" value={form.lastName} onChange={handleChange} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
               <label className="text-[11px] font-black text-slate-600">Employee ID
-                <input name="employeeId" value={form.employeeId} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <input name="employeeId" value={form.employeeId} onChange={handleChange} required={Boolean(editingId)} placeholder={editingId ? '' : 'Blank: assigned like DILG-2026-123456'} className={inputClass} />
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Date of Birth
@@ -650,10 +668,11 @@ This cannot be undone.`
                 </select>
               </label>
               <label className="text-[11px] font-black text-slate-600">Phone Number
-                <input name="phoneNumber" value={form.phoneNumber} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <input name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} placeholder="09XX XXX XXXX" className={inputClass} />
+                <span className="mt-1 block text-xs font-medium text-slate-500">A mobile number, so SMS notices reach the employee.</span>
               </label>
               <label className="text-[11px] font-black text-slate-600">Email
-                <input name="email" type="email" value={form.email} onChange={handleChange} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <input name="email" type="email" value={form.email} onChange={handleChange} required placeholder="name@dilg.gov.ph" className={inputClass} />
               </label>
               {!editingId && (
                 <label className="text-[11px] font-black text-slate-600">Initial Employee Password
@@ -667,11 +686,15 @@ This cannot be undone.`
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Employee Job Designation
-                <input name="role" value={form.role} onChange={handleChange} placeholder="e.g. Administrative Officer" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <input name="role" value={form.role} onChange={handleChange} required maxLength={120} placeholder="e.g. Local Government Operations Officer II" className={inputClass} />
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Office / Department
-                <input name="office" value={form.office} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <input name="office" value={form.office} onChange={handleChange} required maxLength={160} placeholder="e.g. Marinduque Provincial Office" className={inputClass} />
+              </label>
+
+              <label className="text-[11px] font-black text-slate-600">Region
+                <input name="region" value={form.region} onChange={handleChange} maxLength={250} className={inputClass} />
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Employment Status
@@ -693,7 +716,8 @@ This cannot be undone.`
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Date Hired
-                <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} required={!editingId} className={inputClass} />
+                <span className="mt-1 block text-xs font-medium text-slate-500">The leave earned in the first month counts from this date.</span>
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Assigned Station
@@ -712,10 +736,40 @@ This cannot be undone.`
                 <div key={title} className="sm:col-span-2 xl:col-span-4">
                   <p className="text-[11px] font-black text-slate-700">{title}</p>
                   <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {fields.map(field => <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={handleChange} />)}
+                    {fields.map(field => (
+                      <ProfileFieldInput
+                        key={field.key}
+                        // A new employee's status of appointment decides whether they earn leave credits.
+                        item={field.key === 'appointmentStatus' && !editingId ? { ...field, required: true } : field}
+                        value={form[field.key]}
+                        values={form}
+                        onChange={handleChange}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
+
+              {!editingId && (
+                <div className="sm:col-span-2 xl:col-span-4">
+                  <p className="text-[11px] font-black text-slate-700">Opening Leave Balance</p>
+                  {earnsLeaveCredits(form) ? (
+                    <>
+                      <p className="mt-1 text-xs font-medium text-slate-500">From the leave card, for a transferee or an employee who already has earned leave. Leave blank for a new employee: they start with none and earn 1.25 days of each a month.</p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <label className="text-[11px] font-black text-slate-600">Vacation Leave (days)
+                          <input name="openingVacationLeaveCredits" type="number" min="0" max="1000" step="0.001" value={form.openingVacationLeaveCredits} onChange={handleChange} placeholder="0" className={inputClass} />
+                        </label>
+                        <label className="text-[11px] font-black text-slate-600">Sick Leave (days)
+                          <input name="openingSickLeaveCredits" type="number" min="0" max="1000" step="0.001" value={form.openingSickLeaveCredits} onChange={handleChange} placeholder="0" className={inputClass} />
+                        </label>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs font-medium text-slate-500">Contract of service and job order workers do not earn leave credits.</p>
+                  )}
+                </div>
+              )}
 
               <div className="sm:col-span-2 xl:col-span-4">
                 <p className="text-[11px] font-black text-slate-700">Approved Work-From-Home Location</p>

@@ -152,6 +152,7 @@ const HR_FIELD_LABELS = {
   dateHired: 'Date hired',
   assignedStation: 'Assigned station',
   assignedLGU: 'Assigned LGU',
+  appointmentStatus: 'Status of appointment',
   division: 'Division / Unit',
   plantillaItemNumber: 'Plantilla item no.',
   salaryGrade: 'Salary grade',

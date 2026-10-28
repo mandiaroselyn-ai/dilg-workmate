@@ -38,7 +38,7 @@ export const ProfileFieldInput = ({ item, value, onChange, values }) => (
         className={`${inputClass} cursor-not-allowed bg-slate-100 text-slate-600`}
       />
     ) : item.options ? (
-      <select name={item.key} value={value || ''} onChange={onChange} className={inputClass}>
+      <select name={item.key} value={value || ''} onChange={onChange} required={item.required} className={inputClass}>
         <option value="">Select</option>
         {/* A value saved before the choices were set stays selectable. */}
         {[...item.options, ...(value && !item.options.includes(value) ? [value] : [])].map(option => <option key={option} value={option}>{option}</option>)}

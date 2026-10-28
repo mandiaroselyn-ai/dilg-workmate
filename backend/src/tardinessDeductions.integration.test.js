@@ -121,6 +121,19 @@ test('in the month an employee was hired, HR credits 1.25/30 day for each day of
   assert.match(notices.mock.calls[0].arguments[0].message, /0\.667 day of sick leave for October 2026, for 16 days of service\./);
 });
 
+test('contract of service and job order workers are not credited earned leave', async t => {
+  const send = body => request(app).post('/api/employees/leave-earnings').set('Authorization', `Bearer ${createAuthToken(hrAdmin)}`).send(body);
+  t.mock.method(User, 'findByEmail', async email => (email === hrAdmin.email ? hrAdmin : null));
+  t.mock.method(User, 'findByEmployeeId', async () => ({ ...employee, appointmentStatus: 'Job Order' }));
+  const credits = t.mock.method(User, 'creditMonthlyEarnings', async () => null);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-03T02:00:00Z') });
+
+  const response = await send({ month: '2026-10', identifiers: ['EMP-4'] });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.results[0].status, 'no-leave-credits');
+  assert.equal(credits.mock.callCount(), 0);
+});
+
 test('everyone sees the holidays; only HR adds or removes them', async t => {
   const { Holiday } = await import('./models/holidayModel.js');
   t.mock.method(User, 'findByEmail', async email => (email === hrAdmin.email ? hrAdmin : employee));
