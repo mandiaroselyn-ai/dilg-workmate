@@ -11,6 +11,10 @@ const MANILA_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
 // Returns the Manila calendar date as YYYY-MM-DD.
 export const getManilaDateString = (date = new Date()) => MANILA_DATE_FORMAT.format(date);
 
+// True for a YYYY-MM-DD date that is on the calendar (not 2026-02-30).
+export const isRealDate = value => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value)
+  && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+
 const MANILA_TIME_FORMAT = new Intl.DateTimeFormat('en-US', {
   timeZone: 'Asia/Manila',
   hour: '2-digit',

@@ -1,21 +1,27 @@
 // Rules for HR managing Supervisor and HR/Admin accounts. They keep the system from
 // ending up without an active HR/Admin and stop HR from locking themselves out.
 
-import { EMPLOYMENT_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
+import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
+import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isPhilippineMobile, officeError } from '../../../shared/dilgAssignments.js';
+import { isRealDate } from '../../../shared/localDate.js';
 
 export const ACCESS_LEVELS = ['employee', 'supervisor', 'hr_admin'];
 export const STAFF_ACCESS_LEVELS = ['supervisor', 'hr_admin'];
 export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Suspended'];
 
 const FIELD_LIMITS = { name: 160, email: 254, role: 120, office: 160, phoneNumber: 250, employeeId: 64, region: 250, dateHired: 40 };
+// The name parts go on official forms such as CSC Form No. 6; the full name is built from them.
+const NAME_FIELDS = PERSONAL_FIELDS.filter(field => ['firstName', 'middleName', 'lastName', 'suffix'].includes(field.key));
 
 const isActive = account => !account?.accountStatus || account.accountStatus.toString().toLowerCase() === 'active';
 export const isActiveAdmin = account => account?.accessLevel === 'hr_admin' && isActive(account);
 const sameAccount = (a, b) => Boolean(a?._id && b?._id && String(a._id) === String(b._id));
 
-// Cleans the fields of a staff account form. On create, name, email, job designation,
-// office, and access level are required; on edit (`partial`), only sent fields change.
-export const normalizeStaffInput = (body, { partial = false } = {}) => {
+// Cleans the fields of a staff account form. On create, name, email, position title, office,
+// mobile number, date hired, status of appointment, and access level are required; on edit
+// (`partial`), only sent fields change. `previous` is the account being edited, whose office
+// may predate the office list.
+export const normalizeStaffInput = (body, { partial = false, previous } = {}) => {
   const value = {};
   for (const [field, limit] of Object.entries(FIELD_LIMITS)) {
     if (partial && field === 'email') continue; // The login email is not changed here.
@@ -26,16 +32,27 @@ export const normalizeStaffInput = (body, { partial = false } = {}) => {
     if (text.length > limit) return { error: `${field} exceeds the maximum length.` };
     value[field] = field === 'email' ? text.toLowerCase() : text;
   }
-  // HR also keeps the staff member's employment details; their personal details are
+  // HR also keeps the staff member's employment details; their other personal details are
   // their own to fill in on their profile.
-  const details = readProfileFields(body, EMPLOYMENT_FIELDS);
+  const details = readProfileFields(body, [...NAME_FIELDS, ...EMPLOYMENT_FIELDS]);
   if (details.error) return { error: details.error };
   Object.assign(value, details.value);
+  const office = officeError(value.office, previous?.office);
+  if (office) return { error: office };
+  if (value.phoneNumber !== undefined && !isPhilippineMobile(value.phoneNumber)) {
+    return { error: MOBILE_NUMBER_ERROR };
+  }
+  if (value.dateHired && !isRealDate(value.dateHired)) return { error: 'Enter the date hired, like 2026-10-16.' };
+  if ('region' in value) value.region ||= DEFAULT_REGION;
   if (!partial) {
     if (!value.name || !value.email || !value.role || !value.office) {
-      return { error: 'Name, email, job designation, and office are required.' };
+      return { error: 'Name, email, position title, and office are required.' };
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.email)) return { error: 'Enter a valid email address.' };
+    if (value.phoneNumber === undefined) return { error: MOBILE_NUMBER_ERROR };
+    if (!value.dateHired) return { error: 'Enter the date hired, like 2026-10-16.' };
+    if (!value.appointmentStatus) return { error: 'Choose the status of appointment.' };
+    value.region ||= DEFAULT_REGION;
     if (!STAFF_ACCESS_LEVELS.includes(body?.accessLevel)) return { error: 'Choose Supervisor or HR/Admin access.' };
     value.accessLevel = body.accessLevel;
   } else if (Object.keys(value).length === 0) {

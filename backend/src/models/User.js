@@ -47,6 +47,7 @@ const UserSchema = new mongoose.Schema({
   philhealthNumber: { type: String, default: '' },
   tinNumber: { type: String, default: '' },
   appointmentStatus: { type: String, default: '' },
+  designation: { type: String, default: '' },
   division: { type: String, default: '' },
   plantillaItemNumber: { type: String, default: '' },
   salaryGrade: { type: String, default: '' },

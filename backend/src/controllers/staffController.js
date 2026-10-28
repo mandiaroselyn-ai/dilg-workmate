@@ -84,7 +84,7 @@ export const updateStaff = async (req, res) => {
   try {
     const target = await findStaffTarget(req, res);
     if (!target) return;
-    const { value, error } = normalizeStaffInput(req.body, { partial: true });
+    const { value, error } = normalizeStaffInput(req.body, { partial: true, previous: target });
     if (error) return res.status(400).json({ success: false, error });
     if (value.employeeId && value.employeeId !== target.employeeId) {
       const taken = await User.findByEmployeeId(value.employeeId);

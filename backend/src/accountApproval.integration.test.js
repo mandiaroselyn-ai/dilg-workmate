@@ -24,6 +24,13 @@ const { inactiveAccountMessage, maskEmail, maskMobile, signedUpWithGoogle } = aw
 
 const app = createApiApp();
 const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', accessLevel: 'hr_admin', accountStatus: 'Active' };
+// What HR fills in, with Edit, before approving a sign-up.
+const approvalDetails = {
+  role: 'Administrative Assistant III',
+  office: 'Office of the MLGOO - Boac',
+  dateHired: '2026-10-16',
+  appointmentStatus: 'Permanent'
+};
 const pendingEmployee = {
   _id: 'emp-1',
   name: 'Juan Dela Cruz',
@@ -32,7 +39,8 @@ const pendingEmployee = {
   accessLevel: 'employee',
   accountStatus: 'Pending',
   signUpMethod: 'form',
-  phoneNumber: '0917 123 4567'
+  phoneNumber: '0917 123 4567',
+  ...approvalDetails
 };
 // Google sign-ups have no mobile number; older ones got the placeholder default number.
 const pendingGoogleEmployee = {
@@ -46,6 +54,8 @@ const pendingGoogleEmployee = {
   googleId: 'google-sub-2',
   phoneNumber: ''
 };
+// A Google sign-up once HR has added its details and mobile number.
+const completedGoogleEmployee = { ...pendingGoogleEmployee, ...approvalDetails, phoneNumber: '0918 765 4321' };
 
 // Turns on the SMS provider or the mail server for one test, without sending anything.
 const withSms = t => {
@@ -154,7 +164,7 @@ test('approving a sign-up form account sends the approval SMS and reports it to 
 
 test('approving a Google sign-up emails the address Google verified', async t => {
   const sent = withEmail(t);
-  const { response } = await changeStatus(t, pendingGoogleEmployee, 'Active');
+  const { response } = await changeStatus(t, completedGoogleEmployee, 'Active');
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.approvalNotice, { channel: 'email', result: 'sent' });
   assert.equal(sent.length, 1);
@@ -166,14 +176,14 @@ test('approving a Google sign-up emails the address Google verified', async t =>
 test('an older Google sign-up with the placeholder phone number is emailed, not texted', async t => {
   withSms(t);
   const sent = withEmail(t);
-  const legacy = { ...pendingGoogleEmployee, signUpMethod: undefined, phoneNumber: '0939 374 9823' };
+  const legacy = { ...completedGoogleEmployee, signUpMethod: undefined, phoneNumber: '0939 374 9823' };
   const { response } = await changeStatus(t, legacy, 'Active');
   assert.deepEqual(response.body.approvalNotice, { channel: 'email', result: 'sent' });
   assert.equal(sent.length, 1);
 });
 
 test('approving a Google sign-up without a mail server reports that email is not set up', async t => {
-  const { response } = await changeStatus(t, pendingGoogleEmployee, 'Active');
+  const { response } = await changeStatus(t, completedGoogleEmployee, 'Active');
   assert.deepEqual(response.body.approvalNotice, { channel: 'email', result: 'not-configured' });
 });
 
@@ -197,6 +207,48 @@ test('approving a rejected account later still tells the employee', async t => {
   assert.deepEqual(response.body.approvalNotice, { channel: 'sms', result: 'not-configured' });
 });
 
+test('a sign-up is not approved until HR fills in what a new account needs', async t => {
+  const { response, notify } = await changeStatus(t, pendingGoogleEmployee, 'Active');
+  assert.equal(response.status, 400);
+  assert.equal(response.body.error, 'Before approving, use Edit to fill in their position title, office, mobile number, date hired and status of appointment.');
+  assert.equal(User.updateAccountStatus.mock.callCount(), 0);
+  assert.equal(notify.mock.callCount(), 0);
+});
+
+test('a rejected sign-up also needs its details before it is approved', async t => {
+  const { response } = await changeStatus(t, { ...pendingEmployee, accountStatus: 'Rejected', dateHired: '' }, 'Active');
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /fill in their date hired\.$/);
+});
+
+test('a deactivated account is reactivated without the sign-up details', async t => {
+  const { response } = await changeStatus(t, { ...pendingGoogleEmployee, accountStatus: 'Inactive' }, 'Active');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.accountStatus, 'Active');
+});
+
+test('saving a sign-up as Active from the edit form needs the same details', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findAccount', async () => pendingGoogleEmployee);
+  const update = t.mock.method(User, 'updateEmployee', async (_id, data) => ({ ...pendingGoogleEmployee, ...data }));
+  const response = await request(app)
+    .patch('/api/employees/DILG-2026-2')
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({
+      name: 'Ana Reyes',
+      email: 'ana.reyes@gmail.com',
+      employeeId: 'DILG-2026-2',
+      role: approvalDetails.role,
+      office: approvalDetails.office,
+      phoneNumber: '0918 765 4321',
+      employmentStatus: 'ACTIVE',
+      accountStatus: 'Active'
+    });
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /fill in their date hired and status of appointment\.$/);
+  assert.equal(update.mock.callCount(), 0);
+});
+
 test('approving an account by saving it as Active from the edit form also tells the employee', async t => {
   t.mock.method(User, 'findByEmail', async () => hr);
   t.mock.method(User, 'findAccount', async () => pendingGoogleEmployee);
@@ -209,12 +261,12 @@ test('approving an account by saving it as Active from the edit form also tells 
       name: 'Ana Reyes',
       email: 'ana.reyes@gmail.com',
       employeeId: 'DILG-2026-2',
-      role: 'Administrative Assistant III',
-      office: 'Boac Municipal Operations Office',
+      ...approvalDetails,
+      phoneNumber: '0918 765 4321',
       employmentStatus: 'ACTIVE',
       accountStatus: 'Active'
     });
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.deepEqual(response.body.approvalNotice, { channel: 'email', result: 'not-configured' });
 });
 

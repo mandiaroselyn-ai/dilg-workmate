@@ -4,6 +4,7 @@
 // everywhere.
 
 import { SALARY_GRADE_OPTIONS, SALARY_STEP_OPTIONS, salaryFields } from './salarySchedule.js';
+import { DESIGNATIONS } from './dilgAssignments.js';
 
 export const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
 export const CIVIL_STATUS_OPTIONS = ['Single', 'Married', 'Widowed', 'Separated', 'Others'];
@@ -57,6 +58,8 @@ export const GOVERNMENT_ID_FIELDS = [
 export const EMPLOYMENT_FIELDS = [
   // Only one of the listed choices is saved (`strict`).
   { key: 'appointmentStatus', label: 'Status of Appointment', options: APPOINTMENT_STATUS_OPTIONS, strict: true, max: 40 },
+  // The work assigned on top of the position title, such as Cluster Head. Suggested, not a fixed list.
+  { key: 'designation', label: 'Designation', suggestions: DESIGNATIONS, placeholder: 'e.g. Cluster Head, MLGOO', max: 120 },
   { key: 'division', label: 'Division / Unit' },
   { key: 'plantillaItemNumber', label: 'Plantilla Item No.', max: 80 },
   { key: 'salaryGrade', label: 'Salary Grade', options: SALARY_GRADE_OPTIONS, max: 40 },
@@ -70,6 +73,10 @@ export const EMPLOYMENT_FIELDS = [
   },
   { key: 'immediateSupervisor', label: 'Immediate Supervisor', max: 160 }
 ];
+
+// The full name as shown and as attendance records are matched: the name parts and suffix.
+export const fullNameOf = person => [person?.firstName, person?.middleName, person?.lastName, person?.suffix]
+  .map(part => (part || '').trim()).filter(Boolean).join(' ');
 
 const DEFAULT_LIMIT = 250;
 

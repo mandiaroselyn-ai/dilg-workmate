@@ -29,9 +29,9 @@ const saveProfile = async (t, person, body) => {
 
 // What HR fills in for a new employee account.
 const newAccount = {
-  name: 'Pedro Santos', email: 'pedro@dilg.gov.ph', employeeId: 'DILG-2026-9', role: 'LGOO II', office: 'Boac',
-  region: 'DILG Region IV-B - MIMAROPA', employmentStatus: 'ACTIVE', dateHired: '2026-10-16', appointmentStatus: 'Permanent',
-  password: 'a-long-initial-password'
+  name: 'Pedro Santos', email: 'pedro@dilg.gov.ph', employeeId: 'DILG-2026-9', role: 'Local Government Operations Officer II',
+  office: 'Office of the MLGOO - Boac', phoneNumber: '0917 123 4567', region: 'DILG Region IV-B - MIMAROPA',
+  employmentStatus: 'ACTIVE', dateHired: '2026-10-16', appointmentStatus: 'Permanent', password: 'a-long-initial-password'
 };
 const createAccount = body => request(app).post('/api/employees').set('Authorization', `Bearer ${createAuthToken(hr)}`).send(body);
 
@@ -52,12 +52,13 @@ test('an account HR makes is Active at once, with no approval', async t => {
   assert.equal(creates.mock.calls[1].arguments[0].accountStatus, 'Inactive');
 });
 
-test('a new account needs its job designation, office, date hired, and status of appointment', async t => {
+test('a new account needs its position title, office, mobile number, date hired, and status of appointment', async t => {
   t.mock.method(User, 'findByEmail', async () => hr);
   const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
   for (const [field, message] of [
-    ['role', /job designation, and office are required/],
-    ['office', /job designation, and office are required/],
+    ['role', /position title, and office are required/],
+    ['office', /position title, and office are required/],
+    ['phoneNumber', /mobile number/],
     ['dateHired', /date hired/],
     ['appointmentStatus', /status of appointment/]
   ]) {
@@ -66,6 +67,12 @@ test('a new account needs its job designation, office, date hired, and status of
     assert.match(response.body.error, message);
   }
   assert.equal((await createAccount({ ...newAccount, dateHired: '2026-02-30' })).status, 400);
+  // A landline cannot get SMS notices.
+  assert.match((await createAccount({ ...newAccount, phoneNumber: '(042) 332 1234' })).body.error, /mobile number/);
+  // The office comes from the list, so the office filter and reports group people the same way.
+  const unlistedOffice = await createAccount({ ...newAccount, office: 'Boac' });
+  assert.equal(unlistedOffice.status, 400);
+  assert.match(unlistedOffice.body.error, /office from the list/);
   const unlisted = await createAccount({ ...newAccount, appointmentStatus: 'Regular' });
   assert.equal(unlisted.status, 400);
   assert.match(unlisted.body.error, /Choose a Status of Appointment from the list/);
@@ -79,6 +86,37 @@ test('a new account needs its job designation, office, date hired, and status of
   assert.equal(saved.dateHired, '2026-10-16');
   // A new employee starts with no leave credits.
   assert.equal('vacationLeaveCredits' in saved, false);
+  // A region left blank is saved as the region every account is in.
+  await createAccount({ ...newAccount, email: 'maria@dilg.gov.ph', region: '' });
+  assert.equal(creates.mock.calls[1].arguments[0].region, 'DILG Region IV-B - MIMAROPA');
+});
+
+test('HR records a designation, such as Cluster Head, apart from the position title', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  const response = await createAccount({ ...newAccount, role: 'Local Government Operations Officer VI', designation: 'Cluster Head' });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const saved = creates.mock.calls[0].arguments[0];
+  assert.equal(saved.role, 'Local Government Operations Officer VI');
+  assert.equal(saved.designation, 'Cluster Head');
+});
+
+test('HR editing an account keeps an office saved before the office list, but a new office must be listed', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findAccount', async () => ({ ...employee, office: 'DILG Boac', employmentStatus: 'ACTIVE' }));
+  const update = t.mock.method(User, 'updateEmployee', async (_identifier, data) => ({ ...employee, ...data }));
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  const edit = office => request(app)
+    .patch(`/api/employees/${employee.employeeId}`)
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ ...newAccount, email: employee.email, employeeId: employee.employeeId, office, accountStatus: 'Active' });
+
+  assert.equal((await edit('DILG Boac')).status, 200);
+  const moved = await edit('Boac MLGOO Office');
+  assert.equal(moved.status, 400);
+  assert.match(moved.body.error, /office from the list/);
+  assert.equal((await edit('Office of the MLGOO - Gasan')).status, 200);
+  assert.equal(update.mock.callCount(), 2);
 });
 
 test('a new account left without an employee ID is given one like DILG-2026-123456', async t => {
@@ -162,7 +200,7 @@ test('supervisors also leave their employment details to HR', async t => {
 });
 
 test('an HR/Admin keeps their own position, office, and employment details', async t => {
-  const { response, saved } = await saveProfile(t, hr, { name: 'HR Officer', role: 'HRMO III', office: 'Provincial Office', dateHired: '2020-01-06', salaryGrade: 'SG 18', salaryStep: 'Step 2', salary: 'PHP 999,999', plantillaItemNumber: 'DILGB-HRMO3-1-2020' });
+  const { response, saved } = await saveProfile(t, hr, { name: 'HR Officer', role: 'HRMO III', office: 'Office of the Provincial Director', dateHired: '2020-01-06', salaryGrade: 'SG 18', salaryStep: 'Step 2', salary: 'PHP 999,999', plantillaItemNumber: 'DILGB-HRMO3-1-2020' });
   assert.equal(response.status, 200);
   assert.equal(saved.role, 'HRMO III');
   assert.equal(saved.dateHired, '2020-01-06');
@@ -182,6 +220,22 @@ test('a profile save needs a full name, and an HR/Admin\'s needs a position and 
   const blankPosition = await saveProfile(t, hr, { name: 'HR Officer', role: '' });
   assert.equal(blankPosition.response.status, 400);
   assert.equal(blankPosition.response.body.error, 'Enter your position.');
+});
+
+test('a profile save needs a mobile number, and an HR/Admin\'s office comes from the list', async t => {
+  const landline = await saveProfile(t, employee, { name: employee.name, phoneNumber: '(042) 332 1234' });
+  assert.equal(landline.response.status, 400);
+  assert.match(landline.response.body.error, /mobile number/);
+  assert.equal(landline.saved, undefined);
+
+  const unlisted = await saveProfile(t, { ...hr, office: 'Provincial Office' }, { name: 'HR Officer', office: 'Somewhere else' });
+  assert.equal(unlisted.response.status, 400);
+  assert.match(unlisted.response.body.error, /office from the list/);
+});
+
+test('an HR/Admin keeps an office saved before the office list', async t => {
+  const { response } = await saveProfile(t, { ...hr, office: 'Provincial Office' }, { name: 'HR Officer', office: 'Provincial Office' });
+  assert.equal(response.status, 200);
 });
 
 test('profile details must be text of a sensible length', async t => {
@@ -228,8 +282,9 @@ test('supervisors get only what reviewing a request needs about the requester', 
 
 test('HR saving an employee changes only the profile details the form sent', async t => {
   t.mock.method(User, 'findByEmail', async () => hr);
-  t.mock.method(User, 'findAccount', async () => ({ ...employee, employmentStatus: 'ACTIVE' }));
-  const update = t.mock.method(User, 'updateEmployee', async (_identifier, data) => ({ ...employee, ...data }));
+  const before = { ...employee, employmentStatus: 'ACTIVE', region: 'DILG Region IV-B - MIMAROPA', phoneNumber: '0917 123 4567' };
+  t.mock.method(User, 'findAccount', async () => before);
+  const update = t.mock.method(User, 'updateEmployee', async (_identifier, data) => ({ ...before, ...data }));
   const notify = t.mock.method(Announcement, 'createNotification', async data => data);
   const response = await request(app)
     .patch(`/api/employees/${employee.employeeId}`)
@@ -240,6 +295,8 @@ test('HR saving an employee changes only the profile details the form sent', asy
       employeeId: employee.employeeId,
       role: employee.role,
       office: employee.office,
+      phoneNumber: before.phoneNumber,
+      region: before.region,
       employmentStatus: 'ACTIVE',
       accountStatus: 'Active',
       civilStatus: 'Single',

@@ -1,5 +1,6 @@
 import React from 'react';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS } from '../../shared/profileFields';
+import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES } from '../../shared/dilgAssignments';
 
 const EMERGENCY_KEYS = ['emergencyContactName', 'emergencyContactRelationship', 'emergencyContactNumber'];
 const field = key => PERSONAL_FIELDS.find(item => item.key === key);
@@ -24,11 +25,34 @@ const wfhLocation = location => [location?.street, location?.barangay, location?
 
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#1551b5] focus:bg-white';
 
+// Marks a required field's label. The input's `required` tells screen readers.
+export const RequiredMark = () => <span aria-hidden="true" className="text-rose-600"> *</span>;
+
+// The office choices for a <select>, grouped as DILG Marinduque groups its offices. An office
+// saved before the list stays selectable.
+export const OfficeOptions = ({ value }) => (
+  <>
+    {DILG_OFFICE_GROUPS.map(group => (
+      <optgroup key={group.label} label={group.label}>
+        {group.offices.map(office => <option key={office} value={office}>{office}</option>)}
+      </optgroup>
+    ))}
+    {value && !DILG_OFFICES.includes(value) && <option value={value}>{value}</option>}
+  </>
+);
+
+// Choices offered while typing, such as position titles; any other text can still be typed.
+export const Suggestions = ({ id, options }) => (
+  <datalist id={id}>
+    {options.map(option => <option key={option} value={option} />)}
+  </datalist>
+);
+
 // `values` are the whole form's, for a read-only field worked out from others (`derive`), such as
 // the monthly salary from the salary grade and step.
 export const ProfileFieldInput = ({ item, value, onChange, values }) => (
   <label className={`block min-w-0 text-[11px] font-bold text-slate-600 ${item.wide ? 'sm:col-span-2' : ''}`}>
-    {item.label}
+    {item.label}{item.required && !item.readOnly && <RequiredMark />}
     {item.readOnly ? (
       <input
         name={item.key}
@@ -37,6 +61,11 @@ export const ProfileFieldInput = ({ item, value, onChange, values }) => (
         value={(item.derive && values ? item.derive(values) : value) || ''}
         className={`${inputClass} cursor-not-allowed bg-slate-100 text-slate-600`}
       />
+    ) : item.offices ? (
+      <select name={item.key} value={value || ''} onChange={onChange} required={item.required} className={inputClass}>
+        <option value="">Select office</option>
+        <OfficeOptions value={value} />
+      </select>
     ) : item.options ? (
       <select name={item.key} value={value || ''} onChange={onChange} required={item.required} className={inputClass}>
         <option value="">Select</option>
@@ -44,16 +73,20 @@ export const ProfileFieldInput = ({ item, value, onChange, values }) => (
         {[...item.options, ...(value && !item.options.includes(value) ? [value] : [])].map(option => <option key={option} value={option}>{option}</option>)}
       </select>
     ) : (
-      <input
-        name={item.key}
-        type={item.type || 'text'}
-        required={item.required}
-        maxLength={item.max || 250}
-        placeholder={item.placeholder}
-        value={value || ''}
-        onChange={onChange}
-        className={inputClass}
-      />
+      <>
+        <input
+          name={item.key}
+          type={item.type || 'text'}
+          required={item.required}
+          maxLength={item.max || 250}
+          placeholder={item.placeholder}
+          value={value || ''}
+          onChange={onChange}
+          list={item.suggestions ? `${item.key}-suggestions` : undefined}
+          className={inputClass}
+        />
+        {item.suggestions && <Suggestions id={`${item.key}-suggestions`} options={item.suggestions} />}
+      </>
     )}
   </label>
 );
@@ -89,13 +122,13 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
   const personal = [
     { key: 'name', label: 'Full Name', required: true, max: 160, wide: true },
     ...PERSONAL_FIELDS.filter(item => !EMERGENCY_KEYS.includes(item.key)),
-    { key: 'phoneNumber', label: 'Contact Number', type: 'tel' },
+    { key: 'phoneNumber', label: 'Mobile Number', type: 'tel', required: true, placeholder: '09XX XXX XXXX' },
     // The login email is changed only by HR.
     { key: 'email', label: 'Government Email', readOnly: true }
   ];
   const employment = [
-    { key: 'role', label: 'Position Title', required: true, max: 120 },
-    { key: 'office', label: 'Office Assignment', required: true, max: 160 },
+    { key: 'role', label: 'Position Title', required: true, max: 120, suggestions: POSITION_TITLES },
+    { key: 'office', label: 'Office Assignment', required: true, max: 160, offices: true },
     { key: 'region', label: 'Regional Assignment' },
     { key: 'employeeId', label: 'Employee ID', readOnly: true },
     { key: 'employmentStatus', label: 'Employment Status', readOnly: true },

@@ -32,12 +32,39 @@ test('asks for the HR password whenever HR/Admin access is involved', () => {
   assert.equal(needsAdminPassword({ target: supervisor, accessLevel: 'employee' }), false);
 });
 
+// What HR fills in for a new Supervisor or HR/Admin account.
+const newStaff = {
+  name: 'Ana M. Cruz', firstName: 'Ana', middleName: 'M.', lastName: 'Cruz', email: 'Ana@DILG.gov.ph',
+  role: 'Local Government Operations Officer VII', designation: 'Provincial Director', office: 'Office of the Provincial Director',
+  phoneNumber: '0917 123 4567', dateHired: '2019-02-01', appointmentStatus: 'Permanent', accessLevel: 'supervisor'
+};
+
 test('validates new staff accounts', () => {
-  const { value } = normalizeStaffInput({ name: 'Ana Cruz', email: 'Ana@DILG.gov.ph', role: 'Provincial Director', office: 'Boac', accessLevel: 'supervisor' });
+  const { value } = normalizeStaffInput(newStaff);
   assert.equal(value.email, 'ana@dilg.gov.ph');
-  assert.match(normalizeStaffInput({ name: 'A', email: 'a@dilg.gov.ph', role: 'R', office: 'O', accessLevel: 'employee' }).error, /Supervisor or HR/);
-  assert.match(normalizeStaffInput({ name: 'A', email: 'not-an-email', role: 'R', office: 'O', accessLevel: 'supervisor' }).error, /valid email/);
-  assert.equal(normalizeStaffInput({ email: 'x@y.z', office: 'New office' }, { partial: true }).value.email, undefined);
+  assert.equal(value.lastName, 'Cruz');
+  assert.equal(value.designation, 'Provincial Director');
+  // Every account is in the region.
+  assert.equal(value.region, 'DILG Region IV-B - MIMAROPA');
+  assert.match(normalizeStaffInput({ ...newStaff, accessLevel: 'employee' }).error, /Supervisor or HR/);
+  assert.match(normalizeStaffInput({ ...newStaff, email: 'not-an-email' }).error, /valid email/);
+  assert.equal(normalizeStaffInput({ email: 'x@y.z', office: 'Office of the MLGOO - Gasan' }, { partial: true }).value.email, undefined);
+});
+
+test('a new staff account needs a listed office, a mobile number, the date hired, and the status of appointment', () => {
+  assert.match(normalizeStaffInput({ ...newStaff, office: 'Boac' }).error, /office from the list/);
+  assert.match(normalizeStaffInput({ ...newStaff, phoneNumber: undefined }).error, /mobile number/);
+  assert.match(normalizeStaffInput({ ...newStaff, phoneNumber: '(042) 332 1234' }).error, /mobile number/);
+  assert.match(normalizeStaffInput({ ...newStaff, dateHired: '' }).error, /date hired/);
+  assert.match(normalizeStaffInput({ ...newStaff, dateHired: '2019-02-30' }).error, /date hired/);
+  assert.match(normalizeStaffInput({ ...newStaff, appointmentStatus: '' }).error, /status of appointment/);
+});
+
+test('an edit keeps an office saved before the office list, but a new one must be listed', () => {
+  const previous = { office: 'DILG Marinduque' };
+  assert.equal(normalizeStaffInput({ office: 'DILG Marinduque' }, { partial: true, previous }).error, undefined);
+  assert.match(normalizeStaffInput({ office: 'Somewhere else' }, { partial: true, previous }).error, /office from the list/);
+  assert.match(normalizeStaffInput({ phoneNumber: '' }, { partial: true, previous }).error, /mobile number/);
 });
 
 test('HR keeps a staff member\'s region and employment details, not their personal details', () => {

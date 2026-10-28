@@ -6,6 +6,8 @@
 import React, { useEffect, useState } from 'react';
 import backgroundImage from '../assets/login-bg.jpg';
 import logoImage from '../assets/dilg-logo.png';
+import { DEFAULT_REGION, POSITION_TITLES } from '../../shared/dilgAssignments';
+import { OfficeOptions, Suggestions } from './ProfileDetails';
 const GoogleIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -129,7 +131,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [regPhone, setRegPhone] = useState('');
   const [regRole, setRegRole] = useState('');
   const [regOffice, setRegOffice] = useState('');
-  const [regRegion, setRegRegion] = useState('DILG Region IV-B - MIMAROPA');
+  const [regRegion, setRegRegion] = useState(DEFAULT_REGION);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState('');
 
@@ -336,8 +338,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
               <div><span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600">Employee registration</span><h2 className="mt-1 flex items-center gap-2 text-xl font-black text-slate-900"><UserPlus className="h-5 w-5 text-indigo-600" /> Registration Details</h2><p className="mt-1 text-xs text-slate-500">Input your assignment details below to create your account.</p></div>
               <div className="space-y-3">
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Full Name<input type="text" required value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Full Name" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Select Department<select required value={regOffice} onChange={(e) => setRegOffice(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Department</option><option>Marinduque Provincial Office</option><option>Provincial Administrative Section</option><option>Boac Municipal Operations Office</option><option>Mogpog Municipal Operations Office</option><option>Santa Cruz Municipal Operations Office</option><option>Gasan Municipal Operations Office</option></select></label>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Select Position<select required value={regRole} onChange={(e) => setRegRole(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Position</option><option>Local Government Operations Officer II</option><option>Local Government Operations Officer V</option><option>Administrative Officer V</option><option>Administrative Assistant III</option><option>Program Manager</option></select></label>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Office<select required value={regOffice} onChange={(e) => setRegOffice(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Office</option><OfficeOptions /></select></label>
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Position Title<input type="text" required maxLength={120} list="sign-up-position-titles" value={regRole} onChange={(e) => setRegRole(e.target.value)} placeholder="As on your appointment" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label><Suggestions id="sign-up-position-titles" options={POSITION_TITLES} />
                 <div className="grid grid-cols-2 gap-3"><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Account Role<input readOnly value="Employee" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Region<input readOnly value={regRegion} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label></div>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Enter your email<input type="email" required value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Enter your email" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="tel" inputMode="tel" autoComplete="tel" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
@@ -653,7 +655,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
                     {/* Department */}
                     <div className="space-y-1.5 text-xs">
-                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Select Department</label>
+                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Office</label>
                       <div className="relative">
                         <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <select
@@ -662,38 +664,29 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                           onChange={(e) => setRegOffice(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 cursor-pointer focus:bg-white"
                         >
-                          <option value="" disabled>Select Department</option>
-                          <option value="Marinduque Provincial Office">Marinduque Provincial Office</option>
-                          <option value="Provincial Administrative Section">Provincial Administrative Section</option>
-                          <option value="Boac Municipal Operations Office">Boac Municipal Operations Office</option>
-                          <option value="Mogpog Municipal Operations Office">Mogpog Municipal Operations Office</option>
-                          <option value="Santa Cruz Municipal Operations Office">Santa Cruz Municipal Operations Office</option>
-                          <option value="Gasan Municipal Operations Office">Gasan Municipal Operations Office</option>
-                          <option value="Buenavista Municipal Operations Office">Buenavista Municipal Operations Office</option>
-                          <option value="Torrijos Municipal Operations Office">Torrijos Municipal Operations Office</option>
+                          <option value="" disabled>Select Office</option>
+                          <OfficeOptions />
                         </select>
                       </div>
                     </div>
 
                     {/* Position */}
                     <div className="space-y-1.5 text-xs">
-                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Select Position</label>
+                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Position Title</label>
                       <div className="relative">
                         <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <select
+                        {/* Suggested titles; a title not listed can still be typed. */}
+                        <input
+                          type="text"
                           required
+                          maxLength={120}
+                          list="sign-up-position-titles-desktop"
                           value={regRole}
                           onChange={(e) => setRegRole(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 cursor-pointer focus:bg-white"
-                        >
-                          <option value="" disabled>Select Position</option>
-                          <option value="Local Government Operations Officer II">Local Government Operations Officer II</option>
-                          <option value="Local Government Operations Officer V">Local Government Operations Officer V</option>
-                          <option value="Local Government Operations Officer VI">Local Government Operations Officer VI</option>
-                          <option value="Administrative Officer V">Administrative Officer V</option>
-                          <option value="Administrative Assistant III">Administrative Assistant III</option>
-                          <option value="Program Manager">Program Manager</option>
-                        </select>
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
+                          placeholder="As on your appointment"
+                        />
+                        <Suggestions id="sign-up-position-titles-desktop" options={POSITION_TITLES} />
                       </div>
                     </div>
 

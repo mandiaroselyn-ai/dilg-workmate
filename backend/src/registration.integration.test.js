@@ -13,9 +13,9 @@ const app = createApiApp();
 const signUp = {
   name: 'Juan Dela Cruz',
   email: 'Juan.DelaCruz@dilg.gov.ph',
-  role: 'Administrative Aide',
-  office: 'DILG Marinduque - Boac',
-  region: 'MIMAROPA',
+  role: 'Administrative Aide IV',
+  office: 'Office of the MLGOO - Boac',
+  region: 'DILG Region IV-B - MIMAROPA',
   phoneNumber: '09171234567',
   password: 'a-long-password-42'
 };
@@ -53,6 +53,17 @@ test('HR is told a new account is waiting for approval', async t => {
   // HR's notification has a Review account button that opens this employee.
   assert.equal(notice.action, 'review_account');
   assert.equal(notice.targetId, 'DILG-2026-654321');
+});
+
+test('a sign-up takes its office from the list', async t => {
+  t.mock.method(User, 'findByEmail', async () => null);
+  const create = t.mock.method(User, 'createSelfServiceEmployee', async data => data);
+
+  const response = await request(app).post('/api/register').send({ ...signUp, office: 'DILG Marinduque - Boac' });
+
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /office from the list/);
+  assert.equal(create.mock.callCount(), 0);
 });
 
 test('an email that already has an account cannot sign up again', async t => {

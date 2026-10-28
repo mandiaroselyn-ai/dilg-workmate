@@ -2,26 +2,49 @@ import React, { useEffect, useState } from 'react';
 import { Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch } from '../utils/api.js';
 import HRResetPasswordCard from './HRResetPasswordCard';
-import { ProfileFieldInput } from './ProfileDetails';
-import { EMPLOYMENT_FIELDS, profileFieldValues } from '../../shared/profileFields';
+import { ProfileFieldInput, RequiredMark } from './ProfileDetails';
+import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, fullNameOf, profileFieldValues } from '../../shared/profileFields';
+import { DEFAULT_REGION, POSITION_TITLES } from '../../shared/dilgAssignments';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold normal-case text-slate-800 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'block text-xs font-black uppercase tracking-wide text-slate-500';
 
-// HR keeps a staff member's employment details; their personal details are their own
-// to fill in on their profile.
+// The name parts go on official forms such as CSC Form No. 6; the full name is built from them.
+const NAME_KEYS = ['firstName', 'middleName', 'lastName', 'suffix'];
+const NAME_FIELDS = PERSONAL_FIELDS
+  .filter(field => NAME_KEYS.includes(field.key))
+  .map(field => (['firstName', 'lastName'].includes(field.key) ? { ...field, required: true } : field));
+const ASSIGNMENT_FIELDS = [
+  { key: 'role', label: 'Position Title', required: true, max: 120, suggestions: POSITION_TITLES, placeholder: 'e.g. Local Government Operations Officer VI' },
+  { key: 'office', label: 'Office', required: true, offices: true },
+  { key: 'phoneNumber', label: 'Mobile Number', type: 'tel', required: true, max: 20, placeholder: '09XX XXX XXXX' }
+];
+
+// HR keeps a staff member's employment details; their other personal details are their own
+// to fill in on their profile. A new account needs the date hired and status of appointment,
+// like an employee's.
 const STAFF_EMPLOYMENT_FIELDS = [
-  { key: 'region', label: 'Region' },
+  { key: 'region', label: 'Region', required: true },
   { key: 'dateHired', label: 'Date hired', type: 'date', max: 40 },
   ...EMPLOYMENT_FIELDS
 ];
+const NEW_STAFF_EMPLOYMENT_FIELDS = STAFF_EMPLOYMENT_FIELDS
+  .map(field => (['dateHired', 'appointmentStatus'].includes(field.key) ? { ...field, required: true } : field));
 
 const emptyForm = {
-  name: '', email: '', role: '', office: '', phoneNumber: '', employeeId: '', accessLevel: 'supervisor', password: '',
-  ...profileFieldValues({}, STAFF_EMPLOYMENT_FIELDS),
-  region: 'DILG Region IV-B - MIMAROPA'
+  email: '', employeeId: '', accessLevel: 'supervisor', password: '',
+  ...profileFieldValues({}, [...NAME_FIELDS, ...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS]),
+  region: DEFAULT_REGION
+};
+
+// An account saved before the name parts were kept gets them from its full name, for HR to correct.
+const nameParts = account => {
+  const words = (account.name || '').trim().split(/\s+/).filter(Boolean);
+  return account.firstName || account.lastName
+    ? profileFieldValues(account, NAME_FIELDS)
+    : { ...profileFieldValues({}, NAME_FIELDS), firstName: words[0] || '', lastName: words.slice(1).join(' ') };
 };
 const isActive = account => !account.accountStatus || account.accountStatus.toLowerCase() === 'active';
 const identifierOf = account => account.employeeId || account.email;
@@ -105,7 +128,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       setError(`The initial password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
-    const fields = { ...form };
+    const fields = { ...form, name: fullNameOf(form) };
     confirmAction({
       title: `Create ${ACCESS_LABELS[fields.accessLevel]} account for ${fields.name}?`,
       description: `${fields.email} will be able to log in as ${ACCESS_LABELS[fields.accessLevel]} right away. Share the initial password privately; they can change it under Profile.`,
@@ -124,7 +147,11 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
     setBusy(true);
     setError('');
     try {
-      const { account } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(editing.account))}`, 'PATCH', editing.fields);
+      // The full name stays as saved unless HR changed the name parts.
+      const before = nameParts(editing.account);
+      const renamed = NAME_KEYS.some(key => (editing.fields[key] || '').trim() !== (before[key] || '').trim());
+      const fields = { ...editing.fields, name: renamed || !editing.account.name ? fullNameOf(editing.fields) : editing.account.name };
+      const { account } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(editing.account))}`, 'PATCH', fields);
       replaceAccount(account);
       setEditing(null);
       onToast?.('Account details saved.');
@@ -211,23 +238,23 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       {form && !pending && (
         <form onSubmit={submitNewAccount} className="space-y-3 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-black text-slate-900">New Supervisor or HR/Admin account</p>
+          <p className="text-xs text-slate-500">Fields marked <span className="text-rose-600">*</span> are required. Put Provincial Director, Program Manager, and the like under Designation.</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelClass}>Full name<input name="name" required maxLength={160} value={form.name} onChange={updateFormField} className={inputClass} /></label>
-            <label className={labelClass}>Email<input name="email" type="email" required maxLength={254} value={form.email} onChange={updateFormField} className={inputClass} /></label>
-            <label className={labelClass}>Job designation<input name="role" required maxLength={120} value={form.role} onChange={updateFormField} placeholder="e.g. Provincial Director" className={inputClass} /></label>
-            <label className={labelClass}>Office<input name="office" required maxLength={160} value={form.office} onChange={updateFormField} className={inputClass} /></label>
-            <label className={labelClass}>Mobile number (optional)<input name="phoneNumber" maxLength={250} value={form.phoneNumber} onChange={updateFormField} placeholder="Supervisors get an SMS when a request is forwarded" className={inputClass} /></label>
-            <label className={labelClass}>Employee ID (optional)<input name="employeeId" maxLength={64} value={form.employeeId} onChange={updateFormField} placeholder="Generated if blank" className={inputClass} /></label>
-            <label className={labelClass}>Access
+            {[...NAME_FIELDS, ...ASSIGNMENT_FIELDS].map(field => (
+              <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={updateFormField} />
+            ))}
+            <label className={labelClass}>Email<RequiredMark /><input name="email" type="email" required maxLength={254} value={form.email} onChange={updateFormField} className={inputClass} /></label>
+            <label className={labelClass}>Employee ID<input name="employeeId" maxLength={64} value={form.employeeId} onChange={updateFormField} placeholder="Generated if blank" className={inputClass} /></label>
+            <label className={labelClass}>Access<RequiredMark />
               <select name="accessLevel" value={form.accessLevel} onChange={updateFormField} className={inputClass}>
                 <option value="supervisor">Supervisor</option>
                 <option value="hr_admin">HR/Admin</option>
               </select>
             </label>
-            <label className={labelClass}>Initial password (at least {MIN_PASSWORD_LENGTH} characters)
+            <label className={labelClass}>Initial password (at least {MIN_PASSWORD_LENGTH} characters)<RequiredMark />
               <input name="password" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} maxLength={256} value={form.password} onChange={updateFormField} className={inputClass} />
             </label>
-            {STAFF_EMPLOYMENT_FIELDS.map(field => (
+            {NEW_STAFF_EMPLOYMENT_FIELDS.map(field => (
               <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={updateFormField} />
             ))}
           </div>
@@ -242,12 +269,9 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       {editing && !pending && (
         <form onSubmit={submitEdit} className="space-y-3 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-black text-slate-900">Edit {editing.account.name}</p>
+          <p className="text-xs text-slate-500">Fields marked <span className="text-rose-600">*</span> are required.</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelClass}>Full name<input name="name" required maxLength={160} value={editing.fields.name} onChange={updateEditField} className={inputClass} /></label>
-            <label className={labelClass}>Job designation<input name="role" required maxLength={120} value={editing.fields.role} onChange={updateEditField} className={inputClass} /></label>
-            <label className={labelClass}>Office<input name="office" required maxLength={160} value={editing.fields.office} onChange={updateEditField} className={inputClass} /></label>
-            <label className={labelClass}>Mobile number<input name="phoneNumber" maxLength={250} value={editing.fields.phoneNumber} onChange={updateEditField} placeholder="Supervisors get an SMS when a request is forwarded" className={inputClass} /></label>
-            {STAFF_EMPLOYMENT_FIELDS.map(field => (
+            {[...NAME_FIELDS, ...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS].map(field => (
               <ProfileFieldInput key={field.key} item={field} value={editing.fields[field.key]} values={editing.fields} onChange={updateEditField} />
             ))}
           </div>
@@ -272,7 +296,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                   {account.name}
                   {self && <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">You</span>}
                 </p>
-                <p className="text-[11px] text-slate-500">{account.email} • {account.role || 'No designation'} • {account.office || 'No office'}</p>
+                <p className="text-[11px] text-slate-500">{account.email} • {[account.role || 'No position title', account.designation].filter(Boolean).join(', ')} • {account.office || 'No office'}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-black ${account.accessLevel === 'hr_admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-sky-50 text-sky-700'}`}>
                     <ShieldCheck className="h-3 w-3" /> {ACCESS_LABELS[account.accessLevel]}
@@ -287,7 +311,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                 <p className="max-w-[220px] text-right text-xs font-semibold text-slate-500">Another HR/Admin must change your own access or status. Edit your details under Profile.</p>
               ) : (
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { name: account.name || '', role: account.role || '', office: account.office || '', phoneNumber: account.phoneNumber || '', ...profileFieldValues(account, STAFF_EMPLOYMENT_FIELDS) } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
+                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { ...nameParts(account), ...profileFieldValues(account, [...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS]) } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
                   <select
                     aria-label={`Change access for ${account.name}`}
                     value=""

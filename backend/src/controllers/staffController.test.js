@@ -41,7 +41,7 @@ const account = fields => {
 const hr = account({ _id: 'hr-1', name: 'HR One', email: 'hr1@dilg.gov.ph', accessLevel: 'hr_admin' });
 
 test('creating an HR/Admin account requires the HR password', async () => {
-  const body = { name: 'New Admin', email: 'new@dilg.gov.ph', role: 'HRMO', office: 'Boac', accessLevel: 'hr_admin', password: 'initial-password-1' };
+  const body = { name: 'New Admin', email: 'new@dilg.gov.ph', role: 'Administrative Officer V', office: 'Office of the Provincial Director', phoneNumber: '0917 123 4567', dateHired: '2019-02-01', appointmentStatus: 'Permanent', accessLevel: 'hr_admin', password: 'initial-password-1' };
   let created = false;
   await withFakes({
     verifyPassword: async (_user, password) => password === 'correct-password',
@@ -56,7 +56,7 @@ test('creating an HR/Admin account requires the HR password', async () => {
 });
 
 test('supervisor accounts can be created without the HR password', async () => {
-  const body = { name: 'Sup', email: 'sup@dilg.gov.ph', role: 'Director', office: 'Boac', accessLevel: 'supervisor', password: 'initial-password-1' };
+  const body = { name: 'Sup', email: 'sup@dilg.gov.ph', role: 'Local Government Operations Officer VII', office: 'Office of the Provincial Director', phoneNumber: '0917 123 4567', dateHired: '2019-02-01', appointmentStatus: 'Permanent', accessLevel: 'supervisor', password: 'initial-password-1' };
   await withFakes({ createStaffAccount: async data => ({ ...data, _id: 'sup-1' }) }, async () => {
     assert.equal((await call(controller.createStaff, { user: hr, body })).statusCode, 201);
   });

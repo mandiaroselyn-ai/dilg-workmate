@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { attendanceWindowStart, getManilaDateString } from '../../../shared/localDate.js';
+import { attendanceWindowStart, getManilaDateString, isRealDate } from '../../../shared/localDate.js';
+import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isSignUpApproval, missingApprovalDetails, officeError } from '../../../shared/dilgAssignments.js';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
@@ -75,6 +76,11 @@ export const updateUserProfile = async (req, res) => {
         return res.status(400).json({ success: false, error: `Enter your ${label}.` });
       }
     }
+    if (profileData.phoneNumber !== undefined && !toPhilippineMobile(profileData.phoneNumber)) {
+      return res.status(400).json({ success: false, error: MOBILE_NUMBER_ERROR });
+    }
+    const office = typeof profileData.office === 'string' ? officeError(profileData.office.trim(), req.user.office) : '';
+    if (office) return res.status(400).json({ success: false, error: office });
     const details = readProfileFields(req.body, isHrAdmin
       ? [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS]
       : [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS]);
@@ -126,7 +132,7 @@ export const registerUser = async (req, res) => {
     }
     profile.email = profile.email.toLowerCase();
     if (!profile.name || !profile.email || !profile.role || !profile.office) {
-      return res.status(400).json({ success: false, error: 'Name, email, job designation, and office are required.' });
+      return res.status(400).json({ success: false, error: 'Name, email, position title, and office are required.' });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
       return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
@@ -139,6 +145,8 @@ export const registerUser = async (req, res) => {
     if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
       return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
     }
+    const office = officeError(profile.office);
+    if (office) return res.status(400).json({ success: false, error: office });
     if (await User.findByEmail(profile.email)) {
       return res.status(409).json({ success: false, error: 'An account already uses this email address.' });
     }
@@ -195,8 +203,13 @@ const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
   employee.accountStatus = body.accountStatus || 'Pending';
 
   if (!employee.name || !employee.email || (!employee.employeeId && !creating) || !employee.role || !employee.office) {
-    return { error: 'Name, email, employee ID, job designation, and office are required.' };
+    return { error: 'Name, email, employee ID, position title, and office are required.' };
   }
+  if (!toPhilippineMobile(employee.phoneNumber)) {
+    return { error: MOBILE_NUMBER_ERROR };
+  }
+  // Every account is in the region; a blank one is not saved.
+  employee.region ||= DEFAULT_REGION;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(employee.email)) {
     return { error: 'Enter a valid employee email address.' };
   }
@@ -261,14 +274,19 @@ const unusedEmployeeId = async () => {
   return '';
 };
 
-const isRealDate = value => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value)
-  && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+// "Before approving, use Edit to fill in their office and mobile number."
+const approvalError = missing => {
+  const list = missing.length > 1 ? `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)}` : missing[0];
+  return `Before approving, use Edit to fill in their ${list}.`;
+};
 
 export const createEmployee = async (req, res) => {
   try {
     const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
     const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer, { creating: true });
     if (error) return res.status(400).json({ success: false, error });
+    const office = officeError(employee.office);
+    if (office) return res.status(400).json({ success: false, error: office });
     // The leave earned in the month hired counts from this date (see monthServiceDays).
     if (!isRealDate(employee.dateHired)) {
       return res.status(400).json({ success: false, error: 'Enter the date hired, like 2026-10-16. The leave earned in the first month counts from it.' });
@@ -323,6 +341,11 @@ export const updateEmployee = async (req, res) => {
     const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
     if (error) return res.status(400).json({ success: false, error });
     const before = await User.findAccount(req.params.identifier);
+    const office = officeError(employee.office, before?.office);
+    if (office) return res.status(400).json({ success: false, error: office });
+    // Saving a sign-up as Active approves it, which needs what HR fills in for a new account.
+    const missing = isSignUpApproval(before, employee.accountStatus) ? missingApprovalDetails({ ...(before?.toObject?.() || before), ...employee }) : [];
+    if (missing.length) return res.status(400).json({ success: false, error: approvalError(missing) });
     const updated = await User.updateEmployee(req.params.identifier, employee);
     if (updated?.conflict) {
       return res.status(409).json({ success: false, error: 'An employee already uses this email address or employee ID.' });
@@ -511,6 +534,8 @@ export const updateEmployeeAccountStatus = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Invalid account status.' });
     }
     const before = await User.findAccount(identifier);
+    const missing = isSignUpApproval(before, accountStatus) ? missingApprovalDetails(before) : [];
+    if (missing.length) return res.status(400).json({ success: false, error: approvalError(missing) });
     const updated = await User.updateAccountStatus(identifier, accountStatus);
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     // When an account becomes active, the employee is told by SMS or email that they can

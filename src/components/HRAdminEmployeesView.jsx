@@ -18,19 +18,16 @@ import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
-import ProfileDetails, { ProfileFieldInput } from './ProfileDetails';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, profileFieldValues } from '../../shared/profileFields';
+import ProfileDetails, { OfficeOptions, ProfileFieldInput, RequiredMark, Suggestions } from './ProfileDetails';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
+import { DEFAULT_REGION, POSITION_TITLES, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
 
 // Profile details the form below shows in sections of their own; the name parts, birthday,
 // gender, and address already have their own inputs.
 const OWN_INPUT_KEYS = ['firstName', 'middleName', 'lastName', 'dateOfBirth', 'gender', 'address'];
 const MORE_PERSONAL_FIELDS = PERSONAL_FIELDS.filter(field => !OWN_INPUT_KEYS.includes(field.key));
 const PROFILE_FORM_FIELDS = [...MORE_PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS];
-const DEFAULT_REGION = 'DILG Region IV-B - MIMAROPA';
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500';
-
-// The full name as shown and as attendance records are matched: the name parts and suffix.
-const fullNameOf = form => [form.firstName, form.middleName, form.lastName, form.suffix].map(part => (part || '').trim()).filter(Boolean).join(' ');
 
 const emptyForm = {
   ...profileFieldValues({}, PROFILE_FORM_FIELDS),
@@ -124,9 +121,6 @@ const employmentNote = (employee = {}) => {
   return employment && employment.toUpperCase() !== 'ACTIVE' ? ` · Employment: ${employment}` : '';
 };
 
-// True when the employee has a Philippine mobile number the approval SMS can go to
-// (09XXXXXXXXX or +639XXXXXXXXX), matching the server's check.
-const mobileNumberOf = (employee = {}) => /^(09|\+?639)\d{9}$/.test(String(employee.phoneNumber || '').replace(/[\s()-]/g, ''));
 // Matches the server: Google sign-ups are told about approval by email, at the address
 // Google verified; everyone else by SMS.
 const signedUpWithGoogle = (employee = {}) => employee.signUpMethod === 'google' || (!employee.signUpMethod && Boolean(employee.googleId));
@@ -631,6 +625,10 @@ This cannot be undone.`
   };
 
   if (screen === 'editor') {
+    const editedEmployee = editingId ? employeeAccounts.find(employee => employeeKey(employee) === editingId) : null;
+    // Making an account, or approving a sign-up by saving it as Active, needs the date hired
+    // and status of appointment, as the server checks.
+    const approving = !editingId || isSignUpApproval(editedEmployee, form.accountStatus);
     return (
       <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
         <button type="button" onClick={() => setScreen('list')} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
@@ -640,19 +638,19 @@ This cannot be undone.`
         <form onSubmit={handleSaveEmployee} className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-xl font-black text-slate-900">{editingId ? 'Update Employee Account' : 'Create Employee Account'}</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">Employee account details are saved to the shared database and used across HR and employee views.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Employee account details are saved to the shared database and used across HR and employee views. Fields marked <span className="text-rose-600">*</span> are required.</p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <label className="text-[11px] font-black text-slate-600">First Name
+              <label className="text-[11px] font-black text-slate-600">First Name<RequiredMark />
                 <input name="firstName" value={form.firstName} onChange={handleChange} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
               <label className="text-[11px] font-black text-slate-600">Middle Name
                 <input name="middleName" value={form.middleName} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
-              <label className="text-[11px] font-black text-slate-600">Last Name
+              <label className="text-[11px] font-black text-slate-600">Last Name<RequiredMark />
                 <input name="lastName" value={form.lastName} onChange={handleChange} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
-              <label className="text-[11px] font-black text-slate-600">Employee ID
+              <label className="text-[11px] font-black text-slate-600">Employee ID{editingId && <RequiredMark />}
                 <input name="employeeId" value={form.employeeId} onChange={handleChange} required={Boolean(editingId)} placeholder={editingId ? '' : 'Blank: assigned like DILG-2026-123456'} className={inputClass} />
               </label>
 
@@ -667,15 +665,15 @@ This cannot be undone.`
                   <option value="Other">Other</option>
                 </select>
               </label>
-              <label className="text-[11px] font-black text-slate-600">Phone Number
-                <input name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} placeholder="09XX XXX XXXX" className={inputClass} />
-                <span className="mt-1 block text-xs font-medium text-slate-500">A mobile number, so SMS notices reach the employee.</span>
+              <label className="text-[11px] font-black text-slate-600">Mobile Number<RequiredMark />
+                <input name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} required maxLength={20} placeholder="09XX XXX XXXX" className={inputClass} />
+                <span className="mt-1 block text-xs font-medium text-slate-500">SMS notices, such as leave approvals, are sent here.</span>
               </label>
-              <label className="text-[11px] font-black text-slate-600">Email
+              <label className="text-[11px] font-black text-slate-600">Email<RequiredMark />
                 <input name="email" type="email" value={form.email} onChange={handleChange} required placeholder="name@dilg.gov.ph" className={inputClass} />
               </label>
               {!editingId && (
-                <label className="text-[11px] font-black text-slate-600">Initial Employee Password
+                <label className="text-[11px] font-black text-slate-600">Initial Employee Password<RequiredMark />
                   <input name="password" type="password" value={form.password} onChange={handleChange} minLength={10} maxLength={256} autoComplete="new-password" required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
                   <span className="mt-1 block text-xs font-medium text-slate-500">At least 10 characters. Share it securely with the employee.</span>
                 </label>
@@ -685,16 +683,21 @@ This cannot be undone.`
                 <input name="address" value={form.address} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
 
-              <label className="text-[11px] font-black text-slate-600">Employee Job Designation
-                <input name="role" value={form.role} onChange={handleChange} required maxLength={120} placeholder="e.g. Local Government Operations Officer II" className={inputClass} />
+              <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
+                <input name="role" value={form.role} onChange={handleChange} required maxLength={120} list="position-title-suggestions" placeholder="e.g. Local Government Operations Officer II" className={inputClass} />
+                <Suggestions id="position-title-suggestions" options={POSITION_TITLES} />
+                <span className="mt-1 block text-xs font-medium text-slate-500">As on the appointment. Put Cluster Head, MLGOO, and the like under Designation.</span>
               </label>
 
-              <label className="text-[11px] font-black text-slate-600">Office / Department
-                <input name="office" value={form.office} onChange={handleChange} required maxLength={160} placeholder="e.g. Marinduque Provincial Office" className={inputClass} />
+              <label className="text-[11px] font-black text-slate-600">Office<RequiredMark />
+                <select name="office" value={form.office} onChange={handleChange} required className={inputClass}>
+                  <option value="">Select office</option>
+                  <OfficeOptions value={form.office} />
+                </select>
               </label>
 
-              <label className="text-[11px] font-black text-slate-600">Region
-                <input name="region" value={form.region} onChange={handleChange} maxLength={250} className={inputClass} />
+              <label className="text-[11px] font-black text-slate-600">Region<RequiredMark />
+                <input name="region" value={form.region} onChange={handleChange} required maxLength={250} className={inputClass} />
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Employment Status
@@ -715,8 +718,8 @@ This cannot be undone.`
                 </select>
               </label>
 
-              <label className="text-[11px] font-black text-slate-600">Date Hired
-                <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} required={!editingId} className={inputClass} />
+              <label className="text-[11px] font-black text-slate-600">Date Hired{approving && <RequiredMark />}
+                <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} required={approving} className={inputClass} />
                 <span className="mt-1 block text-xs font-medium text-slate-500">The leave earned in the first month counts from this date.</span>
               </label>
 
@@ -740,7 +743,7 @@ This cannot be undone.`
                       <ProfileFieldInput
                         key={field.key}
                         // A new employee's status of appointment decides whether they earn leave credits.
-                        item={field.key === 'appointmentStatus' && !editingId ? { ...field, required: true } : field}
+                        item={field.key === 'appointmentStatus' && approving ? { ...field, required: true } : field}
                         value={form[field.key]}
                         values={form}
                         onChange={handleChange}
@@ -808,6 +811,8 @@ This cannot be undone.`
   }
 
   if (screen === 'profile' && selectedEmployee) {
+    // A sign-up is approved only once HR has filled in what a new account needs.
+    const pendingMissing = missingApprovalDetails(selectedEmployee);
     return (
       <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
         <button type="button" onClick={() => setScreen('list')} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
@@ -893,17 +898,21 @@ This cannot be undone.`
             <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
               <p className="text-sm font-black text-amber-900">This account is waiting for approval</p>
               <p className="mt-1 text-xs font-semibold text-amber-800">
-                Check that {selectedEmployee.email || 'this email'} belongs to a DILG employee. After approval, they can log in; set their office and job designation with Edit.
+                Check that {selectedEmployee.email || 'this email'} belongs to a DILG employee. After approval, they can log in.
               </p>
-              <p className="mt-1 text-xs font-semibold text-amber-800">
-                {signedUpWithGoogle(selectedEmployee)
-                  ? `Signed up with Google. They will get an email at ${selectedEmployee.email} when you approve.`
-                  : mobileNumberOf(selectedEmployee)
-                    ? `They will get an SMS at ${selectedEmployee.phoneNumber} when you approve.`
-                    : 'No mobile number on file, so no SMS will be sent. Add one with Edit before approving, or let them know yourself.'}
-              </p>
+              {pendingMissing.length > 0 ? (
+                <p className="mt-1 text-xs font-black text-amber-900">
+                  Before approving, use Edit to fill in their {pendingMissing.join(', ')}.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs font-semibold text-amber-800">
+                  {signedUpWithGoogle(selectedEmployee)
+                    ? `Signed up with Google. They will get an email at ${selectedEmployee.email} when you approve.`
+                    : `They will get an SMS at ${selectedEmployee.phoneNumber} when you approve.`}
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Approve account'}</button>
+                <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating || pendingMissing.length > 0} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Approve account'}</button>
                 <button type="button" onClick={() => handleAccountStatus('Rejected')} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Reject'}</button>
               </div>
             </div>
@@ -1165,7 +1174,7 @@ This cannot be undone.`
       <header className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-600">Create and manage employee accounts, job designations, and access status.</p>
+            <p className="text-sm font-semibold text-slate-600">Create and manage employee accounts, positions, and access status.</p>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={refreshEmployees} disabled={employeesRefreshing} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
