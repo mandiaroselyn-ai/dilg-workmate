@@ -1,5 +1,5 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
-import { clockMinutes, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
+import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -23,12 +23,43 @@ export const requestCoversDate = (request, date) => {
   return Boolean(start) && start <= date && date <= end;
 };
 
+const clock24Minutes = value => {
+  const [hours, minutes] = String(value).split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+// A day that earns no overtime, whatever an office order says: work from home (CSC MC No. 6,
+// s. 2022, item V.B.1.1.4) or travel status (Joint CSC-DBM Circular No. 01-15, Sec. 7.3).
+const cannotEarnOvertime = (record, requests) => (record.dutyType || record.workAssignment?.assignmentRole) === 'wfh'
+  || requests.some(request => request?.type === 'Travel Order' && /approved/i.test(request.status || '')
+    && requestCoversDate(request, record.date)
+    && matchesAttendanceEmployee(request, { employeeId: record.employeeId, email: record.employeeEmail ?? record.email, name: record.employeeName }));
+
+// A record with what the office's calendar says about its day, for everything that reads it as
+// the DTR does: `holiday` when HR set its date as one, `noOvertime` for a day that earns none,
+// `overtimeWindows` for the office orders that name its employee on that date, and no `late`
+// from the server on a rest day.
+export const markDtrDay = (record, { holidays = [], overtimeOrders = [], requests = [] } = {}) => {
+  const noOvertime = cannotEarnOvertime(record, requests);
+  const marked = {
+    ...record,
+    holiday: holidays.some(holiday => holiday.date === record.date),
+    noOvertime,
+    overtimeWindows: noOvertime ? [] : overtimeOrders
+      .filter(order => order.startDate <= record.date && record.date <= order.endDate
+        && order.employeeIds.some(id => matchesAttendanceEmployee(record, { employeeId: id, email: id })))
+      .map(order => ({ orderNumber: order.orderNumber, from: clock24Minutes(order.startTime), to: clock24Minutes(order.endTime) }))
+  };
+  return isRestDay(marked) ? { ...marked, late: false } : marked;
+};
+
 // A late day: an arrival after the start of its half of the day (a Time In after 8:00 AM, or
 // after 1:00 PM for an afternoon-only day) or back from lunch after 1:00 PM, or a record HR set
 // to Late. Records with lunch logs are read from their own times, as their DTR is; earlier ones
-// use the `late` the server saved at Time In.
+// use the `late` the server saved at Time In. Nobody is late on a rest day.
 export const isLate = record => {
   if (/late/i.test(record?.status || '')) return true;
+  if (isRestDay(record)) return false;
   if (!usesLunchLogs(record)) return Boolean(record?.late);
   const { am, pm } = tardiness(record);
   return am + pm > 0;
@@ -46,8 +77,9 @@ export const countsInDtr = record => isAccepted(record?.offlineTimeIn);
 export const dtrTimeOut = record => (isAccepted(record?.offlineTimeOut) ? record?.timeOut || null : null);
 const isRejectedOffline = record => record?.offlineTimeIn?.decision === 'rejected';
 
-// An employee's attendance on `date`: Present, Late, On Leave, On Travel, or Absent.
-export const employeeDayStatus = (employee, { records = [], requests = [], date }) => {
+// An employee's attendance on `date`: Present, Late, On Leave, On Travel, Rest Day (a Saturday,
+// Sunday, or one of HR's holidays with none of those), or Absent.
+export const employeeDayStatus = (employee, { records = [], requests = [], date, holidays = [] }) => {
   const record = records.find(item => item.date === date && matchesAttendanceEmployee(item, employee) && !isRejectedOffline(item)) || null;
   if (record?.timeIn && record.status !== 'Absent') return { status: isLate(record) ? 'Late' : 'Present', record };
   const approved = requests.filter(request => (
@@ -57,25 +89,25 @@ export const employeeDayStatus = (employee, { records = [], requests = [], date 
   ));
   if (approved.some(request => request.type === 'Leave Request')) return { status: 'On Leave', record };
   if (approved.some(request => request.type === 'Travel Order')) return { status: 'On Travel', record };
-  return { status: 'Absent', record };
+  return { status: isRestDate(date, holidays) ? 'Rest Day' : 'Absent', record };
 };
 
 // An employee's attendance this month up to `today` (YYYY-MM-DD), one count per day:
 // Present (office), WFH, Field Work, Late, On Leave/Travel (approved), or Absent. Each
-// Monday to Friday counts; a weekend counts only when the employee timed in. Today counts
-// once the employee has timed in or is on leave, not while the day has not started. The
-// rate is the days attended out of the days the employee was expected at work.
-export const monthAttendanceSummary = (employee, { records = [], requests = [], today }) => {
-  const [year, month, lastDay] = today.split('-').map(Number);
+// Monday to Friday counts, except HR's holidays; a rest day counts only when the employee
+// timed in. Today counts once the employee has timed in or is on leave, not while the day has
+// not started. The rate is the days attended out of the days the employee was expected at work.
+export const monthAttendanceSummary = (employee, { records = [], requests = [], today, holidays = [] }) => {
+  const lastDay = Number(today.slice(8, 10));
   const counts = { present: 0, wfh: 0, field: 0, late: 0, leave: 0, absent: 0 };
   for (let day = 1; day <= lastDay; day += 1) {
     const date = `${today.slice(0, 8)}${String(day).padStart(2, '0')}`;
-    const weekend = [0, 6].includes(new Date(Date.UTC(year, month - 1, day)).getUTCDay());
-    const { status, record } = employeeDayStatus(employee, { records, requests, date });
+    const { status, record } = employeeDayStatus(employee, { records, requests, date, holidays });
+    if (status === 'Rest Day') continue;
     if (status === 'Absent') {
-      if (!weekend && date !== today) counts.absent += 1;
+      if (date !== today) counts.absent += 1;
     } else if (status === 'On Leave' || status === 'On Travel') {
-      if (!weekend) counts.leave += 1;
+      if (!isRestDate(date, holidays)) counts.leave += 1;
     } else if (status === 'Late') {
       counts.late += 1;
     } else {

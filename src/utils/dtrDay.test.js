@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dtrDayLogs, dtrUndertimeMinutes, durationText, LUNCH_LOGS_FROM, missingLunchLog, officeHoursText, officeTimeText, punchStanding, tardiness, tardinessText, usesLunchLogs } from './dtrDay.js';
-import { dtrIssue, dtrRecordStatus, isLate, missingDtrLog, totalHoursWorked } from './hrAttendance.js';
+import { dtrDayLogs, dtrEarlyMinutes, dtrLateMinutes, dtrOvertime, dtrUndertimeMinutes, durationText, isRestDate, isRestDay, LUNCH_LOGS_FROM, missingLunchLog, officeHoursText, officeTimeText, punchStanding, tardiness, tardinessText, usesLunchLogs } from './dtrDay.js';
+import { dtrIssue, dtrRecordStatus, isLate, markDtrDay, missingDtrLog, totalHoursWorked } from './hrAttendance.js';
 
 const day = LUNCH_LOGS_FROM;
 const wholeDay = {
@@ -24,6 +24,99 @@ test('arriving late, back late from lunch, and leaving early all count', () => {
   const logs = dtrDayLogs({ ...wholeDay, timeIn: '08:10 AM', lunchOut: '11:50 AM', lunchIn: '01:20 PM', timeOut: '04:45 PM' });
   // 10 late in the morning, 10 early for lunch, 20 late back, 15 early home.
   assert.equal(dtrUndertimeMinutes(logs), 55);
+  assert.equal(dtrLateMinutes(logs), 30);
+  assert.equal(dtrEarlyMinutes(logs), 25);
+});
+
+const juan = { employeeId: 'E1' };
+const order = (changes = {}) => ({ orderNumber: 'OO 14', startDate: day, endDate: day, startTime: '17:00', endTime: '19:00', employeeIds: ['E1'], ...changes });
+// The day's overtime once the office calendar is marked on the record.
+const overtimeOf = (record, calendar) => {
+  const marked = markDtrDay({ ...juan, ...record }, calendar);
+  return dtrOvertime(dtrDayLogs(marked), marked);
+};
+
+test('work after 5:00 PM is overtime only within an office order', () => {
+  const stayed = { ...wholeDay, timeIn: '08:00 AM', timeOut: '07:30 PM' };
+  assert.deepEqual(overtimeOf(stayed), { overtime: 0, noOrder: 150 });
+  // The order ends at 7:00 PM, so the last 30 minutes are not overtime.
+  assert.deepEqual(overtimeOf(stayed, { overtimeOrders: [order()] }), { overtime: 120, noOrder: 30 });
+  assert.deepEqual(overtimeOf({ ...wholeDay, timeOut: '05:00 PM' }, { overtimeOrders: [order()] }), { overtime: 0, noOrder: 0 });
+  // Another employee's order, or one for other dates, does not count.
+  assert.deepEqual(overtimeOf(stayed, { overtimeOrders: [order({ employeeIds: ['E2'] })] }), { overtime: 0, noOrder: 150 });
+  assert.deepEqual(overtimeOf(stayed, { overtimeOrders: [order({ startDate: '2026-10-28', endDate: '2026-10-30' })] }), { overtime: 0, noOrder: 150 });
+  // Two orders over the same hours count those hours once.
+  assert.deepEqual(overtimeOf(stayed, { overtimeOrders: [order(), order({ orderNumber: 'OO 15' })] }), { overtime: 120, noOrder: 30 });
+});
+
+test('an order can cover the time before 8:00 AM, but never the office hours or lunch', () => {
+  const early = { ...wholeDay, timeIn: '06:30 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '05:00 PM' };
+  assert.deepEqual(overtimeOf(early, { overtimeOrders: [order({ startTime: '06:00', endTime: '08:00' })] }), { overtime: 90, noOrder: 0 });
+  // Coming early without an order is simply coming early.
+  assert.deepEqual(overtimeOf(early), { overtime: 0, noOrder: 0 });
+  assert.equal(overtimeOf(early, { overtimeOrders: [order({ startTime: '08:00', endTime: '17:00' })] }).overtime, 0);
+});
+
+test('overtime does not lessen late or undertime, and needs a finished day', () => {
+  const logs = dtrDayLogs({ ...wholeDay, timeIn: '08:30 AM', timeOut: '06:30 PM' });
+  assert.equal(dtrUndertimeMinutes(logs), 30);
+  assert.deepEqual(overtimeOf({ date: day, timeIn: '08:00 AM', timeOut: '12:00 PM' }, { overtimeOrders: [order()] }), { overtime: 0, noOrder: 0 });
+  assert.deepEqual(overtimeOf({ date: day, timeIn: '08:00 AM' }, { overtimeOrders: [order()] }), { overtime: 0, noOrder: 0 });
+});
+
+test('Saturdays, Sundays, and holidays are rest days', () => {
+  assert.equal(isRestDay({ date: '2026-11-07' }), true); // Saturday
+  assert.equal(isRestDay({ date: '2026-11-08' }), true); // Sunday
+  assert.equal(isRestDay({ date: '2026-11-09' }), false); // Monday
+  assert.equal(isRestDay({}), false);
+  const holidays = [{ date: '2026-11-30', name: 'Bonifacio Day' }];
+  assert.equal(isRestDay(markDtrDay({ date: '2026-11-30' }, { holidays })), true);
+  assert.equal(isRestDay(markDtrDay({ date: '2026-11-27' }, { holidays })), false);
+  assert.equal(isRestDate('2026-11-30', holidays), true);
+  assert.equal(isRestDate('2026-11-07'), true);
+  assert.equal(isRestDate('2026-11-27', holidays), false);
+  // The `late` the server saved at Time In is dropped on a rest day only.
+  assert.equal(markDtrDay({ date: '2026-11-30', late: true }, { holidays }).late, false);
+  assert.equal(markDtrDay({ date: '2026-11-27', late: true }, { holidays }).late, true);
+});
+
+test('work from home and travel status earn no overtime, even within an office order', () => {
+  const stayed = { ...wholeDay, timeIn: '08:00 AM', timeOut: '07:30 PM' };
+  const calendar = { overtimeOrders: [order()] };
+  assert.deepEqual(overtimeOf({ ...stayed, dutyType: 'wfh' }, calendar), { overtime: 0, noOrder: 0 });
+  assert.deepEqual(overtimeOf({ ...stayed, workAssignment: { assignmentRole: 'wfh' } }, calendar), { overtime: 0, noOrder: 0 });
+  // Reporting to the office or to a field assignment does earn it.
+  assert.equal(overtimeOf({ ...stayed, dutyType: 'office' }, calendar).overtime, 120);
+  assert.equal(overtimeOf({ ...stayed, dutyType: 'field' }, calendar).overtime, 120);
+
+  const travel = { type: 'Travel Order', status: 'Approved', employeeId: 'E1', startDate: day, endDate: day };
+  assert.deepEqual(overtimeOf(stayed, { ...calendar, requests: [travel] }), { overtime: 0, noOrder: 0 });
+  // Not while it is pending, not on other dates, and not for another employee's travel.
+  assert.equal(overtimeOf(stayed, { ...calendar, requests: [{ ...travel, status: 'Pending' }] }).overtime, 120);
+  assert.equal(overtimeOf(stayed, { ...calendar, requests: [{ ...travel, startDate: '2026-10-28', endDate: '2026-10-29' }] }).overtime, 120);
+  assert.equal(overtimeOf(stayed, { ...calendar, requests: [{ ...travel, employeeId: 'E2' }] }).overtime, 120);
+  // A leave on that date is not travel status.
+  assert.equal(overtimeOf(stayed, { ...calendar, requests: [{ ...travel, type: 'Leave Request' }] }).overtime, 120);
+});
+
+test('all the work of a rest day is overtime within an office order, less its lunch', () => {
+  const saturday = { date: '2026-11-07', timeIn: '09:00 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '03:00 PM' };
+  assert.deepEqual(overtimeOf(saturday), { overtime: 0, noOrder: 300 });
+  const ordered = { overtimeOrders: [order({ startDate: '2026-11-07', endDate: '2026-11-07', startTime: '08:00', endTime: '17:00' })] };
+  assert.deepEqual(overtimeOf(saturday, ordered), { overtime: 300, noOrder: 0 });
+  // Without lunch logs, the noon hour is left out.
+  assert.deepEqual(overtimeOf({ date: '2026-11-07', timeIn: '09:00 AM', timeOut: '03:00 PM' }, ordered), { overtime: 300, noOrder: 0 });
+});
+
+test('a punch on a rest day is neither late nor undertime', () => {
+  const saturday = { date: '2026-11-07', timeIn: '09:00 AM', lunchOut: '11:00 AM', lunchIn: '01:30 PM', timeOut: '03:00 PM', late: true };
+  assert.deepEqual(punchStanding(saturday), { timeIn: null, lunchOut: null, lunchIn: null, timeOut: null });
+  assert.deepEqual(tardiness(saturday), { am: 0, pm: 0 });
+  assert.equal(tardinessText(saturday), '');
+  assert.equal(isLate(saturday), false);
+  assert.equal(dtrRecordStatus(saturday, '2026-12-01'), 'Complete');
+  // HR can still set it to Late.
+  assert.equal(isLate({ ...saturday, status: 'Late' }), true);
 });
 
 test('a half day counts only the half that was worked', () => {

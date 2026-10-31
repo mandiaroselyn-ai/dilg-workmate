@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense, useCallback, useState, useEffect, useRef } from 'react';
+import React, { lazy, Suspense, useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { attendanceWindowStart, getManilaDateString } from '../shared/localDate';
-import { mergeAttendanceMonth, mergeRecentAttendance } from './utils/hrAttendance';
+import { markDtrDay, mergeAttendanceMonth, mergeRecentAttendance } from './utils/hrAttendance';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
@@ -84,8 +84,15 @@ export default function App() {
   const loadedAttendanceMonthsRef = useRef(new Set());
   const [requests, setRequests] = useState([]);
   const [events, setEvents] = useState([]);
-  // HR's holidays, which are not counted as leave days.
+  // HR's holidays, which are not counted as leave days and have no late or undertime.
   const [holidays, setHolidays] = useState([]);
+  // The office orders for overtime: all of them for HR, an employee's own for an employee.
+  const [overtimeOrders, setOvertimeOrders] = useState([]);
+  // Attendance as the DTR reads it, which the pages show. What is saved stays as it came.
+  const dtrAttendance = useMemo(
+    () => attendanceHistory.map(record => markDtrDay(record, { holidays, overtimeOrders, requests })),
+    [attendanceHistory, holidays, overtimeOrders, requests]
+  );
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [smsAlerts, setSmsAlerts] = useState([]);
@@ -223,6 +230,7 @@ export default function App() {
           if (data.requests) setRequests(data.requests);
           if (data.events) setEvents(data.events);
           if (Array.isArray(data.holidays)) setHolidays(data.holidays);
+          if (Array.isArray(data.overtimeOrders)) setOvertimeOrders(data.overtimeOrders);
           if (data.announcements) setAnnouncements(data.announcements);
           if (data.notifications) {
             setNotifications(data.notifications);
@@ -553,6 +561,7 @@ export default function App() {
     setRequests([]);
     setEvents([]);
     setHolidays([]);
+    setOvertimeOrders([]);
     setAnnouncements([]);
     setNotifications([]);
     setSmsAlerts([]);
@@ -1518,8 +1527,8 @@ export default function App() {
     ? smsAlerts
     : scopeMessagesToAccount(smsAlerts, activeRole, user);
   const visibleEmployeeRecords = activeRole === 'employee'
-    ? attendanceHistory.filter(record => matchesAttendanceEmployee(record, user))
-    : attendanceHistory;
+    ? dtrAttendance.filter(record => matchesAttendanceEmployee(record, user))
+    : dtrAttendance;
   const visibleEmployeeRequests = activeRole === 'employee'
     ? requests.filter(request => (request.employeeId || request.employeeEmail || request.employeeName) && matchesAttendanceEmployee(request, user))
     : requests;
@@ -1575,7 +1584,7 @@ export default function App() {
           smsAlerts={headerSmsAlerts}
           employees={employees}
           requests={requests}
-          attendanceHistory={attendanceHistory}
+          attendanceHistory={dtrAttendance}
           smsConfigured={smsConfigured}
           onMarkNotificationRead={handleMarkNotificationRead}
           onMarkNotificationUnread={id => handleMarkNotificationRead(id, false)}
@@ -1598,6 +1607,7 @@ export default function App() {
               user={user}
               attendanceHistory={visibleEmployeeRecords}
               requests={visibleEmployeeRequests}
+              holidays={holidays}
               announcements={announcements}
               events={events}
               onViewChange={handleViewChange}
@@ -1609,6 +1619,7 @@ export default function App() {
             <AttendanceView
               user={user}
               attendanceHistory={visibleEmployeeRecords}
+              holidays={holidays}
               onTimeIn={handleTimeIn}
               onTimeOut={handleTimeOut}
               onLunch={handleLunch}
@@ -1666,7 +1677,7 @@ export default function App() {
               section={currentView}
               user={user}
               employees={employees}
-              attendanceHistory={attendanceHistory}
+              attendanceHistory={dtrAttendance}
               attendanceFrom={attendanceWindowStart()}
               loadedAttendanceMonths={loadedAttendanceMonths}
               onLoadAttendanceMonth={handleLoadAttendanceMonth}
@@ -1678,6 +1689,8 @@ export default function App() {
               onEmployeesChange={setEmployees}
               holidays={holidays}
               onHolidaysChange={setHolidays}
+              overtimeOrders={overtimeOrders}
+              onOvertimeOrdersChange={setOvertimeOrders}
               onUpdateUser={handleUpdateUser}
               onAdminNotification={handleAdminNotification}
               announcements={announcements}
@@ -1730,7 +1743,7 @@ export default function App() {
           {currentView === 'profile' && activeRole !== 'supervisor' && (
             <ProfileView
               user={user}
-              attendanceHistory={attendanceHistory}
+              attendanceHistory={dtrAttendance}
               requests={requests}
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}

@@ -7,8 +7,9 @@ import { apiFetch } from '../utils/api';
 const dateText = date => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 // HR's holidays: the days that are not counted as leave days (and so are not charged to leave
-// credits). HR adds a holiday, adds a year's fixed-date national holidays at once, or removes
-// one. Holy Week, the Eid holidays, and local holidays are added from the year's proclamation.
+// credits) and have no late or undertime. HR adds a holiday, adds a year's fixed-date national
+// holidays at once, or removes one. Holy Week, the Eid holidays, and local holidays are added
+// from the year's proclamation.
 export default function HRHolidays({ holidays = [], onHolidaysChange }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ date: '', name: '' });
@@ -50,7 +51,7 @@ export default function HRHolidays({ holidays = [], onHolidaysChange }) {
     }
   };
   const remove = holiday => {
-    if (window.confirm(`Remove ${holiday.name} (${dateText(holiday.date)})? It will count as a leave day again.`)) {
+    if (window.confirm(`Remove ${holiday.name} (${dateText(holiday.date)})? It will count as a working day again, for leave and for late and undertime.`)) {
       send(`/api/holidays?date=${encodeURIComponent(holiday.date)}`, { method: 'DELETE' }, `${holiday.name} removed.`);
     }
   };
@@ -62,7 +63,7 @@ export default function HRHolidays({ holidays = [], onHolidaysChange }) {
           <CalendarOff className="h-5 w-5 shrink-0 text-blue-700" />
           <span>
             <span className="block text-sm font-black text-slate-900">Holidays</span>
-            <span className="block text-xs text-slate-500">Not counted as leave days, so they are not charged to leave credits.</span>
+            <span className="block text-xs text-slate-500">Not counted as leave days, and have no late or undertime in the DTR.</span>
           </span>
         </span>
         <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />

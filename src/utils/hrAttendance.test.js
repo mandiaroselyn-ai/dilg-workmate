@@ -135,6 +135,34 @@ test('the month so far counts each day once, by where the employee worked', () =
   assert.equal(monthAttendanceSummary(rimhelyn, { records: [], today: '2026-10-01' }).rate, null);
 });
 
+test('a day with no work to report is a rest day, not an absence', () => {
+  const holidays = [{ date: '2026-12-25', name: 'Christmas Day' }];
+  const onDate = date => employeeDayStatus(rimhelyn, { records: [], requests: [], date, holidays }).status;
+  assert.equal(onDate('2026-12-25'), 'Rest Day'); // Friday, a holiday
+  assert.equal(onDate('2026-12-26'), 'Rest Day'); // Saturday
+  assert.equal(onDate('2026-12-27'), 'Rest Day'); // Sunday
+  assert.equal(onDate('2026-12-24'), 'Absent'); // Thursday
+  // Without its holiday in the list, a weekday is a working day.
+  assert.equal(employeeDayStatus(rimhelyn, { records: [], requests: [], date: '2026-12-25' }).status, 'Absent');
+
+  // Working on the holiday, or being on approved leave or travel, still shows.
+  const worked = { employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', date: '2026-12-25', timeIn: '08:00 AM', timeOut: '05:00 PM' };
+  assert.equal(employeeDayStatus(rimhelyn, { records: [worked], requests: [], date: '2026-12-25', holidays }).status, 'Present');
+  const travel = { type: 'Travel Order', status: 'Approved', employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', startDate: '2026-12-26' };
+  assert.equal(employeeDayStatus(rimhelyn, { records: [], requests: [travel], date: '2026-12-26', holidays }).status, 'On Travel');
+});
+
+test('the month so far leaves holidays out of the absences and the rate', () => {
+  const holidays = [{ date: '2026-12-25', name: 'Christmas Day' }];
+  const summary = (requests = []) => monthAttendanceSummary(rimhelyn, { records: [], requests, today: '2026-12-28', holidays });
+  // December 1 to 25 has 19 weekdays and Christmas is one of them; today is the 28th.
+  assert.equal(summary().absent, 18);
+  assert.equal(monthAttendanceSummary(rimhelyn, { records: [], today: '2026-12-28' }).absent, 19);
+  // A leave across the holiday does not count the holiday as a leave day.
+  const leave = { type: 'Leave Request', status: 'Approved', employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', startDate: '2026-12-24', endDate: '2026-12-25' };
+  assert.equal(summary([leave]).leave, 1);
+});
+
 test('total hours run from Time In to Time Out', () => {
   assert.equal(totalHoursWorked({ timeIn: '08:00 AM', timeOut: '05:00 PM' }), '9h 00m');
   assert.equal(totalHoursWorked({ timeIn: '07:52 AM', timeOut: '12:07 PM' }), '4h 15m');

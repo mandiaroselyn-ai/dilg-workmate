@@ -1,9 +1,11 @@
+import { minutesToLeaveDays } from '../../shared/leaveConversion.js';
+import { earnsLeaveCredits } from '../../shared/profileFields.js';
 import { countsInDtr, dtrTimeOut } from './hrAttendance.js';
-import { dtrDayLogs, dtrUndertimeMinutes, usesLunchLogs } from './dtrDay.js';
+import { dtrDayLogs, dtrEarlyMinutes, dtrLateMinutes, dtrOvertime, dtrUndertimeMinutes, isRestDay, usesLunchLogs } from './dtrDay.js';
 
 // One month of a Daily Time Record (CSC Form No. 48), as dtrForm.js prints it: each day's four
-// cells and minutes of tardiness and undertime, and the month's total, which is what is
-// charged to vacation leave.
+// cells and minutes of tardiness, undertime, and overtime, and the month's totals. Tardiness
+// and undertime are what is charged to vacation leave; overtime is not deducted.
 
 // Parses "08:05 AM" → { h: 8, min: 5 } in 24-hour values, or null.
 function parseTime(value) {
@@ -52,20 +54,29 @@ function undertimeMins(timeIn, timeOut) {
   return Math.max(0, required - worked);
 }
 
-// One day's four DTR cells and its undertime in minutes. A record with Lunch Out and Lunch
-// In shows its own four logs, with tardiness and undertime against the office hours.
+// One day's four DTR cells and its minutes: `undertime` is the form's UNDERTIME column, which is
+// `late` (tardiness) and `early` (undertime) together, and `overtime` and `noOrder` (see
+// dtrOvertime) are apart from them. A record with Lunch Out and Lunch In shows its own four
+// logs, with tardiness and undertime against the office hours. A rest day has neither.
 export function dayEntry(rec) {
-  if (!usesLunchLogs(rec)) return { ...dtrTimes(rec.timeIn, rec.timeOut), undertime: undertimeMins(rec.timeIn, rec.timeOut) };
   const logs = dtrDayLogs(rec);
   const cell = value => fmt(parseTime(value));
-  return {
-    amArr: cell(logs.amArrival),
-    amDep: cell(logs.amDeparture),
-    pmArr: cell(logs.pmArrival),
-    pmDep: cell(logs.pmDeparture),
-    undertime: dtrUndertimeMinutes(logs)
-  };
+  const cells = usesLunchLogs(rec)
+    ? { amArr: cell(logs.amArrival), amDep: cell(logs.amDeparture), pmArr: cell(logs.pmArrival), pmDep: cell(logs.pmDeparture) }
+    : dtrTimes(rec.timeIn, rec.timeOut);
+  const day = { ...cells, ...dtrOvertime(logs, rec) };
+  if (isRestDay(rec)) return { ...day, undertime: 0, late: 0, early: 0 };
+  if (!usesLunchLogs(rec)) {
+    // These count the hours worked, so the time late is at most the day's undertime.
+    const undertime = undertimeMins(rec.timeIn, rec.timeOut);
+    const late = Math.min(undertime, dtrLateMinutes(logs));
+    return { ...day, undertime, late, early: undertime - late };
+  }
+  return { ...day, undertime: dtrUndertimeMinutes(logs), late: dtrLateMinutes(logs), early: dtrEarlyMinutes(logs) };
 }
+
+// A record's day as the DTR shows it, or null when the DTR leaves it out (see dtrRecordsByDay).
+export const dtrEntry = rec => (rec?.timeIn && countsInDtr(rec) ? dayEntry({ ...rec, timeOut: dtrTimeOut(rec) }) : null);
 
 // One month's records by day of the month (`month` is 1–12), as the DTR shows them. An offline
 // Time In that HR has not approved (or rejected) is left out, and so is an offline Time Out
@@ -89,3 +100,24 @@ export const totalUndertimeMinutes = recordsByDay => Object.values(recordsByDay)
 // One employee's total tardiness and undertime in minutes for a month (`month` is 1–12), from
 // their attendance records: the TOTAL of their DTR for that month.
 export const monthUndertimeMinutes = (attendanceRecords, year, month) => totalUndertimeMinutes(dtrRecordsByDay(attendanceRecords, year, month));
+
+// The month's minutes of tardiness (`late`), undertime (`early`), and overtime, from records by day.
+export const monthDtrTotals = recordsByDay => Object.values(recordsByDay).reduce((totals, rec) => {
+  if (!rec?.timeIn) return totals;
+  const { late, early, overtime } = dayEntry(rec);
+  return { late: totals.late + late, early: totals.early + early, overtime: totals.overtime + overtime };
+}, { late: 0, early: 0, overtime: 0 });
+
+const dayText = days => `${Number(days).toFixed(3)} day`;
+
+// What the month's tardiness and undertime (`minutes`, its DTR total) take from the employee:
+// what HR charged for that month (`month` is 1–12) or, until then, what the CSC table will
+// charge. Contract of service and job order workers have no leave to charge it to.
+export const monthDeductionText = (employee, year, month, minutes) => {
+  const key = `${year}-${String(month).padStart(2, '0')}`;
+  const charged = (employee?.tardinessDeductions || []).find(item => item.month === key);
+  const parts = charged
+    ? [charged.deductedDays && `${dayText(charged.deductedDays)} charged to vacation leave`, charged.withoutPayDays && `${dayText(charged.withoutPayDays)} without pay`]
+    : [minutes && `${dayText(minutesToLeaveDays(minutes))} ${earnsLeaveCredits(employee) ? 'to be charged to vacation leave' : 'without pay'}`];
+  return parts.filter(Boolean).join(', ') || 'None';
+};

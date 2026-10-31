@@ -34,7 +34,8 @@ const statusStyles = {
   Late: ['bg-orange-50 text-orange-700', Clock3],
   Absent: ['bg-rose-50 text-rose-700', XCircle],
   'On Leave': ['bg-violet-50 text-violet-700', CalendarDays],
-  'On Travel': ['bg-blue-50 text-blue-700', Plane]
+  'On Travel': ['bg-blue-50 text-blue-700', Plane],
+  'Rest Day': ['bg-slate-100 text-slate-600', CalendarDays]
 };
 
 // The app sends an employee's phone GPS every minute while it is open. When none comes (app
@@ -83,7 +84,7 @@ const gpsTextClass = state => gpsStateStyles[state]?.[1] || 'text-slate-700';
 
 const SummaryCard = ({ icon: Icon, label, value, detail, color, action, onClick }) => <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-2"><div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${color}`}><Icon className="h-5 w-5" /></div><strong className="text-3xl font-black text-slate-900">{value}</strong></div><p className="mt-4 text-[11px] font-black uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p><button onClick={onClick} className="mt-3 inline-flex items-center gap-1 text-xs font-black text-blue-700">{action}<ChevronRight className="h-3.5 w-3.5" /></button></article>;
 
-export default function HRAdminAttendanceView({ employees = [], attendanceHistory = [], attendanceFrom = '', requests = [], onOpenTab }) {
+export default function HRAdminAttendanceView({ employees = [], attendanceHistory = [], attendanceFrom = '', requests = [], holidays = [], onOpenTab }) {
   const [activeSection, setActiveSection] = useState('Monitoring');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -148,7 +149,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const statusesOn = date => staff.map(employee => ({
     employee,
-    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date })
+    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date, holidays })
   }));
   const todayStatuses = statusesOn(today);
   // Monitoring shows today unless HR picks an earlier day, back to the first day of the

@@ -100,6 +100,7 @@ export default function DashboardView({
   user,
   attendanceHistory = [],
   requests = [],
+  holidays = [],
   announcements = [],
   events = [],
   onViewChange,
@@ -330,7 +331,7 @@ export default function DashboardView({
 
               <DashboardSection title="Attendance This Month">
                 {(() => {
-                  const summary = monthAttendanceSummary(user, { records: personalAttendanceHistory, requests: personalRequests, today });
+                  const summary = monthAttendanceSummary(user, { records: personalAttendanceHistory, requests: personalRequests, today, holidays });
                   const segments = [
                     { key: 'Present', value: summary.present, color: '#10b981' },
                     { key: 'WFH', value: summary.wfh, color: '#2563eb' },

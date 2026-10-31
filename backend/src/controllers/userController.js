@@ -22,6 +22,7 @@ import { Announcement } from '../models/announcementModel.js';
 import { DtrLog } from '../models/dtrLogModel.js';
 import { Leave } from '../models/leaveModel.js';
 import { Holiday } from '../models/holidayModel.js';
+import { OvertimeOrder } from '../models/overtimeOrderModel.js';
 import { isConnected } from '../config/db.js';
 import { toRequesterProfile, toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/authToken.js';
@@ -685,7 +686,7 @@ export const getFullState = async (req, res) => {
     // way the lists leave out selfies and GPS history; a selfie loads with its record.
     // Supervisors only decide requests, so they get no attendance.
     const accessLevel = req.user?.accessLevel;
-    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements, holidays] = await Promise.all([
+    const [user, visibleAttendance, rawRequests, events, notifications, smsAlerts, acknowledged, announcements, holidays, overtimeOrders] = await Promise.all([
       req.user || User.get(),
       accessLevel === 'employee' ? DtrLog.findListForEmployee(req.user) : accessLevel === 'hr_admin' ? DtrLog.findForHrList({ since: attendanceWindowStart() }) : [],
       Leave.findAllRequests(),
@@ -694,8 +695,10 @@ export const getFullState = async (req, res) => {
       Announcement.findSmsAlerts(),
       Announcement.getAcknowledged(req.user),
       Announcement.findAnnouncementPosts(),
-      // Holidays are not counted as leave days.
-      Holiday.findAll()
+      // Holidays are not counted as leave days, and have no late or undertime.
+      Holiday.findAll(),
+      // Overtime counts in the DTR only within office orders: HR's, or the employee's own.
+      accessLevel === 'hr_admin' ? OvertimeOrder.findAll() : accessLevel === 'employee' ? OvertimeOrder.findForEmployee(req.user) : []
     ]);
     // Supervisors do not load the employee list, only how many employees can log in.
     const activeEmployeeCount = accessLevel === 'supervisor' ? await User.countActiveEmployees() : undefined;
@@ -730,6 +733,7 @@ export const getFullState = async (req, res) => {
       acknowledged,
       announcements,
       holidays,
+      overtimeOrders,
       activeEmployeeCount,
       // HR's SMS panel says whether texts can be sent at all.
       ...(accessLevel === 'hr_admin' ? { smsConfigured: isSmsConfigured() } : {})

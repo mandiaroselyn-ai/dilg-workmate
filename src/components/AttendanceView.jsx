@@ -6,8 +6,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
-import { hasSelfie, isLate } from '../utils/hrAttendance';
-import { clockMinutes, durationText, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, tardinessText, usesLunchLogs } from '../utils/dtrDay';
+import { hasSelfie, isLate, markDtrDay } from '../utils/hrAttendance';
+import { clockMinutes, durationText, isRestDate, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, tardinessText, usesLunchLogs } from '../utils/dtrDay';
 import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 import PunchReceipt from './PunchReceipt';
@@ -94,6 +94,7 @@ const lateLabel = log => {
 export default function AttendanceView({
   user,
   attendanceHistory,
+  holidays = [],
   onTimeIn,
   onTimeOut,
   onLunch,
@@ -259,6 +260,7 @@ export default function AttendanceView({
   }, [assignmentMode, selectedMuni, barangayLgu, selectedOfficeId, wfhStreet, wfhLandmark]);
 
   const today = getManilaDateString();
+  const restDayToday = isRestDate(today, holidays);
   const todayRecord = attendanceHistory.find(record => record.date === today && matchesAttendanceEmployee(record, user));
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
   // One Time In and one Time Out per day: once today is timed out, Time In stays closed.
@@ -323,7 +325,7 @@ export default function AttendanceView({
   // `saved` is what saving the punch resolved with: { record, queued, afterQueuedTimeIn }, or
   // null when it was not saved.
   const showPunchReceipt = (punch, saved) => {
-    if (saved?.record) setPunchReceipt({ punch, record: saved.record, queued: Boolean(saved.queued), afterQueuedTimeIn: Boolean(saved.afterQueuedTimeIn) });
+    if (saved?.record) setPunchReceipt({ punch, record: markDtrDay(saved.record, { holidays }), queued: Boolean(saved.queued), afterQueuedTimeIn: Boolean(saved.afterQueuedTimeIn) });
   };
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
@@ -1134,7 +1136,7 @@ export default function AttendanceView({
       setFingerprintError(`Verify your ${biometricLabel} before ${punch}.`);
       return;
     }
-    if (action === 'lunch-out' && getManilaMinutesOfDay(serverNow()) < OFFICE_HOURS.noon
+    if (action === 'lunch-out' && !restDayToday && getManilaMinutesOfDay(serverNow()) < OFFICE_HOURS.noon
       && !window.confirm('It is not yet 12:00 NN. Leaving for lunch now counts as undertime in your DTR. Record Lunch Out now?')) return;
 
     locatePunch(punch).then(fix => {
@@ -1214,8 +1216,8 @@ export default function AttendanceView({
   const standing = todayRecord ? punchStanding(todayRecord) : {};
   const afternoonOnly = timeInMinutes !== null && timeInMinutes >= noon;
   const missingLunch = isDoneForToday ? missingLunchLog(todayRecord) : null;
-  const lateIfNow = start => ({ late: Math.max(0, nowMinutes - start) });
-  const earlyIfNow = end => ({ early: Math.max(0, end - nowMinutes) });
+  const lateIfNow = start => (restDayToday ? null : { late: Math.max(0, nowMinutes - start) });
+  const earlyIfNow = end => (restDayToday ? null : { early: Math.max(0, end - nowMinutes) });
   const halfDayNote = afternoonOnly ? 'Half day: no lunch' : '';
   const dayLogs = [
     {

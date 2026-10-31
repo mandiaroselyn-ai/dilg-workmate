@@ -185,6 +185,7 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
             Showing the first {PREVIEW_ROWS} of {report.rows.length} rows. The CSV and the printed report include all of them.
           </p>
         )}
+        {report.note && <p className="mt-2 text-[11px] font-semibold text-slate-500">{report.note}</p>}
       </div>
     </section>
   );

@@ -65,6 +65,8 @@ export default function HRAdminView({
   onEmployeesChange,
   holidays = [],
   onHolidaysChange,
+  overtimeOrders = [],
+  onOvertimeOrdersChange,
   onUpdateUser,
   onAdminNotification,
   announcements = [],
@@ -285,6 +287,7 @@ export default function HRAdminView({
         employees={employees}
         attendanceHistory={attendanceHistory}
         requests={requests}
+        holidays={holidays}
         onOpenTab={(tab) => {
           const route = tab === 'directory' ? 'hr_employees' : tab === 'dtr' ? 'hr_dtr' : tab === 'requests' ? 'hr_leave_records' : tab;
           onViewChange?.(route);
@@ -386,6 +389,7 @@ export default function HRAdminView({
         attendanceHistory={attendanceHistory}
         attendanceFrom={attendanceFrom}
         requests={requests}
+        holidays={holidays}
         onOpenTab={setActiveTab}
       />}
 
@@ -401,6 +405,8 @@ export default function HRAdminView({
         requests={requests}
         holidays={holidays}
         onHolidaysChange={onHolidaysChange}
+        overtimeOrders={overtimeOrders}
+        onOvertimeOrdersChange={onOvertimeOrdersChange}
         onBack={() => setActiveTab('dtr')}
       />}
 
@@ -420,6 +426,7 @@ export default function HRAdminView({
         loadedAttendanceMonths={loadedAttendanceMonths}
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         requests={requests}
+        holidays={holidays}
         reportGeneratedBy={user?.name || ''}
       />}
 

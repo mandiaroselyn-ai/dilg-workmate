@@ -3,11 +3,14 @@ import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucid
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
-import { dtrDayLogs, dtrUndertimeMinutes, durationText, officeHoursText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
+import { minutesToLeaveDays } from '../../shared/leaveConversion';
+import { durationText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
+import { dayEntry } from '../utils/dtrMonth';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import HRHolidays from './HRHolidays';
 import HRMonthlyLeaveCredits from './HRMonthlyLeaveCredits';
+import HROvertimeOrders from './HROvertimeOrders';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 
 // "08:05 AM" (how Time In and Time Out are saved) as "08:05" for a time input, and back.
@@ -262,7 +265,7 @@ const offlineRowLabels = record => [
   record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
 ].filter(Boolean);
 
-export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, onBack }) {
+export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
@@ -317,9 +320,20 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
           ));
         })()}
         <span>Total Hours: <b>{totalHoursWorked(selected.record) || '-'}</b></span>
-        {usesLunchLogs(selected.record) && (
-          <span>Tardiness &amp; undertime ({officeHoursText()}): <b>{formatMinutes(dtrUndertimeMinutes(dtrDayLogs(selected.record)))}</b></span>
-        )}
+        {(() => {
+          // As the DTR counts them. Overtime is not deducted.
+          const { late, early, undertime, overtime, noOrder } = dayEntry(selected.record);
+          const orders = (selected.record.overtimeWindows || []).map(order => order.orderNumber).join(', ');
+          return (
+            <>
+              <span>Late: <b>{formatMinutes(late)}</b></span>
+              <span>Undertime: <b>{formatMinutes(early)}</b></span>
+              <span>Deduction: <b>{undertime ? `${minutesToLeaveDays(undertime).toFixed(3)} day` : 'None'}</b></span>
+              <span>Overtime{orders ? ` (${orders})` : ''}: <b>{formatMinutes(overtime)}</b></span>
+              {noOrder > 0 && <span className="text-amber-800">After hours, no office order: <b>{durationText(noOrder)}</b></span>}
+            </>
+          );
+        })()}
         <span>Attendance Status: <b>{selected.status}</b></span>
         <span>Record Status: <b>{hasSelfie(selected.record) && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
         <span>Face liveness: <b>{selected.record.faceLivenessVerified ? `${Number(selected.record.faceLivenessConfidence || 0).toFixed(1)}%` : 'Not performed'}</b></span>
@@ -417,6 +431,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         onEmployeesChange={onEmployeesChange}
       />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
+      <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ['Total Records', records.length, 'text-slate-900'],

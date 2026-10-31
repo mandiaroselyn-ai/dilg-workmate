@@ -1,4 +1,7 @@
+import { minutesToLeaveDays } from '../../shared/leaveConversion.js';
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
+import { durationText } from './dtrDay.js';
+import { dtrEntry } from './dtrMonth.js';
 import { dtrRecordStatus, totalHoursWorked } from './hrAttendance.js';
 import { travelDayCount } from './travelDuration.js';
 
@@ -43,29 +46,54 @@ const overlaps = (start, end, from, to) => {
 const byDateThenName = (a, b) => String(b.sortDate).localeCompare(String(a.sortDate)) || a.employee.localeCompare(b.employee);
 const countOf = (rows, status) => rows.filter(row => row.status === status).length;
 
+const minutesCell = minutes => (minutes ? durationText(minutes) : '');
+const NO_DTR_TIME = { late: 0, early: 0, undertime: 0, overtime: 0, noOrder: 0 };
+const totalOf = (rows, field) => rows.reduce((total, row) => total + row.dtr[field], 0);
+
+// The days the rows' tardiness and undertime convert to. The CSC table rounds each value, so
+// each employee's month is converted as a whole, as HR charges it, and this total can differ by
+// a little from adding up the days of the rows.
+const deductionDays = rows => {
+  const months = {};
+  for (const row of rows) {
+    const key = `${row.employeeId || row.employee} ${row.date.slice(0, 7)}`;
+    months[key] = (months[key] || 0) + row.dtr.undertime;
+  }
+  return Object.values(months).reduce((total, minutes) => total + minutesToLeaveDays(minutes), 0);
+};
+
 const attendanceReport = ({ records, employees, filters, today }) => {
   const rows = records
     .map(record => ({ record, account: accountFor(record, employees) }))
     .filter(({ record, account }) => account && isFor(record, account, filters, employees)
       && overlaps(record.date, record.date, filters.from, filters.to))
-    .map(({ record, account }) => ({
-      sortDate: record.date || '',
-      date: record.date || '',
-      employee: nameOf(record, account),
-      employeeId: account.employeeId || record.employeeId || '',
-      office: officeOf(record, account),
-      timeIn: record.timeIn || '',
-      lunchOut: record.lunchOut || '',
-      lunchIn: record.lunchIn || '',
-      timeOut: record.timeOut || '',
-      hours: totalHoursWorked(record),
-      status: dtrRecordStatus(record, today),
-      location: record.location || ''
-    }))
+    .map(({ record, account }) => {
+      const dtr = dtrEntry(record) || NO_DTR_TIME;
+      return {
+        sortDate: record.date || '',
+        date: record.date || '',
+        employee: nameOf(record, account),
+        employeeId: account.employeeId || record.employeeId || '',
+        office: officeOf(record, account),
+        timeIn: record.timeIn || '',
+        lunchOut: record.lunchOut || '',
+        lunchIn: record.lunchIn || '',
+        timeOut: record.timeOut || '',
+        hours: totalHoursWorked(record),
+        dtr,
+        late: minutesCell(dtr.late),
+        undertime: minutesCell(dtr.early),
+        deduction: dtr.undertime ? minutesToLeaveDays(dtr.undertime).toFixed(3) : '',
+        overtime: minutesCell(dtr.overtime),
+        status: dtrRecordStatus(record, today),
+        location: record.location || ''
+      };
+    })
     .filter(row => !filters.status || row.status === filters.status)
     .sort(byDateThenName);
   return {
     title: 'Attendance Report',
+    note: 'Late and undertime are charged to vacation leave by the CSC table (1 min = 0.002 day, 1 hour = 0.125 day), and without pay when there is no vacation leave to charge. Saturdays, Sundays, and holidays have none. Overtime is work outside office hours or on those days, within the hours of an office order: it is not deducted and cannot offset late or undertime. Work from home and days on a Travel Order earn no overtime.',
     columns: [
       { key: 'date', label: 'Date' },
       { key: 'employee', label: 'Employee' },
@@ -76,6 +104,10 @@ const attendanceReport = ({ records, employees, filters, today }) => {
       { key: 'lunchIn', label: 'Lunch In' },
       { key: 'timeOut', label: 'Time Out' },
       { key: 'hours', label: 'Hours' },
+      { key: 'late', label: 'Late' },
+      { key: 'undertime', label: 'Undertime' },
+      { key: 'deduction', label: 'Deduction (day)' },
+      { key: 'overtime', label: 'Overtime' },
       { key: 'status', label: 'Status' },
       { key: 'location', label: 'Location' }
     ],
@@ -83,7 +115,12 @@ const attendanceReport = ({ records, employees, filters, today }) => {
     summary: [
       { label: 'Records', value: rows.length },
       { label: 'Employees', value: new Set(rows.map(row => row.employeeId || row.employee)).size },
-      ...ATTENDANCE_STATUSES.map(status => ({ label: status, value: countOf(rows, status) }))
+      ...ATTENDANCE_STATUSES.map(status => ({ label: status, value: countOf(rows, status) })),
+      { label: 'Total late', value: durationText(totalOf(rows, 'late')) },
+      { label: 'Total undertime', value: durationText(totalOf(rows, 'early')) },
+      { label: 'Total deduction', value: `${deductionDays(rows).toFixed(3)} day` },
+      { label: 'Total overtime', value: durationText(totalOf(rows, 'overtime')) },
+      { label: 'After hours, no office order', value: durationText(totalOf(rows, 'noOrder')) }
     ]
   };
 };
@@ -247,4 +284,5 @@ export const reportHtml = (report, { filtersText = '', generatedAt = '', generat
 <tbody>${report.rows.length
     ? report.rows.map(row => `<tr>${report.columns.map(column => `<td>${escapeHtml(row[column.key])}</td>`).join('')}</tr>`).join('')
     : `<tr><td colspan="${report.columns.length}">No records match these filters.</td></tr>`}</tbody></table>
+${report.note ? `<p class="meta">${escapeHtml(report.note)}</p>` : ''}
 </body></html>`;

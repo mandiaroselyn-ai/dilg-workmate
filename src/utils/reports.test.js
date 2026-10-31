@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { markDtrDay } from './hrAttendance.js';
 import { buildReport, describeFilters, employeeKey, reportCsv, reportHtml } from './reports.js';
 
 const juan = { employeeId: 'E1', email: 'juan@dilg.gov.ph', name: 'Juan Dela Cruz', office: 'Boac Municipal Operations Office' };
@@ -37,6 +38,41 @@ test('the attendance report lists current employees\' records with their DTR sta
   assert.equal(valueOf(report, 'Records'), 3);
   assert.equal(valueOf(report, 'Employees'), 2);
   assert.equal(valueOf(report, 'Late'), 1);
+});
+
+test('the attendance report shows each day\'s late, undertime, deduction, and overtime', () => {
+  const overtimeOrders = [{ orderNumber: 'OO 14', startDate: '2026-10-28', endDate: '2026-10-28', startTime: '17:00', endTime: '18:30', employeeIds: ['E1'] }];
+  const report = buildReport({
+    type: 'attendance',
+    employees,
+    today: '2026-11-14',
+    records: [
+      { id: 'b1', employeeId: 'E1', date: '2026-10-27', timeIn: '08:10 AM', lunchOut: '12:00 PM', lunchIn: '01:20 PM', timeOut: '04:45 PM' },
+      { id: 'b2', employeeId: 'E1', date: '2026-10-28', timeIn: '08:00 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '06:30 PM' },
+      { id: 'b3', employeeId: 'E2', date: '2026-10-28', timeIn: '08:03 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '05:45 PM' },
+      // Waiting for HR, so left out of the numbers as it is left out of the DTR.
+      { id: 'b4', employeeId: 'E2', date: '2026-10-29', timeIn: '09:00 AM', timeOut: '05:00 PM', offlineTimeIn: { reviewReasons: ['No GPS'] } },
+      // A Saturday: no late or undertime, and no office order for it.
+      { id: 'b5', employeeId: 'E2', date: '2026-10-31', timeIn: '09:30 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '02:00 PM', late: true }
+    ].map(record => markDtrDay(record, { overtimeOrders }))
+  });
+  const row = id => report.rows.find(item => item.timeIn === id);
+  assert.deepEqual([row('08:10 AM').late, row('08:10 AM').undertime, row('08:10 AM').deduction, row('08:10 AM').overtime], ['30 min', '15 min', '0.094', '']);
+  assert.deepEqual([row('08:00 AM').late, row('08:00 AM').undertime, row('08:00 AM').deduction, row('08:00 AM').overtime], ['', '', '', '1h 30m']);
+  assert.deepEqual([row('09:00 AM').late, row('09:00 AM').deduction], ['', '']);
+  assert.deepEqual([row('09:30 AM').late, row('09:30 AM').undertime, row('09:30 AM').deduction, row('09:30 AM').overtime, row('09:30 AM').status], ['', '', '', '', 'Complete']);
+  assert.equal(valueOf(report, 'Total late'), '33 min');
+  assert.equal(valueOf(report, 'Total undertime'), '15 min');
+  // Each employee's month by the CSC table: 45 minutes is 0.094, and 3 minutes 0.006.
+  assert.equal(valueOf(report, 'Total deduction'), '0.100 day');
+  assert.equal(valueOf(report, 'Total overtime'), '1h 30m');
+  // 45 minutes on Oct 28 and 3h 30m on the Saturday had no office order.
+  assert.equal(valueOf(report, 'After hours, no office order'), '4h 15m');
+
+  assert.match(reportCsv(report), /Hours,Late,Undertime,Deduction \(day\),Overtime,Status/);
+  const html = reportHtml(report);
+  assert.match(html, /<th>Deduction \(day\)<\/th>/);
+  assert.match(html, /within the hours of an office order: it is not deducted and cannot offset late or undertime\. Work from home and days on a Travel Order earn no overtime\./);
 });
 
 test('reports filter by employee, date, office, and status', () => {

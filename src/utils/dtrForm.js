@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { officeHoursText } from './dtrDay.js';
-import { dayEntry, dtrRecordsByDay, totalUndertimeMinutes } from './dtrMonth.js';
+import { durationText, officeHoursText } from './dtrDay.js';
+import { dayEntry, dtrRecordsByDay, monthDeductionText, monthDtrTotals, totalUndertimeMinutes } from './dtrMonth.js';
 
 // Fills both duplicates on each page of the CSC Form No. 48 DTR template
 // (src/assets/template/dtr-template.pdf) with one employee's monthly attendance data.
@@ -13,6 +13,14 @@ const white = rgb(1, 1, 1);
 const TIME_SIZE = 5.3;  // font size for time cells
 const NAME_SIZE = 6.0;  // font size for employee name
 const MONTH_SIZE = 4.2; // font size for month/year label
+const SUMMARY_SIZE = 5.3; // font size for the month's summary under each copy
+const NOTE_SIZE = 4.3;    // font size for the notes under the summary
+
+// The month's summary goes in the blank part of the page under each copy, so the form's own
+// boxes stay as the CSC prints them.
+const SUMMARY_TOP = 113;     // baseline of the summary's heading
+const SUMMARY_LINE = 7.5;    // points between summary rows
+const SUMMARY_VALUE_X = 66;  // where values start, from the left edge of the copy
 
 // Exact y-positions of each day row baseline, extracted from the template.
 // The template uses August 2026 day-of-week labels (day 1 = Saturday).
@@ -39,6 +47,7 @@ const COLS = [
     utHrs: 258, utMin: 282,
     totalY: 184,
     signCenter: 215.5, signY: 153.5, signMaxWidth: 150, // blank line x 136.4–294.4, y 151.2
+    left: 79, right: 295,           // the copy's outer edges
   },
   {
     nameCenter: 420, nameY: 658.4, nameMaxWidth: 208,
@@ -50,6 +59,7 @@ const COLS = [
     utHrs: 490, utMin: 514,
     totalY: 184,
     signCenter: 450.5, signY: 153.5, signMaxWidth: 150, // blank line x 372.9–528.0, y 151.2
+    left: 312, right: 529,          // the copy's outer edges
   },
 ];
 
@@ -70,6 +80,42 @@ function fitSize(text, font, maxWidth, maxSz = NAME_SIZE) {
   return 4.5;
 }
 
+const timeText = minutes => (minutes ? durationText(minutes) : 'None');
+
+// The rows of the month's summary: the late and undertime in the form's TOTAL, what they take
+// from the employee, and the overtime, which is not deducted.
+export function dtrSummaryRows(employee, year, month, recordsByDay) {
+  const { late, early, overtime } = monthDtrTotals(recordsByDay);
+  return [
+    ['Late (tardiness)', timeText(late)],
+    ['Undertime', timeText(early)],
+    ['Deduction', monthDeductionText(employee, year, month, late + early)],
+    ['Overtime (office order)', overtime ? `${durationText(overtime)}, not deducted` : 'None'],
+  ];
+}
+
+// Draws the month's summary under one copy of the form.
+function drawSummary(page, col, rows, font, bold) {
+  const drawRow = (text, x, y, rowFont, size) => page.drawText(text, { x, y, size, font: rowFont, color: black });
+  const x = col.left + 2;
+  let y = SUMMARY_TOP;
+  drawRow('SUMMARY FOR THE MONTH', x, y, bold, SUMMARY_SIZE);
+  for (const [label, value] of rows) {
+    y -= SUMMARY_LINE;
+    drawRow(label, x, y, font, SUMMARY_SIZE);
+    const valueX = col.left + SUMMARY_VALUE_X;
+    drawRow(value, valueX, y, bold, fitSize(value, bold, col.right - valueX - 2, SUMMARY_SIZE));
+  }
+  for (const note of [
+    'Late and undertime are charged by the CSC table (1 min = 0.002 day, 1 hour = 0.125 day).',
+    'Saturdays, Sundays, and holidays have no late or undertime.',
+    'Overtime needs an office order, and cannot offset late or undertime.',
+  ]) {
+    y -= SUMMARY_LINE - 1.5;
+    drawRow(note, x, y, font, NOTE_SIZE);
+  }
+}
+
 // Fills one page of the template with the employee's DTR data (both columns).
 async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bold) {
   const dowByDay = monthDayOfWeeks(year, month);
@@ -79,6 +125,7 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
   const totalUT = totalUndertimeMinutes(recordsByDay);
   const totalUTHrs = Math.floor(totalUT / 60);
   const totalUTMin = totalUT % 60;
+  const summaryRows = dtrSummaryRows(employee, year, month, recordsByDay);
 
   for (const col of COLS) {
     // --- Employee name ---
@@ -176,6 +223,9 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
       font: bold,
       color: black,
     });
+
+    // --- The month's late, undertime, deduction, and overtime ---
+    drawSummary(page, col, summaryRows, font, bold);
   }
 }
 
