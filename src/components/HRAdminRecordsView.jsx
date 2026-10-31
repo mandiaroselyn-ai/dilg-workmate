@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
+import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import {
   Activity,
   AlarmClockCheck,
@@ -11,9 +12,14 @@ import {
   ShieldCheck,
   Users
 } from 'lucide-react';
+import { durationText } from '../utils/dtrDay';
+import { dtrEntry } from '../utils/dtrMonth';
 import { activeEmployees, employeeDayStatus, hasSelfie, recordsForEmployees } from '../utils/hrAttendance';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 import HRReportsView from './HRReportsView';
+
+// Minutes as the DTR table shows them, such as "7 min" or "1h 05m".
+const minutesCell = minutes => (minutes ? durationText(minutes) : '—');
 
 const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -88,15 +94,23 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
               .some((value) => String(value).toLowerCase().includes(normalizedQuery))
           );
         })
-        .map((record) => ({
-          id: record.id || record.employeeId || record.employeeName,
-          employee: record.employeeName || 'Unassigned Employee',
-          date: record.date || today,
-          status: record.status || 'Present',
-          timeIn: record.timeIn || '—',
-          timeOut: record.timeOut || '—',
-          late: record.late || /late/i.test(record.status || '') ? 'Late' : 'On Time'
-        })),
+        .map((record) => {
+          // As the DTR counts them (none for a record the DTR leaves out).
+          const dtr = dtrEntry(record);
+          return {
+            id: record.id || record.employeeId || record.employeeName,
+            employee: record.employeeName || 'Unassigned Employee',
+            date: record.date || today,
+            status: record.status || 'Present',
+            timeIn: record.timeIn || '—',
+            timeOut: record.timeOut || '—',
+            late: record.late || /late/i.test(record.status || '') ? 'Late' : 'On Time',
+            lateTime: minutesCell(dtr?.late),
+            undertime: minutesCell(dtr?.early),
+            deduction: dtr?.undertime ? `${minutesToLeaveDays(dtr.undertime).toFixed(3)} day` : '—',
+            overtime: minutesCell(dtr?.overtime)
+          };
+        }),
     [attendanceHistory, normalizedQuery, today]
   );
 
@@ -353,12 +367,15 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Time Out</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Status</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Late</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Undertime</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Deduction</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Overtime</th>
                 </tr>
               </thead>
               <tbody>
                 {dtrTable.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan="9" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
                       No matching DTR records found.
                     </td>
                   </tr>
@@ -374,7 +391,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                           {record.status}
                         </span>
                       </td>
-                      <td className="px-3 py-3 text-slate-600">{record.late === 'Late' ? 'Yes' : 'No'}</td>
+                      <td className="px-3 py-3 text-slate-600">{record.lateTime}</td>
+                      <td className="px-3 py-3 text-slate-600">{record.undertime}</td>
+                      <td className="px-3 py-3 text-slate-600">{record.deduction}</td>
+                      <td className="px-3 py-3 text-slate-600">{record.overtime}</td>
                     </tr>
                   ))
                 )}
