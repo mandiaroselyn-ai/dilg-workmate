@@ -50,7 +50,7 @@ export default function HREmployeeDocuments({ employee, requests = [], attendanc
   const makeDtr = async () => {
     const [year, monthNumber] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
-    const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance);
+    const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance, { summary: true });
     return { fileName: dtrFilename(employee?.name, year, monthNumber), fileType: 'application/pdf', bytes };
   };
   const viewDtr = () => setViewer({ key: Date.now(), title: `DTR · ${employee?.name || 'Employee'} · ${month}`, load: makeDtr });

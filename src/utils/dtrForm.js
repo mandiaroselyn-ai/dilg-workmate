@@ -116,8 +116,9 @@ function drawSummary(page, col, rows, font, bold) {
   }
 }
 
-// Fills one page of the template with the employee's DTR data (both columns).
-async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bold) {
+// Fills one page of the template with the employee's DTR data (both columns), and the month's
+// summary under each copy when `summary` is set.
+async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bold, summary) {
   const dowByDay = monthDayOfWeeks(year, month);
   const totalDays = dowByDay.length;
 
@@ -225,13 +226,15 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
     });
 
     // --- The month's late, undertime, deduction, and overtime ---
-    drawSummary(page, col, summaryRows, font, bold);
+    if (summary) drawSummary(page, col, summaryRows, font, bold);
   }
 }
 
 // Public: loads the template bytes, fills both pages with the employee's data, and
-// returns the bytes of the completed PDF ready for download.
-export async function fillDTR(templateBytes, employee = {}, year, month, attendanceRecords = []) {
+// returns the bytes of the completed PDF ready for download. The form is as the CSC prints
+// it; `summary` adds the month's late, undertime, deduction, and overtime under each copy,
+// which only HR's copy has.
+export async function fillDTR(templateBytes, employee = {}, year, month, attendanceRecords = [], { summary = false } = {}) {
   const pdf = await PDFDocument.load(templateBytes);
   const pages = pdf.getPages();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -242,7 +245,7 @@ export async function fillDTR(templateBytes, employee = {}, year, month, attenda
 
   for (let i = 0; i < pages.length; i++) {
     if (i % 2 === 0) {
-      await fillPage(pdf, pages[i], employee, year, month, recordsByDay, font, bold);
+      await fillPage(pdf, pages[i], employee, year, month, recordsByDay, font, bold, summary);
     }
   }
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { PDFDocument } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import { fillDTR, dtrSummaryRows } from './dtrForm.js';
 import { dayEntry, dtrEntry, dtrRecordsByDay, monthDeductionText, monthDtrTotals, monthUndertimeMinutes, totalUndertimeMinutes } from './dtrMonth.js';
 import { markDtrDay } from './hrAttendance.js';
@@ -107,4 +107,19 @@ test('the filled DTR keeps the template\'s pages', async () => {
   const template = fs.readFileSync(new URL('../assets/template/dtr-template.pdf', import.meta.url));
   const pdf = await PDFDocument.load(await fillDTR(template, { name: 'Juan Dela Cruz' }, 2026, 10, marked));
   assert.equal(pdf.getPageCount(), (await PDFDocument.load(template)).getPageCount());
+});
+
+test('the employee\'s DTR is the form alone; HR\'s copy adds the month\'s summary under it', async () => {
+  const template = fs.readFileSync(new URL('../assets/template/dtr-template.pdf', import.meta.url));
+  // pdf-lib writes text as hex strings, so look for the heading in hex.
+  const heading = `<${Buffer.from('SUMMARY FOR THE MONTH', 'latin1').toString('hex').toUpperCase()}>`;
+  const text = async options => {
+    const pdf = await PDFDocument.load(await fillDTR(template, { name: 'Juan Dela Cruz' }, 2026, 10, marked, options));
+    return pdf.getPages().flatMap(page => {
+      const entry = page.node.get(PDFName.of('Contents'));
+      return (entry instanceof PDFArray ? entry.asArray() : [entry]).map(ref => Buffer.from(decodePDFRawStream(pdf.context.lookup(ref)).decode()).toString('latin1'));
+    }).join('\n');
+  };
+  assert.equal((await text()).includes(heading), false);
+  assert.equal((await text({ summary: true })).includes(heading), true);
 });
