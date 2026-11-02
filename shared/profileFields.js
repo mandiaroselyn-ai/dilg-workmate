@@ -36,7 +36,8 @@ export const PERSONAL_FIELDS = [
   { key: 'dateOfBirth', label: 'Date of Birth', type: 'date' },
   { key: 'gender', label: 'Gender', options: GENDER_OPTIONS },
   { key: 'civilStatus', label: 'Civil Status', options: CIVIL_STATUS_OPTIONS },
-  { key: 'address', label: 'Home Address', wide: true },
+  // Chosen from the Marinduque towns and barangays, or typed under Other (shared/homeAddress.js).
+  { key: 'address', label: 'Home Address', wide: true, homeAddress: true },
   { key: 'emergencyContactName', label: 'Emergency Contact Person' },
   { key: 'emergencyContactRelationship', label: 'Relationship to Contact' },
   { key: 'emergencyContactNumber', label: 'Emergency Contact Number', type: 'tel' }

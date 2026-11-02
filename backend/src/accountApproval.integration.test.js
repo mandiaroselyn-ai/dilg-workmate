@@ -296,7 +296,8 @@ const googleSignUpDetails = {
   role: 'Administrative Assistant III',
   office: 'Office of the MLGOO - Boac',
   region: 'DILG Region IV-B - MIMAROPA',
-  phoneNumber: '0917 555 1234'
+  phoneNumber: '0917 555 1234',
+  address: '12 Mabini St., Santol, Boac, Marinduque'
 };
 
 test('a new Google account goes to the sign-up form, and nothing is saved yet', async t => {
@@ -328,6 +329,7 @@ test('the Google sign-up form makes a Pending account with the email Google veri
   assert.equal(saved.role, googleSignUpDetails.role);
   assert.equal(saved.office, googleSignUpDetails.office);
   assert.equal(saved.phoneNumber, googleSignUpDetails.phoneNumber);
+  assert.equal(saved.address, googleSignUpDetails.address);
   assert.equal(saved.signUpMethod, 'google');
   assert.equal(saved.googleId, 'google-sub-9');
   assert.equal(saved.profilePicture, pedro.picture);
@@ -344,7 +346,24 @@ test('the Google sign-up form needs the same details as the sign-up form', async
   assert.match(noMobile.body.error, /mobile number/);
   const noOffice = await request(app).post('/api/register').send({ ...googleSignUpDetails, office: '', googleSignUp: token });
   assert.equal(noOffice.status, 400);
+  const noAddress = await request(app).post('/api/register').send({ ...googleSignUpDetails, address: ' ', googleSignUp: token });
+  assert.equal(noAddress.status, 400);
+  assert.equal(noAddress.body.error, 'Enter your home address.');
   assert.equal(create.mock.callCount(), 0);
+});
+
+test('the sign-up form saves the home address and needs one', async t => {
+  t.mock.method(User, 'findByEmail', async () => null);
+  const create = t.mock.method(User, 'createSelfServiceEmployee', async data => ({ ...data, _id: 'new-form', employeeId: 'DILG-2026-888888', accessLevel: 'employee' }));
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  const form = { ...googleSignUpDetails, email: 'maria@gmail.com', password: 'a-long-password-42' };
+  const noAddress = await request(app).post('/api/register').send({ ...form, address: '' });
+  assert.equal(noAddress.status, 400);
+  assert.equal(noAddress.body.error, 'Enter your home address.');
+  const registered = await request(app).post('/api/register').send(form);
+  assert.equal(registered.status, 201, JSON.stringify(registered.body));
+  assert.equal(create.mock.calls[0].arguments[0].address, '12 Mabini St., Santol, Boac, Marinduque');
+  assert.equal(create.mock.calls[0].arguments[0].signUpMethod, 'form');
 });
 
 test('a changed or expired Google sign-up token is refused', async t => {

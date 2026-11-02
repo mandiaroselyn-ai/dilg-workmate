@@ -17,6 +17,7 @@ const signUp = {
   office: 'Office of the MLGOO - Boac',
   region: 'DILG Region IV-B - MIMAROPA',
   phoneNumber: '09171234567',
+  address: 'Tampus (Pob.), Boac, Marinduque',
   password: 'a-long-password-42'
 };
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS } from '../../shared/profileFields';
 import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES } from '../../shared/dilgAssignments';
+import AddressPicker from './AddressPicker';
 
 const EMERGENCY_KEYS = ['emergencyContactName', 'emergencyContactRelationship', 'emergencyContactNumber'];
 const field = key => PERSONAL_FIELDS.find(item => item.key === key);
@@ -50,7 +51,14 @@ export const Suggestions = ({ id, options }) => (
 
 // `values` are the whole form's, for a read-only field worked out from others (`derive`), such as
 // the monthly salary from the salary grade and step.
-export const ProfileFieldInput = ({ item, value, onChange, values }) => (
+export const ProfileFieldInput = ({ item, value, onChange, values }) => (item.homeAddress && !item.readOnly ? (
+  <div className={`min-w-0 text-[11px] font-bold text-slate-600 ${item.wide ? 'sm:col-span-2' : ''}`}>
+    {item.label}
+    <div className="grid gap-2 sm:grid-cols-3">
+      <AddressPicker name={item.key} value={value || ''} onChange={onChange} labelClass="block min-w-0 text-[10px] font-semibold text-slate-500" fieldClass={inputClass} />
+    </div>
+  </div>
+) : (
   <label className={`block min-w-0 text-[11px] font-bold text-slate-600 ${item.wide ? 'sm:col-span-2' : ''}`}>
     {item.label}{item.required && !item.readOnly && <RequiredMark />}
     {item.readOnly ? (
@@ -89,7 +97,7 @@ export const ProfileFieldInput = ({ item, value, onChange, values }) => (
       </>
     )}
   </label>
-);
+));
 
 const Row = ({ label, value, wide }) => (
   <div className={`min-w-0 border-b border-slate-100 pb-3 ${wide ? 'sm:col-span-2' : ''}`}>

@@ -113,7 +113,8 @@ const REGISTRATION_FIELD_LIMITS = {
   role: 120,
   office: 160,
   region: 250,
-  phoneNumber: 250
+  phoneNumber: 250,
+  address: 250
 };
 
 // Self-registration only accepts basic profile fields. The account stays Pending
@@ -152,6 +153,9 @@ export const registerUser = async (req, res) => {
     const password = typeof body.password === 'string' ? body.password.trim() : '';
     if (!google && (password.length < MIN_PASSWORD_LENGTH || password.length > 256)) {
       return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
+    }
+    if (!profile.address) {
+      return res.status(400).json({ success: false, error: 'Enter your home address.' });
     }
     const office = officeError(profile.office);
     if (office) return res.status(400).json({ success: false, error: office });

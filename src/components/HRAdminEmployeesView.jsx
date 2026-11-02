@@ -14,8 +14,9 @@ import {
 } from 'lucide-react';
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
-import { MARINDUQUE_MUNICIPALITIES } from '../../shared/marinduqueLocations';
+import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
+import AddressPicker from './AddressPicker';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, ProfileFieldInput, RequiredMark, Suggestions } from './ProfileDetails';
@@ -28,6 +29,8 @@ const OWN_INPUT_KEYS = ['firstName', 'middleName', 'lastName', 'dateOfBirth', 'g
 const MORE_PERSONAL_FIELDS = PERSONAL_FIELDS.filter(field => !OWN_INPUT_KEYS.includes(field.key));
 const PROFILE_FORM_FIELDS = [...MORE_PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS];
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500';
+// The Assigned LGU for provincial staff. It is not a town, so field duty is not limited to one.
+const PROVINCE_LGU = 'Province of Marinduque';
 
 const emptyForm = {
   ...profileFieldValues({}, PROFILE_FORM_FIELDS),
@@ -679,9 +682,12 @@ This cannot be undone.`
                 </label>
               )}
 
-              <label className="text-[11px] font-black text-slate-600 sm:col-span-2 xl:col-span-2">Address
-                <input name="address" value={form.address} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
-              </label>
+              <div className="sm:col-span-2 xl:col-span-4">
+                <p className="text-[11px] font-black text-slate-700">Home Address</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <AddressPicker value={form.address} onChange={handleChange} labelClass="text-[11px] font-black text-slate-600" fieldClass={inputClass} />
+                </div>
+              </div>
 
               <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
                 <input name="role" value={form.role} onChange={handleChange} required maxLength={120} list="position-title-suggestions" placeholder="e.g. Local Government Operations Officer II" className={inputClass} />
@@ -723,12 +729,24 @@ This cannot be undone.`
                 <span className="mt-1 block text-xs font-medium text-slate-500">The leave earned in the first month counts from this date.</span>
               </label>
 
+              {/* The DILG offices employees Time In at, and the province or town they cover. A
+                  value typed before these lists stays selectable. */}
               <label className="text-[11px] font-black text-slate-600">Assigned Station
-                <input name="assignedStation" value={form.assignedStation} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <select name="assignedStation" value={form.assignedStation} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
+                  <option value="">Select station</option>
+                  {MARINDUQUE_OFFICES.map(office => <option key={office.id} value={office.name}>{office.name}</option>)}
+                  {form.assignedStation && !MARINDUQUE_OFFICES.some(office => office.name === form.assignedStation) && <option value={form.assignedStation}>{form.assignedStation}</option>}
+                </select>
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Assigned LGU
-                <input name="assignedLGU" value={form.assignedLGU} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
+                <select name="assignedLGU" value={form.assignedLGU} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
+                  <option value="">Select LGU</option>
+                  <option value={PROVINCE_LGU}>{PROVINCE_LGU}</option>
+                  {Object.keys(MARINDUQUE_MUNICIPALITIES).map(town => <option key={town} value={town}>{town}</option>)}
+                  {form.assignedLGU && form.assignedLGU !== PROVINCE_LGU && !MARINDUQUE_MUNICIPALITIES[form.assignedLGU] && <option value={form.assignedLGU}>{form.assignedLGU}</option>}
+                </select>
+                <span className="mt-1 block text-xs font-medium text-slate-500">A town limits field-duty Time In to that town; the province allows any town.</span>
               </label>
 
               {[

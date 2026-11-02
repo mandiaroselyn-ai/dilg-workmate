@@ -9,6 +9,7 @@ import logoImage from '../assets/dilg-logo.png';
 import { DEFAULT_REGION, POSITION_TITLES } from '../../shared/dilgAssignments';
 import { OfficeOptions, Suggestions } from './ProfileDetails';
 import { clearSessionToken } from '../utils/api';
+import AddressPicker from './AddressPicker';
 const GoogleIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -80,6 +81,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regPhone, setRegPhone] = useState('');
+  const [regAddress, setRegAddress] = useState('');
   const [regRole, setRegRole] = useState('');
   const [regOffice, setRegOffice] = useState('');
   const [regRegion, setRegRegion] = useState(DEFAULT_REGION);
@@ -256,7 +258,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    if (!regName || !regEmail || (!googleSignUp && !regPassword) || !regRole || !regOffice || !regRegion || !regPhone) {
+    if (!regName || !regEmail || (!googleSignUp && !regPassword) || !regRole || !regOffice || !regRegion || !regPhone || !regAddress) {
       setErrorText('Please fill out all registration fields.');
       return;
     }
@@ -278,6 +280,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       office: regOffice,
       region: regRegion,
       phoneNumber: regPhone,
+      address: regAddress,
       ...(googleSignUp ? { googleSignUp: googleSignUp.token } : { email: regEmail, password: regPassword })
     };
 
@@ -379,6 +382,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                   <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Enter your email<input type="email" required value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Enter your email" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 )}
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="tel" inputMode="tel" autoComplete="tel" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
+                <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Home Address</p><AddressPicker value={regAddress} onChange={(e) => setRegAddress(e.target.value)} required labelClass="block text-[10px] font-bold text-slate-500" fieldClass="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none disabled:opacity-60" /></div>
                 {!googleSignUp && <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<span className="relative mt-1 block"><input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pr-10 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowRegPassword(!showRegPassword)} aria-label={showRegPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>}
               </div>
               {errorText && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">{errorText}</div>}
@@ -793,6 +797,20 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                           readOnly
                           value={regRegion}
                           className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-500 focus:outline-none cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Home Address */}
+                    <div className="space-y-1.5 text-xs md:col-span-2">
+                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Home Address</label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <AddressPicker
+                          value={regAddress}
+                          onChange={(e) => setRegAddress(e.target.value)}
+                          required
+                          labelClass="block text-[10px] font-bold text-slate-500"
+                          fieldClass="mt-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white disabled:opacity-60"
                         />
                       </div>
                     </div>
