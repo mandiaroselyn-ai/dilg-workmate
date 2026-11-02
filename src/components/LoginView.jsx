@@ -6,8 +6,8 @@
 import React, { useEffect, useState } from 'react';
 import backgroundImage from '../assets/login-bg.jpg';
 import logoImage from '../assets/dilg-logo.png';
-import { DEFAULT_REGION, POSITION_TITLES } from '../../shared/dilgAssignments';
-import { OfficeOptions, Suggestions } from './ProfileDetails';
+import { DEFAULT_REGION } from '../../shared/dilgAssignments';
+import { OfficeOptions, PositionTitleSelect } from './ProfileDetails';
 import { clearSessionToken } from '../utils/api';
 import AddressPicker from './AddressPicker';
 const GoogleIcon = () => (
@@ -379,7 +379,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
               <div className="space-y-3">
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Full Name<input type="text" required value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Full Name" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Office<select required value={regOffice} onChange={(e) => setRegOffice(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Office</option><OfficeOptions /></select></label>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Position Title<input type="text" required maxLength={120} list="sign-up-position-titles" value={regRole} onChange={(e) => setRegRole(e.target.value)} placeholder="As on your appointment" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label><Suggestions id="sign-up-position-titles" options={POSITION_TITLES} />
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Position Title<PositionTitleSelect value={regRole} onChange={(e) => setRegRole(e.target.value)} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <div className="grid grid-cols-2 gap-3"><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Account Role<input readOnly value="Employee" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Region<input readOnly value={regRegion} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label></div>
                 {googleSignUp ? (
                   <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Google email<input type="email" readOnly value={regEmail} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label>
@@ -718,21 +718,16 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                     {/* Position */}
                     <div className="space-y-1.5 text-xs">
                       <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Position Title</label>
-                      <div className="relative">
-                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        {/* Suggested titles; a title not listed can still be typed. */}
-                        <input
-                          type="text"
-                          required
-                          maxLength={120}
-                          list="sign-up-position-titles-desktop"
-                          value={regRole}
-                          onChange={(e) => setRegRole(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
-                          placeholder="As on your appointment"
-                        />
-                        <Suggestions id="sign-up-position-titles-desktop" options={POSITION_TITLES} />
-                      </div>
+                      {/* Chosen from the list; Other opens a box for a title not listed. */}
+                      <PositionTitleSelect
+                        value={regRole}
+                        onChange={(e) => setRegRole(e.target.value)}
+                        required
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
+                        otherClassName="mt-2 w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
+                      >
+                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      </PositionTitleSelect>
                     </div>
 
                     {/* Fixed Employee Role */}

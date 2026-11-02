@@ -4,7 +4,7 @@ import { apiFetch } from '../utils/api.js';
 import HRResetPasswordCard from './HRResetPasswordCard';
 import { ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, fullNameOf, profileFieldValues } from '../../shared/profileFields';
-import { DEFAULT_REGION, POSITION_TITLES } from '../../shared/dilgAssignments';
+import { DEFAULT_REGION } from '../../shared/dilgAssignments';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
@@ -17,7 +17,7 @@ const NAME_FIELDS = PERSONAL_FIELDS
   .filter(field => NAME_KEYS.includes(field.key))
   .map(field => (['firstName', 'lastName'].includes(field.key) ? { ...field, required: true } : field));
 const ASSIGNMENT_FIELDS = [
-  { key: 'role', label: 'Position Title', required: true, max: 120, suggestions: POSITION_TITLES, placeholder: 'e.g. Local Government Operations Officer VI' },
+  { key: 'role', label: 'Position Title', required: true, max: 120, positionTitle: true },
   { key: 'office', label: 'Office', required: true, offices: true },
   { key: 'phoneNumber', label: 'Mobile Number', type: 'tel', required: true, max: 20, placeholder: '09XX XXX XXXX' }
 ];
@@ -238,7 +238,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       {form && !pending && (
         <form onSubmit={submitNewAccount} className="space-y-3 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-black text-slate-900">New Supervisor or HR/Admin account</p>
-          <p className="text-xs text-slate-500">Fields marked <span className="text-rose-600">*</span> are required. Put Provincial Director, Program Manager, and the like under Designation.</p>
+          <p className="text-xs text-slate-500">Fields marked <span className="text-rose-600">*</span> are required. Choose the Position Title as on the appointment; put Program Manager, Cluster Head, and the like under Designation.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {[...NAME_FIELDS, ...ASSIGNMENT_FIELDS].map(field => (
               <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={updateFormField} />

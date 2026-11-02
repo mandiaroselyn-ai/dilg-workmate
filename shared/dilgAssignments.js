@@ -35,27 +35,44 @@ export const officeError = (office, previous = '') =>
 const ranks = (title, numerals) => numerals.map(numeral => `${title} ${numeral}`);
 
 // Position titles, as on the appointment and CSC Form No. 6 ("Position"), written out in
-// full: the staff list's LGOO II to VII, ADAS II (Administrative Assistant II), ISA I
+// full and grouped as the staff list has them: the Provincial Director and Assistant
+// Provincial Director, LGOO II to VII, ADAS II (Administrative Assistant II), ISA I
 // (Information Systems Analyst I), and Engineer III, with the other ranks of each for new
 // hires, and the job order driver and utility worker.
-export const POSITION_TITLES = [
-  ...ranks('Local Government Operations Officer', ['II', 'III', 'IV', 'V', 'VI', 'VII']),
-  ...ranks('Administrative Officer', ['I', 'II', 'III', 'IV', 'V']),
-  ...ranks('Administrative Assistant', ['I', 'II', 'III']),
-  ...ranks('Administrative Aide', ['I', 'II', 'III', 'IV', 'V', 'VI']),
-  ...ranks('Information Systems Analyst', ['I', 'II', 'III']),
-  ...ranks('Project Development Officer', ['I', 'II', 'III', 'IV']),
-  ...ranks('Engineer', ['II', 'III']),
-  'Driver',
-  'Utility Worker'
+export const POSITION_TITLE_GROUPS = [
+  { label: 'Provincial Leadership', titles: ['Provincial Director', 'Assistant Provincial Director'] },
+  { label: 'Local Government Operations Officers', titles: ranks('Local Government Operations Officer', ['II', 'III', 'IV', 'V', 'VI', 'VII']) },
+  {
+    label: 'Finance and Administrative',
+    titles: [
+      ...ranks('Administrative Officer', ['I', 'II', 'III', 'IV', 'V']),
+      ...ranks('Administrative Assistant', ['I', 'II', 'III']),
+      ...ranks('Administrative Aide', ['I', 'II', 'III', 'IV', 'V', 'VI'])
+    ]
+  },
+  {
+    label: 'ICT and Project Development',
+    titles: [
+      ...ranks('Information Systems Analyst', ['I', 'II', 'III']),
+      ...ranks('Project Development Officer', ['I', 'II', 'III', 'IV']),
+      ...ranks('Engineer', ['II', 'III'])
+    ]
+  },
+  { label: 'Job Order', titles: ['Driver', 'Utility Worker'] }
 ];
+export const POSITION_TITLES = POSITION_TITLE_GROUPS.flatMap(group => group.titles);
 
-// Designations are the work a person is assigned on top of their position, such as an
-// LGOO VII designated Cluster Head, or an MLGOO who is also a Cluster Team Leader. They are
-// not position titles.
+// The short forms the staff list writes (LGOO VII, ADAS II, ISA I), shown beside the full title.
+const TITLE_SHORT_FORMS = { 'Local Government Operations Officer': 'LGOO', 'Administrative Assistant': 'ADAS', 'Information Systems Analyst': 'ISA' };
+export const positionTitleLabel = title => {
+  const [, base, rank] = /^(.*) ([IVX]+)$/.exec(title) || [];
+  return TITLE_SHORT_FORMS[base] ? `${title} (${TITLE_SHORT_FORMS[base]} ${rank})` : title;
+};
+
+// Designations are the work a person is assigned on top of their position, written after the
+// slash on the staff list, such as an LGOO VII designated Cluster Head, or an MLGOO who is also
+// a Cluster Team Leader. They are not position titles.
 export const DESIGNATIONS = [
-  'Provincial Director',
-  'Assistant Provincial Director',
   'Cluster Head',
   'Program Manager',
   'Cluster Team Leader',

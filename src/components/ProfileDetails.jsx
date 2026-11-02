@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS } from '../../shared/profileFields';
-import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES } from '../../shared/dilgAssignments';
+import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES, POSITION_TITLE_GROUPS, positionTitleLabel } from '../../shared/dilgAssignments';
 import AddressPicker from './AddressPicker';
 
 const EMERGENCY_KEYS = ['emergencyContactName', 'emergencyContactRelationship', 'emergencyContactNumber'];
@@ -42,7 +42,49 @@ export const OfficeOptions = ({ value }) => (
   </>
 );
 
-// Choices offered while typing, such as position titles; any other text can still be typed.
+const OTHER_TITLE = 'Other';
+
+// The position title as a dropdown of every title on DILG Marinduque's staff list, grouped as
+// the list groups them, so all of them show when editing too. Other opens a box to type a title
+// that is not listed; a title saved before the list opens in that box. Sends the title through
+// `onChange` like an input named `name`. `children` (such as an icon) go beside the dropdown.
+export const PositionTitleSelect = ({ name = 'role', value = '', onChange, required = false, className, otherClassName = className, children }) => {
+  const [typing, setTyping] = useState(() => Boolean(value) && !POSITION_TITLES.includes(value));
+  // Another person's title, or the form cleared, decides again whether it is typed.
+  useEffect(() => {
+    if (POSITION_TITLES.includes(value)) setTyping(false);
+    else if (value) setTyping(true);
+  }, [value]);
+  const send = title => onChange({ target: { name, value: title } });
+  return (
+    <>
+      <span className="relative block">
+        {children}
+        <select
+          value={typing ? OTHER_TITLE : value}
+          onChange={event => {
+            const isOther = event.target.value === OTHER_TITLE;
+            setTyping(isOther);
+            send(isOther ? '' : event.target.value);
+          }}
+          required={required}
+          className={className}
+        >
+          <option value="">Select position title</option>
+          {POSITION_TITLE_GROUPS.map(group => (
+            <optgroup key={group.label} label={group.label}>
+              {group.titles.map(title => <option key={title} value={title}>{positionTitleLabel(title)}</option>)}
+            </optgroup>
+          ))}
+          <option value={OTHER_TITLE}>Other (type the title)</option>
+        </select>
+      </span>
+      {typing && <input name={name} value={value} onChange={event => send(event.target.value)} required={required} maxLength={120} placeholder="As on the appointment" className={otherClassName} />}
+    </>
+  );
+};
+
+// Choices offered while typing, such as designations; any other text can still be typed.
 export const Suggestions = ({ id, options }) => (
   <datalist id={id}>
     {options.map(option => <option key={option} value={option} />)}
@@ -69,6 +111,8 @@ export const ProfileFieldInput = ({ item, value, onChange, values }) => (item.ho
         value={(item.derive && values ? item.derive(values) : value) || ''}
         className={`${inputClass} cursor-not-allowed bg-slate-100 text-slate-600`}
       />
+    ) : item.positionTitle ? (
+      <PositionTitleSelect name={item.key} value={value || ''} onChange={onChange} required={item.required} className={inputClass} />
     ) : item.offices ? (
       <select name={item.key} value={value || ''} onChange={onChange} required={item.required} className={inputClass}>
         <option value="">Select office</option>
@@ -135,7 +179,7 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
     { key: 'email', label: 'Government Email', readOnly: true }
   ];
   const employment = [
-    { key: 'role', label: 'Position Title', required: true, max: 120, suggestions: POSITION_TITLES },
+    { key: 'role', label: 'Position Title', required: true, max: 120, positionTitle: true },
     { key: 'office', label: 'Office Assignment', required: true, max: 160, offices: true },
     { key: 'region', label: 'Regional Assignment' },
     { key: 'employeeId', label: 'Employee ID', readOnly: true },

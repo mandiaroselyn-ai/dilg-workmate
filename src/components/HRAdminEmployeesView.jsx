@@ -19,9 +19,9 @@ import HRResetPasswordCard from './HRResetPasswordCard';
 import AddressPicker from './AddressPicker';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
-import ProfileDetails, { OfficeOptions, ProfileFieldInput, RequiredMark, Suggestions } from './ProfileDetails';
+import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
-import { DEFAULT_REGION, POSITION_TITLES, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
+import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
 
 // Profile details the form below shows in sections of their own; the name parts, birthday,
 // gender, and address already have their own inputs.
@@ -690,8 +690,7 @@ This cannot be undone.`
               </div>
 
               <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
-                <input name="role" value={form.role} onChange={handleChange} required maxLength={120} list="position-title-suggestions" placeholder="e.g. Local Government Operations Officer II" className={inputClass} />
-                <Suggestions id="position-title-suggestions" options={POSITION_TITLES} />
+                <PositionTitleSelect name="role" value={form.role} onChange={handleChange} required className={inputClass} />
                 <span className="mt-1 block text-xs font-medium text-slate-500">As on the appointment. Put Cluster Head, MLGOO, and the like under Designation.</span>
               </label>
 
