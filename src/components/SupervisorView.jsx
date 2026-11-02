@@ -31,6 +31,13 @@ import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 
+// Up to three initials for the signature stamp: the first name's, the middle initial's, and the
+// last name's, such as "IFF" for "Ivan Stephen F. Fadri, CESE" (what follows a comma is left out).
+const initialsOf = name => {
+  const words = String(name || '').split(',')[0].trim().split(/\s+/).filter(Boolean);
+  return (words.length > 3 ? [words[0], ...words.slice(-2)] : words).map(word => word[0]).join('').toUpperCase();
+};
+
 export default function SupervisorView({
   user,
   requests,
@@ -49,9 +56,11 @@ export default function SupervisorView({
   const [localSignatureImage, setLocalSignatureImage] = useState(user?.signatureImage || '');
   const [isSavingSignatureImage, setIsSavingSignatureImage] = useState(false);
   const sigImgInputRef = useRef(null);
-  const [typewrittenName, setTypewrittenName] = useState('GERMAN F. YAP, CESO V');
+  // The typed signature and the stamp start from the signed-in supervisor's own name. The typed
+  // name is also saved as the request's supervisorName.
+  const [typewrittenName, setTypewrittenName] = useState(() => (user?.name || '').toUpperCase());
   const [cursiveStyle, setCursiveStyle] = useState('Dancing Script');
-  const [customInitials, setCustomInitials] = useState('GFY');
+  const [customInitials, setCustomInitials] = useState(() => initialsOf(user?.name));
   const [selectedInkColor, setSelectedInkColor] = useState('blue'); // blue, black, red
 
   // Canvas drawing state
