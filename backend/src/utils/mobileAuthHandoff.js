@@ -20,16 +20,19 @@ export const isValidCodeChallenge = value => typeof value === 'string' && CODE_C
 
 export const createCodeChallenge = verifier => crypto.createHash('sha256').update(verifier).digest('base64url');
 
-export const createMobileHandoffCode = ({ userId, codeChallenge }) => {
+// The code is for a signed-in account (userId), or for a Google account that has no WorkMate
+// account yet (signUp: what Google verified), which goes on to the sign-up form.
+export const createMobileHandoffCode = ({ userId, signUp, codeChallenge }) => {
   const payload = Buffer.from(JSON.stringify({
-    sub: String(userId),
+    ...(signUp ? { signUp } : { sub: String(userId) }),
     codeChallenge,
     exp: Math.floor(Date.now() / 1000) + HANDOFF_TTL_SECONDS
   })).toString('base64url');
   return `${payload}.${sign(payload)}`;
 };
 
-// Returns the user ID when the code is authentic, unexpired and matches the verifier.
+// Returns { userId } or { signUp } when the code is authentic, unexpired and matches the
+// verifier.
 export const readMobileHandoffCode = (code, codeVerifier) => {
   if (typeof code !== 'string' || code.length > 1024) return null;
   if (typeof codeVerifier !== 'string' || !CODE_VERIFIER_PATTERN.test(codeVerifier)) return null;
@@ -45,7 +48,8 @@ export const readMobileHandoffCode = (code, codeVerifier) => {
     const challenge = Buffer.from(createCodeChallenge(codeVerifier));
     const storedChallenge = Buffer.from(String(data.codeChallenge || ''));
     if (challenge.length !== storedChallenge.length || !crypto.timingSafeEqual(challenge, storedChallenge)) return null;
-    return data.sub || null;
+    if (data.signUp?.email) return { signUp: data.signUp };
+    return data.sub ? { userId: data.sub } : null;
   } catch {
     return null;
   }

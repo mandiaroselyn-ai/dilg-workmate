@@ -4,7 +4,8 @@ import { toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken, sessionLengthFor } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { createMobileHandoffCode, isValidCodeChallenge, readMobileHandoffCode } from '../utils/mobileAuthHandoff.js';
-import { approvalNoticeDestination, inactiveAccountMessage, notifyHrOfNewAccount } from '../services/accountNotifications.js';
+import { googleSignUpResult } from '../utils/googleSignUp.js';
+import { inactiveAccountMessage } from '../services/accountNotifications.js';
 
 const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -193,48 +194,42 @@ export const googleAuthCallback = async (req, res) => {
     }
 
     const user = await User.findByEmail(profile.email);
-    if (!user) {
-      // A new Google user gets an employee account that waits for HR approval, like one
-      // made with the sign-up form, whatever the email's domain. The approval notice goes
-      // to the email Google verified. The phone number is left empty rather than taking
-      // the placeholder default, so no SMS is sent to someone else's number.
-      const created = await User.createSelfServiceEmployee({
-        name: profile.name || profile.email,
-        email: profile.email.toLowerCase(),
-        profilePicture: profile.picture || '',
-        googleId: profile.sub || '',
-        signUpMethod: 'google',
-        phoneNumber: '',
-        role: '',
-        office: '',
-        accountStatus: 'Pending'
-      });
-      if (!created) throw new Error('Unable to create your WorkMate account. Please contact the HR Administrator.');
-      await notifyHrOfNewAccount(created, 'Google sign-in');
-      const destination = approvalNoticeDestination(created);
-      throw new Error(`Your WorkMate account was created and is waiting for HR approval. You can sign in with Google once the HR Administrator activates it.${destination ? ` You will get ${destination} once it is approved.` : ''}`);
+    // A Google account with no WorkMate account yet goes to the sign-up form first, to fill
+    // in its office, position title, and mobile number; /api/register then makes an employee
+    // account that waits for HR approval, whatever the email's domain. Nothing is saved
+    // until the form is sent.
+    const signUp = user ? null : {
+      email: profile.email.toLowerCase(),
+      googleId: profile.sub || '',
+      name: profile.name || '',
+      picture: profile.picture || ''
+    };
+    if (user) {
+      if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
+        throw new Error(inactiveAccountMessage(user));
+      }
+      user.googleId = profile.sub || user.googleId;
+      user.profilePicture = profile.picture || user.profilePicture;
+      user.name = profile.name || user.name;
+      await user.save();
     }
-    if (user.accountStatus && user.accountStatus.toLowerCase() !== 'active') {
-      throw new Error(inactiveAccountMessage(user));
-    }
-    user.googleId = profile.sub || user.googleId;
-    user.profilePicture = profile.picture || user.profilePicture;
-    user.name = profile.name || user.name;
-    await user.save();
 
     if (mobile) {
       const mobileRedirect = process.env.MOBILE_AUTH_REDIRECT_URI || 'com.dilg.workmate.employee://oauth';
       const redirect = new URL(mobileRedirect);
-      redirect.searchParams.set('code', createMobileHandoffCode({ userId: user._id, codeChallenge: stateData.codeChallenge }));
+      const handoff = signUp ? { signUp } : { userId: user._id };
+      redirect.searchParams.set('code', createMobileHandoffCode({ ...handoff, codeChallenge: stateData.codeChallenge }));
       return res.redirect(redirect.toString());
     }
 
     const frontendOrigin = stateData.frontendOrigin || getFrontendOrigin(req);
-    sendPopupResult(res, 200, frontendOrigin, {
-      type: 'google-login-success',
-      token: createAuthToken(user, sessionLengthFor({ remember: stateData.remember === true })),
-      user: toSafeUser(user)
-    });
+    sendPopupResult(res, 200, frontendOrigin, signUp
+      ? { type: 'google-login-success', ...googleSignUpResult(signUp) }
+      : {
+        type: 'google-login-success',
+        token: createAuthToken(user, sessionLengthFor({ remember: stateData.remember === true })),
+        user: toSafeUser(user)
+      });
   } catch (error) {
     console.error('Google auth callback error', error);
     if (mobile) {
@@ -250,8 +245,9 @@ export const googleAuthCallback = async (req, res) => {
 
 export const googleMobileExchange = async (req, res) => {
   try {
-    const userId = readMobileHandoffCode(req.body?.code, req.body?.codeVerifier);
-    const user = userId ? await User.findById(userId) : null;
+    const handoff = readMobileHandoffCode(req.body?.code, req.body?.codeVerifier);
+    if (handoff?.signUp) return res.status(200).json({ success: true, ...googleSignUpResult(handoff.signUp) });
+    const user = handoff?.userId ? await User.findById(handoff.userId) : null;
     if (!user || (user.accountStatus && user.accountStatus.toLowerCase() !== 'active')) {
       return res.status(401).json({ success: false, error: 'Google sign-in expired. Please try again.' });
     }

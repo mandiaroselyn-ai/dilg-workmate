@@ -27,6 +27,7 @@ import { isConnected } from '../config/db.js';
 import { toRequesterProfile, toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
+import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
@@ -116,13 +117,19 @@ const REGISTRATION_FIELD_LIMITS = {
 };
 
 // Self-registration only accepts basic profile fields. The account stays Pending
-// until HR activates it, and the server assigns a unique employee ID.
+// until HR activates it, and the server assigns a unique employee ID. Someone who chose
+// Continue with Google sends its sign-up token in place of an email and password: the
+// account takes the email Google verified and signs in with Google.
 export const registerUser = async (req, res) => {
   try {
     const body = req.body || {};
+    const google = body.googleSignUp === undefined ? null : readGoogleSignUpToken(body.googleSignUp);
+    if (body.googleSignUp !== undefined && !google) {
+      return res.status(400).json({ success: false, error: 'Your Google sign-in has expired. Choose Continue with Google again.' });
+    }
     const profile = {};
     for (const [field, limit] of Object.entries(REGISTRATION_FIELD_LIMITS)) {
-      const value = body[field] ?? '';
+      const value = (google && field === 'email' ? google.email : body[field]) ?? '';
       if (typeof value !== 'string') {
         return res.status(400).json({ success: false, error: `${field} must be text.` });
       }
@@ -143,7 +150,7 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Enter your mobile number, such as 0917 123 4567. HR will text you there when your account is approved.' });
     }
     const password = typeof body.password === 'string' ? body.password.trim() : '';
-    if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
+    if (!google && (password.length < MIN_PASSWORD_LENGTH || password.length > 256)) {
       return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
     }
     const office = officeError(profile.office);
@@ -152,11 +159,14 @@ export const registerUser = async (req, res) => {
       return res.status(409).json({ success: false, error: 'An account already uses this email address.' });
     }
 
-    const created = await User.createSelfServiceEmployee({ ...profile, password, accountStatus: 'Pending', signUpMethod: 'form' });
+    const signIn = google
+      ? { googleId: google.googleId, profilePicture: google.picture, signUpMethod: 'google' }
+      : { password, signUpMethod: 'form' };
+    const created = await User.createSelfServiceEmployee({ ...profile, ...signIn, accountStatus: 'Pending' });
     if (!created) {
       return res.status(409).json({ success: false, error: 'Unable to register this account. Contact the HR Administrator.' });
     }
-    await notifyHrOfNewAccount(created, 'the sign-up form');
+    await notifyHrOfNewAccount(created, google ? 'Google sign-in' : 'the sign-up form');
     const destination = approvalNoticeDestination(created);
     res.status(201).json({
       success: true,

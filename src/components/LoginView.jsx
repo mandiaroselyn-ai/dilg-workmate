@@ -8,6 +8,7 @@ import backgroundImage from '../assets/login-bg.jpg';
 import logoImage from '../assets/dilg-logo.png';
 import { DEFAULT_REGION, POSITION_TITLES } from '../../shared/dilgAssignments';
 import { OfficeOptions, Suggestions } from './ProfileDetails';
+import { clearSessionToken } from '../utils/api';
 const GoogleIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -60,6 +61,8 @@ const writeStored = (store, key, value) => {
 // the SMS that tells a new employee HR approved their account.
 const isPhilippineMobile = value => /^(09|\+?639)\d{9}$/.test(String(value).replace(/[\s()-]/g, ''));
 
+const googleSignUpNote = 'You chose Continue with Google. Fill in your assignment details to create your account; you will log in with Google once HR approves it.';
+
 export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly = false }) {
   const [isRegister, setIsRegister] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('supervisor');
@@ -72,12 +75,39 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [successText, setSuccessText] = useState('');
   const [googleError, setGoogleError] = useState('');
 
+  // Registration Form State
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regRole, setRegRole] = useState('');
+  const [regOffice, setRegOffice] = useState('');
+  const [regRegion, setRegRegion] = useState(DEFAULT_REGION);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState('');
+  // Set when Continue with Google found no account for the Google email: the sign-up form
+  // then uses that email, with no password, and sends this token in their place.
+  const [googleSignUp, setGoogleSignUp] = useState(null);
+
   useEffect(() => {
     const handleGoogleData = (data) => {
       if (!data || typeof data !== 'object') return;
 
       if (data.type === 'google-login-success') {
         const user = data.user;
+        if (user?.googleSignUp) {
+          // The phone app saves what it gets as the session; this token is not one.
+          clearSessionToken();
+          writeStored('sessionStorage', GOOGLE_REMEMBER_KEY, '');
+          setGoogleSignUp({ token: data.token, email: user.email });
+          setRegEmail(user.email);
+          setRegName(user.name || '');
+          setIsRegister(true);
+          setErrorText('');
+          setSuccessText('');
+          setGoogleError('');
+          return;
+        }
         if (user) {
           if (mobileOnly && (user.accessLevel || 'employee').toString().trim().toLowerCase() !== 'employee') {
             setGoogleError('Only employee accounts can use the mobile app.');
@@ -124,16 +154,18 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
     window.location.assign(`/api/auth/google/url?${params.toString()}`);
   };
 
-  // Registration Form State
-  const [regName, setRegName] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regPhone, setRegPhone] = useState('');
-  const [regRole, setRegRole] = useState('');
-  const [regOffice, setRegOffice] = useState('');
-  const [regRegion, setRegRegion] = useState(DEFAULT_REGION);
-  const [showRegPassword, setShowRegPassword] = useState(false);
-  const [passwordStrength, setPasswordStrength] = useState('');
+  // Back to the login form. A Google sign-up's email and name are cleared, so the sign-up
+  // form starts empty if opened again.
+  const leaveSignUp = () => {
+    if (googleSignUp) {
+      setGoogleSignUp(null);
+      setRegEmail('');
+      setRegName('');
+    }
+    setIsRegister(false);
+    setErrorText('');
+    setSuccessText('');
+  };
 
   // Preset configuration structures
   const PRESET_PROFILES = {
@@ -224,7 +256,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    if (!regName || !regEmail || !regPassword || !regRole || !regOffice || !regRegion || !regPhone) {
+    if (!regName || !regEmail || (!googleSignUp && !regPassword) || !regRole || !regOffice || !regRegion || !regPhone) {
       setErrorText('Please fill out all registration fields.');
       return;
     }
@@ -232,7 +264,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       setErrorText('Enter your mobile number, such as 0917 123 4567. HR will text you there when your account is approved.');
       return;
     }
-    if (regPassword.trim().length < 10) {
+    if (!googleSignUp && regPassword.trim().length < 10) {
       setErrorText('Password must be at least 10 characters.');
       return;
     }
@@ -242,12 +274,11 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
     const newProfile = {
       name: regName,
-      email: regEmail,
       role: regRole,
       office: regOffice,
       region: regRegion,
       phoneNumber: regPhone,
-      password: regPassword
+      ...(googleSignUp ? { googleSignUp: googleSignUp.token } : { email: regEmail, password: regPassword })
     };
 
     setTimeout(async () => {
@@ -281,6 +312,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
         // New accounts stay Pending until HR activates them.
         setSuccessText(result.message || 'Account created. The HR Administrator must activate it before you can log in.');
+        setGoogleSignUp(null);
         setIsRegister(false);
       } catch (err) {
         console.error('Backend registration failed:', err);
@@ -334,20 +366,24 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
         <div className="md:hidden mb-6 w-full max-w-sm self-center rounded-3xl bg-white p-5 text-slate-800 shadow-xl">
           {isRegister ? (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              <button type="button" onClick={() => { setIsRegister(false); setErrorText(''); setSuccessText(''); }} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-indigo-600"><ArrowLeft className="h-4 w-4" /> Back to login</button>
-              <div><span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600">Employee registration</span><h2 className="mt-1 flex items-center gap-2 text-xl font-black text-slate-900"><UserPlus className="h-5 w-5 text-indigo-600" /> Registration Details</h2><p className="mt-1 text-xs text-slate-500">Input your assignment details below to create your account.</p></div>
+              <button type="button" onClick={leaveSignUp} className="inline-flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-indigo-600"><ArrowLeft className="h-4 w-4" /> Back to login</button>
+              <div><span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600">Employee registration</span><h2 className="mt-1 flex items-center gap-2 text-xl font-black text-slate-900"><UserPlus className="h-5 w-5 text-indigo-600" /> Registration Details</h2><p className="mt-1 text-xs text-slate-500">{googleSignUp ? googleSignUpNote : 'Input your assignment details below to create your account.'}</p></div>
               <div className="space-y-3">
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Full Name<input type="text" required value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Full Name" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Office<select required value={regOffice} onChange={(e) => setRegOffice(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Office</option><OfficeOptions /></select></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Position Title<input type="text" required maxLength={120} list="sign-up-position-titles" value={regRole} onChange={(e) => setRegRole(e.target.value)} placeholder="As on your appointment" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label><Suggestions id="sign-up-position-titles" options={POSITION_TITLES} />
                 <div className="grid grid-cols-2 gap-3"><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Account Role<input readOnly value="Employee" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Region<input readOnly value={regRegion} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label></div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Enter your email<input type="email" required value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Enter your email" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
+                {googleSignUp ? (
+                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Google email<input type="email" readOnly value={regEmail} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label>
+                ) : (
+                  <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Enter your email<input type="email" required value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Enter your email" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
+                )}
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="tel" inputMode="tel" autoComplete="tel" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
-                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<span className="relative mt-1 block"><input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pr-10 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowRegPassword(!showRegPassword)} aria-label={showRegPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>
+                {!googleSignUp && <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<span className="relative mt-1 block"><input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pr-10 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowRegPassword(!showRegPassword)} aria-label={showRegPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>}
               </div>
               {errorText && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">{errorText}</div>}
               <button type="submit" disabled={submitting} className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-xs font-extrabold text-white shadow-lg disabled:opacity-60">{submitting ? 'Registering...' : 'Sign Up'}</button>
-              <button type="button" onClick={() => { setIsRegister(false); setErrorText(''); setSuccessText(''); }} className="block w-full text-center text-[11px] font-bold text-indigo-600">Have an account? Log In here.</button>
+              <button type="button" onClick={leaveSignUp} className="block w-full text-center text-[11px] font-bold text-indigo-600">Have an account? Log In here.</button>
             </form>
           ) : (
             <form onSubmit={handleFormSubmit} className="space-y-4">
@@ -606,7 +642,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                 <div className="space-y-4">
                   <button
                     type="button"
-                    onClick={() => { setIsRegister(false); setErrorText(''); }}
+                    onClick={leaveSignUp}
                     className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 bg-transparent border-0 cursor-pointer font-bold select-none"
                   >
                     <ArrowLeft className="w-4 h-4" />
@@ -632,7 +668,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       <UserPlus className="w-5 h-5 text-indigo-600" />
                       <span>Registration Details</span>
                     </h2>
-                    <p className="text-xs text-slate-500 font-medium">Input your assignment details below to create your account.</p>
+                    <p className="text-xs text-slate-500 font-medium">{googleSignUp ? googleSignUpNote : 'Input your assignment details below to create your account.'}</p>
                   </div>
 
                   {/* Simplified DILG registration form */}
@@ -706,17 +742,26 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
                     {/* Email Address */}
                     <div className="space-y-1.5 text-xs">
-                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Enter your email</label>
+                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">{googleSignUp ? 'Google email' : 'Enter your email'}</label>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input
-                          type="email"
-                          required
-                          value={regEmail}
-                          onChange={(e) => setRegEmail(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
-                          placeholder="Enter your email"
-                        />
+                        {googleSignUp ? (
+                          <input
+                            type="email"
+                            readOnly
+                            value={regEmail}
+                            className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-500 focus:outline-none cursor-not-allowed"
+                          />
+                        ) : (
+                          <input
+                            type="email"
+                            required
+                            value={regEmail}
+                            onChange={(e) => setRegEmail(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pl-9 text-xs font-bold text-slate-800 focus:outline-indigo-500 focus:bg-white"
+                            placeholder="Enter your email"
+                          />
+                        )}
                       </div>
                     </div>
 
@@ -752,8 +797,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       </div>
                     </div>
 
-                    {/* Password */}
-                    <div className="space-y-1.5 text-xs">
+                    {/* Password (none for a Google sign-up, which logs in with Google) */}
+                    {!googleSignUp && <div className="space-y-1.5 text-xs">
                       <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Create a password</label>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -794,7 +839,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                           {passwordStrength}
                         </p>
                       )}
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Error alerts */}
@@ -827,7 +872,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                   <div className="text-center">
                     <button
                       type="button"
-                      onClick={() => { setIsRegister(false); setErrorText(''); setSuccessText(''); }}
+                      onClick={leaveSignUp}
                       className="text-xs text-indigo-600 hover:text-indigo-500 hover:underline font-bold bg-transparent border-0 cursor-pointer"
                     >
                       Have an account? Log In here.

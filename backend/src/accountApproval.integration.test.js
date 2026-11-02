@@ -271,10 +271,11 @@ test('approving an account by saving it as Active from the edit form also tells 
 });
 
 // Runs the Google sign-in callback with Google's answers replaced: the account it finds
-// (or null for a new one) and the verified profile Google returns.
-const googleCallback = async (t, existing, profile) => {
-  const start = await request(app).get('/api/auth/google/url');
-  const state = new URL(start.headers.location).searchParams.get('state');
+// (or null for a new one) and the verified profile Google returns. `start` is the query
+// that opens Google (the phone app adds mobile and a code challenge).
+const googleCallback = async (t, existing, profile, start = {}) => {
+  const opened = await request(app).get('/api/auth/google/url').query(start);
+  const state = new URL(opened.headers.location).searchParams.get('state');
   t.mock.method(globalThis, 'fetch', async url => ({
     json: async () => (String(url).includes('/token') ? { access_token: 'google-access-token' } : profile)
   }));
@@ -285,20 +286,98 @@ const googleCallback = async (t, existing, profile) => {
   return { response, create, notify };
 };
 
-test('signing up with Google uses the Google email, waits for HR, and never takes a phone number', async t => {
+// The message the web callback's page hands to the login page.
+const callbackMessage = response => JSON.parse(response.text.match(/const message = (.*);/)[1]);
+
+const pedro = { sub: 'google-sub-9', email: 'Pedro.Santos@gmail.com', email_verified: true, name: 'Pedro Santos', picture: 'https://lh3.googleusercontent.com/a/pedro' };
+// What the sign-up form sends for a Google sign-up, besides the token.
+const googleSignUpDetails = {
+  name: 'Pedro A. Santos',
+  role: 'Administrative Assistant III',
+  office: 'Office of the MLGOO - Boac',
+  region: 'DILG Region IV-B - MIMAROPA',
+  phoneNumber: '0917 555 1234'
+};
+
+test('a new Google account goes to the sign-up form, and nothing is saved yet', async t => {
+  const { response, create, notify } = await googleCallback(t, null, pedro);
+  const message = callbackMessage(response);
+  assert.equal(message.type, 'google-login-success');
+  assert.deepEqual(message.user, { googleSignUp: true, name: 'Pedro Santos', email: 'pedro.santos@gmail.com' });
+  // The token only makes a sign-up; it is not a session.
+  assert.equal(verifyAuthToken(message.token), null);
+  assert.equal(create.mock.callCount(), 0);
+  assert.equal(notify.mock.callCount(), 0);
+});
+
+test('the Google sign-up form makes a Pending account with the email Google verified', async t => {
   withEmail(t);
-  const { response, create, notify } = await googleCallback(t, null, {
-    sub: 'google-sub-9', email: 'Pedro.Santos@gmail.com', email_verified: true, name: 'Pedro Santos'
+  const { response, create, notify } = await googleCallback(t, null, pedro);
+  const { token } = callbackMessage(response);
+  const registered = await request(app).post('/api/register').send({
+    ...googleSignUpDetails,
+    googleSignUp: token,
+    email: 'someone.else@gmail.com',
+    password: 'ignored-for-google'
   });
+  assert.equal(registered.status, 201, JSON.stringify(registered.body));
+  assert.match(registered.body.message, /You will get an email at pe\*\*\*@gmail\.com once it is approved/);
   const saved = create.mock.calls[0].arguments[0];
   assert.equal(saved.email, 'pedro.santos@gmail.com');
+  assert.equal(saved.name, 'Pedro A. Santos');
+  assert.equal(saved.role, googleSignUpDetails.role);
+  assert.equal(saved.office, googleSignUpDetails.office);
+  assert.equal(saved.phoneNumber, googleSignUpDetails.phoneNumber);
   assert.equal(saved.signUpMethod, 'google');
-  assert.equal(saved.phoneNumber, '');
+  assert.equal(saved.googleId, 'google-sub-9');
+  assert.equal(saved.profilePicture, pedro.picture);
+  assert.equal(saved.password, undefined);
   assert.equal(saved.accountStatus, 'Pending');
-  assert.equal(notify.mock.calls[0].arguments[0].title, 'New Account Awaiting Approval');
-  assert.match(response.text, /waiting for HR approval/);
-  assert.match(response.text, /You will get an email at pe\*\*\*@gmail\.com once it is approved/);
-  assert.doesNotMatch(response.text, /google-login-success/);
+  assert.match(notify.mock.calls[0].arguments[0].message, /signed up through Google sign-in/);
+});
+
+test('the Google sign-up form needs the same details as the sign-up form', async t => {
+  const { response, create } = await googleCallback(t, null, pedro);
+  const { token } = callbackMessage(response);
+  const noMobile = await request(app).post('/api/register').send({ ...googleSignUpDetails, phoneNumber: '', googleSignUp: token });
+  assert.equal(noMobile.status, 400);
+  assert.match(noMobile.body.error, /mobile number/);
+  const noOffice = await request(app).post('/api/register').send({ ...googleSignUpDetails, office: '', googleSignUp: token });
+  assert.equal(noOffice.status, 400);
+  assert.equal(create.mock.callCount(), 0);
+});
+
+test('a changed or expired Google sign-up token is refused', async t => {
+  const { response, create } = await googleCallback(t, null, pedro);
+  const { token } = callbackMessage(response);
+  const [payload, signature] = token.split('.');
+  const changed = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(payload, 'base64url').toString()), email: 'hr@dilg.gov.ph' })).toString('base64url');
+  const forged = await request(app).post('/api/register').send({ ...googleSignUpDetails, googleSignUp: `${changed}.${signature}` });
+  assert.equal(forged.status, 400);
+  assert.match(forged.body.error, /Google sign-in has expired/);
+
+  const now = Date.now();
+  t.mock.method(Date, 'now', () => now + 31 * 60 * 1000);
+  const expired = await request(app).post('/api/register').send({ ...googleSignUpDetails, googleSignUp: token });
+  assert.equal(expired.status, 400);
+  assert.equal(create.mock.callCount(), 0);
+});
+
+test('in the phone app, a new Google account also goes to the sign-up form', async t => {
+  const verifier = 'v'.repeat(43);
+  const { createCodeChallenge } = await import('./utils/mobileAuthHandoff.js');
+  const { response, create } = await googleCallback(t, null, pedro, { mobile: '1', code_challenge: createCodeChallenge(verifier) });
+  const code = new URL(response.headers.location).searchParams.get('code');
+  assert.ok(code);
+  const exchanged = await request(app).post('/api/auth/google/exchange').send({ code, codeVerifier: verifier });
+  assert.equal(exchanged.status, 200);
+  assert.deepEqual(exchanged.body.user, { googleSignUp: true, name: 'Pedro Santos', email: 'pedro.santos@gmail.com' });
+  const registered = await request(app).post('/api/register').send({ ...googleSignUpDetails, googleSignUp: exchanged.body.token });
+  assert.equal(registered.status, 201, JSON.stringify(registered.body));
+  assert.equal(create.mock.calls[0].arguments[0].email, 'pedro.santos@gmail.com');
+
+  const wrongVerifier = await request(app).post('/api/auth/google/exchange').send({ code, codeVerifier: 'w'.repeat(43) });
+  assert.equal(wrongVerifier.status, 401);
 });
 
 test('signing in with Google to a rejected account says it was rejected', async t => {

@@ -16,7 +16,14 @@ const codeChallenge = createCodeChallenge(verifier);
 
 test('accepts a hand-off code only with the matching code verifier', () => {
   const code = createMobileHandoffCode({ userId: 'user-1', codeChallenge });
-  assert.equal(readMobileHandoffCode(code, verifier), 'user-1');
+  assert.deepEqual(readMobileHandoffCode(code, verifier), { userId: 'user-1' });
+  assert.equal(readMobileHandoffCode(code, crypto.randomBytes(32).toString('base64url')), null);
+});
+
+test('carries a Google account that still has to sign up, with the same verifier check', () => {
+  const signUp = { email: 'pedro.santos@gmail.com', googleId: 'google-sub-9', name: 'Pedro Santos', picture: '' };
+  const code = createMobileHandoffCode({ signUp, codeChallenge });
+  assert.deepEqual(readMobileHandoffCode(code, verifier), { signUp });
   assert.equal(readMobileHandoffCode(code, crypto.randomBytes(32).toString('base64url')), null);
 });
 
