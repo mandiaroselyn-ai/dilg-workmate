@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { overlapMessage, overlappingRequest } from '../../shared/requestOverlap';
+import { filedBeforeStart, filingDate, lateFilingProblem } from '../../shared/requestFiling';
 import { countLeaveDays } from '../../shared/leaveCalc';
 import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import {
@@ -46,6 +47,10 @@ const attachmentBytes = file => Math.round((String(file?.dataUrl || '').split(',
 
 // Submitted requests that are not decided yet can be withdrawn (matches the server).
 const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
+
+// The calamity leave's name. Drafts saved before it was corrected say "Special Emergency Lease".
+const CALAMITY_LEAVE = 'Special Emergency (Calamity) Leave';
+const leaveTypeOf = draft => (draft.leaveType === 'Special Emergency Lease' ? CALAMITY_LEAVE : draft.leaveType || 'Vacation Leave');
 
 // The remark saved when the Supervisor approves without typing one (the first is from
 // before it was shortened). It says nothing, so it is not shown.
@@ -189,9 +194,18 @@ export default function RequestsView({
         : 'The return date cannot be earlier than the activity date.');
       return;
     }
-    // A submitted leave or travel order may not share a day with the employee's other
-    // submitted or approved leave or travel (the server checks this too).
+    // A submitted leave or travel order may not be filed after it should have been (a returned
+    // one counts from when it was first submitted), nor share a day with the employee's other
+    // submitted or approved leave or travel (the server checks these too).
     if (!isDraftMode) {
+      const late = lateFilingProblem(
+        { type: activeTab2 === 'Leave' ? 'Leave Request' : 'Travel Order', leaveType, startDate },
+        filingDate(requests.find(request => request.id === editingDraftId), getManilaDateString())
+      );
+      if (late) {
+        setFormErrorMessage(late);
+        return;
+      }
       const other = overlappingRequest({
         id: editingDraftId || undefined,
         type: activeTab2 === 'Leave' ? 'Leave Request' : 'Travel Order',
@@ -283,7 +297,7 @@ export default function RequestsView({
     setActiveTab2(draft.type === 'Leave Request' ? 'Leave' : 'Travel');
     
     if (draft.type === 'Leave Request') {
-      setLeaveType(draft.leaveType || 'Vacation Leave');
+      setLeaveType(leaveTypeOf(draft));
       setDetailsType(draft.detailsType || 'Within Philippines');
       setDetailsSpecify(draft.detailsSpecify || '');
       setTravelActivity(draft.travelActivity || '');
@@ -663,7 +677,7 @@ Reason (optional):`, '');
                     <option value="10-Day VAWC Leave">10-Day VAWC Leave (R.A. 9262)</option>
                     <option value="Rehabilitation Privilege">Rehabilitation Privilege (Sec. 55, Rule XVI)</option>
                     <option value="Special Leave Benefits for Women">Special Leave Benefits for Women (R.A. 9710)</option>
-                    <option value="Special Emergency Lease">Special Emergency (Calamity) Leave</option>
+                    <option value={CALAMITY_LEAVE}>Special Emergency (Calamity) Leave</option>
                     <option value="Adoption Leave">Adoption Leave (R.A. 8552)</option>
                     <option value="Others">Others (e.g., CTO)</option>
                   </select>
@@ -724,6 +738,8 @@ Reason (optional):`, '');
                     <input
                       type="date"
                       value={startDate}
+                      // Past days cannot be picked for a travel order or a leave filed before it starts.
+                      min={!editingReturned && filedBeforeStart({ type: activeTab2 === 'Leave' ? 'Leave Request' : 'Travel Order', leaveType }) ? getManilaDateString() : undefined}
                       onChange={(e) => {
                         setStartDate(e.target.value);
                         // A one-day travel returns the same day, until a later return date is chosen.

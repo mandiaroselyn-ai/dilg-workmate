@@ -32,6 +32,8 @@ test('every leave type in the request form has its own checkbox', () => {
     '10-Day VAWC Leave': 'vawc',
     'Rehabilitation Privilege': 'rehabilitation',
     'Special Leave Benefits for Women': 'women',
+    'Special Emergency (Calamity) Leave': 'calamity',
+    // Saved before the name was corrected.
     'Special Emergency Lease': 'calamity',
     'Adoption Leave': 'adoption',
     Others: null

@@ -15,6 +15,10 @@ const { createAuthToken } = await import('./utils/authToken.js');
 
 const app = createApiApp();
 
+// Sets today to Mon Nov 2, 2026 in Manila for one test, so dates the tests file for stay in
+// the future (a travel order or vacation leave cannot be filed for a day that has passed).
+const onNovember2 = t => t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-02T09:00:00+08:00') });
+
 const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', accessLevel: 'hr_admin', accountStatus: 'Active' };
 const requests = {
   'REQ-PENDING': { id: 'REQ-PENDING', status: 'Pending', type: 'Leave Request', employeeId: 'E1' },
@@ -109,6 +113,7 @@ test('the employee fixes a returned request and submits it again, and HR is told
 });
 
 test('a leave or travel order that overlaps another submitted leave of the employee is refused', async t => {
+  onNovember2(t);
   const employee = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
   const approved = { id: 'REQ-NOV', type: 'Leave Request', status: 'Approved', startDate: '2026-11-03', endDate: '2026-11-05', employeeId: 'E1' };
   t.mock.method(User, 'findByEmail', async () => employee);
@@ -132,6 +137,68 @@ test('a leave or travel order that overlaps another submitted leave of the emplo
   // A draft may overlap until it is submitted, and other dates are fine.
   assert.equal((await send({ type: 'Leave Request', startDate: '2026-11-05', endDate: '2026-11-06', purpose: 'Leave Type: Vacation Leave. Draft.', status: 'Draft' })).status, 201);
   assert.equal((await send({ type: 'Leave Request', startDate: '2026-11-06', endDate: '2026-11-06', purpose: 'Leave Type: Vacation Leave. Next day.', status: 'Pending' })).status, 201);
+});
+
+// Signs in as an employee with no other leave or travel. Returns `send` for new requests,
+// `resubmit` for one already saved, and the saved requests.
+const fileAsEmployee = (t, existing = null) => {
+  onNovember2(t);
+  const employee = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
+  t.mock.method(User, 'findByEmail', async () => employee);
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async () => []);
+  t.mock.method(Leave, 'findByCustomId', async () => existing);
+  t.mock.method(Holiday, 'findAll', async () => []);
+  const creates = t.mock.method(Leave, 'create', async saved => ({ ...saved, id: 'REQ-NEW' }));
+  const saves = t.mock.method(Leave, 'updateStatus', async (_id, update) => ({ ...existing, ...update }));
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  const token = createAuthToken(employee);
+  return {
+    creates,
+    saves,
+    send: body => request(app).post('/api/requests').set('Authorization', `Bearer ${token}`).send(body),
+    resubmit: body => request(app).patch(`/api/requests/${existing.id}`).set('Authorization', `Bearer ${token}`).send(body)
+  };
+};
+
+test('vacation leave and travel orders cannot be filed for days that have passed', async t => {
+  const { send, creates } = fileAsEmployee(t);
+  const vacation = await send({ type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-10-01', endDate: '2026-10-01', purpose: 'Leave Type: Vacation Leave. Trip.', status: 'Pending' });
+  assert.equal(vacation.status, 400);
+  assert.match(vacation.body.error, /Vacation Leave is filed before the leave starts\. Oct 1, 2026 has already passed/);
+  const travel = await send({ type: 'Travel Order', leaveType: 'N/A', startDate: '2026-10-30', endDate: '2026-11-03', purpose: 'Official Travel. LGU visit.', status: 'Pending' });
+  assert.equal(travel.status, 400);
+  assert.match(travel.body.error, /travel order is filed before the travel/);
+  assert.equal(creates.mock.callCount(), 0);
+
+  // Today is still in time, and a draft is not filed yet.
+  assert.equal((await send({ type: 'Travel Order', leaveType: 'N/A', startDate: '2026-11-02', endDate: '2026-11-02', purpose: 'Official Travel. Today.', status: 'Pending' })).status, 201);
+  assert.equal((await send({ type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-10-01', endDate: '2026-10-01', purpose: 'Leave Type: Vacation Leave. Draft.', status: 'Draft' })).status, 201);
+});
+
+test('sick leave can be filed after the days it covers, upon return', async t => {
+  const { send } = fileAsEmployee(t);
+  const sick = await send({ type: 'Leave Request', leaveType: 'Sick Leave', startDate: '2026-10-29', endDate: '2026-10-30', purpose: 'Leave Type: Sick Leave. Fever.', status: 'Pending' });
+  assert.equal(sick.status, 201, JSON.stringify(sick.body));
+});
+
+test('a draft for a day that has passed cannot be submitted', async t => {
+  const draft = { id: 'REQ-DRAFT', type: 'Travel Order', status: 'Draft', startDate: '2026-10-28', endDate: '2026-10-28', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', statusHistory: [{ status: 'Draft', date: '2026-10-20' }] };
+  const { resubmit, saves } = fileAsEmployee(t, draft);
+  const response = await resubmit({ status: 'Pending' });
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /Oct 28, 2026 has already passed/);
+  assert.equal(saves.mock.callCount(), 0);
+});
+
+test('a request filed in time and returned to be fixed can be submitted again after its date', async t => {
+  const returned = {
+    id: 'REQ-RETURNED', type: 'Leave Request', leaveType: 'Vacation Leave', status: 'Returned',
+    startDate: '2026-10-30', endDate: '2026-10-30', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', submissionDate: '2026-10-20',
+    statusHistory: [{ status: 'Pending', date: '2026-10-20' }, { status: 'Returned', date: '2026-10-29' }]
+  };
+  const { resubmit } = fileAsEmployee(t, returned);
+  const response = await resubmit({ status: 'Pending', purpose: 'Leave Type: Vacation Leave. With the signed form.' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
 });
 
 test('HR does not receive employee drafts', async t => {
@@ -191,6 +258,7 @@ test('a failed supervisor text does not stop the forward', async t => {
 });
 
 test('a leave\'s working days are counted by the server, without holidays, whatever the form sent', async t => {
+  onNovember2(t);
   const employee = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
   t.mock.method(User, 'findByEmail', async () => employee);
   t.mock.method(Leave, 'findAbsencesOfEmployee', async () => []);

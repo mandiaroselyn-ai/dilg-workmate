@@ -8,6 +8,8 @@ import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
 import { noticeRequestDecision } from '../services/employeeNotices.js';
 import { overlapMessage, overlappingRequest } from '../../../shared/requestOverlap.js';
+import { filingDate, lateFilingProblem } from '../../../shared/requestFiling.js';
+import { getManilaDateString } from '../../../shared/localDate.js';
 import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
 
@@ -130,6 +132,11 @@ export const createRequest = async (req, res) => {
       ? buildEmployeeRequest(req.body, req.user)
       : { ...req.body };
     if (requestBody.type === 'Leave Request' && requestBody.startDate) requestBody.workingDays = await serverLeaveDays(requestBody);
+    // An employee's leave or travel order filed after it should have been (see lateFilingProblem).
+    const late = req.user?.accessLevel === 'employee' && requestBody.status === 'Pending'
+      ? lateFilingProblem(requestBody, getManilaDateString())
+      : null;
+    if (late) return res.status(400).json({ success: false, error: late });
     const overlap = await overlapProblem(requestBody);
     if (overlap) return res.status(409).json({ success: false, error: overlap });
     const newReq = await Leave.create(requestBody);
@@ -165,9 +172,11 @@ export const updateRequestStatus = async (req, res) => {
       if (editsOwnRequest && edited.type === 'Leave Request' && edited.startDate && update.status !== 'Cancelled') {
         update.workingDays = await serverLeaveDays(edited);
       }
-      // A draft submitted, or a returned request submitted again, may not overlap other leave
-      // or travel.
+      // A draft submitted, or a returned request submitted again, may not be filed late (a
+      // returned one counts from when it was first submitted) or overlap other leave or travel.
       if (update.status === 'Pending') {
+        const late = lateFilingProblem(edited, filingDate(existing, getManilaDateString()));
+        if (late) return res.status(400).json({ success: false, error: late });
         const overlap = await overlapProblem({ ...existing, ...update });
         if (overlap) return res.status(409).json({ success: false, error: overlap });
       }

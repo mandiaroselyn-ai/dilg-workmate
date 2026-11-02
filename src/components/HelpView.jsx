@@ -69,6 +69,11 @@ const faqs = [
   },
   {
     topic: 'Leave and travel',
+    question: 'Can I file a leave or travel order for a day that has passed?',
+    answer: 'Not a Travel Order, or a Vacation, Mandatory/Forced, Study, or Adoption Leave: file these before they start, today at the latest. Sick Leave is filed when you return to work, so it can cover days that have passed. So can the leave the CSC allows after an emergency: Special Privilege, Solo Parent, Maternity, Paternity, VAWC, Rehabilitation, Special Leave Benefits for Women, and Special Emergency Leave. A request HR returns to you keeps the day you first filed it.'
+  },
+  {
+    topic: 'Leave and travel',
     question: 'Can I cancel a request?',
     answer: 'Yes, while it is still Pending or For Supervisor: open it in Requests and tap Withdraw. For a request that is already approved, ask HR.'
   },
