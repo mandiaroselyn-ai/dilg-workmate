@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { drawSignature } from './formSignature.js';
 
 // Fills the CSC Form No. 6 template (src/assets/template/csc-form-6-template.pdf) for one leave
 // request. Every position below is in PDF points measured from the bottom-left corner of
@@ -61,10 +62,10 @@ export const LEAVE_FORM_LAYOUT = {
   requested: 323.5,
   applicantName: { center: 437.3, y: 309.4, maxWidth: 185 },
 
-  // 7.B: Recommendation — supervisor's name over the signature line (right column of section 7).
-  supervisorClearRect: { x: 305, y: 148, width: 238, height: 42 },
-  supervisorSigLine: { x1: 310, x2: 540, y: 184 },
-  supervisorName7B: { center: 427, y: 170, maxWidth: 225 },
+  // 7.C/7.D: the Supervisor's signature, just over the approving official's name that the
+  // template prints at the bottom (its baseline is y 63.4), under 7.D's last line (y 107.6).
+  // 7.A and 7.B keep the template's names.
+  approverSignature: { center: 309, bottom: 72, width: 150, height: 32 },
 };
 
 const formatDate = value => {
@@ -185,38 +186,10 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
   box(L.detailBoxX, L.requested, request.commutation === 'Requested');
   write([name.first, name.middle, name.last].filter(Boolean).join(' ').toUpperCase(), L.applicantName);
 
-  // 7.B: Supervisor recommendation — erase the template placeholder then write the actual approver.
-  const supervisorName = request.supervisorName;
-  if (supervisorName) {
-    page.drawRectangle({ x: L.supervisorClearRect.x, y: L.supervisorClearRect.y, width: L.supervisorClearRect.width, height: L.supervisorClearRect.height + 8, color: rgb(1, 1, 1) });
-    const sigData = String(request.supervisorSignature || request.signatureData || '');
-    if (sigData.startsWith('data:image/png;base64,')) {
-      try {
-        const base64 = sigData.slice('data:image/png;base64,'.length);
-        const imgBytes = typeof Buffer !== 'undefined'
-          ? Buffer.from(base64, 'base64')
-          : Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-        const img = await pdf.embedPng(imgBytes);
-        page.drawImage(img, { x: 355, y: 187, width: 100, height: 32 });
-      } catch {}
-    } else if (sigData.startsWith('type:')) {
-      const sigNameDisplay = sigData.split(':').slice(2).join(':') || supervisorName;
-      const italic = await pdf.embedFont(StandardFonts.TimesRomanItalic);
-      const sigSize = 9.5;
-      const sigWidth = italic.widthOfTextAtSize(sigNameDisplay, sigSize);
-      page.drawText(sigNameDisplay, { x: 427 - sigWidth / 2, y: 187, size: sigSize, font: italic, color: black });
-    } else if (sigData.startsWith('stamp:')) {
-      const parts = sigData.split(':');
-      const initials = parts[1] || supervisorName.split(' ').filter(Boolean).map(w => w[0]).join('');
-      const courier = await pdf.embedFont(StandardFonts.CourierBold);
-      const initSize = 10;
-      const iW = courier.widthOfTextAtSize(initials, initSize) + 6;
-      const iX = 427 - iW / 2;
-      page.drawRectangle({ x: iX, y: 186, width: iW, height: 12, borderColor: black, borderWidth: 0.5 });
-      page.drawText(initials, { x: iX + 3, y: 188, size: initSize, font: courier, color: black });
-    }
-    page.drawLine({ start: { x: L.supervisorSigLine.x1, y: L.supervisorSigLine.y }, end: { x: L.supervisorSigLine.x2, y: L.supervisorSigLine.y }, thickness: 0.5, color: black });
-    write(supervisorName.toUpperCase(), L.supervisorName7B);
+  // 7.C/7.D: once the Supervisor approves or disapproves, their signature goes over the
+  // approving official's name. Before that the form has no signature.
+  if (['Approved', 'Rejected'].includes(request.status)) {
+    await drawSignature(pdf, page, request.supervisorSignature || request.signatureData, L.approverSignature);
   }
 
   if (grid) drawGrid(page, regular);

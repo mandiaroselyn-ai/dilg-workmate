@@ -68,10 +68,26 @@ test("the template's blanks and fixed text are replaced, and the signature moves
   const shortText = short.join('\n');
   assert.doesNotMatch(shortText, /(96\.6 251\.15|380\.85 395\.5|72 443\.15|74\.75 419\.25|202\.8 419\.25|362\.85 419\.25) m/);
   assert.match(shortText, /231\.6 180\.7 m/);
-  // The signature is drawn once, moved down by more when the subject takes more lines.
+  // The Director's name moves down by more when the subject takes more lines.
   const shift = streams => -Number(/q\r1 0 0 1 0 (\S+) cm\rq\r1 0 0 -1 0 842 cm/.exec(streams.join('\n'))[1]);
   assert.ok(shift(long) > shift(short) + 30, `${shift(long)} vs ${shift(short)}`);
-  assert.equal([...short.join('\n').matchAll(/\/IM23 Do/g)].length, 1);
+  // The template's scanned signature (IM23) is never drawn.
+  assert.equal([...short.join('\n').matchAll(/\/IM23 Do/g)].length, 0);
+});
+
+// A 1 x 1 PNG, as the Supervisor's drawn or uploaded signature is saved.
+const pngSignature ='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+const imagesDrawn = streams => [...streams.join('\n').matchAll(/\/\S+ Do/g)].length;
+
+test('the order is signed with the Supervisor\'s signature only once approved', async () => {
+  const order = { travelActivity: 'Barangay Assembly Monitoring', startDate: '2026-11-09', travelTime: '8:00 a.m. to 5:00 p.m.', travelVenue: 'Brgy. Tabi, Boac', supervisorSignature: pngSignature };
+  const unsigned = await contentsOf(await fillTravelOrder(template, { ...order, status: 'For Supervisor' }));
+  const rejected = await contentsOf(await fillTravelOrder(template, { ...order, status: 'Rejected' }));
+  const approved = await contentsOf(await fillTravelOrder(template, { ...order, status: 'Approved' }));
+  // The letterhead's two logos only, until the Supervisor approves; then their signature too.
+  assert.equal(imagesDrawn(unsigned), 2);
+  assert.equal(imagesDrawn(rejected), 2);
+  assert.equal(imagesDrawn(approved), 3);
 });
 
 test('the subject leaves out the "Official Travel." prefix of the purpose', () => {

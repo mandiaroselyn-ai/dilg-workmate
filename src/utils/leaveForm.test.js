@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { PDFDocument } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
 import { LEAVE_FORM_LAYOUT, fillLeaveForm, leaveTypeKey, splitApplicantName } from './leaveForm.js';
 
 const template = fs.readFileSync(new URL('../assets/template/csc-form-6-template.pdf', import.meta.url));
@@ -58,6 +58,33 @@ test('the filled form keeps the template\'s single US Letter page', async () => 
   const { width, height } = filled.getPages()[0].getSize();
   assert.equal(Math.round(width), 612);
   assert.equal(Math.round(height), 792);
+});
+
+// The content of a filled form's page, and how many images and white boxes it draws.
+const pageContent = async bytes => {
+  const pdf = await PDFDocument.load(bytes);
+  const entry = pdf.getPages()[0].node.get(PDFName.of('Contents'));
+  const refs = entry instanceof PDFArray ? entry.asArray() : [entry];
+  return refs.map(ref => Buffer.from(decodePDFRawStream(pdf.context.lookup(ref)).decode()).toString('latin1')).join('\n');
+};
+const imagesIn = content => [...content.matchAll(/\/\S+ Do/g)].length;
+// A 1 x 1 PNG, as the Supervisor's drawn or uploaded signature is saved.
+const pngSignature = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+test('the Supervisor signs over the approving official\'s name once they decide, and 7.B is left as it is', async () => {
+  const leave = { leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', workingDays: 2, supervisorName: 'IVAN STEPHEN F. FADRI, CESE', supervisorSignature: pngSignature };
+  const waiting = await pageContent(await fillLeaveForm(template, { ...leave, status: 'For Supervisor' }));
+  const approved = await pageContent(await fillLeaveForm(template, { ...leave, status: 'Approved' }));
+  const disapproved = await pageContent(await fillLeaveForm(template, { ...leave, status: 'Rejected' }));
+  assert.equal(imagesIn(approved), imagesIn(waiting) + 1);
+  assert.equal(imagesIn(disapproved), imagesIn(waiting) + 1);
+  // The signature sits over the name at the bottom (from y 72), not in 7.B.
+  assert.match(approved, /1 0 0 1 \S+ 72 cm/);
+  // Nothing in 7.B is covered: no white box is drawn over the recommending officer's name, so
+  // the page has only the white fills of a form the Supervisor has not touched.
+  const whiteFills = content => [...content.matchAll(/(^|\n)1 1 1 rg/g)].length;
+  const untouched = await pageContent(await fillLeaveForm(template, { leaveType: 'Vacation Leave', startDate: '2026-11-09' }));
+  assert.equal(whiteFills(approved), whiteFills(untouched));
 });
 
 test('every answer position is on the page', () => {

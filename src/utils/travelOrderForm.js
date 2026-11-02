@@ -1,11 +1,13 @@
 import { PDFArray, PDFDocument, PDFName, PDFRef, StandardFonts, decodePDFRawStream, rgb } from 'pdf-lib';
 import { drawGrid } from './leaveForm.js';
+import { drawSignature } from './formSignature.js';
 
 // Makes the Provincial Order (travel order) for one travel request, laid out like the
 // Provincial Director's own orders: the answers are written in bold into the text, a long
 // subject runs onto more lines, and everything under it (the date, the paragraph, and the
-// Director's signature) moves down to make room. The page is src/assets/template/travelorder-template.pdf:
-// its letterhead and footer stay, its signature is moved, and its fixed text is replaced.
+// Director's name) moves down to make room. The page is src/assets/template/travelorder-template.pdf:
+// its letterhead and footer stay, the Director's name and title are moved, its scanned
+// signature is left out (the Supervisor signs on approval), and its fixed text is replaced.
 // Every position is in PDF points from the bottom-left corner of the A4 page (595.5 x 842),
 // measured from the template and from a signed order. To check a change, run
 // `node scripts/preview-travel-order.mjs --grid` and open the PDF it writes.
@@ -22,10 +24,13 @@ export const TRAVEL_ORDER_LAYOUT = {
   // (from `headerFrom` up) and the motto and telephone number (up to `footerTo`).
   headerFrom: 603.5,
   footerTo: 60,
-  // The Director's signature, name, and title (between `bottom` and `top`), which sit
-  // under "For your compliance and appropriate action." (baseline `compliance` on the
-  // template) and move with it.
+  // The Director's name and title (between `bottom` and `top`), which sit under "For your
+  // compliance and appropriate action." (baseline `compliance` on the template) and move with
+  // it. The template's scanned signature over the name is left out: the Supervisor's own
+  // signature goes there (`signatureSpot`) once they approve the order.
   signature: { bottom: 305, top: 372, compliance: 376.7 },
+  // Just over the name (baseline 329.1 on the template), under "For your compliance...".
+  signatureSpot: { center: 161.8, bottom: 339, width: 142, height: 32 },
   // Text columns: labels, their colons, the answers, and the right margin.
   left: 72,
   colon: 144,
@@ -175,6 +180,10 @@ export async function fillTravelOrder(templateBytes, request = {}, person = {}, 
     `q\r1 0 0 1 0 ${(-dy).toFixed(2)} cm\rq\r1 0 0 -1 0 ${page.getHeight()} cm\r${signature}\rQ\rQ`
   ]);
   for (const { text, x, y: textY, font, size } of texts) page.drawText(text, { x, y: textY, size, font, color: black });
+  // Signed only once approved: before that (or when disapproved) the order has the name only.
+  if (request.status === 'Approved') {
+    await drawSignature(pdf, page, request.supervisorSignature || request.signatureData, { ...L.signatureSpot, bottom: L.signatureSpot.bottom - dy });
+  }
 
   if (grid) drawGrid(page, regular);
   return pdf.save();
@@ -195,7 +204,7 @@ const pageContents = (pdf, page) => {
 };
 
 // The template's page content, split up: `base` keeps the letterhead and footer, and
-// `signature` holds the Director's signature, name, and title. Everything else the template
+// `signature` holds the Director's name and title. Everything else the template
 // writes (the labels, the paragraph with its blanks, "For your compliance...") is dropped,
 // because the order writes it. The template draws with y measured from the top of the page
 // (it starts with "1 0 0 -1 0 842 cm"), so its y is the page height minus a page y. Each of
@@ -236,7 +245,9 @@ function splitTemplateContent(pdf, page) {
     const image = /^q (\S+) (\S+) (\S+) (\S+) (\S+) (\S+) cm$/.exec(line);
     if (image && /^\/\S+ Do Q$/.test(lines[index + 1] || '')) {
       const top = Number(image[6]);
-      place(partAt(height - Math.max(top, top + Number(image[4]))), [line, lines[index + 1]]);
+      const part = partAt(height - Math.max(top, top + Number(image[4])));
+      // The only image by the name is the scanned signature, which is left out.
+      if (part !== 'signature') place(part, [line, lines[index + 1]]);
       index += 1;
       continue;
     }
