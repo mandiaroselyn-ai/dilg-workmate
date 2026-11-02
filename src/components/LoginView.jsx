@@ -62,7 +62,8 @@ const writeStored = (store, key, value) => {
 // the SMS that tells a new employee HR approved their account.
 const isPhilippineMobile = value => /^(09|\+?639)\d{9}$/.test(String(value).replace(/[\s()-]/g, ''));
 
-const googleSignUpNote = 'You chose Continue with Google. Fill in your assignment details to create your account; you will log in with Google once HR approves it.';
+const googleSignUpNote = 'You chose Continue with Google. Fill in your details and create a WorkMate password. Once HR approves your account, log in with Google or with your email and this password.';
+const googlePasswordNote = 'For WorkMate only. Do not use your Gmail password.';
 
 export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly = false }) {
   const [isRegister, setIsRegister] = useState(false);
@@ -88,7 +89,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState('');
   // Set when Continue with Google found no account for the Google email: the sign-up form
-  // then uses that email, with no password, and sends this token in their place.
+  // then uses that email, locked, and sends this token in its place.
   const [googleSignUp, setGoogleSignUp] = useState(null);
 
   useEffect(() => {
@@ -98,8 +99,11 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       if (data.type === 'google-login-success') {
         const user = data.user;
         if (user?.googleSignUp) {
-          // The phone app saves what it gets as the session; this token is not one.
+          // The phone app saves what it gets as the session; this token is not one. Its
+          // spinner over the page waits for a page with no password field, and this form has
+          // one, so it is taken down here.
           clearSessionToken();
+          document.getElementById('dilg-signin-cover')?.remove();
           writeStored('sessionStorage', GOOGLE_REMEMBER_KEY, '');
           setGoogleSignUp({ token: data.token, email: user.email });
           setRegEmail(user.email);
@@ -258,7 +262,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    if (!regName || !regEmail || (!googleSignUp && !regPassword) || !regRole || !regOffice || !regRegion || !regPhone || !regAddress) {
+    if (!regName || !regEmail || !regPassword || !regRole || !regOffice || !regRegion || !regPhone || !regAddress) {
       setErrorText('Please fill out all registration fields.');
       return;
     }
@@ -266,7 +270,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       setErrorText('Enter your mobile number, such as 0917 123 4567. HR will text you there when your account is approved.');
       return;
     }
-    if (!googleSignUp && regPassword.trim().length < 10) {
+    if (regPassword.trim().length < 10) {
       setErrorText('Password must be at least 10 characters.');
       return;
     }
@@ -281,7 +285,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       region: regRegion,
       phoneNumber: regPhone,
       address: regAddress,
-      ...(googleSignUp ? { googleSignUp: googleSignUp.token } : { email: regEmail, password: regPassword })
+      password: regPassword,
+      ...(googleSignUp ? { googleSignUp: googleSignUp.token } : { email: regEmail })
     };
 
     setTimeout(async () => {
@@ -383,7 +388,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                 )}
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Mobile Phone Number<input type="tel" inputMode="tel" autoComplete="tel" required value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="+63 9XX XXX XXXX" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <div className="space-y-2"><p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Home Address</p><AddressPicker value={regAddress} onChange={(e) => setRegAddress(e.target.value)} required labelClass="block text-[10px] font-bold text-slate-500" fieldClass="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none disabled:opacity-60" /></div>
-                {!googleSignUp && <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Create a password<span className="relative mt-1 block"><input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pr-10 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowRegPassword(!showRegPassword)} aria-label={showRegPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>}
+                <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">{googleSignUp ? 'Create a WorkMate password' : 'Create a password'}<span className="relative mt-1 block"><input name="new-password" type={showRegPassword ? 'text' : 'password'} autoComplete="new-password" required value={regPassword} onChange={(e) => { const value = e.target.value; setRegPassword(value); const score = [/.{10,}/, /[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].reduce((acc, test) => acc + (test.test(value) ? 1 : 0), 0); setPasswordStrength(score >= 5 ? 'Strong password' : score >= 3 ? 'Good, add one more symbol or number' : 'Use 10+ chars with upper, lower, numbers, symbols'); }} placeholder="Create a password" className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 pr-10 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /><button type="button" onClick={() => setShowRegPassword(!showRegPassword)} aria-label={showRegPassword ? 'Hide password' : 'Show password'} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">{showRegPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span>{googleSignUp && <span className="mt-1 block text-[10px] font-semibold normal-case tracking-normal text-slate-500">{googlePasswordNote}</span>}{regPassword && <span className="mt-1 block text-[10px] normal-case tracking-normal text-indigo-600">{passwordStrength}</span>}</label>
               </div>
               {errorText && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-600">{errorText}</div>}
               <button type="submit" disabled={submitting} className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-xs font-extrabold text-white shadow-lg disabled:opacity-60">{submitting ? 'Registering...' : 'Sign Up'}</button>
@@ -815,9 +820,9 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                       </div>
                     </div>
 
-                    {/* Password (none for a Google sign-up, which logs in with Google) */}
-                    {!googleSignUp && <div className="space-y-1.5 text-xs">
-                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">Create a password</label>
+                    {/* Password (a Google sign-up's lets it also log in with its email) */}
+                    <div className="space-y-1.5 text-xs">
+                      <label className="text-[9.5px] uppercase font-extrabold tracking-widest text-slate-500 block">{googleSignUp ? 'Create a WorkMate password' : 'Create a password'}</label>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
@@ -852,12 +857,13 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                           {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
+                      {googleSignUp && <p className="text-[10px] text-slate-500 font-semibold mt-1">{googlePasswordNote}</p>}
                       {regPassword && (
                         <p className={`text-[10px] ${passwordStrength.includes('Strong') ? 'text-emerald-600' : passwordStrength.includes('Good') ? 'text-amber-600' : 'text-rose-600'} font-semibold mt-2`}>
                           {passwordStrength}
                         </p>
                       )}
-                    </div>}
+                    </div>
                   </div>
 
                   {/* Error alerts */}

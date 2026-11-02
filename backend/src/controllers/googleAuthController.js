@@ -195,9 +195,9 @@ export const googleAuthCallback = async (req, res) => {
 
     const user = await User.findByEmail(profile.email);
     // A Google account with no WorkMate account yet goes to the sign-up form first, to fill
-    // in its office, position title, and mobile number; /api/register then makes an employee
-    // account that waits for HR approval, whatever the email's domain. Nothing is saved
-    // until the form is sent.
+    // in its details and a WorkMate password; /api/register then makes an employee account
+    // that waits for HR approval, whatever the email's domain. Nothing is saved until the
+    // form is sent.
     const signUp = user ? null : {
       email: profile.email.toLowerCase(),
       googleId: profile.sub || '',

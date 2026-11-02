@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
-// A Google account with no WorkMate account yet fills in the sign-up form (office, position
-// title, mobile number) before its account is made. This token carries what Google verified
+// A Google account with no WorkMate account yet fills in the sign-up form (its details and a
+// WorkMate password) before its account is made. This token carries what Google verified
 // (the email, Google's account ID, name, and picture) to that form and back to
 // /api/register, signed so the email cannot be changed. It is not a session: it can only
 // make a Pending account for that email, and it expires in 30 minutes.

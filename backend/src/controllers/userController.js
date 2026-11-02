@@ -119,8 +119,8 @@ const REGISTRATION_FIELD_LIMITS = {
 
 // Self-registration only accepts basic profile fields. The account stays Pending
 // until HR activates it, and the server assigns a unique employee ID. Someone who chose
-// Continue with Google sends its sign-up token in place of an email and password: the
-// account takes the email Google verified and signs in with Google.
+// Continue with Google sends its sign-up token in place of an email: the account takes the
+// email Google verified and signs in with Google or with that email and its password.
 export const registerUser = async (req, res) => {
   try {
     const body = req.body || {};
@@ -151,7 +151,7 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Enter your mobile number, such as 0917 123 4567. HR will text you there when your account is approved.' });
     }
     const password = typeof body.password === 'string' ? body.password.trim() : '';
-    if (!google && (password.length < MIN_PASSWORD_LENGTH || password.length > 256)) {
+    if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
       return res.status(400).json({ success: false, error: `Password must be ${MIN_PASSWORD_LENGTH} to 256 characters.` });
     }
     if (!profile.address) {
@@ -165,8 +165,8 @@ export const registerUser = async (req, res) => {
 
     const signIn = google
       ? { googleId: google.googleId, profilePicture: google.picture, signUpMethod: 'google' }
-      : { password, signUpMethod: 'form' };
-    const created = await User.createSelfServiceEmployee({ ...profile, ...signIn, accountStatus: 'Pending' });
+      : { signUpMethod: 'form' };
+    const created = await User.createSelfServiceEmployee({ ...profile, ...signIn, password, accountStatus: 'Pending' });
     if (!created) {
       return res.status(409).json({ success: false, error: 'Unable to register this account. Contact the HR Administrator.' });
     }

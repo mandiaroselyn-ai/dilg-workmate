@@ -297,7 +297,8 @@ const googleSignUpDetails = {
   office: 'Office of the MLGOO - Boac',
   region: 'DILG Region IV-B - MIMAROPA',
   phoneNumber: '0917 555 1234',
-  address: '12 Mabini St., Santol, Boac, Marinduque'
+  address: '12 Mabini St., Santol, Boac, Marinduque',
+  password: 'a-long-password-42'
 };
 
 test('a new Google account goes to the sign-up form, and nothing is saved yet', async t => {
@@ -318,8 +319,7 @@ test('the Google sign-up form makes a Pending account with the email Google veri
   const registered = await request(app).post('/api/register').send({
     ...googleSignUpDetails,
     googleSignUp: token,
-    email: 'someone.else@gmail.com',
-    password: 'ignored-for-google'
+    email: 'someone.else@gmail.com'
   });
   assert.equal(registered.status, 201, JSON.stringify(registered.body));
   assert.match(registered.body.message, /You will get an email at pe\*\*\*@gmail\.com once it is approved/);
@@ -333,7 +333,8 @@ test('the Google sign-up form makes a Pending account with the email Google veri
   assert.equal(saved.signUpMethod, 'google');
   assert.equal(saved.googleId, 'google-sub-9');
   assert.equal(saved.profilePicture, pedro.picture);
-  assert.equal(saved.password, undefined);
+  // A WorkMate password too, so the account can also log in with its email.
+  assert.equal(saved.password, 'a-long-password-42');
   assert.equal(saved.accountStatus, 'Pending');
   assert.match(notify.mock.calls[0].arguments[0].message, /signed up through Google sign-in/);
 });
@@ -349,6 +350,9 @@ test('the Google sign-up form needs the same details as the sign-up form', async
   const noAddress = await request(app).post('/api/register').send({ ...googleSignUpDetails, address: ' ', googleSignUp: token });
   assert.equal(noAddress.status, 400);
   assert.equal(noAddress.body.error, 'Enter your home address.');
+  const noPassword = await request(app).post('/api/register').send({ ...googleSignUpDetails, password: '', googleSignUp: token });
+  assert.equal(noPassword.status, 400);
+  assert.match(noPassword.body.error, /Password must be 10/);
   assert.equal(create.mock.callCount(), 0);
 });
 
@@ -356,7 +360,7 @@ test('the sign-up form saves the home address and needs one', async t => {
   t.mock.method(User, 'findByEmail', async () => null);
   const create = t.mock.method(User, 'createSelfServiceEmployee', async data => ({ ...data, _id: 'new-form', employeeId: 'DILG-2026-888888', accessLevel: 'employee' }));
   t.mock.method(Announcement, 'createNotification', async data => data);
-  const form = { ...googleSignUpDetails, email: 'maria@gmail.com', password: 'a-long-password-42' };
+  const form = { ...googleSignUpDetails, email: 'maria@gmail.com' };
   const noAddress = await request(app).post('/api/register').send({ ...form, address: '' });
   assert.equal(noAddress.status, 400);
   assert.equal(noAddress.body.error, 'Enter your home address.');
