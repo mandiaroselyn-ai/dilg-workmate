@@ -66,7 +66,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   const staff = activeEmployees(employees);
   const attendanceHistory = recordsForEmployees(allAttendance, employees);
   const requests = recordsForEmployees(allRequests, employees);
-  const todayStatuses = staff.map(employee => employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays }).status);
+  const todayStatuses = staff.map(employee => employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays, today }).status);
   const lateCount = todayStatuses.filter(status => status === 'Late').length;
   const presentCount = lateCount + todayStatuses.filter(status => status === 'Present').length;
   const absentCount = todayStatuses.filter(status => status === 'Absent').length;

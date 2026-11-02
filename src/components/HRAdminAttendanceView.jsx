@@ -149,7 +149,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const statusesOn = date => staff.map(employee => ({
     employee,
-    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date, holidays })
+    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date, holidays, today })
   }));
   const todayStatuses = statusesOn(today);
   // Monitoring shows today unless HR picks an earlier day, back to the first day of the

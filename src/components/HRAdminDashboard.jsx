@@ -44,7 +44,7 @@ export default function HRAdminDashboard({
   const totalEmployees = staff.length;
   const todayStatuses = staff.map(employee => ({
     employee,
-    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date: today, holidays })
+    ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date: today, holidays, today })
   }));
   const countStatus = (...statuses) => todayStatuses.filter(item => statuses.includes(item.status)).length;
   const late = countStatus('Late');

@@ -77,9 +77,14 @@ export const countsInDtr = record => isAccepted(record?.offlineTimeIn);
 export const dtrTimeOut = record => (isAccepted(record?.offlineTimeOut) ? record?.timeOut || null : null);
 const isRejectedOffline = record => record?.offlineTimeIn?.decision === 'rejected';
 
+// True when HR set the employee's Employment Status to ON LEAVE.
+export const hasOnLeaveStatus = employee => (employee?.employmentStatus || '').toString().trim().toUpperCase() === 'ON LEAVE';
+
 // An employee's attendance on `date`: Present, Late, On Leave, On Travel, Rest Day (a Saturday,
-// Sunday, or one of HR's holidays with none of those), or Absent.
-export const employeeDayStatus = (employee, { records = [], requests = [], date, holidays = [] }) => {
+// Sunday, or one of HR's holidays with none of those), or Absent. On Leave is an approved leave
+// covering `date`, or, from `today` on, an Employment Status of ON LEAVE: that status says how
+// the employee is now, not since when, so earlier days go by the leave filed for them.
+export const employeeDayStatus = (employee, { records = [], requests = [], date, holidays = [], today = '' }) => {
   const record = records.find(item => item.date === date && matchesAttendanceEmployee(item, employee) && !isRejectedOffline(item)) || null;
   if (record?.timeIn && record.status !== 'Absent') return { status: isLate(record) ? 'Late' : 'Present', record };
   const approved = requests.filter(request => (
@@ -89,6 +94,7 @@ export const employeeDayStatus = (employee, { records = [], requests = [], date,
   ));
   if (approved.some(request => request.type === 'Leave Request')) return { status: 'On Leave', record };
   if (approved.some(request => request.type === 'Travel Order')) return { status: 'On Travel', record };
+  if (today && date >= today && hasOnLeaveStatus(employee)) return { status: 'On Leave', record };
   return { status: isRestDate(date, holidays) ? 'Rest Day' : 'Absent', record };
 };
 
@@ -102,7 +108,7 @@ export const monthAttendanceSummary = (employee, { records = [], requests = [], 
   const counts = { present: 0, wfh: 0, field: 0, late: 0, leave: 0, absent: 0 };
   for (let day = 1; day <= lastDay; day += 1) {
     const date = `${today.slice(0, 8)}${String(day).padStart(2, '0')}`;
-    const { status, record } = employeeDayStatus(employee, { records, requests, date, holidays });
+    const { status, record } = employeeDayStatus(employee, { records, requests, date, holidays, today });
     if (status === 'Rest Day') continue;
     if (status === 'Absent') {
       if (date !== today) counts.absent += 1;

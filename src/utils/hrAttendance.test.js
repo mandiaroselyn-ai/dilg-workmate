@@ -48,6 +48,22 @@ test('today\'s status counts Time Ins, late arrivals, leave, and travel', () => 
   assert.equal(employeeDayStatus(roselyn, { records, requests: [{ ...requests[0], status: 'Pending' }], date: today }).status, 'Absent');
 });
 
+test('an employee HR set to ON LEAVE is on leave from today on, not absent', () => {
+  const onLeave = { ...roselyn, employmentStatus: 'ON LEAVE' };
+  assert.equal(employeeDayStatus(onLeave, { records: [], requests: [], date: today, today }).status, 'On Leave');
+  assert.equal(employeeDayStatus(onLeave, { records: [], requests: [], date: '2026-09-30', today }).status, 'On Leave');
+  // Earlier days go by the leave filed for them: the status does not say since when.
+  assert.equal(employeeDayStatus(onLeave, { records: [], requests: [], date: '2026-09-28', today }).status, 'Absent');
+  // A Time In still counts, and an active employee with no Time In is absent.
+  const timedIn = { employeeId: roselyn.employeeId, employeeName: 'Roselyn Mandia', date: today, timeIn: '07:55 AM' };
+  assert.equal(employeeDayStatus(onLeave, { records: [timedIn], requests: [], date: today, today }).status, 'Present');
+  assert.equal(employeeDayStatus({ ...roselyn, employmentStatus: 'ACTIVE' }, { records: [], requests: [], date: today, today }).status, 'Absent');
+  // The month counts today as leave, and the days before by their records.
+  const month = monthAttendanceSummary(onLeave, { records: [], requests: [], today });
+  assert.equal(month.leave, 1);
+  assert.equal(month.absent, 20);
+});
+
 test('a leave without an end date covers its start date only', () => {
   assert.equal(requestCoversDate({ startDate: today }, today), true);
   assert.equal(requestCoversDate({ startDate: today }, '2026-09-30'), false);
