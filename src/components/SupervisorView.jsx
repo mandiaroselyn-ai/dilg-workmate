@@ -302,21 +302,6 @@ export default function SupervisorView({
   return (
     <div className="p-4 sm:p-8 space-y-8 overflow-y-auto flex-1 id-supervisor-review-view font-sans">
       
-      {/* Top Banner Alert */}
-      {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fadeIn select-none text-left">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span className="font-bold text-xs">{successMsg}</span>
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-805 p-4 rounded-xl flex items-center gap-3 shadow-xs animate-fadeIn select-none text-left">
-          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          <span className="font-bold text-xs">{errorMsg}</span>
-        </div>
-      )}
-
       {/* Tab Navigation for Supervisor Workspace */}
       <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 self-start inline-flex select-none">
         <button
@@ -472,6 +457,7 @@ export default function SupervisorView({
                   key={req.id}
                   onClick={() => {
                     setSelectedRequest(req);
+                    setErrorMsg('');
                     setRemarks(['Pending', 'For Supervisor'].includes(req.status) ? '' : req.supervisorRemarks || '');
                   }}
                   className={`p-4 rounded-xl border cursor-pointer transition-all space-y-3 text-xs leading-relaxed text-left ${
@@ -563,6 +549,14 @@ export default function SupervisorView({
               </div>
             </div>
 
+            {/* Shown here, beside the decision, not at the top of the page where it is out of view. */}
+            {successMsg && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl flex items-center gap-3 animate-fadeIn select-none text-left">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span className="font-bold text-xs">{successMsg}</span>
+              </div>
+            )}
+
             {selectedRequest ? (
               <div className="space-y-4">
                 
@@ -589,10 +583,11 @@ export default function SupervisorView({
                   <textarea
                     rows={2}
                     value={remarks}
-                    onChange={(e) => setRemarks(e.target.value)}
+                    onChange={(e) => { setRemarks(e.target.value); if (e.target.value.trim()) setErrorMsg(''); }}
                     placeholder="Enter recommendations or comments for leave or travel order approval..."
                     className="w-full font-semibold border border-slate-200 rounded-lg p-3 bg-slate-50 text-slate-800 focus:outline-[#1e40af] placeholder-slate-400"
                   />
+                  <span className="block text-[9.5px] font-semibold text-slate-500">Required to disapprove a request or return it to the employee.</span>
                   {selectedRequest.status === 'Pending' && (
                     <span className="text-[9.5px] text-slate-500 font-medium block leading-normal font-semibold">
                       These remarks and signature will serve as the final decision and official signature on the document.
@@ -795,6 +790,14 @@ export default function SupervisorView({
                     </div>
                   )}
                 </div>
+
+                {/* Right above the buttons, so a decision that cannot be saved says why where it was clicked. */}
+                {errorMsg && (
+                  <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl flex items-center gap-3 animate-fadeIn select-none text-left">
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <span className="font-bold text-xs">{errorMsg}</span>
+                  </div>
+                )}
 
                 {/* Double Decisive Button Layout Drawer */}
                 <div className="grid grid-cols-2 gap-3.5 pt-4 border-t border-slate-100">

@@ -299,3 +299,34 @@ test('approved sick leave is charged to sick leave, then vacation leave, then wi
   const notice = notices.mock.calls.map(call => call.arguments[0]).find(item => item.title === 'Leave Credits Charged');
   assert.match(notice.message, /2 days sick leave, 1\.5 days vacation leave, 0\.5 days without pay/);
 });
+
+test('the supervisor disapproves a leave and a travel order with remarks and a signature', async t => {
+  const supervisor = { _id: 's-1', email: 'boss@dilg.gov.ph', employeeId: 'S1', name: 'Ana Reyes', accessLevel: 'supervisor', accountStatus: 'Active' };
+  const waiting = {
+    'REQ-LEAVE': { id: 'REQ-LEAVE', type: 'Leave Request', leaveType: 'Vacation Leave', status: 'For Supervisor', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', statusHistory: [] },
+    'REQ-TRAVEL': { id: 'REQ-TRAVEL', type: 'Travel Order', status: 'For Supervisor', startDate: '2026-11-09', endDate: '2026-11-09', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', statusHistory: [] }
+  };
+  t.mock.method(User, 'findByEmail', async email => (email === supervisor.email ? supervisor : null));
+  t.mock.method(User, 'findByEmployeeId', async () => null);
+  t.mock.method(Holiday, 'findAll', async () => []);
+  t.mock.method(Leave, 'findByCustomId', async id => waiting[id] || null);
+  const saves = t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...waiting[id], ...update }));
+  const charges = t.mock.method(User, 'chargeApprovedLeave', async () => null);
+  const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  // What the Supervisor's screen sends for Disapprove Request.
+  const signature = `data:image/png;base64,${'A'.repeat(20000)}`;
+  for (const id of Object.keys(waiting)) {
+    const response = await request(app).patch(`/api/requests/${id}`).set('Authorization', `Bearer ${createAuthToken(supervisor)}`)
+      .send({
+        status: 'Rejected', stage: 'Rejected', approver: 'Supervisor Review Desk', remarks: 'Needed at the office.',
+        supervisorSignature: signature, supervisorRemarks: 'Needed at the office.', supervisorApprovedAt: '2026-11-02',
+        supervisorName: 'Ana Reyes', signatureData: signature,
+        statusHistory: [{ status: 'Rejected', date: '2026-11-02', actor: 'Supervisor Review Desk' }]
+      });
+    assert.equal(response.status, 200, `${id}: ${JSON.stringify(response.body)}`);
+    assert.equal(response.body.request.status, 'Rejected');
+  }
+  assert.equal(saves.mock.callCount(), 2);
+  assert.equal(charges.mock.callCount(), 0);
+  assert.ok(notices.mock.calls.some(call => /Disapproved|disapproved|Rejected/.test(`${call.arguments[0].title} ${call.arguments[0].message}`)));
+});
