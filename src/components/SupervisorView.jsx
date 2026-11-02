@@ -615,7 +615,6 @@ export default function SupervisorView({
                     {['Approved', 'Rejected', 'Returned'].includes(selectedRequest.status) && (selectedRequest.supervisorRemarks || selectedRequest.remarks) && (
                       <p className="font-semibold">Remarks: <span className="font-bold text-slate-800">{selectedRequest.supervisorRemarks || selectedRequest.remarks}</span></p>
                     )}
-                    <p className="text-[10px] font-semibold text-slate-500">This request is no longer waiting for your decision, so it cannot be approved or disapproved again.</p>
                   </div>
                 ) : (<>
                 {/* Supervisor Remarks Input */}
