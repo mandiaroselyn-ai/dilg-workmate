@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS } from '../../shared/profileFields';
-import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES, POSITION_TITLE_GROUPS, positionTitleLabel } from '../../shared/dilgAssignments';
+import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES, POSITION_TITLE_GROUPS } from '../../shared/dilgAssignments';
 import AddressPicker from './AddressPicker';
 
 const EMERGENCY_KEYS = ['emergencyContactName', 'emergencyContactRelationship', 'emergencyContactNumber'];
@@ -44,8 +44,8 @@ export const OfficeOptions = ({ value }) => (
 
 const OTHER_TITLE = 'Other';
 
-// The position title as a dropdown of every title on DILG Marinduque's staff list, grouped as
-// the list groups them, so all of them show when editing too. Other opens a box to type a title
+// The position title as a dropdown of every title on DILG Marinduque's staff list, written as
+// the list writes them, so all of them show when editing too. Other opens a box to type a title
 // that is not listed; a title saved before the list opens in that box. Sends the title through
 // `onChange` like an input named `name`. `children` (such as an icon) go beside the dropdown.
 export const PositionTitleSelect = ({ name = 'role', value = '', onChange, required = false, className, otherClassName = className, children }) => {
@@ -73,7 +73,7 @@ export const PositionTitleSelect = ({ name = 'role', value = '', onChange, requi
           <option value="">Select position title</option>
           {POSITION_TITLE_GROUPS.map(group => (
             <optgroup key={group.label} label={group.label}>
-              {group.titles.map(title => <option key={title} value={title}>{positionTitleLabel(title)}</option>)}
+              {group.titles.map(title => <option key={title} value={title}>{title}</option>)}
             </optgroup>
           ))}
           <option value={OTHER_TITLE}>Other (type the title)</option>

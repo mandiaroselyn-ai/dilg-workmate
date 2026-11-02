@@ -238,7 +238,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       {form && !pending && (
         <form onSubmit={submitNewAccount} className="space-y-3 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
           <p className="text-sm font-black text-slate-900">New Supervisor or HR/Admin account</p>
-          <p className="text-xs text-slate-500">Fields marked <span className="text-rose-600">*</span> are required. Choose the Position Title as on the appointment; put Program Manager, Cluster Head, and the like under Designation.</p>
+          <p className="text-xs text-slate-500">Fields marked <span className="text-rose-600">*</span> are required. Choose the Position Title as the office's staff list writes it, such as LGOO VI / Program Manager.</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {[...NAME_FIELDS, ...ASSIGNMENT_FIELDS].map(field => (
               <ProfileFieldInput key={field.key} item={field} value={form[field.key]} values={form} onChange={updateFormField} />

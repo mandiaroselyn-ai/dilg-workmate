@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DILG_OFFICE_GROUPS, DILG_OFFICES, DESIGNATIONS, POSITION_TITLES, isPhilippineMobile, isSignUpApproval, missingApprovalDetails, officeError, positionTitleLabel } from './dilgAssignments.js';
+import { DILG_OFFICE_GROUPS, DILG_OFFICES, DESIGNATIONS, POSITION_TITLES, POSITION_TITLE_GROUPS, isPhilippineMobile, isSignUpApproval, missingApprovalDetails, officeError } from './dilgAssignments.js';
 
 test('the offices are the provincial office\'s sections and units and the MLGOO of each town, by cluster', () => {
   const group = label => DILG_OFFICE_GROUPS.find(item => item.label === label).offices;
@@ -12,20 +12,18 @@ test('the offices are the provincial office\'s sections and units and the MLGOO 
   assert.equal(DILG_OFFICES.length, 12);
 });
 
-test('the staff list\'s positions are offered in full, and designations are not position titles', () => {
-  for (const title of ['Provincial Director', 'Assistant Provincial Director', 'Local Government Operations Officer II', 'Local Government Operations Officer VII', 'Administrative Assistant II', 'Information Systems Analyst I', 'Engineer III', 'Driver', 'Utility Worker']) {
-    assert.ok(POSITION_TITLES.includes(title), title);
-  }
-  for (const designation of DESIGNATIONS) assert.equal(POSITION_TITLES.includes(designation), false, designation);
+test('the staff list\'s positions are offered exactly as it writes them, then the other ranks', () => {
+  const [staffList, otherRanks] = POSITION_TITLE_GROUPS;
+  assert.deepEqual(staffList.titles, [
+    'Provincial Director', 'Assistant Provincial Director',
+    'LGOO VII / Cluster Head', 'LGOO VI / Program Manager', 'LGOO V / LGCDS Chief', 'LGOO II / LGMES Chief', 'LGOO II',
+    'MLGOO', 'MLGOO / Cluster Team Leader',
+    'ADAS II (Chief)', 'ADAS II', 'ISA I', 'Engineer III', 'Job Order (Utility)', 'Job Order (Driver)'
+  ]);
+  for (const title of ['LGOO III', 'LGOO VII', 'ADAS I', 'Administrative Officer V', 'ISA III', 'Engineer II']) assert.ok(otherRanks.titles.includes(title), title);
   assert.equal(new Set(POSITION_TITLES).size, POSITION_TITLES.length);
-});
-
-test('titles show the short form the staff list uses', () => {
-  assert.equal(positionTitleLabel('Local Government Operations Officer VII'), 'Local Government Operations Officer VII (LGOO VII)');
-  assert.equal(positionTitleLabel('Administrative Assistant II'), 'Administrative Assistant II (ADAS II)');
-  assert.equal(positionTitleLabel('Information Systems Analyst I'), 'Information Systems Analyst I (ISA I)');
-  assert.equal(positionTitleLabel('Provincial Director'), 'Provincial Director');
-  assert.equal(positionTitleLabel('Engineer III'), 'Engineer III');
+  // A designation alone is not a position title.
+  for (const designation of DESIGNATIONS) assert.equal(POSITION_TITLES.includes(designation), false, designation);
 });
 
 test('a new office must be listed, but an account keeps the office it was saved with', () => {

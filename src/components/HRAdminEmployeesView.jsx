@@ -691,7 +691,7 @@ This cannot be undone.`
 
               <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
                 <PositionTitleSelect name="role" value={form.role} onChange={handleChange} required className={inputClass} />
-                <span className="mt-1 block text-xs font-medium text-slate-500">As on the appointment. Put Cluster Head, MLGOO, and the like under Designation.</span>
+                <span className="mt-1 block text-xs font-medium text-slate-500">As the office's staff list writes it, such as LGOO VI / Program Manager.</span>
               </label>
 
               <label className="text-[11px] font-black text-slate-600">Office<RequiredMark />
