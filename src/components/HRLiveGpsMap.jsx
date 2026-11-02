@@ -33,11 +33,12 @@ const loadGoogleMaps = key => {
   return googleMapsLoading;
 };
 
-// HR's map of employees on duty. Each dot is the employee's latest phone GPS, which the app
-// sends every minute while it is open: green inside their assigned area, red outside it,
-// blue while out for lunch. When no GPS has come for 15 minutes the dot stays at the last
-// known location, faded. Someone picked after timing out is gray, at where they timed in.
-// The picked employee's assigned area is outlined, so HR can see whether they are really there.
+// HR's map of the employees who timed in today. While on duty, each dot is the employee's
+// latest phone GPS, which the app sends every minute while it is open: green inside their
+// assigned area, red outside it, blue while out for lunch. When no GPS has come for 15 minutes
+// the dot stays at the last known location, faded. After Time Out the dot is gray, at where
+// they timed in. The picked employee's assigned area is outlined, so HR can see whether they
+// are really there.
 
 const COLORS = { inside: '#16a34a', outside: '#dc2626', lunch: '#0284c7', done: '#94a3b8' };
 const NO_SIGNAL_OPACITY = 0.4;
@@ -300,7 +301,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed" style={{ borderColor: AREA_STYLE.color, backgroundColor: `${AREA_STYLE.color}1f` }} />Picked employee's assigned area (field areas allow {GEOFENCE_METERS} m past the edge)</span>
         </div>
       </div>
-      {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee is on duty right now, so there is no one to show on the map.</p>}
+      {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee has timed in today, so there is no one to show on the map.</p>}
     </div>
   );
 }

@@ -306,9 +306,10 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const onGpsPage = activeSection === 'GPS & Geofence';
   const mapRows = filteredLocationRows;
   const pickedRow = selectedEmployee ? selectedLocationRow : null;
-  const livePoints = mapRows.filter(row => row.live).map(mapPointFor).filter(Boolean);
-  const pickedPoint = pickedRow && !pickedRow.live ? mapPointFor(pickedRow) : null;
-  const shownPoints = pickedPoint ? [...livePoints, pickedPoint] : livePoints;
+  // Everyone who timed in today has a dot: an open shift at the phone's latest GPS, and someone
+  // who has timed out (gray) at where they timed in.
+  const locatedRows = mapRows.filter(row => row.record);
+  const shownPoints = locatedRows.map(mapPointFor).filter(Boolean);
   // The map redraws only when what it shows changes, so an open popup is not closed by
   // unrelated updates such as typing in the search box.
   const mapPointsKey = JSON.stringify(shownPoints);
@@ -316,7 +317,7 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   const mapPoints = useMemo(() => shownPoints, [mapPointsKey]);
   // Looks up the names of Time In positions that are not known yet, one at a time, while the
   // map is on screen.
-  const shownRows = !onGpsPage ? [] : [...mapRows.filter(row => row.live), ...(pickedRow && !pickedRow.live ? [pickedRow] : [])];
+  const shownRows = onGpsPage ? locatedRows : [];
   const missingPlaceKeys = [...new Set(shownRows
     .map(row => timeInPositionOf(row))
     .filter(position => Number.isFinite(Number(position.latitude)) && Number.isFinite(Number(position.longitude)))
