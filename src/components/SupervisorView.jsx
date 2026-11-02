@@ -33,6 +33,26 @@ import AttachmentList from './AttachmentList';
 
 // Up to three initials for the signature stamp: the first name's, the middle initial's, and the
 // last name's, such as "IFF" for "Ivan Stephen F. Fadri, CESE" (what follows a comma is left out).
+// A request the Supervisor can still decide: one HR forwarded, or one still with HR (the server
+// allows the same). Approved, disapproved, returned, and withdrawn ones are done.
+const canDecide = request => ['Pending', 'Pending Review', 'For Supervisor'].includes(request?.status);
+
+const shortDate = value => {
+  const date = new Date(`${String(value || '').slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+// What happened to a request that is no longer waiting for the Supervisor.
+const decisionText = request => {
+  const by = request.supervisorName ? ` by ${request.supervisorName}` : '';
+  const on = shortDate(request.supervisorApprovedAt) ? ` on ${shortDate(request.supervisorApprovedAt)}` : '';
+  if (request.status === 'Approved') return `Approved${by}${on}.`;
+  if (request.status === 'Rejected') return `Disapproved${by}${on}.`;
+  if (request.status === 'Returned') return 'Returned to the employee to fix. It comes back here once they submit it again.';
+  if (request.status === 'Withdrawn') return 'Withdrawn by the employee.';
+  return `This request is ${request.status || 'not submitted'}.`;
+};
+
 const initialsOf = name => {
   const words = String(name || '').split(',')[0].trim().split(/\s+/).filter(Boolean);
   return (words.length > 3 ? [words[0], ...words.slice(-2)] : words).map(word => word[0]).join('').toUpperCase();
@@ -586,6 +606,18 @@ export default function SupervisorView({
                   </div>
                 </div>
 
+                {/* A decided request (or one with the employee) shows its decision; only one still
+                    waiting for a decision can be signed, approved, disapproved, or returned. */}
+                {!canDecide(selectedRequest) ? (
+                  <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-xs text-slate-600">
+                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Decision</p>
+                    <p className="font-bold text-slate-800">{decisionText(selectedRequest)}</p>
+                    {['Approved', 'Rejected', 'Returned'].includes(selectedRequest.status) && (selectedRequest.supervisorRemarks || selectedRequest.remarks) && (
+                      <p className="font-semibold">Remarks: <span className="font-bold text-slate-800">{selectedRequest.supervisorRemarks || selectedRequest.remarks}</span></p>
+                    )}
+                    <p className="text-[10px] font-semibold text-slate-500">This request is no longer waiting for your decision, so it cannot be approved or disapproved again.</p>
+                  </div>
+                ) : (<>
                 {/* Supervisor Remarks Input */}
                 <div className="space-y-1.5 text-xs text-left">
                   <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Approver's Official Remarks</label>
@@ -828,15 +860,16 @@ export default function SupervisorView({
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
                     <span>{isSavingDecision ? 'Saving…' : 'Sign & Approve Request'}</span>
                   </button>
-                  {['Pending', 'Pending Review', 'For Supervisor'].includes(selectedRequest.status) && <button
+                  <button
                     type="button"
                     onClick={() => handleDecision('Returned')}
                     disabled={isSavingDecision}
                     className="col-span-2 py-2.5 px-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 font-bold hover:bg-amber-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 font-semibold disabled:cursor-wait disabled:opacity-60"
                   >
                     <span>{isSavingDecision ? 'Saving…' : 'Return to Employee (needs changes)'}</span>
-                  </button>}
+                  </button>
                 </div>
+                </>)}
 
               </div>
             ) : (

@@ -49,6 +49,8 @@ export const pickReviewUpdate = body => REVIEW_FIELDS.reduce((update, field) => 
 }, {});
 
 const AWAITING_HR_STATUSES = ['Pending', 'Pending Review'];
+// What the supervisor may still decide: a request HR forwarded, or one still with HR.
+export const AWAITING_SUPERVISOR_STATUSES = [...AWAITING_HR_STATUSES, 'For Supervisor'];
 const SUPERVISOR_DECISIONS = ['Approved', 'Rejected', 'Returned'];
 
 // Why a reviewer may not apply `update` to a request whose status is `currentStatus`, or
@@ -75,6 +77,12 @@ export const reviewUpdateProblem = (currentStatus, update, role) => {
   }
   if (role === 'supervisor' && !SUPERVISOR_DECISIONS.includes(nextStatus)) {
     return 'The supervisor can only approve, reject, or return requests.';
+  }
+  // A decision is made once: an approved leave has already used leave credits, and a
+  // returned request is the employee's to fix and submit again.
+  if (role === 'supervisor' && !AWAITING_SUPERVISOR_STATUSES.includes(currentStatus)) {
+    const verb = { Approved: 'approved', Rejected: 'disapproved', Returned: 'returned' }[nextStatus];
+    return `This request is already ${currentStatus || 'decided'}, so it cannot be ${verb}.`;
   }
   // Only an undecided request goes back to the employee (an approved one may already have
   // used leave credits).

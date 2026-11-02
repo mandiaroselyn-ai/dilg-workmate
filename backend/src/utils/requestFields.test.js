@@ -136,6 +136,15 @@ test('the supervisor approves or rejects, and remarks alone are allowed', () => 
   assert.equal(reviewUpdateProblem('Approved', { remarks: 'Noted.' }, 'hr_admin'), null);
 });
 
+test('the supervisor decides a request once: a decided or returned one cannot be decided again', () => {
+  for (const current of ['Approved', 'Rejected', 'Returned']) {
+    for (const status of ['Approved', 'Rejected']) {
+      assert.match(reviewUpdateProblem(current, { status, supervisorRemarks: 'Changed my mind.' }, 'supervisor'), new RegExp(`already ${current}, so it cannot be (approved|disapproved)\\.`), `${current} -> ${status}`);
+    }
+  }
+  assert.equal(reviewUpdateProblem('Pending Review', { status: 'Approved' }, 'supervisor'), null);
+});
+
 test('HR or the supervisor can return an undecided request, saying what to fix', () => {
   const returned = { status: 'Returned', remarks: 'Attach the medical certificate.' };
   assert.equal(reviewUpdateProblem('Pending', returned, 'hr_admin'), null);
