@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import { PDFArray, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
-import { LEAVE_FORM_LAYOUT, fillLeaveForm, leaveTypeKey, splitApplicantName } from './leaveForm.js';
+import { LEAVE_FORM_LAYOUT, fillLeaveForm, leaveTypeKey, ownLeavePurpose, splitApplicantName } from './leaveForm.js';
+
+test('a leave\'s purpose is optional, and the form writes only the employee\'s own words', () => {
+  assert.equal(ownLeavePurpose('Leave Type: Mandatory/Forced Leave.'), '');
+  assert.equal(ownLeavePurpose('Leave Type: Others. Monetization of 10 days'), 'Monetization of 10 days');
+  assert.equal(ownLeavePurpose('Family matter'), 'Family matter');
+  assert.equal(ownLeavePurpose(undefined), '');
+});
 
 const template = fs.readFileSync(new URL('../assets/template/csc-form-6-template.pdf', import.meta.url));
 

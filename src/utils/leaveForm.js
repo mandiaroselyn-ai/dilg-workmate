@@ -110,6 +110,10 @@ export const leaveTypeKey = value => {
   return null;
 };
 
+// The employee's own words in a leave's purpose, without the "Leave Type: …." the app puts
+// before them: '' when they wrote none, since the purpose is optional.
+export const ownLeavePurpose = purpose => String(purpose || '').replace(/^Leave Type:[^.]*\.\s*/, '').trim();
+
 export async function fillLeaveForm(templateBytes, request = {}, applicant = {}, { grid = false } = {}) {
   const pdf = await PDFDocument.load(templateBytes);
   const page = pdf.getPages()[0];
@@ -172,7 +176,7 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
     box(L.detailBoxX, L.study.y, true);
     write(detailsType.includes('bar') ? 'BAR/Board Examination Review' : "Completion of Master's Degree", L.study);
   }
-  if (!isVacation && !['sick', 'women', 'study'].includes(typeKey)) write(details || request.purpose, L.otherPurpose, { font: regular });
+  if (!isVacation && !['sick', 'women', 'study'].includes(typeKey)) write(details || ownLeavePurpose(request.purpose), L.otherPurpose, { font: regular });
 
   // 6.C
   const days = Number(request.workingDays) || 0;

@@ -178,10 +178,8 @@ export default function RequestsView({
   // Create or update a form submission
   const handleFormSubmission = (isDraftMode) => {
     setFormErrorMessage('');
-    if (activeTab2 === 'Leave' && !purpose.trim()) {
-      setFormErrorMessage('Please provide the purpose or reason for your leave request.');
-      return;
-    }
+    // A leave's purpose is optional: the type of leave chosen says what it is for, as CSC Form
+    // No. 6 asks (6.A and 6.B).
     if (!startDate || !endDate) {
       setFormErrorMessage(activeTab2 === 'Leave'
         ? 'Please select the start and end dates for your leave request.'
@@ -249,7 +247,7 @@ export default function RequestsView({
     };
 
     const compiledPurpose = activeTab2 === 'Leave'
-      ? `Leave Type: ${leaveType}. ${purpose}`
+      ? `Leave Type: ${leaveType}. ${purpose.trim()}`.trim()
       : `Official Travel. ${travelActivity.trim()}`;
 
     if (editingDraftId) {
@@ -931,13 +929,12 @@ Reason (optional):`, '');
 
               {/* Leave-only justification */}
               {activeTab2 === 'Leave' && <div className="space-y-1.5 text-left">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Official Justification / Purpose</label>
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Official Justification / Purpose (Optional)</label>
                 <textarea
-                  required
                   value={purpose}
                   onChange={(e) => setPurpose(e.target.value)}
                   rows={3}
-                  placeholder="State the detailed, honest purpose or health circumstances for the documentation..."
+                  placeholder="Optional: add anything the approver should know. The type of leave above is enough."
                   className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-3.5 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all leading-relaxed"
                 />
               </div>}
