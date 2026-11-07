@@ -280,6 +280,41 @@ test('supervisors get only what reviewing a request needs about the requester', 
   }
 });
 
+test('HR saving an employee leaves the personal details and ID numbers to the employee', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  const before = {
+    ...employee, employmentStatus: 'ACTIVE', region: 'DILG Region IV-B - MIMAROPA', phoneNumber: '0917 123 4567',
+    dateOfBirth: '1990-03-05', gender: 'Male', civilStatus: 'Married', address: 'Brgy. Tanza, Boac, Marinduque', gsisNumber: '2004-123-456'
+  };
+  t.mock.method(User, 'findAccount', async () => before);
+  const update = t.mock.method(User, 'updateEmployee', async (_identifier, data) => ({ ...before, ...data }));
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  const response = await request(app)
+    .patch(`/api/employees/${employee.employeeId}`)
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({
+      name: 'Juan Dela Cruz Jr.', firstName: 'Juan', lastName: 'Dela Cruz', suffix: 'Jr.',
+      email: employee.email, employeeId: employee.employeeId, role: employee.role, office: employee.office,
+      phoneNumber: before.phoneNumber, region: before.region, employmentStatus: 'ACTIVE', accountStatus: 'Active',
+      dateOfBirth: '1985-01-01', gender: 'Female', civilStatus: 'Single', address: 'Gasan', gsisNumber: '999', emergencyContactName: 'Someone'
+    });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const saved = update.mock.calls[0].arguments[1];
+  // HR still keeps the name.
+  assert.equal(saved.name, 'Juan Dela Cruz Jr.');
+  assert.equal(saved.suffix, 'Jr.');
+  for (const field of ['dateOfBirth', 'gender', 'civilStatus', 'address', 'gsisNumber', 'emergencyContactName']) {
+    assert.equal(field in saved, false, `${field} is the employee's to fill in`);
+  }
+  assert.equal(response.body.employee.address, 'Brgy. Tanza, Boac, Marinduque');
+
+  // A new account HR makes starts without them too.
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  assert.equal((await createAccount({ ...newAccount, dateOfBirth: '1985-01-01', address: 'Gasan', tinNumber: '123' })).status, 201);
+  const made = creates.mock.calls[0].arguments[0];
+  for (const field of ['dateOfBirth', 'address', 'tinNumber']) assert.equal(field in made, false, field);
+});
+
 test('HR saving an employee changes only the profile details the form sent', async t => {
   t.mock.method(User, 'findByEmail', async () => hr);
   const before = { ...employee, employmentStatus: 'ACTIVE', region: 'DILG Region IV-B - MIMAROPA', phoneNumber: '0917 123 4567' };
@@ -299,13 +334,12 @@ test('HR saving an employee changes only the profile details the form sent', asy
       region: before.region,
       employmentStatus: 'ACTIVE',
       accountStatus: 'Active',
-      civilStatus: 'Single',
       salaryGrade: 'SG 13',
       salaryStep: 'Step 2'
     });
   assert.equal(response.status, 200);
   const saved = update.mock.calls[0].arguments[1];
-  assert.equal(saved.civilStatus, 'Single');
+  assert.equal('designation' in saved, false);
   // SG 13, Step 2 in the salary schedule.
   assert.equal(saved.salary, 'PHP 36,283');
   assert.equal('gsisNumber' in saved, false);

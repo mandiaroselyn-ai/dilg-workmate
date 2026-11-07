@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString, isRealDate } from '../../../shared/localDate.js';
 import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isSignUpApproval, missingApprovalDetails, officeError } from '../../../shared/dilgAssignments.js';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, NAME_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
   announceAccountApproved,
@@ -187,6 +187,10 @@ export const registerUser = async (req, res) => {
 // (Active) or rejects (Rejected) them; HR deactivates an account with Inactive or Suspended.
 const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Pending', 'Suspended', 'Rejected'];
 
+// What HR saves for an employee account: the name, login email, mobile number, and the
+// employment details. The employee's personal details (birthday, gender, civil status, home
+// address, emergency contact) and government ID numbers are theirs to fill in on their own
+// Profile, so HR's saves leave them as they are.
 // `creating`: a new account, whose employee ID may be left blank for the server to assign.
 const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
   const stringFields = [
@@ -197,9 +201,6 @@ const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
     'office',
     'region',
     'phoneNumber',
-    'address',
-    'dateOfBirth',
-    'gender',
     'employmentStatus',
     'dateHired',
     'assignedStation',
@@ -237,14 +238,14 @@ const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
   if (!['ACTIVE', 'INACTIVE', 'ON LEAVE'].includes(employee.employmentStatus)) {
     return { error: 'Invalid employment status.' };
   }
-  for (const field of ['region', 'phoneNumber', 'address', 'dateOfBirth', 'gender', 'dateHired', 'assignedStation', 'assignedLGU']) {
+  for (const field of ['region', 'phoneNumber', 'dateHired', 'assignedStation', 'assignedLGU']) {
     if (employee[field].length > 250) {
       return { error: `${field} exceeds the maximum length.` };
     }
   }
-  // The rest of the profile changes only when sent, so a save that leaves a field out
-  // keeps what the employee entered.
-  const details = readProfileFields(body, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS]);
+  // The name parts and employment details change only when sent, so a save that leaves a
+  // field out keeps what was there.
+  const details = readProfileFields(body, [...NAME_FIELDS, ...EMPLOYMENT_FIELDS]);
   if (details.error) return { error: details.error };
   Object.assign(employee, details.value);
   if (body.approvedWfhLocation !== undefined) {

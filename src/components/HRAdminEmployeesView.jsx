@@ -16,18 +16,17 @@ import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
-import AddressPicker from './AddressPicker';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
+import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
 import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
 
-// Profile details the form below shows in sections of their own; the name parts, birthday,
-// gender, and address already have their own inputs.
-const OWN_INPUT_KEYS = ['firstName', 'middleName', 'lastName', 'dateOfBirth', 'gender', 'address'];
-const MORE_PERSONAL_FIELDS = PERSONAL_FIELDS.filter(field => !OWN_INPUT_KEYS.includes(field.key));
-const PROFILE_FORM_FIELDS = [...MORE_PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS];
+// HR's form takes the name, login email, mobile number, and employment details. The employee
+// fills in their own personal details and government ID numbers on their Profile, and HR sees
+// them on the employee's profile.
+const SUFFIX_FIELD = NAME_FIELDS.find(field => field.key === 'suffix');
+const PROFILE_FORM_FIELDS = [SUFFIX_FIELD, ...EMPLOYMENT_FIELDS];
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500';
 // The Assigned LGU for provincial staff. It is not a town, so field duty is not limited to one.
 const PROVINCE_LGU = 'Province of Marinduque';
@@ -37,11 +36,8 @@ const emptyForm = {
   firstName: '',
   middleName: '',
   lastName: '',
-  dateOfBirth: '',
-  gender: '',
   phoneNumber: '',
   email: '',
-  address: '',
   employeeId: '',
   role: '',
   office: '',
@@ -97,9 +93,6 @@ const normalizeEmployee = (employee = {}) => {
     region: employee.region || DEFAULT_REGION,
     email: employee.email || '',
     phoneNumber: employee.phoneNumber || employee.phone || '',
-    address: employee.address || '',
-    dateOfBirth: employee.dateOfBirth || '',
-    gender: employee.gender || '',
     employmentStatus: employee.employmentStatus || employee.status || 'ACTIVE',
     accountStatus: employee.accountStatus || 'Pending',
     dateHired: employee.dateHired || '',
@@ -642,6 +635,7 @@ This cannot be undone.`
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="text-xl font-black text-slate-900">{editingId ? 'Update Employee Account' : 'Create Employee Account'}</h2>
             <p className="mt-1 text-xs font-semibold text-slate-500">Employee account details are saved to the shared database and used across HR and employee views. Fields marked <span className="text-rose-600">*</span> are required.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">The employee fills in their own birthday, gender, civil status, home address, emergency contact, and government ID numbers on their Profile. You can see them on the employee's profile.</p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <label className="text-[11px] font-black text-slate-600">First Name<RequiredMark />
@@ -653,21 +647,11 @@ This cannot be undone.`
               <label className="text-[11px] font-black text-slate-600">Last Name<RequiredMark />
                 <input name="lastName" value={form.lastName} onChange={handleChange} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
               </label>
+              <ProfileFieldInput item={SUFFIX_FIELD} value={form.suffix} onChange={handleChange} />
               <label className="text-[11px] font-black text-slate-600">Employee ID{editingId && <RequiredMark />}
                 <input name="employeeId" value={form.employeeId} onChange={handleChange} required={Boolean(editingId)} placeholder={editingId ? '' : 'Blank: assigned like DILG-2026-123456'} className={inputClass} />
               </label>
 
-              <label className="text-[11px] font-black text-slate-600">Date of Birth
-                <input name="dateOfBirth" type="date" value={form.dateOfBirth} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
-              </label>
-              <label className="text-[11px] font-black text-slate-600">Gender
-                <select name="gender" value={form.gender} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
-                  <option value="">Select</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </label>
               <label className="text-[11px] font-black text-slate-600">Mobile Number<RequiredMark />
                 <input name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} required maxLength={20} placeholder="09XX XXX XXXX" className={inputClass} />
                 <span className="mt-1 block text-xs font-medium text-slate-500">SMS notices, such as leave approvals, are sent here.</span>
@@ -681,13 +665,6 @@ This cannot be undone.`
                   <span className="mt-1 block text-xs font-medium text-slate-500">At least 10 characters. Share it securely with the employee.</span>
                 </label>
               )}
-
-              <div className="sm:col-span-2 xl:col-span-4">
-                <p className="text-[11px] font-black text-slate-700">Home Address</p>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <AddressPicker value={form.address} onChange={handleChange} labelClass="text-[11px] font-black text-slate-600" fieldClass={inputClass} />
-                </div>
-              </div>
 
               <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
                 <PositionTitleSelect name="role" value={form.role} onChange={handleChange} required className={inputClass} />
@@ -748,27 +725,21 @@ This cannot be undone.`
                 <span className="mt-1 block text-xs font-medium text-slate-500">A town limits field-duty Time In to that town; the province allows any town.</span>
               </label>
 
-              {[
-                ['More Personal Details', MORE_PERSONAL_FIELDS],
-                ['Government ID Numbers', GOVERNMENT_ID_FIELDS],
-                ['Employment Details', EMPLOYMENT_FIELDS]
-              ].map(([title, fields]) => (
-                <div key={title} className="sm:col-span-2 xl:col-span-4">
-                  <p className="text-[11px] font-black text-slate-700">{title}</p>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {fields.map(field => (
-                      <ProfileFieldInput
-                        key={field.key}
-                        // A new employee's status of appointment decides whether they earn leave credits.
-                        item={field.key === 'appointmentStatus' && approving ? { ...field, required: true } : field}
-                        value={form[field.key]}
-                        values={form}
-                        onChange={handleChange}
-                      />
-                    ))}
-                  </div>
+              <div className="sm:col-span-2 xl:col-span-4">
+                <p className="text-[11px] font-black text-slate-700">Employment Details</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {EMPLOYMENT_FIELDS.map(field => (
+                    <ProfileFieldInput
+                      key={field.key}
+                      // A new employee's status of appointment decides whether they earn leave credits.
+                      item={field.key === 'appointmentStatus' && approving ? { ...field, required: true } : field}
+                      value={form[field.key]}
+                      values={form}
+                      onChange={handleChange}
+                    />
+                  ))}
                 </div>
-              ))}
+              </div>
 
               {!editingId && (
                 <div className="sm:col-span-2 xl:col-span-4">

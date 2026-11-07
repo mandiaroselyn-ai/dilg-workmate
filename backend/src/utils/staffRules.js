@@ -1,7 +1,7 @@
 // Rules for HR managing Supervisor and HR/Admin accounts. They keep the system from
 // ending up without an active HR/Admin and stop HR from locking themselves out.
 
-import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
+import { EMPLOYMENT_FIELDS, NAME_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
 import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isPhilippineMobile, officeError } from '../../../shared/dilgAssignments.js';
 import { isRealDate } from '../../../shared/localDate.js';
 
@@ -10,8 +10,6 @@ export const STAFF_ACCESS_LEVELS = ['supervisor', 'hr_admin'];
 export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Suspended'];
 
 const FIELD_LIMITS = { name: 160, email: 254, role: 120, office: 160, phoneNumber: 250, employeeId: 64, region: 250, dateHired: 40 };
-// The name parts go on official forms such as CSC Form No. 6; the full name is built from them.
-const NAME_FIELDS = PERSONAL_FIELDS.filter(field => ['firstName', 'middleName', 'lastName', 'suffix'].includes(field.key));
 
 const isActive = account => !account?.accountStatus || account.accountStatus.toString().toLowerCase() === 'active';
 export const isActiveAdmin = account => account?.accessLevel === 'hr_admin' && isActive(account);

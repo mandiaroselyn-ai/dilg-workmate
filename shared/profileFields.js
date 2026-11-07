@@ -25,9 +25,10 @@ export const APPOINTMENT_STATUS_OPTIONS = [
 // including a person whose status of appointment is not filled in yet, does.
 export const earnsLeaveCredits = person => !NO_LEAVE_CREDIT_ENGAGEMENTS.includes(person?.appointmentStatus);
 
-// The person keeps these up to date on their own profile; HR can fill them in too.
-// The name parts go on official forms such as CSC Form No. 6. The full name stays as
-// typed, because attendance records are matched by it.
+// The person fills these in and keeps them up to date on their own profile, as an employee
+// fills in their own CSC Personal Data Sheet. HR sees them but changes only the name (see
+// NAME_FIELDS). The name parts go on official forms such as CSC Form No. 6. The full name
+// stays as typed, because attendance records are matched by it.
 export const PERSONAL_FIELDS = [
   { key: 'firstName', label: 'First Name', max: 80 },
   { key: 'middleName', label: 'Middle Name', max: 80 },
@@ -42,6 +43,9 @@ export const PERSONAL_FIELDS = [
   { key: 'emergencyContactRelationship', label: 'Relationship to Contact' },
   { key: 'emergencyContactNumber', label: 'Emergency Contact Number', type: 'tel' }
 ];
+
+// The name parts, which HR also enters when making an account.
+export const NAME_FIELDS = PERSONAL_FIELDS.filter(field => ['firstName', 'middleName', 'lastName', 'suffix'].includes(field.key));
 
 // Also the person's own to keep up to date. Only the person and HR see them: they are
 // left out of the employee details that supervisors get with each request.
