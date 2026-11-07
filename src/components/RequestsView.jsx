@@ -70,6 +70,7 @@ export default function RequestsView({
   const [leaveType, setLeaveType] = useState('Vacation Leave');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // A leave's purpose is no longer asked. A draft saved while it was keeps what it says.
   const [purpose, setPurpose] = useState('');
   const [commutation, setCommutation] = useState('Not Requested');
   
@@ -178,8 +179,8 @@ export default function RequestsView({
   // Create or update a form submission
   const handleFormSubmission = (isDraftMode) => {
     setFormErrorMessage('');
-    // A leave's purpose is optional: the type of leave chosen says what it is for, as CSC Form
-    // No. 6 asks (6.A and 6.B).
+    // A leave has no purpose to write: the type of leave chosen and its details say what it is
+    // for, as CSC Form No. 6 asks (6.A and 6.B).
     if (!startDate || !endDate) {
       setFormErrorMessage(activeTab2 === 'Leave'
         ? 'Please select the start and end dates for your leave request.'
@@ -926,18 +927,6 @@ Reason (optional):`, '');
                   )}
                 </div>
               )}
-
-              {/* Leave-only justification */}
-              {activeTab2 === 'Leave' && <div className="space-y-1.5 text-left">
-                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Official Justification / Purpose (Optional)</label>
-                <textarea
-                  value={purpose}
-                  onChange={(e) => setPurpose(e.target.value)}
-                  rows={3}
-                  placeholder="Optional: add anything the approver should know. The type of leave above is enough."
-                  className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-3.5 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] transition-all leading-relaxed"
-                />
-              </div>}
 
               {/* Commutation Toggle Selection */}
               {activeTab2 === 'Leave' && (
