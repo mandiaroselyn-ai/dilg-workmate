@@ -60,7 +60,7 @@ const faqs = [
   {
     topic: 'Leave and travel',
     question: 'What do the request statuses mean?',
-    answer: 'Draft: saved but not sent. Pending: waiting for HR. For Supervisor: HR checked it and sent it to the Supervisor. Approved or Rejected: the Supervisor\'s decision. Withdrawn: you took it back.'
+    answer: 'Draft: saved but not sent. Pending: waiting for HR (HR 1 reviews and certifies a leave\'s credits; a Travel Order goes to HR 2). For Pre-approval: HR 1 certified your leave credits, and HR 2 is pre-approving it. For Supervisor: HR pre-approved it and sent it to the Head. Approved or Rejected: the Head\'s decision. Withdrawn: you took it back.'
   },
   {
     topic: 'Leave and travel',
@@ -75,7 +75,7 @@ const faqs = [
   {
     topic: 'Leave and travel',
     question: 'Can I cancel a request?',
-    answer: 'Yes, while it is still Pending or For Supervisor: open it in Requests and tap Withdraw. For a request that is already approved, ask HR.'
+    answer: 'Yes, while it is still Pending, For Pre-approval, or For Supervisor: open it in Requests and tap Withdraw. For a request that is already approved, ask HR.'
   },
   {
     topic: 'Documents',

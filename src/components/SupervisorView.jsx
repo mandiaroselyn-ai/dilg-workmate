@@ -28,6 +28,7 @@ import {
 import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { FOR_PRE_APPROVAL } from '../../shared/hrSteps';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 
@@ -35,7 +36,7 @@ import AttachmentList from './AttachmentList';
 // last name's, such as "IFF" for "Ivan Stephen F. Fadri, CESE" (what follows a comma is left out).
 // A request the Supervisor can still decide: one HR forwarded, or one still with HR (the server
 // allows the same). Approved, disapproved, returned, and withdrawn ones are done.
-const canDecide = request => ['Pending', 'Pending Review', 'For Supervisor'].includes(request?.status);
+const canDecide = request => ['Pending', 'Pending Review', FOR_PRE_APPROVAL, 'For Supervisor'].includes(request?.status);
 
 const shortDate = value => {
   const date = new Date(`${String(value || '').slice(0, 10)}T00:00:00`);
@@ -600,11 +601,36 @@ export default function SupervisorView({
                     <p className="font-semibold text-slate-500 mt-0.5">Requested by: <span className="text-slate-800 font-bold">{requesterName(selectedRequest)}</span></p>
                     <p className="font-semibold text-slate-500 mt-0.5">Employee ID: <span className="text-slate-800 font-bold">{requesterId(selectedRequest)}</span></p>
                     {selectedRequest.workingDays && <p className="font-semibold text-emerald-800 font-sans mt-0.5">Total Days: {selectedRequest.workingDays} Day(s)</p>}
-                    {['Pending', 'For Supervisor'].includes(selectedRequest.status) && selectedRequest.remarks && (
+                    {['Pending', FOR_PRE_APPROVAL, 'For Supervisor'].includes(selectedRequest.status) && selectedRequest.remarks && (
                       <p className="font-semibold text-slate-500 mt-0.5">HR remarks: <span className="text-slate-800 font-bold">{selectedRequest.remarks}</span></p>
                     )}
                   </div>
                 </div>
+
+                {/* HR 1's certification of the leave credits (7.A) and HR 2's recommendation (7.B),
+                    which the Head decides on. */}
+                {(selectedRequest.creditCertification || selectedRequest.recommendation) && (
+                  <div className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-left text-xs text-slate-600">
+                    {selectedRequest.creditCertification && (() => {
+                      const { asOf, vacationLeave = {}, sickLeave = {}, withoutPayDays, certifiedBy } = selectedRequest.creditCertification;
+                      const days = value => Number(value || 0).toFixed(3);
+                      return (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700">Leave credits as of {asOf} · {certifiedBy?.name || 'HR 1'}</p>
+                          <p className="mt-1 font-semibold">Vacation leave: <span className="font-bold text-slate-800">{days(vacationLeave.earned)} − {days(vacationLeave.less)} = {days(vacationLeave.balance)}</span></p>
+                          <p className="font-semibold">Sick leave: <span className="font-bold text-slate-800">{days(sickLeave.earned)} − {days(sickLeave.less)} = {days(sickLeave.balance)}</span></p>
+                          {withoutPayDays > 0 && <p className="font-bold text-rose-700">{days(withoutPayDays)} day(s) without pay</p>}
+                        </div>
+                      );
+                    })()}
+                    {selectedRequest.recommendation && (
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700">Recommendation · {selectedRequest.recommendation.recommendedBy?.name || 'HR 2'}</p>
+                        <p className="mt-1 font-bold text-slate-800">{selectedRequest.recommendation.decision === 'approval' ? 'For approval' : `For disapproval due to: ${selectedRequest.recommendation.reason}`}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* A decided request (or one with the employee) shows its decision; only one still
                     waiting for a decision can be signed, approved, disapproved, or returned. */}

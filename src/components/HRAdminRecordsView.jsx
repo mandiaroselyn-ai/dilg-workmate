@@ -73,11 +73,11 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
 
   const leaveApplications = requests.filter((request) => request.type === 'Leave Request');
   const approvedLeaves = leaveApplications.filter((request) => request.status === 'Approved');
-  const pendingLeaves = leaveApplications.filter((request) => request.status === 'Pending');
+  const pendingLeaves = leaveApplications.filter((request) => ['Pending', 'For Pre-approval'].includes(request.status));
 
   const travelOrders = requests.filter((request) => request.type === 'Travel Order');
   const approvedTravel = travelOrders.filter((request) => request.status === 'Approved');
-  const pendingTravel = travelOrders.filter((request) => request.status === 'Pending');
+  const pendingTravel = travelOrders.filter((request) => ['Pending', 'For Pre-approval'].includes(request.status));
 
   const verifiedDtr = attendanceHistory.filter((record) => hasSelfie(record) && record.fingerprintVerified).length;
   const totalEmployees = staff.length;

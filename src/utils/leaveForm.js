@@ -62,11 +62,38 @@ export const LEAVE_FORM_LAYOUT = {
   requested: 323.5,
   applicantName: { center: 437.3, y: 309.4, maxWidth: 185 },
 
+  // 7.A: HR 1's certification of the leave credits: the date on the "As of" line, each figure in
+  // the table's Vacation Leave and Sick Leave columns (x = the column's centre) and rows (y = the
+  // row's baseline), and HR 1's name and position in place of the template's.
+  creditsAsOf: { x: 110, y: 252.3, maxWidth: 93 },
+  creditColumns: { vacation: 203.6, sick: 275 },
+  creditRows: { earned: 228.6, less: 218.9, balance: 209.1 },
+  certifier: { center: 202, nameY: 171.7, positionY: 160.8, maxWidth: 212, coverX: 94, coverWidth: 216 },
+
+  // 7.B: HR 2's recommendation: a check in the narrow space left of the chosen line (x = the
+  // check's left edge, y = the line's baseline), a disapproval's reason after "due to" and on the
+  // lines under it, and HR 2's name and position in place of the template's.
+  recommendationCheckX: 338.1,
+  forApproval: 246.9,
+  forDisapproval: 233.4,
+  disapprovalReason: [
+    { x: 421, y: 234.4, maxWidth: 99 },
+    { x: 343, y: 224.6, maxWidth: 178 },
+    { x: 343, y: 214.9, maxWidth: 178 },
+    { x: 343, y: 205.1, maxWidth: 178 }
+  ],
+  recommender: { center: 432, nameY: 173.1, positionY: 160.8, maxWidth: 196, coverX: 340, coverWidth: 196 },
+
   // 7.C/7.D: the Supervisor's signature, just over the approving official's name that the
   // template prints at the bottom (its baseline is y 63.4), under 7.D's last line (y 107.6).
-  // 7.A and 7.B keep the template's names.
   approverSignature: { center: 309, bottom: 72, width: 150, height: 32 },
 };
+
+// The template's sizes for a signatory's name (bold) and position under it.
+const SIGNATORY_NAME_SIZE = 8.4;
+const SIGNATORY_POSITION_SIZE = 7.65;
+// Leave credits as the certification writes them, to three places.
+const creditFigure = value => (Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '');
 
 const formatDate = value => {
   if (!value) return '';
@@ -189,6 +216,62 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
   box(L.detailBoxX, L.notRequested, request.commutation !== 'Requested');
   box(L.detailBoxX, L.requested, request.commutation === 'Requested');
   write([name.first, name.middle, name.last].filter(Boolean).join(' ').toUpperCase(), L.applicantName);
+
+  // A signatory's name and position, written over the template's own (covered in white) at the
+  // template's sizes, shrinking only when a long name does not fit.
+  const writeSignatory = (signer, spot) => {
+    if (!signer?.name) return;
+    page.drawRectangle({ x: spot.coverX, y: spot.nameY - 1.2, width: spot.coverWidth, height: 8.6, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: spot.coverX, y: spot.positionY - 1.8, width: spot.coverWidth, height: 7.4, color: rgb(1, 1, 1) });
+    for (const [text, font, size, y] of [[signer.name.toUpperCase(), bold, SIGNATORY_NAME_SIZE, spot.nameY], [signer.position || '', regular, SIGNATORY_POSITION_SIZE, spot.positionY]]) {
+      if (!text) continue;
+      let fitted = size;
+      while (fitted > MIN_ANSWER_SIZE && font.widthOfTextAtSize(text, fitted) > spot.maxWidth) fitted -= 0.25;
+      page.drawText(text, { x: spot.center - font.widthOfTextAtSize(text, fitted) / 2, y, size: fitted, font, color: black });
+    }
+  };
+
+  // 7.A: HR 1's certification of the employee's leave credits, once HR 1 has certified them.
+  const certification = request.creditCertification;
+  if (certification) {
+    write(formatDate(certification.asOf), L.creditsAsOf);
+    for (const [row, y] of Object.entries(L.creditRows)) {
+      write(creditFigure(certification.vacationLeave?.[row]), { center: L.creditColumns.vacation, y, maxWidth: 66 });
+      write(creditFigure(certification.sickLeave?.[row]), { center: L.creditColumns.sick, y, maxWidth: 66 });
+    }
+    writeSignatory(certification.certifiedBy, L.certifier);
+  }
+
+  // 7.B: HR 2's recommendation, once HR 2 has pre-approved the leave.
+  const recommendation = request.recommendation;
+  if (recommendation) {
+    const y = recommendation.decision === 'approval' ? L.forApproval : L.forDisapproval;
+    const x = L.recommendationCheckX;
+    page.drawLine({ start: { x, y: y + 2.6 }, end: { x: x + 1.3, y: y + 0.6 }, thickness: 0.9, color: black });
+    page.drawLine({ start: { x: x + 1.3, y: y + 0.6 }, end: { x: x + 3.3, y: y + 5.2 }, thickness: 0.9, color: black });
+    if (recommendation.decision === 'disapproval') {
+      // The reason after "due to", then on the lines under it, word by word.
+      const lines = L.disapprovalReason;
+      let line = 0;
+      let current = '';
+      const flush = () => {
+        if (current && line < lines.length) write(current, { ...lines[line], maxWidth: lines[line].maxWidth }, { font: regular });
+        line += 1;
+        current = '';
+      };
+      for (const word of String(recommendation.reason || '').split(/\s+/).filter(Boolean)) {
+        const joined = current ? `${current} ${word}` : word;
+        if (current && regular.widthOfTextAtSize(joined, ANSWER_SIZE) > (lines[line]?.maxWidth || 0)) {
+          flush();
+          current = word;
+        } else {
+          current = joined;
+        }
+      }
+      flush();
+    }
+    writeSignatory(recommendation.recommendedBy, L.recommender);
+  }
 
   // 7.C/7.D: once the Supervisor approves or disapproves, their signature goes over the
   // approving official's name. Before that the form has no signature.

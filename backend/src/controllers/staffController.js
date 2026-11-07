@@ -62,8 +62,8 @@ export const createStaff = async (req, res) => {
     if (password.length < MIN_PASSWORD_LENGTH || password.length > 256) {
       return res.status(400).json({ success: false, error: `Set an initial password of ${MIN_PASSWORD_LENGTH} to 256 characters.` });
     }
-    if (needsAdminPassword({ accessLevel: value.accessLevel }) && !(await confirmAdminPassword(req, res))) return;
-
+    // Making an account, HR/Admin too, needs no retyped password; giving an existing account
+    // HR/Admin access, or deactivating, deleting, or resetting one, still does.
     const created = await User.createStaffAccount({ ...value, password });
     if (created?.conflict) {
       return res.status(409).json({

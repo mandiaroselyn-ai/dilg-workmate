@@ -174,3 +174,14 @@ test('employees can fix a returned request and submit it again, or save it as a 
   assert.equal(buildEmployeeDraftUpdate(returnedRequest, { status: 'Pending' }, { employeeId: 'DILG-OTHER', email: 'other@dilg.gov.ph' }), null);
   assert.equal(buildEmployeeWithdrawal(returnedRequest, { status: 'Withdrawn' }, employee, '2026-10-01').status, 'Withdrawn');
 });
+
+test('a request submitted again goes through HR\'s steps again, and the supervisor may decide one with HR', () => {
+  const employee = { employeeId: 'E1', email: 'juan@dilg.gov.ph', name: 'Juan' };
+  const returned = { employeeId: 'E1', status: 'Returned', type: 'Leave Request', creditCertification: { asOf: '2026-11-02' }, recommendation: { decision: 'approval' } };
+  const update = buildEmployeeDraftUpdate(returned, { status: 'Pending' }, employee, '2026-11-08');
+  assert.equal(update.creditCertification, null);
+  assert.equal(update.recommendation, null);
+  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Approved' }, 'supervisor'), null);
+  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', remarks: 'Attach the medical certificate.' }, 'hr_admin', { type: 'Leave Request' }), null);
+  assert.equal(buildEmployeeWithdrawal({ ...returned, status: 'For Pre-approval' }, { status: 'Withdrawn' }, employee).status, 'Withdrawn');
+});

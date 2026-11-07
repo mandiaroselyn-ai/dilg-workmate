@@ -40,18 +40,17 @@ const account = fields => {
 
 const hr = account({ _id: 'hr-1', name: 'HR One', email: 'hr1@dilg.gov.ph', accessLevel: 'hr_admin' });
 
-test('creating an HR/Admin account requires the HR password', async () => {
-  const body = { name: 'New Admin', email: 'new@dilg.gov.ph', role: 'Administrative Officer V', office: 'Office of the Provincial Director', phoneNumber: '0917 123 4567', dateHired: '2019-02-01', appointmentStatus: 'Permanent', accessLevel: 'hr_admin', password: 'initial-password-1' };
-  let created = false;
+test('HR creates an HR/Admin account without retyping their password', async () => {
+  const body = { name: 'New Admin', email: 'new@dilg.gov.ph', role: 'Administrative Officer V', office: 'Office of the Provincial Director', phoneNumber: '0917 123 4567', dateHired: '2019-02-01', appointmentStatus: 'Permanent', accessLevel: 'hr_admin', hrTask: 'leave-credits', password: 'initial-password-1' };
+  let created = null;
   await withFakes({
-    verifyPassword: async (_user, password) => password === 'correct-password',
-    createStaffAccount: async data => { created = true; return { ...data, _id: 'new-1' }; }
+    verifyPassword: async () => false,
+    createStaffAccount: async data => { created = data; return { ...data, _id: 'new-1' }; }
   }, async () => {
-    assert.equal((await call(controller.createStaff, { user: hr, body })).statusCode, 403);
-    assert.equal(created, false);
-    const ok = await call(controller.createStaff, { user: hr, body: { ...body, adminPassword: 'correct-password' } });
+    const ok = await call(controller.createStaff, { user: hr, body });
     assert.equal(ok.statusCode, 201);
-    assert.equal(created, true);
+    assert.equal(created.accessLevel, 'hr_admin');
+    assert.equal(created.hrTask, 'leave-credits');
   });
 });
 

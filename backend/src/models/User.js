@@ -18,6 +18,9 @@ const UserSchema = new mongoose.Schema({
   phoneNumber: { type: String, default: '0939 374 9823' },
   employeeId: { type: String, default: 'DILG-2026-7689' },
   accessLevel: { type: String, default: 'employee' },
+  // For an HR/Admin account, which HR step of a request it does (shared/hrSteps.js): HR 1's
+  // leave credits, HR 2's pre-approval, or both.
+  hrTask: { type: String, enum: ['both', 'leave-credits', 'pre-approval'], default: 'both' },
   accountStatus: { type: String, default: 'Active' },
   googleId: { type: String, default: '' },
   // How a self-service account was made: 'form' (the sign-up form) or 'google' (Google

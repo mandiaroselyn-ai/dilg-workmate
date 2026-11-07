@@ -1,4 +1,5 @@
 import { getManilaDateString } from '../../../shared/localDate.js';
+import { FOR_PRE_APPROVAL, HR_STEP_NAMES, doesHrStep, hrStepOf } from '../../../shared/hrSteps.js';
 
 // Fields only a reviewer (supervisor or HR) may set on a leave, travel, or certified copy request.
 const REVIEW_FIELDS = [
@@ -48,18 +49,20 @@ export const pickReviewUpdate = body => REVIEW_FIELDS.reduce((update, field) => 
   return update;
 }, {});
 
-const AWAITING_HR_STATUSES = ['Pending', 'Pending Review'];
+const AWAITING_HR_STATUSES = ['Pending', 'Pending Review', FOR_PRE_APPROVAL];
 // What the supervisor may still decide: a request HR forwarded, or one still with HR.
 export const AWAITING_SUPERVISOR_STATUSES = [...AWAITING_HR_STATUSES, 'For Supervisor'];
 const SUPERVISOR_DECISIONS = ['Approved', 'Rejected', 'Returned'];
 
 // Why a reviewer may not apply `update` to a request whose status is `currentStatus`, or
 // null when they may. A draft the employee has not submitted and a request the employee
-// withdrew are theirs alone. HR/Admin validates and forwards: it may only move a request
-// that is waiting for HR to the supervisor, or return it to the employee. The supervisor
-// approves, rejects, or returns it. A request is returned with remarks saying what the
-// employee needs to do.
-export const reviewUpdateProblem = (currentStatus, update, role) => {
+// withdrew are theirs alone. HR/Admin takes a request waiting for HR through its HR steps
+// (shared/hrSteps.js): HR 1 certifies a leave's credits and sends it for pre-approval, and
+// HR 2 pre-approves a leave or a Travel Order and sends it to the supervisor (the Head). Each
+// HR step may instead return the request to the employee, and only an HR account that does
+// that step (`hrTask`) may take it. The supervisor approves, rejects, or returns it. A request
+// is returned with remarks saying what the employee needs to do. `type` is the request's.
+export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask } = {}) => {
   if (currentStatus === 'Draft') return 'This request is still a draft. The employee has not submitted it.';
   if (currentStatus === 'Withdrawn') return 'The employee withdrew this request.';
   const nextStatus = update?.status;
@@ -68,10 +71,22 @@ export const reviewUpdateProblem = (currentStatus, update, role) => {
     return 'Write in the remarks what the employee needs to fix before returning the request.';
   }
   if (role === 'hr_admin') {
-    if (!['For Supervisor', 'Returned'].includes(nextStatus)) return 'HR/Admin can only forward requests to the supervisor or return them to the employee. The supervisor approves or rejects them.';
+    const step = hrStepOf({ status: currentStatus, type });
+    const forwardTo = step === 'leave-credits' ? FOR_PRE_APPROVAL : 'For Supervisor';
+    if (![FOR_PRE_APPROVAL, 'For Supervisor', 'Returned'].includes(nextStatus)) {
+      return 'HR/Admin can only forward requests (a leave to HR 2 for pre-approval, then to the supervisor) or return them to the employee. The supervisor approves or rejects them.';
+    }
     if (currentStatus === 'For Supervisor') return 'This request was already forwarded to the supervisor.';
-    if (!AWAITING_HR_STATUSES.includes(currentStatus)) {
+    if (!step) {
       return `This request is already ${currentStatus || 'decided'}, so it cannot be ${nextStatus === 'Returned' ? 'returned' : 'forwarded'}.`;
+    }
+    if (nextStatus !== 'Returned' && nextStatus !== forwardTo) {
+      return step === 'leave-credits'
+        ? 'HR 1 certifies the leave credits first. Send the leave to HR 2 for pre-approval before the supervisor.'
+        : 'This request needs only HR 2\'s pre-approval now. HR 2 sends it to the supervisor.';
+    }
+    if (!doesHrStep(hrTask, step)) {
+      return `This step is ${HR_STEP_NAMES[step]}'s. Your HR account does ${HR_STEP_NAMES[step === 'leave-credits' ? 'pre-approval' : 'leave-credits']} only.`;
     }
     return null;
   }
@@ -135,7 +150,12 @@ export const buildEmployeeDraftUpdate = (existing, body, user, today = getManila
       if (body?.[field] !== undefined) update[field] = body[field];
     }
   }
-  if (status === 'Pending') update.submissionDate = today;
+  if (status === 'Pending') {
+    update.submissionDate = today;
+    // Submitted again, the request goes through HR's steps again, with its dates as they are now.
+    update.creditCertification = null;
+    update.recommendation = null;
+  }
   if (status !== existing.status) {
     update.statusHistory = [
       ...(Array.isArray(existing.statusHistory) ? existing.statusHistory : []),
@@ -147,7 +167,7 @@ export const buildEmployeeDraftUpdate = (existing, body, user, today = getManila
 
 // Statuses in which a submitted request has not been decided yet, so the employee may
 // still withdraw it. Approved requests need HR, since leave credits may be affected.
-export const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
+export const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', FOR_PRE_APPROVAL, 'For Supervisor', 'Returned'];
 
 // Builds the update for an employee withdrawing their own undecided request. Returns
 // null when the request is not theirs or can no longer be withdrawn.

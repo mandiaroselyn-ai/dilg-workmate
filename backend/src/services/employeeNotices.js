@@ -50,6 +50,7 @@ export const requestDates = ({ startDate, endDate } = {}) => {
 
 // Status changes an employee hears about, with how each is worded.
 const DECISIONS = {
+  'For Pre-approval': { title: 'Leave Credits Certified', wording: () => 'had its leave credits certified by HR and is now with HR for pre-approval' },
   'For Supervisor': { title: 'Sent to Supervisor', wording: () => 'was checked by HR and sent to your supervisor for approval' },
   Approved: { title: 'Approved', wording: reviewer => `was approved by ${reviewer}` },
   Rejected: { title: 'Disapproved', wording: reviewer => `was disapproved by ${reviewer}` },

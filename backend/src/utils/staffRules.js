@@ -4,6 +4,7 @@
 import { EMPLOYMENT_FIELDS, NAME_FIELDS, readProfileFields } from '../../../shared/profileFields.js';
 import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isPhilippineMobile, officeError } from '../../../shared/dilgAssignments.js';
 import { isRealDate } from '../../../shared/localDate.js';
+import { HR_TASKS } from '../../../shared/hrSteps.js';
 
 export const ACCESS_LEVELS = ['employee', 'supervisor', 'hr_admin'];
 export const STAFF_ACCESS_LEVELS = ['supervisor', 'hr_admin'];
@@ -35,6 +36,11 @@ export const normalizeStaffInput = (body, { partial = false, previous } = {}) =>
   const details = readProfileFields(body, [...NAME_FIELDS, ...EMPLOYMENT_FIELDS]);
   if (details.error) return { error: details.error };
   Object.assign(value, details.value);
+  // Which HR step of a request an HR/Admin account does (shared/hrSteps.js).
+  if (body?.hrTask !== undefined) {
+    if (!HR_TASKS.includes(body.hrTask)) return { error: 'Choose the HR step: HR 1 (leave credits), HR 2 (pre-approval), or both.' };
+    value.hrTask = body.hrTask;
+  }
   const office = officeError(value.office, previous?.office);
   if (office) return { error: office };
   if (value.phoneNumber !== undefined && !isPhilippineMobile(value.phoneNumber)) {

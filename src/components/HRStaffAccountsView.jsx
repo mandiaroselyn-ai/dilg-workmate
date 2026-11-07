@@ -5,6 +5,7 @@ import HRResetPasswordCard from './HRResetPasswordCard';
 import { ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, fullNameOf, profileFieldValues } from '../../shared/profileFields';
 import { DEFAULT_REGION } from '../../shared/dilgAssignments';
+import { HR_TASK_LABELS } from '../../shared/hrSteps';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
@@ -35,6 +36,8 @@ const NEW_STAFF_EMPLOYMENT_FIELDS = STAFF_EMPLOYMENT_FIELDS
 
 const emptyForm = {
   email: '', employeeId: '', accessLevel: 'supervisor', password: '',
+  // For an HR/Admin account: HR 1's step, HR 2's, or both (shared/hrSteps.js).
+  hrTask: 'both',
   ...profileFieldValues({}, [...NAME_FIELDS, ...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS]),
   region: DEFAULT_REGION
 };
@@ -128,18 +131,18 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       setError(`The initial password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
+    // The account is made at once, with no confirmation step.
     const fields = { ...form, name: fullNameOf(form) };
-    confirmAction({
-      title: `Create ${ACCESS_LABELS[fields.accessLevel]} account for ${fields.name}?`,
-      description: `${fields.email} will be able to log in as ${ACCESS_LABELS[fields.accessLevel]} right away. Share the initial password privately; they can change it under Profile.`,
-      needsPassword: fields.accessLevel === 'hr_admin',
-      run: async password => {
-        const { account } = await sendStaffRequest('/api/staff', 'POST', { ...fields, adminPassword: password });
+    setBusy(true);
+    setError('');
+    sendStaffRequest('/api/staff', 'POST', fields)
+      .then(({ account }) => {
         setStaff(previous => [...previous, account].sort((a, b) => (a.name || '').localeCompare(b.name || '')));
         setForm(null);
-        return `${ACCESS_LABELS[account.accessLevel]} account created for ${account.name}.`;
-      }
-    });
+        onToast?.(`${ACCESS_LABELS[account.accessLevel]} account created for ${account.name}. They can log in now with the initial password; share it privately.`);
+      })
+      .catch(createError => setError(createError.message))
+      .finally(() => setBusy(false));
   };
 
   const submitEdit = async event => {
@@ -155,6 +158,21 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       replaceAccount(account);
       setEditing(null);
       onToast?.('Account details saved.');
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Sets which HR step of a request an HR/Admin account takes: HR 1's, HR 2's, or both.
+  const changeHrTask = async (account, hrTask) => {
+    setBusy(true);
+    setError('');
+    try {
+      const { account: updated } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(account))}`, 'PATCH', { hrTask });
+      replaceAccount(updated);
+      onToast?.(`${updated.name} now takes ${HR_TASK_LABELS[updated.hrTask] || HR_TASK_LABELS.both}.`);
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -251,6 +269,13 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                 <option value="hr_admin">HR/Admin</option>
               </select>
             </label>
+            {form.accessLevel === 'hr_admin' && (
+              <label className={labelClass}>HR step on requests<RequiredMark />
+                <select name="hrTask" value={form.hrTask} onChange={updateFormField} className={inputClass}>
+                  {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
+                </select>
+              </label>
+            )}
             <label className={labelClass}>Initial password (at least {MIN_PASSWORD_LENGTH} characters)<RequiredMark />
               <input name="password" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD_LENGTH} maxLength={256} value={form.password} onChange={updateFormField} className={inputClass} />
             </label>
@@ -260,7 +285,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
           <div className="flex gap-2">
-            <button type="submit" className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white">Create account</button>
+            <button type="submit" disabled={busy} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{busy ? 'Creating…' : 'Create account'}</button>
             <button type="button" onClick={() => setForm(null)} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Cancel</button>
           </div>
         </form>
@@ -304,6 +329,20 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                   <span className={`rounded-full px-2 py-0.5 text-xs font-black ${isActive(account) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                     {account.accountStatus || 'Active'}
                   </span>
+                  {/* Which HR step of a request this HR/Admin takes. */}
+                  {account.accessLevel === 'hr_admin' && (self ? (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">{HR_TASK_LABELS[account.hrTask] || HR_TASK_LABELS.both}</span>
+                  ) : (
+                    <select
+                      aria-label={`HR step for ${account.name}`}
+                      value={HR_TASK_LABELS[account.hrTask] ? account.hrTask : 'both'}
+                      onChange={event => changeHrTask(account, event.target.value)}
+                      disabled={busy}
+                      className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700"
+                    >
+                      {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
+                    </select>
+                  ))}
                 </div>
                 {!self && <HRResetPasswordCard account={account} />}
               </div>

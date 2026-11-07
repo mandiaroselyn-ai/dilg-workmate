@@ -73,3 +73,10 @@ test('HR keeps a staff member\'s region and employment details, not their person
   assert.deepEqual(value, { region: 'MIMAROPA', dateHired: '2019-02-01', salaryGrade: 'SG 26', salaryStep: 'Step 1', salary: 'PHP 131,807', immediateSupervisor: 'Regional Director' });
   assert.match(normalizeStaffInput({ division: 42 }, { partial: true }).error, /must be text/);
 });
+
+test('an HR/Admin account takes HR 1\'s step, HR 2\'s, or both', () => {
+  assert.deepEqual(normalizeStaffInput({ hrTask: 'leave-credits' }, { partial: true }).value, { hrTask: 'leave-credits' });
+  assert.deepEqual(normalizeStaffInput({ hrTask: 'pre-approval' }, { partial: true }).value, { hrTask: 'pre-approval' });
+  assert.deepEqual(normalizeStaffInput({ hrTask: 'both' }, { partial: true }).value, { hrTask: 'both' });
+  assert.match(normalizeStaffInput({ hrTask: 'approve-everything' }, { partial: true }).error, /HR 1 \(leave credits\), HR 2 \(pre-approval\), or both/);
+});

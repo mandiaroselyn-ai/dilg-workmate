@@ -15,7 +15,7 @@ export const REPORT_TYPES = [
 ];
 
 export const ATTENDANCE_STATUSES = ['Complete', 'Late', 'Incomplete', 'On Duty'];
-export const REQUEST_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned', 'Approved', 'Rejected', 'Withdrawn'];
+export const REQUEST_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor', 'Returned', 'Approved', 'Rejected', 'Withdrawn'];
 // A draft the employee has not submitted, or one they discarded, is not a transaction.
 const UNSUBMITTED = ['Draft', 'Cancelled'];
 const AWAITING_DECISION = ['Pending', 'Pending Review', 'For Supervisor'];

@@ -57,8 +57,8 @@ export default function HRAdminDashboard({
   const travelRequests = employeeRequests.filter(request => request.type === 'Travel Order');
   const dtrIssues = employeeHistory.filter(record => dtrIssue(record, today));
   const geofenceAlerts = employeeHistory.filter(record => record.date === today && record.gpsStatus && !/in range/i.test(record.gpsStatus));
-  const pendingLeave = leaveRequests.filter(request => request.status === 'Pending').length;
-  const pendingTravel = travelRequests.filter(request => request.status === 'Pending').length;
+  const pendingLeave = leaveRequests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status)).length;
+  const pendingTravel = travelRequests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status)).length;
   const returned = employeeRequests.filter(request => request.status === 'Returned' || request.status === 'Rejected').length;
   const rate = totalEmployees ? ((present / totalEmployees) * 100).toFixed(1) : '0.0';
   const greetingHour = new Date().getHours();

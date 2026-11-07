@@ -240,7 +240,7 @@ export default function HRAdminView({
   const presentCount = attendanceHistory.filter(record => record.status !== 'Absent').length;
   const absentCount = attendanceHistory.filter(record => record.status === 'Absent').length;
   const dtrIssueRecords = attendanceHistory.filter(record => !record.timeIn || !record.timeOut || !hasSelfie(record) || !record.fingerprintVerified);
-  const pendingRequests = requests.filter(request => request.status === 'Pending');
+  const pendingRequests = requests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status));
   const leaveRecords = requests.filter(request => request.type === 'Leave Request');
   const today = getManilaDateString();
   const todayAttendance = attendanceHistory.filter(record => record.date === today);
@@ -269,8 +269,8 @@ export default function HRAdminView({
   const incompleteRecords = Math.max(0, dtrIssueRecords.length - missingTimeOut - missingTimeIn);
   const geofenceRecords = attendanceHistory.filter(record => record.gpsStatus && !/in range/i.test(record.gpsStatus));
   const returnedRequests = requests.filter(request => request.status === 'Rejected' || request.status === 'Returned');
-  const pendingLeave = requests.filter(request => request.status === 'Pending' && request.type === 'Leave Request').length;
-  const pendingTravel = requests.filter(request => request.status === 'Pending' && request.type === 'Travel Order').length;
+  const pendingLeave = requests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status) && request.type === 'Leave Request').length;
+  const pendingTravel = requests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status) && request.type === 'Travel Order').length;
   const formatEmployeeName = (record) => getEmployeeForRecord(record)?.name || record.employeeName || 'Registered employee';
 
   return (
@@ -431,8 +431,10 @@ export default function HRAdminView({
       />}
 
       {activeTab === 'requests' && <div className="hr-admin-requests-screen"><HRAdminRequestsView
+        user={user}
         requests={requests}
         employees={employees}
+        onEmployeesChange={onEmployeesChange}
         onUpdateRequests={onUpdateRequests}
         onUpdateRequestStatus={onUpdateRequestStatus}
         onBack={() => setActiveTab('dashboard')}

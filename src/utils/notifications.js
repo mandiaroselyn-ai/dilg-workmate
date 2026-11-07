@@ -43,7 +43,7 @@ export const isActionPending = (notification, { role = 'hr_admin', employees = [
     const request = requests.find(item => item.id === target.targetId);
     if (!request) return false;
     const status = request.status || 'Pending Review';
-    return role === 'supervisor' ? status === 'For Supervisor' : ['Pending', 'Pending Review'].includes(status);
+    return role === 'supervisor' ? status === 'For Supervisor' : ['Pending', 'Pending Review', 'For Pre-approval'].includes(status);
   }
   const employee = findTargetEmployee(employees, target.targetId);
   if (!employee) return false;

@@ -46,7 +46,7 @@ const megabytes = bytes => (bytes / 1024 / 1024).toFixed(1);
 const attachmentBytes = file => Math.round((String(file?.dataUrl || '').split(',')[1] || '').length * 0.75);
 
 // Submitted requests that are not decided yet can be withdrawn (matches the server).
-const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Supervisor', 'Returned'];
+const WITHDRAWABLE_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor', 'Returned'];
 
 // The calamity leave's name. Drafts saved before it was corrected say "Special Emergency Lease".
 const CALAMITY_LEAVE = 'Special Emergency (Calamity) Leave';
@@ -478,7 +478,7 @@ Reason (optional):`, '');
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px] font-bold text-slate-500 sm:grid-cols-4">
           <div className="rounded-lg bg-slate-50 p-2"><strong className="block text-lg text-slate-800">{leaveHistory.length}</strong>Total</div>
-          <div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg text-amber-600">{leaveHistory.filter(request => request.status === 'Pending').length}</strong>Pending</div>
+          <div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg text-amber-600">{leaveHistory.filter(request => request.status === 'Pending' || request.status === 'For Pre-approval').length}</strong>Pending</div>
           <div className="rounded-lg bg-emerald-50 p-2"><strong className="block text-lg text-emerald-600">{leaveHistory.filter(request => request.status === 'Approved').length}</strong>Approved</div>
           <div className="col-span-3 rounded-lg bg-rose-50 p-2 sm:col-span-1"><strong className="block text-lg text-rose-600">{leaveHistory.filter(request => request.status === 'Rejected').length}</strong>Rejected</div>
         </div>
@@ -522,7 +522,7 @@ Reason (optional):`, '');
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px] font-bold text-slate-500 sm:grid-cols-4">
             <div className="rounded-lg bg-slate-50 p-2"><strong className="block text-lg text-slate-800">{travelHistory.length}</strong>Total</div>
-            <div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg text-amber-600">{travelHistory.filter(request => request.status === 'Pending').length}</strong>Pending</div>
+            <div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg text-amber-600">{travelHistory.filter(request => request.status === 'Pending' || request.status === 'For Pre-approval').length}</strong>Pending</div>
             <div className="rounded-lg bg-emerald-50 p-2"><strong className="block text-lg text-emerald-600">{travelHistory.filter(request => request.status === 'Approved').length}</strong>Approved</div>
             <div className="col-span-3 rounded-lg bg-rose-50 p-2 sm:col-span-1"><strong className="block text-lg text-rose-600">{travelHistory.filter(request => request.status === 'Rejected').length}</strong>Rejected</div>
           </div>
@@ -1264,7 +1264,10 @@ Reason (optional):`, '');
                             ) : canWithdraw(req) ? (
                               <>
                                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
-                                <span>{req.status === 'Returned' ? 'Returned to you: fix it and submit again' : req.status === 'For Supervisor' ? 'Awaiting supervisor approval' : 'Awaiting HR review'}</span>
+                                <span>{req.status === 'Returned' ? 'Returned to you: fix it and submit again'
+                                  : req.status === 'For Supervisor' ? 'Awaiting supervisor approval'
+                                    : req.status === 'For Pre-approval' ? 'Leave credits certified: awaiting HR pre-approval'
+                                      : req.type === 'Leave Request' ? 'Awaiting HR leave credit review' : 'Awaiting HR pre-approval'}</span>
                               </>
                             ) : (
                               <>

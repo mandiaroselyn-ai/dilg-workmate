@@ -94,6 +94,26 @@ test('the Supervisor signs over the approving official\'s name once they decide,
   assert.equal(whiteFills(approved), whiteFills(untouched));
 });
 
+test('HR 1\'s certification fills 7.A and HR 2\'s recommendation 7.B, each with its own signatory', async () => {
+  const whiteFills = content => [...content.matchAll(/(^|\n)1 1 1 rg/g)].length;
+  const leave = { leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', workingDays: 2 };
+  const creditCertification = {
+    asOf: '2026-11-08',
+    vacationLeave: { earned: 10, less: 2, balance: 8 },
+    sickLeave: { earned: 5, less: 0, balance: 5 },
+    certifiedBy: { name: 'Ma. Joane O. Salcedo', position: 'ADAS II' }
+  };
+  const recommendation = { decision: 'disapproval', reason: 'Exigency of the service', recommendedBy: { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' } };
+  const untouched = whiteFills(await pageContent(await fillLeaveForm(template, leave)));
+  // The template's names in 7.A and 7.B are covered (name and position) only once someone signs there.
+  const certified = await pageContent(await fillLeaveForm(template, { ...leave, creditCertification }));
+  assert.equal(whiteFills(certified), untouched + 2);
+  const both = await pageContent(await fillLeaveForm(template, { ...leave, creditCertification, recommendation }));
+  assert.equal(whiteFills(both), untouched + 4);
+  // The recommendation's check is drawn as two short lines.
+  assert.ok((both.match(/ l\n/g) || []).length > (certified.match(/ l\n/g) || []).length);
+});
+
 test('every answer position is on the page', () => {
   const spots = Object.values(LEAVE_FORM_LAYOUT).filter(value => value && typeof value === 'object' && 'y' in value);
   for (const spot of spots) {
