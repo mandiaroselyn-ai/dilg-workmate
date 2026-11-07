@@ -27,7 +27,25 @@ test('outside the compound is out of range, even close to it', () => {
   assert.equal(inside(...MARINDUQUE_BARANGAY_AREAS.Boac.Tanza.center), false, 'Brgy. Tanza');
 });
 
-test('other offices have no mapped grounds and are found by their address', () => {
-  assert.equal(resolveOfficeArea('boac'), null);
+test('a municipal office is its town hall, and 50 m around it for GPS inside the building', () => {
+  const boac = resolveOfficeArea('boac');
+  assert.equal(boac.areaMarginMeters, 50);
+  assert.match(boac.label, /^DILG Municipal Office - Boac, Boac Municipal Hall, Brgy\. Isok I \(Pob\.\), Boac/);
+  // Metres east of the town hall's east side (121.8419366), along its latitude.
+  const east = metres => [13.4466, 121.8419366 + metres / (111320 * Math.cos(13.4466 * Math.PI / 180))];
+  assert.equal(isWithinAssignedLocation(boac.latitude, boac.longitude, boac), true, 'inside the town hall');
+  assert.equal(isWithinAssignedLocation(...east(40), boac), true, '40 m from it');
+  assert.equal(isWithinAssignedLocation(...east(80), boac), false, '80 m from it');
+  // The Provincial Capitol Compound has no margin.
+  assert.equal(compound.areaMarginMeters, 0);
+});
+
+test('every DILG office has its own grounds on the map', async () => {
+  const { MARINDUQUE_OFFICES } = await import('./marinduqueLocations.js');
+  for (const office of MARINDUQUE_OFFICES) {
+    const area = resolveOfficeArea(office.id);
+    assert.equal(area.geometry.type, 'Polygon', office.id);
+    assert.equal(isWithinAssignedLocation(area.latitude, area.longitude, area), true, `${office.id} is centered inside its grounds`);
+  }
   assert.equal(resolveOfficeArea('nowhere'), null);
 });

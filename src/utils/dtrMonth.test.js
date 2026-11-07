@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import { PDFArray, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
-import { fillDTR, dtrSummaryRows } from './dtrForm.js';
+import { fillDTR, dtrSummaryRows, travelDaysOf } from './dtrForm.js';
 import { dayEntry, dtrEntry, dtrRecordsByDay, monthDeductionText, monthDtrTotals, monthUndertimeMinutes, totalUndertimeMinutes } from './dtrMonth.js';
 import { markDtrDay } from './hrAttendance.js';
 
@@ -105,6 +105,18 @@ test('the DTR\'s summary shows late, undertime, the deduction, and overtime as n
     ['Overtime (office order)', '3h 30m, not deducted']
   ]);
   assert.deepEqual(dtrSummaryRows({}, 2026, 9, {}).map(([, value]) => value), ['None', 'None', 'None', 'None']);
+});
+
+test('the DTR writes official travel on the days of an approved Travel Order', async () => {
+  const travelOrders = [
+    { type: 'Travel Order', status: 'Approved', startDate: '2026-10-13', endDate: '2026-10-15' },
+    { type: 'Travel Order', status: 'Pending', startDate: '2026-10-20', endDate: '2026-10-20' },
+    { type: 'Leave Request', status: 'Approved', startDate: '2026-10-21', endDate: '2026-10-21' }
+  ];
+  assert.deepEqual([...travelDaysOf(travelOrders, 2026, 10)], [13, 14, 15]);
+  const template = fs.readFileSync(new URL('../assets/template/dtr-template.pdf', import.meta.url));
+  const pdf = await PDFDocument.load(await fillDTR(template, { name: 'Juan Dela Cruz' }, 2026, 10, marked, { travelOrders }));
+  assert.equal(pdf.getPageCount(), (await PDFDocument.load(template)).getPageCount());
 });
 
 test('the filled DTR keeps the template\'s pages', async () => {

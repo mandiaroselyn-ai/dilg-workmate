@@ -41,10 +41,20 @@ import {
   RefreshCw,
   AlertCircle,
   Utensils,
-  LogIn
+  LogIn,
+  Plane
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { assignmentOfShift } from '../utils/shiftAssignment';
+import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn } from '../../shared/travelStatus';
+
+// A Travel Order's dates as shown: "Nov 10" or "Nov 10 – Nov 12".
+const formatTravelDates = travel => {
+  const show = value => new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const start = String(travel.startDate || '').slice(0, 10);
+  const end = String(travel.endDate || '').slice(0, 10) || start;
+  return start === end ? show(start) : `${show(start)} – ${show(end)}`;
+};
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
 import { downloadBytes } from '../utils/documentFiles';
@@ -95,6 +105,8 @@ const lateLabel = log => {
 export default function AttendanceView({
   user,
   attendanceHistory,
+  // The employee's leave requests and Travel Orders.
+  requests = [],
   holidays = [],
   onTimeIn,
   onTimeOut,
@@ -266,6 +278,18 @@ export default function AttendanceView({
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
   // One Time In and one Time Out per day: once today is timed out, Time In stays closed.
   const isDoneForToday = Boolean(todayRecord?.timeOut);
+  // An approved Travel Order for today: the employee is on official travel and needs no Time In.
+  // Field attendance is for field work without one, so Field is not offered today.
+  const travelOrderToday = approvedTravelOrderOn(requests.filter(request => matchesAttendanceEmployee(request, user)), today);
+  const fieldBlockedToday = Boolean(travelOrderToday) && !isCurrentlyActive;
+  useEffect(() => {
+    if (!fieldBlockedToday || assignmentMode !== 'field') return;
+    const office = MARINDUQUE_OFFICES.find(item => item.id === selectedOfficeId) || MARINDUQUE_OFFICES[0];
+    setAssignmentMode('office');
+    setSelectedOfficeId(office.id);
+    setSelectedMuni(office.municipality);
+    setBarangayLgu(office.barangay);
+  }, [fieldBlockedToday, assignmentMode]);
   // While a shift is open, the page shows the assignment it was timed in at, so its Time Out,
   // Lunch Out, and Lunch In are checked against that area. (Opened again, the page would
   // otherwise start on its default choice, which can be another barangay.) It is applied again
@@ -916,8 +940,9 @@ export default function AttendanceView({
       : siteLocation?.fallbackToRadius
         ? `${GEOFENCE_METERS}m from approximate assigned-area map pin`
         : `Barangay boundary + ${GEOFENCE_METERS}m GPS tolerance`
-    // The Provincial Office's area is the whole Provincial Capitol Compound.
-    : siteLocation?.geometry ? 'Inside the Provincial Capitol Compound'
+    // A DILG office's own grounds: the Provincial Capitol Compound, or a town hall and 50 m.
+    : siteLocation?.geometry
+      ? siteLocation.areaMarginMeters ? `${siteLocation.areaName} + ${siteLocation.areaMarginMeters}m GPS tolerance` : `Inside the ${siteLocation.areaName}`
       : `${GEOFENCE_METERS}m from assigned address`;
 
   const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
@@ -930,6 +955,11 @@ export default function AttendanceView({
   const autoClockInRef = useRef(false);
 
   const executeClockIn = async () => {
+    if (fieldBlockedToday && assignmentMode === 'field') {
+      setLocationError(FIELD_ON_TRAVEL_ERROR);
+      autoClockInRef.current = false;
+      return;
+    }
     if (assignmentMode === 'wfh' && !user?.approvedWfhLocation?.approvedAt) {
       setLocationError('HR/Admin must set an approved WFH location before Time In.');
       autoClockInRef.current = false;
@@ -1215,7 +1245,9 @@ export default function AttendanceView({
       const [year, month] = dtrExportMonth.split('-').map(Number);
       const response = await fetch(dtrTemplate);
       const templateBytes = await response.arrayBuffer();
-      const pdfBytes = await fillDTR(templateBytes, user || { name: fillName, role: fillRole, office: fillOffice, employeeId: fillId }, year, month, attendanceHistory);
+      const pdfBytes = await fillDTR(templateBytes, user || { name: fillName, role: fillRole, office: fillOffice, employeeId: fillId }, year, month, attendanceHistory, {
+        travelOrders: requests.filter(request => matchesAttendanceEmployee(request, user))
+      });
       await downloadBytes(pdfBytes, dtrFilename(user?.name || fillName, year, month), 'application/pdf');
     } catch (err) {
       console.error('DTR export failed:', err);
@@ -1305,6 +1337,21 @@ export default function AttendanceView({
               </span>
             </div>
 
+            {/* On official travel today: no Time In needed, and no field attendance. */}
+            {travelOrderToday && (
+              <div role="status" className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <Plane className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
+                <div className="space-y-1">
+                  <p className="text-xs font-black uppercase tracking-wider text-blue-800">On Travel Order today</p>
+                  <p className="text-xs font-semibold text-blue-900">
+                    {[travelOrderToday.travelActivity, travelOrderToday.travelVenue].filter(Boolean).join(' · ') || 'Approved official travel'}
+                    {' '}({formatTravelDates(travelOrderToday)})
+                  </p>
+                  <p className="text-[11px] text-blue-800">No Time In is needed: your DTR shows today as official travel. Field attendance is only for field work without a Travel Order.</p>
+                </div>
+              </div>
+            )}
+
             {/* Personnel Details Fill Up Box */}
             <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-200/60 space-y-3">
               <div className="flex items-center justify-between">
@@ -1392,7 +1439,7 @@ export default function AttendanceView({
                     }}
                     className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    <option value="field">Field</option>
+                    <option value="field" disabled={fieldBlockedToday}>{fieldBlockedToday ? 'Field (not on a Travel Order day)' : 'Field'}</option>
                     <option value="wfh">Work From Home</option>
                     <option value="office">Office</option>
                   </select>

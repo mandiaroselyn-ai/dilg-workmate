@@ -9,8 +9,8 @@ test('a field shift keeps the barangay it was timed in at', () => {
 
 test('an office shift finds its office from the saved town and barangay', () => {
   // The area saved with an office Time In has no office id.
-  assert.equal(assignmentOfShift({ mode: 'office', municipality: 'Boac', barangay: 'Tampus (Pob.)' }).officeId, 'boac');
-  assert.equal(assignmentOfShift({ mode: 'office', municipality: 'Gasan', barangay: 'Barangay I (Pob.)' }).officeId, 'gasan');
+  assert.equal(assignmentOfShift({ mode: 'office', municipality: 'Boac', barangay: 'Isok I (Pob.)' }).officeId, 'boac');
+  assert.equal(assignmentOfShift({ mode: 'office', municipality: 'Gasan', barangay: 'Barangay II (Pob.)' }).officeId, 'gasan');
   // A Time In still waiting on the phone has the office id.
   assert.equal(assignmentOfShift({ mode: 'office', municipality: 'Boac', officeId: 'provincial' }).officeId, 'provincial');
 });

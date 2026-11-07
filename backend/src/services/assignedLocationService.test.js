@@ -153,6 +153,16 @@ test('the DILG Provincial Office is the Provincial Capitol Compound, without ask
   assert.equal(lookup.mock.callCount(), 0);
 });
 
+test('each DILG office\'s barangay is the one its building is in on the PSA map', async () => {
+  const { barangayAt } = await import('./assignedLocationService.js');
+  const { MARINDUQUE_OFFICES } = await import('../../../shared/marinduqueLocations.js');
+  const { resolveOfficeArea } = await import('../../../shared/officeAreas.js');
+  for (const office of MARINDUQUE_OFFICES) {
+    const { latitude, longitude } = resolveOfficeArea(office.id);
+    assert.deepEqual(barangayAt(latitude, longitude), { municipality: office.municipality, barangay: office.barangay }, office.id);
+  }
+});
+
 test('the barangay at a position comes from the PSA map', async () => {
   const { barangayAt } = await import('./assignedLocationService.js');
   assert.deepEqual(barangayAt(...johnReyTimeIn), { municipality: 'Gasan', barangay: 'Libtangin' });

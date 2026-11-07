@@ -67,6 +67,9 @@ const DtrLogSchema = new mongoose.Schema({
       east: Number
     },
     fallbackToRadius: Boolean,
+    // How far past a mapped office's outline still counts (shared/officeAreas.js).
+    areaName: String,
+    areaMarginMeters: Number,
     source: String
   },
   gpsStatus: { type: String, default: 'In Range' },

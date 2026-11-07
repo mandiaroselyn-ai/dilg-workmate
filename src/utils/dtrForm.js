@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { durationText, officeHoursText } from './dtrDay.js';
 import { dayEntry, dtrRecordsByDay, monthDeductionText, monthDtrTotals, totalUndertimeMinutes } from './dtrMonth.js';
+import { approvedTravelOrderOn } from '../../shared/travelStatus.js';
 
 // Fills both duplicates on each page of the CSC Form No. 48 DTR template
 // (src/assets/template/dtr-template.pdf) with one employee's monthly attendance data.
@@ -116,9 +117,23 @@ function drawSummary(page, col, rows, font, bold) {
   }
 }
 
+// What a day of official travel without logs shows on the form.
+const TRAVEL_TEXT = 'OFFICIAL TRAVEL';
+
+// The days of the month (1–31) that an approved Travel Order among `requests` covers.
+export const travelDaysOf = (requests, year, month) => {
+  const days = new Set();
+  const lastDay = new Date(year, month, 0).getDate();
+  for (let day = 1; day <= lastDay; day += 1) {
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (approvedTravelOrderOn(requests, date)) days.add(day);
+  }
+  return days;
+};
+
 // Fills one page of the template with the employee's DTR data (both columns), and the month's
-// summary under each copy when `summary` is set.
-async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bold, summary) {
+// summary under each copy when `summary` is set. `travelDays` are the days of official travel.
+async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bold, summary, travelDays = new Set()) {
   const dowByDay = monthDayOfWeeks(year, month);
   const totalDays = dowByDay.length;
 
@@ -178,6 +193,12 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
       if (!isInMonth) continue;
 
       const rec = recordsByDay[d];
+      // A day of official travel without logs says so across its time cells.
+      if (!rec?.timeIn && travelDays.has(d)) {
+        const w = font.widthOfTextAtSize(TRAVEL_TEXT, TIME_SIZE);
+        page.drawText(TRAVEL_TEXT, { x: (col.amArr + col.pmDep) / 2 - w / 2, y: rowY, size: TIME_SIZE, font, color: black });
+        continue;
+      }
       if (!rec?.timeIn) continue;
 
       const { amArr, amDep, pmArr, pmDep, undertime: ut } = dayEntry(rec);
@@ -233,8 +254,9 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
 // Public: loads the template bytes, fills both pages with the employee's data, and
 // returns the bytes of the completed PDF ready for download. The form is as the CSC prints
 // it; `summary` adds the month's late, undertime, deduction, and overtime under each copy,
-// which only HR's copy has.
-export async function fillDTR(templateBytes, employee = {}, year, month, attendanceRecords = [], { summary = false } = {}) {
+// which only HR's copy has. The days an approved Travel Order among `travelOrders` (the
+// employee's requests) covers, with no logs, show OFFICIAL TRAVEL.
+export async function fillDTR(templateBytes, employee = {}, year, month, attendanceRecords = [], { summary = false, travelOrders = [] } = {}) {
   const pdf = await PDFDocument.load(templateBytes);
   const pages = pdf.getPages();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -242,10 +264,11 @@ export async function fillDTR(templateBytes, employee = {}, year, month, attenda
 
   // Index records by day-of-month for quick lookup (see dtrRecordsByDay).
   const recordsByDay = dtrRecordsByDay(attendanceRecords, year, month);
+  const travelDays = travelDaysOf(travelOrders, year, month);
 
   for (let i = 0; i < pages.length; i++) {
     if (i % 2 === 0) {
-      await fillPage(pdf, pages[i], employee, year, month, recordsByDay, font, bold, summary);
+      await fillPage(pdf, pages[i], employee, year, month, recordsByDay, font, bold, summary, travelDays);
     }
   }
 

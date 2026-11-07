@@ -18,6 +18,7 @@ import {
 import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { approvedTravelOrderOn } from '../../shared/travelStatus';
 import { monthAttendanceSummary, totalHoursWorked } from '../utils/hrAttendance';
 import { durationText } from '../utils/dtrDay';
 import { monthUndertimeMinutes } from '../utils/dtrMonth';
@@ -203,6 +204,7 @@ export default function DashboardView({
               todayRecord={todayRecord}
               elapsedText={elapsedText}
               currentUtcTime={currentUtcTime}
+              travelOrder={approvedTravelOrderOn(personalRequests, today)}
               onViewDetails={() => onViewChange('attendance')}
             />
           </DashboardSection>

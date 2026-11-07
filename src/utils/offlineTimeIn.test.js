@@ -26,14 +26,16 @@ test('without internet, the assignment area comes from the app or from the last 
   assert.equal(field.label, 'Brgy. Pawa, Boac, Marinduque, Philippines');
   assert.ok(field.geometry);
 
-  // The Provincial Capitol Compound is in the app too.
+  // Every DILG office's grounds are in the app too.
   const provincial = await resolveSiteOffline({ mode: 'office', municipality: 'Boac', officeId: 'provincial' });
   assert.equal(provincial.geometry.type, 'Polygon');
+  assert.equal((await resolveSiteOffline({ mode: 'office', municipality: 'Gasan', officeId: 'gasan' })).areaName, 'Gasan Municipal Building');
 
-  const office = { mode: 'office', municipality: 'Boac', officeId: 'boac' };
-  assert.equal(await resolveSiteOffline(office), null);
-  rememberSiteLocation(office, { mode: 'office', latitude: 13.44, longitude: 121.84, label: 'DILG Municipal Office - Boac' });
-  assert.equal((await resolveSiteOffline(office)).label, 'DILG Municipal Office - Boac');
+  // A work-from-home address is found online, then remembered.
+  const home = { mode: 'wfh', municipality: 'Boac', barangay: 'Pawa', street: '12 Rizal St.', landmark: '' };
+  assert.equal(await resolveSiteOffline(home), null);
+  rememberSiteLocation(home, { mode: 'wfh', latitude: 13.45, longitude: 121.88, label: '12 Rizal St., Pawa, Boac' });
+  assert.equal((await resolveSiteOffline(home)).label, '12 Rizal St., Pawa, Boac');
 });
 
 test('a failed connection is told apart from an error answer', () => {

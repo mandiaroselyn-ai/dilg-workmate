@@ -124,7 +124,7 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
   const makeDtr = async month => {
     const [dtrYear, dtrMonth] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
-    const bytes = await fillDTR(await response.arrayBuffer(), user || {}, dtrYear, dtrMonth, attendanceHistory);
+    const bytes = await fillDTR(await response.arrayBuffer(), user || {}, dtrYear, dtrMonth, attendanceHistory, { travelOrders: requests });
     return { fileName: dtrFilename(user?.name, dtrYear, dtrMonth), fileType: 'application/pdf', bytes };
   };
   const view = (title, load) => setViewer({ key: Date.now(), title, load });

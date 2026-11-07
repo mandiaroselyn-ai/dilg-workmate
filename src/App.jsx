@@ -1624,6 +1624,7 @@ export default function App() {
             <AttendanceView
               user={user}
               attendanceHistory={visibleEmployeeRecords}
+              requests={visibleEmployeeRequests}
               holidays={holidays}
               onTimeIn={handleTimeIn}
               onTimeOut={handleTimeOut}

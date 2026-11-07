@@ -2,8 +2,9 @@ const EARTH_RADIUS_METERS = 6371000;
 
 // The geofence: how far from the assigned site still counts as being there. For an office or a
 // work-from-home address it is the radius around the address; for field work, the distance
-// past the barangay's (or town's) boundary. An office whose grounds are mapped, such as the
-// Provincial Capitol Compound (shared/officeAreas.js), counts only inside its grounds.
+// past the barangay's (or town's) boundary. A DILG office counts by its own grounds
+// (shared/officeAreas.js): inside the Provincial Capitol Compound, or within this distance of a
+// town hall.
 export const GEOFENCE_METERS = 50;
 
 const distanceMeters = (latitudeA, longitudeA, latitudeB, longitudeB) => {
@@ -80,9 +81,10 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || !location) return false;
 
   if (location.mode !== 'field') {
-    // An office whose grounds are mapped (the Provincial Capitol Compound) counts only inside them.
+    // An office whose grounds are mapped counts inside them, or within `areaMarginMeters` of them
+    // (none for the Provincial Capitol Compound, 50 m around a town hall).
     if (location.geometry && ['Polygon', 'MultiPolygon'].includes(location.geometry.type)) {
-      return distanceToAreaMeters(lat, lon, location.geometry) === 0;
+      return distanceToAreaMeters(lat, lon, location.geometry) <= (Number(location.areaMarginMeters) || 0);
     }
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
   }

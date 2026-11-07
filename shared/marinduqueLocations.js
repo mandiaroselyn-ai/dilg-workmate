@@ -43,14 +43,15 @@ export const MARINDUQUE_MUNICIPALITIES = {
 };
 
 export const MARINDUQUE_OFFICES = [
-  // In the Provincial Capitol Compound, which is in Bangbangalon on both the PSA's barangay map
-  // and OpenStreetMap. Its geofence is the whole compound (shared/officeAreas.js).
+  // Each office's barangay is the one its building is in on the PSA's barangay map, which
+  // OpenStreetMap agrees with, and its geofence is its own grounds (shared/officeAreas.js): the
+  // Provincial Capitol Compound, or the town hall.
   { id: 'provincial', name: 'DILG Provincial Office', municipality: 'Boac', barangay: 'Bangbangalon', address: 'Marinduque Provincial Capitol Compound, Bangbangalon, Boac, Marinduque' },
-  { id: 'boac', name: 'DILG Municipal Office - Boac', municipality: 'Boac', barangay: 'Tampus (Pob.)', address: 'Boac Municipal Hall, Tampus, Boac, Marinduque' },
+  { id: 'boac', name: 'DILG Municipal Office - Boac', municipality: 'Boac', barangay: 'Isok I (Pob.)', address: 'Boac Municipal Hall, Isok I, Boac, Marinduque' },
   { id: 'buenavista', name: 'DILG Municipal Office - Buenavista', municipality: 'Buenavista', barangay: 'Barangay I (Pob.)', address: 'Buenavista Municipal Hall, Buenavista, Marinduque' },
-  { id: 'gasan', name: 'DILG Municipal Office - Gasan', municipality: 'Gasan', barangay: 'Barangay I (Pob.)', address: 'Gasan Municipal Hall, Gasan, Marinduque' },
-  { id: 'mogpog', name: 'DILG Municipal Office - Mogpog', municipality: 'Mogpog', barangay: 'Dulong Bayan (Pob.)', address: 'Mogpog Municipal Hall, Mogpog, Marinduque' },
-  { id: 'santa-cruz', name: 'DILG Municipal Office - Santa Cruz', municipality: 'Santa Cruz', barangay: 'Pag-Asa Pob.', address: 'Santa Cruz Municipal Hall, Santa Cruz, Marinduque' },
+  { id: 'gasan', name: 'DILG Municipal Office - Gasan', municipality: 'Gasan', barangay: 'Barangay II (Pob.)', address: 'Gasan Municipal Building, Barangay II, Gasan, Marinduque' },
+  { id: 'mogpog', name: 'DILG Municipal Office - Mogpog', municipality: 'Mogpog', barangay: 'Market Site (Pob.)', address: 'Mogpog Municipal Hall, Market Site, Mogpog, Marinduque' },
+  { id: 'santa-cruz', name: 'DILG Municipal Office - Santa Cruz', municipality: 'Santa Cruz', barangay: 'Maharlika Pob.', address: 'Santa Cruz Town Hall, Maharlika, Santa Cruz, Marinduque' },
   { id: 'torrijos', name: 'DILG Municipal Office - Torrijos', municipality: 'Torrijos', barangay: 'Poblacion', address: 'Torrijos Municipal Hall, Torrijos, Marinduque' }
 ];
 

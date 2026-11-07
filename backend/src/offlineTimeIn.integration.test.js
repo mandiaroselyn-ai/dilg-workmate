@@ -9,6 +9,7 @@ const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { DtrLog } = await import('./models/dtrLogModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
+const { Leave } = await import('./models/leaveModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 const { createVerificationProof } = await import('./utils/verificationProof.js');
 const { MARINDUQUE_BARANGAY_AREAS } = await import('../../shared/marinduqueBarangayAreas.js');
@@ -89,7 +90,8 @@ const hrAdmin = {
 
 // Signs in as the employee (or `as` someone else), with their records kept in memory
 // instead of MongoDB.
-const signIn = (t, { activeLog = null, savedOfflineTimeIn = null, loggedToday = false, as = employee } = {}) => {
+const signIn = (t, { activeLog = null, savedOfflineTimeIn = null, loggedToday = false, as = employee, travelOrders = [] } = {}) => {
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async () => travelOrders);
   t.mock.method(User, 'findByEmail', async () => as);
   t.mock.method(User, 'findByEmployeeId', async () => employee);
   // The face cannot be compared in these tests: no usable enrollment selfie.
@@ -148,6 +150,29 @@ test('a second Time In on a day that was already timed out is refused', async t 
   const response = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
   assert.equal(response.status, 409);
   assert.match(response.body.error, /Only one Time In and one Time Out are allowed per day/);
+  assert.equal(DtrLog.create.mock.callCount(), 0);
+});
+
+test('a field Time In on a day of an approved Travel Order is refused, but an office one is not', async t => {
+  const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  const travel = { id: 'TO-7', type: 'Travel Order', status: 'Approved', startDate: today, endDate: today };
+  const send = signIn(t, { travelOrders: [travel] });
+  const fingerprintProof = createVerificationProof({ employeeId: employee.employeeId, type: 'fingerprint', method: 'phone-app' });
+  const field = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
+  assert.equal(field.status, 409);
+  assert.match(field.body.error, /approved Travel Order today/);
+
+  // At the office it goes on to the other checks (here, the face match).
+  const [latitude, longitude] = [13.4419838, 121.8277131];
+  const office = await send({ action: 'clock-in', record: { ...timeInRecord(), latitude, longitude, dutyType: 'office', assignmentSite: { mode: 'office', municipality: 'Boac', officeId: 'provincial' }, fingerprintProof } });
+  assert.doesNotMatch(office.body.error || '', /Travel Order/);
+  assert.match(office.body.error, /cannot be used for face matching/);
+  // A Travel Order that is not approved, or for another day, does not stop field attendance.
+  for (const other of [{ ...travel, status: 'Pending' }, { ...travel, startDate: '2026-01-05', endDate: '2026-01-06' }]) {
+    Leave.findAbsencesOfEmployee.mock.mockImplementation(async () => [other]);
+    const response = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
+    assert.doesNotMatch(response.body.error || '', /Travel Order/);
+  }
   assert.equal(DtrLog.create.mock.callCount(), 0);
 });
 

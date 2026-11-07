@@ -6,6 +6,8 @@ export default function AttendanceTodayCard({
   todayRecord = {},
   elapsedText = '--',
   currentUtcTime = '--:--:--',
+  // The approved Travel Order for today, if any: the employee is on official travel.
+  travelOrder = null,
   onViewDetails = () => {}
 }) {
   const status = (() => {
@@ -15,6 +17,8 @@ export default function AttendanceTodayCard({
     if (todayRecord?.timeIn && !todayRecord?.timeOut) return { label: 'ON DUTY', color: 'emerald' };
     // If user has both timeIn and timeOut, consider them OFF DUTY for the day
     if (todayRecord?.timeIn && todayRecord?.timeOut) return { label: 'OFF DUTY', color: 'rose' };
+    // On official travel today, with no Time In needed
+    if (!todayRecord?.timeIn && travelOrder) return { label: 'ON TRAVEL', color: 'blue' };
     // Default when no timeIn yet
     return { label: 'OFF DUTY', color: 'rose' };
   })();
@@ -54,18 +58,18 @@ export default function AttendanceTodayCard({
       {/* Header removed - title shown in section container */}
 
       {/* Duty status banner with location */}
-      <div className={`mt-3 rounded-lg p-3 flex flex-col gap-2 border border-transparent ${status.color === 'emerald' ? 'bg-emerald-50' : status.color === 'rose' ? 'bg-rose-50' : 'bg-amber-50'}`}>
+      <div className={`mt-3 rounded-lg p-3 flex flex-col gap-2 border border-transparent ${status.color === 'emerald' ? 'bg-emerald-50' : status.color === 'rose' ? 'bg-rose-50' : status.color === 'blue' ? 'bg-blue-50' : 'bg-amber-50'}`}>
         <div>
           <div className="text-[10px] font-semibold text-slate-600">DUTY STATUS</div>
           <div className="mt-1 flex items-center gap-2">
-            <div className={`${status.label === 'OFF DUTY' ? 'text-sm' : 'text-lg'} font-extrabold ${status.color === 'emerald' ? 'text-emerald-800' : status.color === 'rose' ? 'text-rose-800' : 'text-amber-800'}`}>{status.label}</div>
-            <div className={`inline-flex w-3 h-3 rounded-full shadow-sm ${status.color === 'emerald' ? 'bg-emerald-600' : status.color === 'rose' ? 'bg-rose-600' : 'bg-amber-500'}`} />
+            <div className={`${status.label === 'OFF DUTY' ? 'text-sm' : 'text-lg'} font-extrabold ${status.color === 'emerald' ? 'text-emerald-800' : status.color === 'rose' ? 'text-rose-800' : status.color === 'blue' ? 'text-blue-800' : 'text-amber-800'}`}>{status.label}</div>
+            <div className={`inline-flex w-3 h-3 rounded-full shadow-sm ${status.color === 'emerald' ? 'bg-emerald-600' : status.color === 'rose' ? 'bg-rose-600' : status.color === 'blue' ? 'bg-blue-600' : 'bg-amber-500'}`} />
           </div>
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-sm text-slate-700">
             <MapPin className="w-4 h-4 shrink-0 text-emerald-700" />
-            <div className="truncate">{hasAttendanceRecord ? locationLabel : 'Not recorded'}</div>
+            <div className="truncate">{hasAttendanceRecord ? locationLabel : travelOrder ? `Travel Order: ${travelOrder.travelVenue || 'official travel'}` : 'Not recorded'}</div>
             {mode && (
               <div className="ml-2">
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${mode === 'wfh' ? 'bg-indigo-100 text-indigo-700' : mode === 'field' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{mode === 'wfh' ? 'WFH' : mode === 'field' ? 'FIELD' : 'OFFICE'}</span>
