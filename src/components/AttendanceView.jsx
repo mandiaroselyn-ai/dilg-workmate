@@ -44,6 +44,7 @@ import {
   LogIn
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { assignmentOfShift } from '../utils/shiftAssignment';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
 import { downloadBytes } from '../utils/documentFiles';
@@ -265,6 +266,23 @@ export default function AttendanceView({
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
   // One Time In and one Time Out per day: once today is timed out, Time In stays closed.
   const isDoneForToday = Boolean(todayRecord?.timeOut);
+  // While a shift is open, the page shows the assignment it was timed in at, so its Time Out,
+  // Lunch Out, and Lunch In are checked against that area. (Opened again, the page would
+  // otherwise start on its default choice, which can be another barangay.) It is applied again
+  // after the profile loads, since that can set the work-from-home address.
+  const shiftAssignment = isCurrentlyActive ? assignmentOfShift(todayRecord.assignmentSite) : null;
+  const shiftAssignmentKey = shiftAssignment ? JSON.stringify(shiftAssignment) : '';
+  useEffect(() => {
+    if (!shiftAssignment) return;
+    setAssignmentMode(shiftAssignment.mode);
+    setSelectedMuni(shiftAssignment.municipality);
+    setBarangayLgu(shiftAssignment.barangay);
+    if (shiftAssignment.officeId) setSelectedOfficeId(shiftAssignment.officeId);
+    if (shiftAssignment.mode === 'wfh') {
+      setWfhStreet(shiftAssignment.street);
+      setWfhLandmark(shiftAssignment.landmark);
+    }
+  }, [shiftAssignmentKey, user]);
   // The noon break of a shift that started this morning (CSC Form 48's A.M. departure and
   // P.M. arrival): Lunch Out, then Lunch In. An afternoon-only shift has none.
   const timeInMinutes = clockMinutes(todayRecord?.timeIn);
