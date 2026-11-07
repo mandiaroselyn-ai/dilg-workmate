@@ -106,7 +106,9 @@ test('field geofence ignores invalid geocoder extents and falls back to the assi
 // Boac. OpenStreetMap has neither barangay and named them Bangbang and Mampaitan.
 const johnReyTimeIn = [13.344339, 121.82456];
 const rimhelynTimeIn = [13.452351, 121.880056];
-const provincialCapitol = [13.4474, 121.8344];
+// The center of Boac's town proper, in Santol; the Provincial Capitol is in Bangbangalon.
+const boacTownCenter = [13.4474, 121.8344];
+const provincialCapitol = [13.4419838, 121.8277131];
 
 test('every barangay in the app has its boundary on the PSA map', async () => {
   const { MARINDUQUE_MUNICIPALITIES } = await import('../../../shared/marinduqueLocations.js');
@@ -133,10 +135,21 @@ test('a field assignment uses its barangay\'s own boundary without asking OpenSt
 
   const pawa = await resolveAssignedLocation({ mode: 'field', municipality: 'Boac', barangay: 'Pawa' });
   assert.equal(isWithinAssignedLocation(...rimhelynTimeIn, pawa), true);
-  assert.equal(isWithinAssignedLocation(...provincialCapitol, pawa), false, 'the Capitol in Santol is outside Pawa');
+  assert.equal(isWithinAssignedLocation(...boacTownCenter, pawa), false, 'Santol is outside Pawa');
 
   const bangbang = await resolveAssignedLocation({ mode: 'field', municipality: 'Gasan', barangay: 'Bangbang' });
   assert.equal(isWithinAssignedLocation(...johnReyTimeIn, bangbang), false, 'the next barangay is not Libtangin');
+  assert.equal(lookup.mock.callCount(), 0);
+});
+
+test('the DILG Provincial Office is the Provincial Capitol Compound, without asking OpenStreetMap', async t => {
+  const { resolveAssignedLocation } = await import('./assignedLocationService.js');
+  const lookup = t.mock.method(globalThis, 'fetch', async () => { throw new Error('OpenStreetMap should not be asked'); });
+  const office = await resolveAssignedLocation({ mode: 'office', municipality: 'Boac', officeId: 'provincial' });
+  assert.equal(office.officeId, 'provincial');
+  assert.equal(office.geometry.type, 'Polygon');
+  assert.equal(isWithinAssignedLocation(...provincialCapitol, office), true);
+  assert.equal(isWithinAssignedLocation(...boacTownCenter, office), false);
   assert.equal(lookup.mock.callCount(), 0);
 });
 
@@ -144,7 +157,8 @@ test('the barangay at a position comes from the PSA map', async () => {
   const { barangayAt } = await import('./assignedLocationService.js');
   assert.deepEqual(barangayAt(...johnReyTimeIn), { municipality: 'Gasan', barangay: 'Libtangin' });
   assert.deepEqual(barangayAt(...rimhelynTimeIn), { municipality: 'Boac', barangay: 'Pawa' });
-  assert.deepEqual(barangayAt(...provincialCapitol), { municipality: 'Boac', barangay: 'Santol' });
+  assert.deepEqual(barangayAt(...boacTownCenter), { municipality: 'Boac', barangay: 'Santol' });
+  assert.deepEqual(barangayAt(...provincialCapitol), { municipality: 'Boac', barangay: 'Bangbangalon' });
   assert.equal(barangayAt(13.40, 121.80), null, 'out at sea');
 });
 

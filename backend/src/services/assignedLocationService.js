@@ -2,6 +2,7 @@ import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../../shared/m
 import { distanceToAreaMeters } from '../../../shared/assignmentGeofence.js';
 import { MARINDUQUE_BARANGAY_AREAS } from '../../../shared/marinduqueBarangayAreas.js';
 import { resolveFieldAssignment } from '../../../shared/fieldAssignmentArea.js';
+import { resolveOfficeArea } from '../../../shared/officeAreas.js';
 
 export { isWithinAssignedLocation } from '../../../shared/assignmentGeofence.js';
 
@@ -199,9 +200,12 @@ const geocode = async query => {
 };
 
 // A field assignment's area is its barangay's boundary on the PSA's map (see
-// shared/fieldAssignmentArea.js). Offices and WFH addresses are points found on OpenStreetMap.
+// shared/fieldAssignmentArea.js), and the Provincial Office's is the Provincial Capitol Compound
+// (shared/officeAreas.js). Other offices and WFH addresses are points found on OpenStreetMap.
 export const resolveAssignedLocation = async assignment => {
   const normalized = buildQuery(assignment);
-  if (normalized.mode !== 'field') return { ...normalized, ...(await geocode(normalized.query)) };
-  return resolveFieldAssignment(normalized);
+  if (normalized.mode === 'field') return resolveFieldAssignment(normalized);
+  const officeArea = normalized.mode === 'office' ? resolveOfficeArea(assignment.officeId) : null;
+  if (officeArea) return officeArea;
+  return { ...normalized, ...(await geocode(normalized.query)) };
 };

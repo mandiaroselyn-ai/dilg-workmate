@@ -43,7 +43,9 @@ export const MARINDUQUE_MUNICIPALITIES = {
 };
 
 export const MARINDUQUE_OFFICES = [
-  { id: 'provincial', name: 'DILG Provincial Office', municipality: 'Boac', barangay: 'Santol', address: 'Marinduque Provincial Capitol, Santol, Boac, Marinduque' },
+  // In the Provincial Capitol Compound, which is in Bangbangalon on both the PSA's barangay map
+  // and OpenStreetMap. Its geofence is the whole compound (shared/officeAreas.js).
+  { id: 'provincial', name: 'DILG Provincial Office', municipality: 'Boac', barangay: 'Bangbangalon', address: 'Marinduque Provincial Capitol Compound, Bangbangalon, Boac, Marinduque' },
   { id: 'boac', name: 'DILG Municipal Office - Boac', municipality: 'Boac', barangay: 'Tampus (Pob.)', address: 'Boac Municipal Hall, Tampus, Boac, Marinduque' },
   { id: 'buenavista', name: 'DILG Municipal Office - Buenavista', municipality: 'Buenavista', barangay: 'Barangay I (Pob.)', address: 'Buenavista Municipal Hall, Buenavista, Marinduque' },
   { id: 'gasan', name: 'DILG Municipal Office - Gasan', municipality: 'Gasan', barangay: 'Barangay I (Pob.)', address: 'Gasan Municipal Hall, Gasan, Marinduque' },

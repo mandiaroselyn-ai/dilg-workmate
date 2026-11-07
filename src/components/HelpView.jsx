@@ -30,12 +30,12 @@ const faqs = [
   {
     topic: 'Attendance',
     question: "How do I choose where I am working today?",
-    answer: `On the Attendance page, choose Office and then your office, Field and then the municipality and barangay, or Work from home. You must be at the site you choose: inside the barangay for Field, or within ${GEOFENCE_METERS} meters of the office or your work-from-home address. Work from home works only after HR sets your approved work-from-home address.`
+    answer: `On the Attendance page, choose Office and then your office, Field and then the municipality and barangay, or Work from home. You must be at the site you choose: inside the barangay for Field, inside the Provincial Capitol Compound for the DILG Provincial Office, or within ${GEOFENCE_METERS} meters of a municipal office or your work-from-home address. Work from home works only after HR sets your approved work-from-home address.`
   },
   {
     topic: 'Attendance',
     question: 'Why can I not Time In?',
-    answer: `The message on the Attendance page says which check failed. Common reasons: you are Out of Range (not at the site you chose: outside the barangay for Field, or more than ${GEOFENCE_METERS} meters from the office or work-from-home address); your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; or you have no internet. Time In needs an internet connection.`
+    answer: `The message on the Attendance page says which check failed. Common reasons: you are Out of Range (not at the site you chose: outside the barangay for Field, outside the Provincial Capitol Compound for the DILG Provincial Office, or more than ${GEOFENCE_METERS} meters from a municipal office or work-from-home address); your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; or you have no internet. Time In needs an internet connection.`
   },
   {
     topic: 'Attendance',

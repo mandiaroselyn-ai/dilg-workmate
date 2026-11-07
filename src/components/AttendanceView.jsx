@@ -916,7 +916,9 @@ export default function AttendanceView({
       : siteLocation?.fallbackToRadius
         ? `${GEOFENCE_METERS}m from approximate assigned-area map pin`
         : `Barangay boundary + ${GEOFENCE_METERS}m GPS tolerance`
-    : `${GEOFENCE_METERS}m from assigned address`;
+    // The Provincial Office's area is the whole Provincial Capitol Compound.
+    : siteLocation?.geometry ? 'Inside the Provincial Capitol Compound'
+      : `${GEOFENCE_METERS}m from assigned address`;
 
   const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
   const embedZoom = 17;

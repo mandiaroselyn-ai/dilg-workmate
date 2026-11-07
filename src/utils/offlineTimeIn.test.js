@@ -26,10 +26,14 @@ test('without internet, the assignment area comes from the app or from the last 
   assert.equal(field.label, 'Brgy. Pawa, Boac, Marinduque, Philippines');
   assert.ok(field.geometry);
 
-  const office = { mode: 'office', municipality: 'Boac', officeId: 'provincial' };
+  // The Provincial Capitol Compound is in the app too.
+  const provincial = await resolveSiteOffline({ mode: 'office', municipality: 'Boac', officeId: 'provincial' });
+  assert.equal(provincial.geometry.type, 'Polygon');
+
+  const office = { mode: 'office', municipality: 'Boac', officeId: 'boac' };
   assert.equal(await resolveSiteOffline(office), null);
-  rememberSiteLocation(office, { mode: 'office', latitude: 13.44, longitude: 121.84, label: 'DILG Provincial Office' });
-  assert.equal((await resolveSiteOffline(office)).label, 'DILG Provincial Office');
+  rememberSiteLocation(office, { mode: 'office', latitude: 13.44, longitude: 121.84, label: 'DILG Municipal Office - Boac' });
+  assert.equal((await resolveSiteOffline(office)).label, 'DILG Municipal Office - Boac');
 });
 
 test('a failed connection is told apart from an error answer', () => {

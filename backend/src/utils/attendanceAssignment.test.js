@@ -12,7 +12,7 @@ test('canonicalizes a valid office assignment from the office catalog', () => {
     assignmentSite: {
       mode: 'office',
       municipality: 'Boac',
-      barangay: 'Santol',
+      barangay: 'Bangbangalon',
       officeId: 'provincial'
     }
   });
