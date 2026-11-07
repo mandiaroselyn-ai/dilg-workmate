@@ -11,7 +11,7 @@ import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
 import NotificationCenter from './components/NotificationCenter';
 import SmsCenter from './components/SmsCenter';
-import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueuedAttendance, syncQueuedAttendance } from './utils/offlineAttendance';
+import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueuedAttendance, removeQueuedTimeOut, syncQueuedAttendance } from './utils/offlineAttendance';
 import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
@@ -151,15 +151,20 @@ export default function App() {
   // Sends the owner's attendance records saved on this device. A sync already running is
   // reused, so the timer and the Settings "Sync now" button never send a record twice.
   const offlineSyncRef = useRef(null);
-  // A Time In saved on the phone that the server refused is taken off the screen, and the
-  // employee is told why, since they believed they had timed in.
+  // A Time In or Time Out saved on the phone that the server refused is taken off the screen,
+  // and the employee is told why, since they believed it was saved. After a refused Time Out
+  // the shift shows as still open, as it is on the server.
   const handleRefusedOfflineRecord = useCallback((payload, error) => {
-    if (payload?.action !== 'clock-in') return;
-    const { employeeId, date } = payload.record || {};
-    setAttendanceHistory(previous => previous.filter(item => !(
-      String(item.id).startsWith('offline-att-') && item.employeeId === employeeId && item.date === date
-    )));
-    window.alert(`Your Time In saved offline on ${date || 'this phone'} was not accepted: ${error || 'the server refused it.'}`);
+    const { employeeId, date } = payload?.record || {};
+    if (payload?.action === 'clock-in') {
+      setAttendanceHistory(previous => previous.filter(item => !(
+        String(item.id).startsWith('offline-att-') && item.employeeId === employeeId && item.date === date
+      )));
+      window.alert(`Your Time In saved offline on ${date || 'this phone'} was not accepted: ${error || 'the server refused it.'}`);
+    } else if (payload?.action === 'clock-out') {
+      setAttendanceHistory(previous => removeQueuedTimeOut(previous, payload.record));
+      window.alert(`Your Time Out saved offline on ${date || 'this phone'} was not accepted: ${error || 'the server refused it.'} Time out again at your assigned area, or ask HR to enter your Time Out in DTR Records.`);
+    }
   }, []);
   const syncOfflineAttendance = useCallback(owner => {
     if (!offlineSyncRef.current) {

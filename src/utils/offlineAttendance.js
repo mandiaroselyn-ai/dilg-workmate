@@ -120,6 +120,16 @@ export const applyQueuedAttendance = (list = [], queuedItems = []) => queuedItem
   return records;
 }, list);
 
+// The attendance list with the Time Out shown as waiting on this device for `record`'s day
+// taken off (the server refused it), so that day shows as still open, as it is on the server.
+const QUEUED_TIME_OUT_FIELDS = ['timeOutLatitude', 'timeOutLongitude', 'timeOutGpsAccuracy', 'timeOutSelfieUrl', 'recordedOfflineAt', 'timeOutNotSent'];
+export const removeQueuedTimeOut = (list = [], record = {}) => list.map(shown => {
+  if (!shown.timeOutNotSent || !sameDay(shown, record)) return shown;
+  const open = { ...shown, timeOut: null };
+  for (const field of QUEUED_TIME_OUT_FIELDS) delete open[field];
+  return open;
+});
+
 // `onDiscard(payload, error)` is told about a record the server refused.
 export const syncQueuedAttendance = async (onRecord, owner, onDiscard) => {
   const queuedItems = await readQueuedAttendance(owner);

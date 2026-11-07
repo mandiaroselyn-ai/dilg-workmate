@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyQueuedAttendance, isQueuedForOwner, shouldDiscardQueuedAttendance } from './offlineAttendance.js';
+import { applyQueuedAttendance, isQueuedForOwner, removeQueuedTimeOut, shouldDiscardQueuedAttendance } from './offlineAttendance.js';
+
+test('a Time Out the server refused comes off the screen, and the shift shows as still open', () => {
+  const refused = { employeeId: 'E1', date: '2026-11-07', timeOut: '05:00 PM', timeOutLatitude: 13.46, timeOutLongitude: 121.84 };
+  const shown = [
+    { id: 'att-2', employeeId: 'E1', date: '2026-11-07', timeIn: '08:00 AM', ...refused, timeOutGpsAccuracy: 12, timeOutSelfieUrl: 'data:image/jpeg;base64,x', recordedOfflineAt: '2026-11-07T09:00:00.000Z', timeOutNotSent: true },
+    { id: 'att-1', employeeId: 'E1', date: '2026-11-06', timeIn: '08:00 AM', timeOut: '05:00 PM' }
+  ];
+  const [today, yesterday] = removeQueuedTimeOut(shown, refused);
+  assert.deepEqual(today, { id: 'att-2', employeeId: 'E1', date: '2026-11-07', timeIn: '08:00 AM', timeOut: null });
+  assert.equal(yesterday, shown[1], 'a Time Out the server saved stays');
+  // Another employee's open shift that day is not touched.
+  const other = { id: 'att-3', employeeId: 'E2', date: '2026-11-07', timeIn: '08:00 AM', timeOut: '05:00 PM', timeOutNotSent: true };
+  assert.equal(removeQueuedTimeOut([other], refused)[0], other);
+});
 
 test('keeps queued attendance when the session is missing or expired', () => {
   assert.equal(shouldDiscardQueuedAttendance(401), false);
