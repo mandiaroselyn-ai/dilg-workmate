@@ -51,3 +51,14 @@ export const MARINDUQUE_OFFICES = [
   { id: 'santa-cruz', name: 'DILG Municipal Office - Santa Cruz', municipality: 'Santa Cruz', barangay: 'Pag-Asa Pob.', address: 'Santa Cruz Municipal Hall, Santa Cruz, Marinduque' },
   { id: 'torrijos', name: 'DILG Municipal Office - Torrijos', municipality: 'Torrijos', barangay: 'Poblacion', address: 'Torrijos Municipal Hall, Torrijos, Marinduque' }
 ];
+
+// The Assigned LGU for provincial staff. It is not a town, so field duty is not limited to one.
+export const PROVINCE_LGU = 'Province of Marinduque';
+
+// The Assigned LGU that goes with an Assigned Station (an office's name): the province for the
+// DILG Provincial Office, and the town of a municipal office. '' for a station not listed.
+export const lguOfStation = station => {
+  const office = MARINDUQUE_OFFICES.find(item => item.name === station);
+  if (!office) return '';
+  return office.id === 'provincial' ? PROVINCE_LGU : office.municipality;
+};

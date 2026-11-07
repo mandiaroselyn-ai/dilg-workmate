@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
-import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
+import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES, PROVINCE_LGU, lguOfStation } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
@@ -28,8 +28,6 @@ import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../
 const SUFFIX_FIELD = NAME_FIELDS.find(field => field.key === 'suffix');
 const PROFILE_FORM_FIELDS = [SUFFIX_FIELD, ...EMPLOYMENT_FIELDS];
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500';
-// The Assigned LGU for provincial staff. It is not a town, so field duty is not limited to one.
-const PROVINCE_LGU = 'Province of Marinduque';
 
 const emptyForm = {
   ...profileFieldValues({}, PROFILE_FORM_FIELDS),
@@ -338,7 +336,9 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
       role: record.role,
       office: record.office,
       employmentStatus: record.employmentStatus,
-      accountStatus: record.accountStatus
+      accountStatus: record.accountStatus,
+      // An account saved with a station but no LGU gets the station's LGU.
+      assignedLGU: record.assignedLGU || lguOfStation(record.assignedStation)
     });
     setScreen('editor');
   };
@@ -355,6 +355,12 @@ export default function HRAdminEmployeesView({ employees = [], onEmployeesChange
     const { name, value } = event.target;
     if (name === 'approvedWfhMunicipality') {
       setForm(previous => ({ ...previous, [name]: value, approvedWfhBarangay: '' }));
+      return;
+    }
+    // Choosing the station fills in its LGU (the province for the Provincial Office, or the
+    // town of a municipal office), which HR can still change.
+    if (name === 'assignedStation') {
+      setForm(previous => ({ ...previous, assignedStation: value, assignedLGU: lguOfStation(value) || previous.assignedLGU }));
       return;
     }
     if (name === 'appointmentStatus' && !earnsLeaveCredits({ appointmentStatus: value })) {
@@ -722,7 +728,7 @@ This cannot be undone.`
                   {Object.keys(MARINDUQUE_MUNICIPALITIES).map(town => <option key={town} value={town}>{town}</option>)}
                   {form.assignedLGU && form.assignedLGU !== PROVINCE_LGU && !MARINDUQUE_MUNICIPALITIES[form.assignedLGU] && <option value={form.assignedLGU}>{form.assignedLGU}</option>}
                 </select>
-                <span className="mt-1 block text-xs font-medium text-slate-500">A town limits field-duty Time In to that town; the province allows any town.</span>
+                <span className="mt-1 block text-xs font-medium text-slate-500">Filled in from the Assigned Station. A town limits field-duty Time In to that town; the province allows any town.</span>
               </label>
 
               <div className="sm:col-span-2 xl:col-span-4">
