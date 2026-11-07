@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
 import { hasSelfie, isLate, markDtrDay } from '../utils/hrAttendance';
-import { clockMinutes, durationText, isRestDate, missingLunchLog, OFFICE_HOURS, officeTimeText, punchStanding, tardinessText, usesLunchLogs } from '../utils/dtrDay';
+import { clockMinutes, daySchedule, durationText, isFixedHoursDay, isRestDate, missingLunchLog, OFFICE_HOURS, officeRangeText, officeTimeText, punchStanding, tardinessText, usesLunchLogs, workdayEnd } from '../utils/dtrDay';
 import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 import PunchReceipt from './PunchReceipt';
@@ -1230,35 +1230,42 @@ export default function AttendanceView({
     ? fingerprintVerifiedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Manila' })
     : '';
   const nowMinutes = getManilaMinutesOfDay(clockNow);
-  const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
+  const { amStart, flexLatestStart, noon, pmStart } = OFFICE_HOURS;
   const standing = todayRecord ? punchStanding(todayRecord) : {};
   const afternoonOnly = timeInMinutes !== null && timeInMinutes >= noon;
+  // Today's hours: Monday's are fixed; on the flexitime days the eight hours end by the Time In.
+  const fixedHoursToday = isFixedHoursDay(today);
+  const todaySchedule = daySchedule(today, timeInMinutes);
   const missingLunch = isDoneForToday ? missingLunchLog(todayRecord) : null;
   const lateIfNow = start => (restDayToday ? null : { late: Math.max(0, nowMinutes - start) });
   const earlyIfNow = end => (restDayToday ? null : { early: Math.max(0, end - nowMinutes) });
   const halfDayNote = afternoonOnly ? 'Half day: no lunch' : '';
   const dayLogs = [
     {
-      // Always scheduled in the morning. A Time In from noon on starts a half day, counted
-      // against the 1:00 PM start, and says so.
-      key: 'timeIn', label: 'Time In', time: todayRecord?.timeIn, standing: standing.timeIn, scheduled: amStart,
+      // Always scheduled in the morning: at 7:00 AM on Monday, from 7:00 to 9:00 AM on the
+      // flexitime days. A Time In from noon on starts a half day, counted against the 1:00 PM
+      // start, and says so.
+      key: 'timeIn', label: 'Time In', time: todayRecord?.timeIn, standing: standing.timeIn,
+      scheduled: fixedHoursToday ? officeTimeText(amStart) : officeRangeText(amStart, flexLatestStart),
       halfDay: afternoonOnly || (!todayRecord && nowMinutes >= noon),
-      ifNow: !todayRecord ? lateIfNow(nowMinutes >= noon ? pmStart : amStart) : null
+      ifNow: !todayRecord ? lateIfNow(nowMinutes >= noon ? pmStart : todaySchedule.lateAfter) : null
     },
     {
-      key: 'lunchOut', label: 'Lunch Out', time: todayRecord?.lunchOut, standing: standing.lunchOut, scheduled: noon,
+      key: 'lunchOut', label: 'Lunch Out', time: todayRecord?.lunchOut, standing: standing.lunchOut, scheduled: officeTimeText(noon),
       ifNow: canLunchOut ? earlyIfNow(noon) : null,
       note: halfDayNote || (missingLunch === 'Missing Lunch Out' ? 'Missing' : '')
     },
     {
-      key: 'lunchIn', label: 'Lunch In', time: todayRecord?.lunchIn, standing: standing.lunchIn, scheduled: pmStart,
+      key: 'lunchIn', label: 'Lunch In', time: todayRecord?.lunchIn, standing: standing.lunchIn, scheduled: officeTimeText(pmStart),
       ifNow: isOnLunch ? lateIfNow(pmStart) : null,
       note: halfDayNote || (missingLunch ? 'Missing' : '')
     },
     {
-      key: 'timeOut', label: 'Time Out', time: todayRecord?.timeOut, standing: standing.timeOut, scheduled: pmEnd,
+      // Eight hours after the day's start: known once timed in on a flexitime day.
+      key: 'timeOut', label: 'Time Out', time: todayRecord?.timeOut, standing: standing.timeOut,
+      scheduled: fixedHoursToday || todayRecord ? officeTimeText(todaySchedule.end) : officeRangeText(workdayEnd(amStart), workdayEnd(flexLatestStart)),
       // Before 1:00 PM without a Lunch Out, a Time Out ends a morning-only day at noon.
-      ifNow: isCurrentlyActive && !isOnLunch ? earlyIfNow(canLunchOut && nowMinutes <= pmStart ? noon : pmEnd) : null
+      ifNow: isCurrentlyActive && !isOnLunch ? earlyIfNow(canLunchOut && nowMinutes <= pmStart ? noon : todaySchedule.end) : null
     }
   ];
   const describeStanding = ({ late, early }) => (late ? { text: `Late · ${durationText(late)}`, tone: 'text-rose-600' }
@@ -1736,7 +1743,7 @@ export default function AttendanceView({
                 return (
                   <div key={log.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-center">
                     <p className="text-[10px] font-black uppercase tracking-wide text-slate-600">{log.label}</p>
-                    <p className="text-[10px] font-semibold text-slate-400">Schedule {officeTimeText(log.scheduled)}</p>
+                    <p className="text-[10px] font-semibold text-slate-400">Schedule {log.scheduled}</p>
                     <p className={`mt-1 font-mono text-sm font-black ${log.time ? 'text-slate-900' : 'text-slate-300'}`}>{log.time || '--:--'}</p>
                     <p className={`min-h-[15px] text-[10px] font-bold ${remark.tone}`}>{remark.text}</p>
                   </div>

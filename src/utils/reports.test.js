@@ -47,9 +47,10 @@ test('the attendance report shows each day\'s late, undertime, deduction, and ov
     employees,
     today: '2026-11-14',
     records: [
-      { id: 'b1', employeeId: 'E1', date: '2026-10-27', timeIn: '08:10 AM', lunchOut: '12:00 PM', lunchIn: '01:20 PM', timeOut: '04:45 PM' },
+      // A Monday (7:00 AM to 4:00 PM); the other weekdays are flexitime days.
+      { id: 'b1', employeeId: 'E1', date: '2026-10-26', timeIn: '07:10 AM', lunchOut: '12:00 PM', lunchIn: '01:20 PM', timeOut: '03:45 PM' },
       { id: 'b2', employeeId: 'E1', date: '2026-10-28', timeIn: '08:00 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '06:30 PM' },
-      { id: 'b3', employeeId: 'E2', date: '2026-10-28', timeIn: '08:03 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '05:45 PM' },
+      { id: 'b3', employeeId: 'E2', date: '2026-10-26', timeIn: '07:03 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '04:45 PM' },
       // Waiting for HR, so left out of the numbers as it is left out of the DTR.
       { id: 'b4', employeeId: 'E2', date: '2026-10-29', timeIn: '09:00 AM', timeOut: '05:00 PM', offlineTimeIn: { reviewReasons: ['No GPS'] } },
       // A Saturday: no late or undertime, and no office order for it.
@@ -57,7 +58,7 @@ test('the attendance report shows each day\'s late, undertime, deduction, and ov
     ].map(record => markDtrDay(record, { overtimeOrders }))
   });
   const row = id => report.rows.find(item => item.timeIn === id);
-  assert.deepEqual([row('08:10 AM').late, row('08:10 AM').undertime, row('08:10 AM').deduction, row('08:10 AM').overtime], ['30 min', '15 min', '0.094', '']);
+  assert.deepEqual([row('07:10 AM').late, row('07:10 AM').undertime, row('07:10 AM').deduction, row('07:10 AM').overtime], ['30 min', '15 min', '0.094', '']);
   assert.deepEqual([row('08:00 AM').late, row('08:00 AM').undertime, row('08:00 AM').deduction, row('08:00 AM').overtime], ['', '', '', '1h 30m']);
   assert.deepEqual([row('09:00 AM').late, row('09:00 AM').deduction], ['', '']);
   assert.deepEqual([row('09:30 AM').late, row('09:30 AM').undertime, row('09:30 AM').deduction, row('09:30 AM').overtime, row('09:30 AM').status], ['', '', '', '', 'Complete']);
@@ -66,7 +67,7 @@ test('the attendance report shows each day\'s late, undertime, deduction, and ov
   // Each employee's month by the CSC table: 45 minutes is 0.094, and 3 minutes 0.006.
   assert.equal(valueOf(report, 'Total deduction'), '0.100 day');
   assert.equal(valueOf(report, 'Total overtime'), '1h 30m');
-  // 45 minutes on Oct 28 and 3h 30m on the Saturday had no office order.
+  // 45 minutes after 4:00 PM on Oct 26 and 3h 30m on the Saturday had no office order.
   assert.equal(valueOf(report, 'After hours, no office order'), '4h 15m');
 
   assert.match(reportCsv(report), /Hours,Late,Undertime,Deduction \(day\),Overtime,Status/);

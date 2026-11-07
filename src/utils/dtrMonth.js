@@ -69,10 +69,10 @@ export function dayEntry(rec) {
   if (!usesLunchLogs(rec)) {
     // These count the hours worked, so the time late is at most the day's undertime.
     const undertime = undertimeMins(rec.timeIn, rec.timeOut);
-    const late = Math.min(undertime, dtrLateMinutes(logs));
+    const late = Math.min(undertime, dtrLateMinutes(logs, rec.date));
     return { ...day, undertime, late, early: undertime - late };
   }
-  return { ...day, undertime: dtrUndertimeMinutes(logs), late: dtrLateMinutes(logs), early: dtrEarlyMinutes(logs) };
+  return { ...day, undertime: dtrUndertimeMinutes(logs, rec.date), late: dtrLateMinutes(logs, rec.date), early: dtrEarlyMinutes(logs, rec.date) };
 }
 
 // A record's day as the DTR shows it, or null when the DTR leaves it out (see dtrRecordsByDay).

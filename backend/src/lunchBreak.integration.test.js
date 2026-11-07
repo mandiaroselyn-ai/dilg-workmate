@@ -103,6 +103,12 @@ test('HR can correct Lunch Out and Lunch In, which must be times', () => {
   assert.equal(lateBack.changes.late, true);
   const [onTime] = hrUpdateOperations([{ id: 'att-9', timeIn: '06:58 AM', lunchOut: '12:00 PM', lunchIn: '12:59 PM' }], 'HR Ana');
   assert.equal(onTime.changes.late, false);
+  // A corrected Time In is late by its day's hours: after 7:00 AM on a Monday, after 9:00 AM on
+  // the flexitime days.
+  const corrected = (date, timeIn) => hrUpdateOperations([{ id: 'att-9', date, timeIn }], 'HR Ana')[0].changes.late;
+  assert.equal(corrected('2026-11-09', '07:30 AM'), true);
+  assert.equal(corrected('2026-11-10', '07:30 AM'), false);
+  assert.equal(corrected('2026-11-10', '09:10 AM'), true);
   assert.deepEqual(hrUpdateOperations([{ id: 'att-9', lunchIn: null }], 'HR Ana')[0].changes, { lunchIn: null });
   assert.throws(() => hrUpdateOperations([{ id: 'att-9', lunchOut: 'noon' }]), /Lunch Out must be a time/);
   assert.throws(() => hrUpdateOperations([{ id: 'att-9', lunchIn: '13:00' }]), /Lunch In must be a time/);

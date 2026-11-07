@@ -480,7 +480,15 @@ export const DtrLog = {
   // Applies HR corrections, verifications, and decisions (see hrUpdateOperations).
   bulkUpdate: async (updates, { reviewer = '' } = {}) => {
     ensureConnected();
-    const operations = hrUpdateOperations(updates, reviewer);
+    // A corrected Time In is late or not by its day's office hours, so it goes with the date
+    // saved on its record.
+    const correctedIds = Array.isArray(updates) ? updates.filter(update => update?.timeIn !== undefined).map(update => update.id) : [];
+    const dates = new Map(correctedIds.length
+      ? (await MongoDtrLog.find({ customId: { $in: correctedIds } }).select('customId date').lean()).map(log => [log.customId, log.date])
+      : []);
+    const operations = hrUpdateOperations(Array.isArray(updates)
+      ? updates.map(update => (dates.has(update?.id) ? { ...update, date: dates.get(update.id) } : update))
+      : updates, reviewer);
     if (operations.length) {
       await MongoDtrLog.bulkWrite(operations.map(({ filter, changes }) => ({
         updateOne: { filter, update: { $set: changes } }
@@ -668,10 +676,11 @@ export const hrUpdateOperations = (updates, reviewer = '', now = new Date()) => 
     for (const field of HR_EDITABLE_FIELDS) {
       if (update[field] !== undefined) changes[field] = update[field];
     }
-    // A corrected Time In decides again whether the employee was late, with the Lunch In sent
-    // with it (back after 1:00 PM is late too).
+    // A corrected Time In decides again whether the employee was late, by the office hours of
+    // the record's day (`update.date`, which bulkUpdate reads from the record), with the Lunch In
+    // sent with it (back after 1:00 PM is late too).
     if (changes.timeIn !== undefined) {
-      const late = isLateTimeText(changes.timeIn);
+      const late = isLateTimeText(changes.timeIn, update.date);
       if (late === null) throw new Error('Time In must be a time such as 08:05 AM.');
       changes.late = late || isLateLunchIn(changes.lunchIn) === true;
     }

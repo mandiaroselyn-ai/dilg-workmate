@@ -6,31 +6,35 @@ import { fillDTR, dtrSummaryRows } from './dtrForm.js';
 import { dayEntry, dtrEntry, dtrRecordsByDay, monthDeductionText, monthDtrTotals, monthUndertimeMinutes, totalUndertimeMinutes } from './dtrMonth.js';
 import { markDtrDay } from './hrAttendance.js';
 
+// October 5 and 26 are Mondays (7:00 AM to 4:00 PM); the other days are flexitime days.
 const october = [
   // Before lunch logs: only a Time In and a Time Out.
-  { employeeId: 'E1', date: '2026-10-06', timeIn: '08:15 AM', timeOut: '05:00 PM' },
+  { employeeId: 'E1', date: '2026-10-05', timeIn: '07:15 AM', timeOut: '04:00 PM' },
   { employeeId: 'E1', date: '2026-10-07', timeIn: '07:55 AM', timeOut: '04:30 PM' },
   { employeeId: 'E1', date: '2026-10-08', timeIn: '08:00 AM', timeOut: '06:30 PM' },
   // With lunch logs.
-  { employeeId: 'E1', date: '2026-10-27', timeIn: '08:10 AM', lunchOut: '12:00 PM', lunchIn: '01:20 PM', timeOut: '04:45 PM' },
-  { employeeId: 'E1', date: '2026-10-28', timeIn: '07:58 AM', lunchOut: '12:00 PM', lunchIn: '12:59 PM', timeOut: '07:15 PM' }
+  { employeeId: 'E1', date: '2026-10-26', timeIn: '07:10 AM', lunchOut: '12:00 PM', lunchIn: '01:20 PM', timeOut: '03:45 PM' },
+  { employeeId: 'E1', date: '2026-10-28', timeIn: '08:00 AM', lunchOut: '12:00 PM', lunchIn: '12:59 PM', timeOut: '07:15 PM' }
 ];
 const overtimeOrders = [{ orderNumber: 'OO 14', startDate: '2026-10-01', endDate: '2026-10-31', startTime: '17:00', endTime: '19:00', employeeIds: ['E1'] }];
 const marked = october.map(record => markDtrDay(record, { overtimeOrders }));
 
 test('a day splits its UNDERTIME column into late and early, with overtime apart', () => {
+  // A Monday: 10 minutes after 7:00 AM, 20 back from lunch, and 15 before 4:00 PM.
   const { undertime, late, early, overtime } = dayEntry(marked[3]);
   assert.deepEqual({ undertime, late, early, overtime }, { undertime: 45, late: 30, early: 15, overtime: 0 });
-  // The order ends at 7:00 PM, and the Time Out is 7:15 PM.
+  // In at 8:00 on a flexitime day, so the eight hours end at 5:00 PM. The order ends at
+  // 7:00 PM, and the Time Out is 7:15 PM.
   const { overtime: ordered, noOrder } = dayEntry(marked[4]);
   assert.deepEqual({ ordered, noOrder }, { ordered: 120, noOrder: 15 });
   assert.deepEqual([dayEntry(october[4]).overtime, dayEntry(october[4]).noOrder], [0, 135]);
 });
 
 test('a record from before lunch logs keeps its DTR total when it is split', () => {
+  // 15 minutes after Monday's 7:00 AM.
   const late = dayEntry(october[0]);
   assert.deepEqual([late.undertime, late.late, late.early], [15, 15, 0]);
-  // Its hours are counted, so 5 minutes early in the morning lessen the 30 early at the end.
+  // In at 7:55 on a flexitime day, so out at 4:55 PM: 25 minutes early.
   const early = dayEntry(october[1]);
   assert.deepEqual([early.undertime, early.late, early.early], [25, 0, 25]);
   // An afternoon-only day is late against 1:00 PM.

@@ -53,8 +53,9 @@ export const markDtrDay = (record, { holidays = [], overtimeOrders = [], request
   return isRestDay(marked) ? { ...marked, late: false } : marked;
 };
 
-// A late day: an arrival after the start of its half of the day (a Time In after 8:00 AM, or
-// after 1:00 PM for an afternoon-only day) or back from lunch after 1:00 PM, or a record HR set
+// A late day: an arrival after the start of its half of the day (a Time In after 7:00 AM on
+// Monday or 9:00 AM on the flexitime days, or after 1:00 PM for an afternoon-only day) or back
+// from lunch after 1:00 PM, or a record HR set
 // to Late. Records with lunch logs are read from their own times, as their DTR is; earlier ones
 // use the `late` the server saved at Time In. Nobody is late on a rest day.
 export const isLate = record => {

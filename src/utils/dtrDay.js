@@ -1,10 +1,10 @@
-import { OFFICE_HOURS } from '../../shared/officeHours.js';
+import { OFFICE_HOURS, daySchedule, isFixedHoursDay, workdayEnd } from '../../shared/officeHours.js';
 
 // One day of a Daily Time Record (CSC Form No. 48): its four logs (A.M. arrival and
 // departure, P.M. arrival and departure) and the minutes of tardiness and undertime they
-// show against the office hours (shared/officeHours.js).
+// show against the day's office hours (shared/officeHours.js).
 
-export { OFFICE_HOURS };
+export { OFFICE_HOURS, daySchedule, isFixedHoursDay, workdayEnd };
 
 // Lunch Out and Lunch In are recorded from this day on. Earlier records have only a Time In
 // and a Time Out, and their DTR keeps showing the usual noon break, as it did before.
@@ -55,15 +55,18 @@ export const dtrDayLogs = (record, timeOut = record?.timeOut) => {
 export const minutesLate = (value, start) => (clockMinutes(value) === null ? 0 : Math.max(0, clockMinutes(value) - start));
 export const minutesEarly = (value, end) => (clockMinutes(value) === null ? 0 : Math.max(0, end - clockMinutes(value)));
 
-// Minutes of tardiness the four logs show (arriving after the morning or afternoon start), of
-// undertime (leaving before noon or the end of the day), and of both, which is the DTR's
-// UNDERTIME column. A half day counts only the half that was worked; the other half is a leave
-// or an absence, not undertime.
-export const dtrLateMinutes = logs => minutesLate(logs.amArrival, OFFICE_HOURS.amStart)
+// The office hours of the day the four logs are from (`date`, YYYY-MM-DD), by its first arrival.
+export const logsSchedule = (logs, date) => daySchedule(date, clockMinutes(logs.amArrival) ?? clockMinutes(logs.pmArrival));
+
+// Minutes of tardiness the four logs of `date` show (arriving after the day's latest on-time
+// arrival, or after 1:00 PM), of undertime (leaving before noon, or before the day's eight hours
+// end), and of both, which is the DTR's UNDERTIME column. A half day counts only the half that was
+// worked; the other half is a leave or an absence, not undertime.
+export const dtrLateMinutes = (logs, date) => minutesLate(logs.amArrival, logsSchedule(logs, date).lateAfter)
   + minutesLate(logs.pmArrival, OFFICE_HOURS.pmStart);
-export const dtrEarlyMinutes = logs => minutesEarly(logs.amDeparture, OFFICE_HOURS.noon)
-  + minutesEarly(logs.pmDeparture, OFFICE_HOURS.pmEnd);
-export const dtrUndertimeMinutes = logs => dtrLateMinutes(logs) + dtrEarlyMinutes(logs);
+export const dtrEarlyMinutes = (logs, date) => minutesEarly(logs.amDeparture, OFFICE_HOURS.noon)
+  + minutesEarly(logs.pmDeparture, logsSchedule(logs, date).end);
+export const dtrUndertimeMinutes = (logs, date) => dtrLateMinutes(logs, date) + dtrEarlyMinutes(logs, date);
 
 // The spans of a day's work in minutes, without its break: the employee's own Lunch Out to Lunch
 // In, or the noon hour when there are no lunch logs (overtime leaves out lunch, Joint CSC-DBM
@@ -77,29 +80,30 @@ const workedPeriods = logs => {
   return [[first, Math.min(last, breakStart)], [Math.max(first, breakEnd), last]];
 };
 
-// The day's `overtime` in minutes: work outside office hours, or at any time on a rest day,
-// within the hours of an office order (`record.overtimeWindows`, from markDtrDay). Overtime
-// needs that order (CSC-DBM Joint Circular No. 2, s. 2004, Sec. 5.2), is never deducted, and
-// cannot offset tardiness or undertime (Joint CSC-DBM Circular No. 01-15, Sec. 10.4).
-// `noOrder` is the work after office hours or on a rest day that no order covers, for HR to see.
-// A day that cannot earn overtime (`record.noOvertime`) has neither.
+// The day's `overtime` in minutes: work before or after the day's eight hours (see
+// daySchedule), or at any time on a rest day, within the hours of an office order
+// (`record.overtimeWindows`, from markDtrDay). Overtime needs that order (CSC-DBM Joint Circular
+// No. 2, s. 2004, Sec. 5.2), is never deducted, and cannot offset tardiness or undertime (Joint
+// CSC-DBM Circular No. 01-15, Sec. 10.4). `noOrder` is the work after the day's hours or on a rest
+// day that no order covers, for HR to see. A day that cannot earn overtime (`record.noOvertime`)
+// has neither.
 export const dtrOvertime = (logs, record) => {
   if (record?.noOvertime) return { overtime: 0, noOrder: 0 };
-  const { amStart, pmEnd } = OFFICE_HOURS;
+  const { start: dayStart, end: dayEnd } = logsSchedule(logs, record?.date);
   const restDay = isRestDay(record);
   const windows = record?.overtimeWindows || [];
   let overtime = 0;
   let noOrder = 0;
   for (const [start, end] of workedPeriods(logs)) {
     for (let minute = start; minute < end; minute += 1) {
-      if ((restDay || minute < amStart || minute >= pmEnd) && windows.some(({ from, to }) => minute >= from && minute < to)) overtime += 1;
-      else if (restDay || minute >= pmEnd) noOrder += 1;
+      if ((restDay || minute < dayStart || minute >= dayEnd) && windows.some(({ from, to }) => minute >= from && minute < to)) overtime += 1;
+      else if (restDay || minute >= dayEnd) noOrder += 1;
     }
   }
   return { overtime, noOrder };
 };
 
-// How each punch of a record stands against office hours, as the DTR reads it (see
+// How each punch of a record stands against the day's office hours, as the DTR reads it (see
 // dtrDayLogs): minutes `late` for Time In and Lunch In, minutes `early` for Lunch Out and Time
 // Out, or null for a punch not made. A Time In from noon on is an afternoon arrival, and a
 // Time Out that ends a morning-only day is a noon departure. A rest day has no office hours to
@@ -107,12 +111,13 @@ export const dtrOvertime = (logs, record) => {
 export const punchStanding = record => {
   if (isRestDay(record)) return { timeIn: null, lunchOut: null, lunchIn: null, timeOut: null };
   const logs = dtrDayLogs(record);
-  const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
+  const { noon, pmStart } = OFFICE_HOURS;
+  const { lateAfter, end } = logsSchedule(logs, record?.date);
   const timeOutEnd = !record?.timeOut ? null
-    : logs.pmDeparture === record.timeOut ? pmEnd
+    : logs.pmDeparture === record.timeOut ? end
       : logs.amDeparture === record.timeOut ? noon : null;
   return {
-    timeIn: record?.timeIn ? { late: logs.amArrival ? minutesLate(logs.amArrival, amStart) : minutesLate(logs.pmArrival, pmStart) } : null,
+    timeIn: record?.timeIn ? { late: logs.amArrival ? minutesLate(logs.amArrival, lateAfter) : minutesLate(logs.pmArrival, pmStart) } : null,
     lunchOut: record?.lunchOut ? { early: minutesEarly(record.lunchOut, noon) } : null,
     lunchIn: record?.lunchIn ? { late: minutesLate(record.lunchIn, pmStart) } : null,
     timeOut: timeOutEnd === null ? null : { early: minutesEarly(record.timeOut, timeOutEnd) }
@@ -120,8 +125,8 @@ export const punchStanding = record => {
 };
 
 // Minutes late of the day's arrivals, as government DTRs count tardiness: `am` for a morning
-// Time In after the office start, and `pm` for an afternoon-only Time In or a Lunch In after
-// 1:00 PM.
+// Time In after the day's latest on-time arrival (7:00 AM on Monday, 9:00 AM on the flexitime
+// days), and `pm` for an afternoon-only Time In or a Lunch In after 1:00 PM.
 export const tardiness = record => {
   const standing = punchStanding(record);
   const timeInLate = standing.timeIn?.late || 0;
@@ -142,11 +147,19 @@ export const officeTimeText = minutes => {
   return minutes === OFFICE_HOURS.noon ? `12:${minute} NN` : `${hour % 12 || 12}:${minute} ${hour < 12 ? 'AM' : 'PM'}`;
 };
 
-// The office hours as CSC Form 48 writes them: "8:00–12:00, 1:00–5:00".
+// A clock time without AM or PM, as DTR forms write them: "7:00", "4:00".
+const shortTime = minutes => `${Math.floor(minutes / 60) % 12 || 12}:${String(minutes % 60).padStart(2, '0')}`;
+
+// A span of office time as shown: "7:00–9:00 AM", "4:00–6:00 PM".
+export const officeRangeText = (from, to) => `${shortTime(from)}–${officeTimeText(to)}`;
+
+// The office hours as CSC Form 48's narrow "Official hours for arrival and departure" blank
+// writes them: Monday's fixed hours, then the flexitime arrival of the other days and their
+// eight hours ("Mon 7–4; Tue–Fri flexi 7–9, 8 hrs"). Whole hours leave out the ":00".
 export const officeHoursText = () => {
-  const short = minutes => `${Math.floor(minutes / 60) % 12 || 12}:${String(minutes % 60).padStart(2, '0')}`;
-  const { amStart, noon, pmStart, pmEnd } = OFFICE_HOURS;
-  return `${short(amStart)}–${short(noon)}, ${short(pmStart)}–${short(pmEnd)}`;
+  const { amStart, flexLatestStart, workMinutes } = OFFICE_HOURS;
+  const hour = minutes => (minutes % 60 ? shortTime(minutes) : String(Math.floor(minutes / 60) % 12 || 12));
+  return `Mon ${hour(amStart)}–${hour(workdayEnd(amStart))}; Tue–Fri flexi ${hour(amStart)}–${hour(flexLatestStart)}, ${workMinutes / 60} hrs`;
 };
 
 // A number of minutes as "7 min" or "1h 05m".
