@@ -5,7 +5,7 @@ import HRResetPasswordCard from './HRResetPasswordCard';
 import { ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, fullNameOf, profileFieldValues } from '../../shared/profileFields';
 import { DEFAULT_REGION } from '../../shared/dilgAssignments';
-import { HR_TASK_LABELS } from '../../shared/hrSteps';
+import { HR_TASK_LABELS, NO_HR_TASK_LABEL } from '../../shared/hrSteps';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
@@ -36,8 +36,8 @@ const NEW_STAFF_EMPLOYMENT_FIELDS = STAFF_EMPLOYMENT_FIELDS
 
 const emptyForm = {
   email: '', employeeId: '', accessLevel: 'supervisor', password: '',
-  // For an HR/Admin account: HR 1's step, HR 2's, or both (shared/hrSteps.js).
-  hrTask: 'both',
+  // For an HR/Admin account: HR 1's step or HR 2's (shared/hrSteps.js), chosen on the form.
+  hrTask: '',
   ...profileFieldValues({}, [...NAME_FIELDS, ...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS]),
   region: DEFAULT_REGION
 };
@@ -172,7 +172,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
     try {
       const { account: updated } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(account))}`, 'PATCH', { hrTask });
       replaceAccount(updated);
-      onToast?.(`${updated.name} now takes ${HR_TASK_LABELS[updated.hrTask] || HR_TASK_LABELS.both}.`);
+      onToast?.(`${updated.name} now takes ${HR_TASK_LABELS[updated.hrTask] || NO_HR_TASK_LABEL}.`);
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -271,7 +271,8 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             </label>
             {form.accessLevel === 'hr_admin' && (
               <label className={labelClass}>HR step on requests<RequiredMark />
-                <select name="hrTask" value={form.hrTask} onChange={updateFormField} className={inputClass}>
+                <select name="hrTask" required value={form.hrTask} onChange={updateFormField} className={inputClass}>
+                  <option value="" disabled>Choose HR 1 or HR 2</option>
                   {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
                 </select>
               </label>
@@ -331,15 +332,16 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                   </span>
                   {/* Which HR step of a request this HR/Admin takes. */}
                   {account.accessLevel === 'hr_admin' && (self ? (
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">{HR_TASK_LABELS[account.hrTask] || HR_TASK_LABELS.both}</span>
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">{HR_TASK_LABELS[account.hrTask] || NO_HR_TASK_LABEL}</span>
                   ) : (
                     <select
                       aria-label={`HR step for ${account.name}`}
-                      value={HR_TASK_LABELS[account.hrTask] ? account.hrTask : 'both'}
-                      onChange={event => changeHrTask(account, event.target.value)}
+                      value={HR_TASK_LABELS[account.hrTask] ? account.hrTask : ''}
+                      onChange={event => event.target.value && changeHrTask(account, event.target.value)}
                       disabled={busy}
                       className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700"
                     >
+                      {!HR_TASK_LABELS[account.hrTask] && <option value="" disabled>{NO_HR_TASK_LABEL}</option>}
                       {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
                     </select>
                   ))}

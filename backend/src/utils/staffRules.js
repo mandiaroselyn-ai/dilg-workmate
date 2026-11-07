@@ -10,6 +10,8 @@ export const ACCESS_LEVELS = ['employee', 'supervisor', 'hr_admin'];
 export const STAFF_ACCESS_LEVELS = ['supervisor', 'hr_admin'];
 export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Suspended'];
 
+const HR_TASK_ERROR = 'Choose the HR step: HR 1 (leave credits) or HR 2 (pre-approval).';
+
 const FIELD_LIMITS = { name: 160, email: 254, role: 120, office: 160, phoneNumber: 250, employeeId: 64, region: 250, dateHired: 40 };
 
 const isActive = account => !account?.accountStatus || account.accountStatus.toString().toLowerCase() === 'active';
@@ -37,8 +39,8 @@ export const normalizeStaffInput = (body, { partial = false, previous } = {}) =>
   if (details.error) return { error: details.error };
   Object.assign(value, details.value);
   // Which HR step of a request an HR/Admin account does (shared/hrSteps.js).
-  if (body?.hrTask !== undefined) {
-    if (!HR_TASKS.includes(body.hrTask)) return { error: 'Choose the HR step: HR 1 (leave credits), HR 2 (pre-approval), or both.' };
+  if (body?.hrTask !== undefined && body.hrTask !== '') {
+    if (!HR_TASKS.includes(body.hrTask)) return { error: HR_TASK_ERROR };
     value.hrTask = body.hrTask;
   }
   const office = officeError(value.office, previous?.office);
@@ -59,6 +61,9 @@ export const normalizeStaffInput = (body, { partial = false, previous } = {}) =>
     value.region ||= DEFAULT_REGION;
     if (!STAFF_ACCESS_LEVELS.includes(body?.accessLevel)) return { error: 'Choose Supervisor or HR/Admin access.' };
     value.accessLevel = body.accessLevel;
+    // An HR/Admin account takes HR 1's step or HR 2's; a Supervisor takes neither.
+    if (value.accessLevel === 'hr_admin' && !value.hrTask) return { error: HR_TASK_ERROR };
+    if (value.accessLevel !== 'hr_admin') delete value.hrTask;
   } else if (Object.keys(value).length === 0) {
     return { error: 'No changes were sent.' };
   }

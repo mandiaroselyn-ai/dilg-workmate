@@ -3,15 +3,16 @@ import { leaveCharge, leaveCreditField } from './leaveCalc.js';
 // The HR steps a request takes before the Head decides it, as CSC Form No. 6, section 7, has them:
 // HR 1 reviews the employee's leave credits and certifies them (7.A), then HR 2 recommends
 // approval or disapproval (7.B) and sends it to the Head, who decides (7.C and 7.D). A Travel
-// Order has no leave credits, so it goes straight to HR 2. Each HR/Admin account does HR 1's
-// step, HR 2's, or both (`hrTask`), so the requests do not wait when one of them is away.
+// Order has no leave credits, so it goes straight to HR 2. Each HR/Admin account does one of
+// the two (`hrTask`): HR 1's or HR 2's, and nothing else of the review.
 
-export const HR_TASKS = ['both', 'leave-credits', 'pre-approval'];
+export const HR_TASKS = ['leave-credits', 'pre-approval'];
 export const HR_TASK_LABELS = {
-  both: 'HR 1 and HR 2 (both steps)',
   'leave-credits': 'HR 1: leave credits (7.A)',
   'pre-approval': 'HR 2: pre-approval (7.B)'
 };
+// An HR/Admin account whose step HR has not set yet (such as one made before the steps were split).
+export const NO_HR_TASK_LABEL = 'No HR step set';
 export const HR_STEP_NAMES = { 'leave-credits': 'HR 1 (leave credits)', 'pre-approval': 'HR 2 (pre-approval)' };
 
 // A leave whose credits HR 1 certified, waiting for HR 2.
@@ -27,8 +28,9 @@ export const hrStepOf = request => {
   return request.type === 'Leave Request' ? 'leave-credits' : 'pre-approval';
 };
 
-// Whether an HR/Admin account with `hrTask` does `step`. An account without one does both.
-export const doesHrStep = (hrTask, step) => Boolean(step) && [step, 'both'].includes(HR_TASKS.includes(hrTask) ? hrTask : 'both');
+// Whether an HR/Admin account with `hrTask` does `step`. An account without one does neither
+// until HR sets it in Staff Accounts.
+export const doesHrStep = (hrTask, step) => Boolean(step) && HR_TASKS.includes(hrTask) && hrTask === step;
 
 const round3 = number => Math.round(number * 1000) / 1000;
 

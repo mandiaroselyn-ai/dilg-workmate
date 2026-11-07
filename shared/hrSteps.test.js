@@ -11,17 +11,17 @@ test('a leave goes to HR 1, then HR 2; a Travel Order goes straight to HR 2', ()
   }
 });
 
-test('an HR account does HR 1\'s step, HR 2\'s, or both', () => {
+test('an HR account does HR 1\'s step or HR 2\'s, never both', () => {
   assert.equal(doesHrStep('leave-credits', 'leave-credits'), true);
   assert.equal(doesHrStep('leave-credits', 'pre-approval'), false);
   assert.equal(doesHrStep('pre-approval', 'pre-approval'), true);
   assert.equal(doesHrStep('pre-approval', 'leave-credits'), false);
-  // An account set to both, or not set yet, does both.
+  // An account not set yet, or saved as both before the steps were split, does neither.
   for (const task of ['both', undefined, '']) {
-    assert.equal(doesHrStep(task, 'leave-credits'), true);
-    assert.equal(doesHrStep(task, 'pre-approval'), true);
+    assert.equal(doesHrStep(task, 'leave-credits'), false);
+    assert.equal(doesHrStep(task, 'pre-approval'), false);
   }
-  assert.equal(doesHrStep('both', null), false);
+  assert.equal(doesHrStep('leave-credits', null), false);
 });
 
 test('HR 1 certifies the leave credits as approving the leave will charge them', () => {

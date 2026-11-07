@@ -111,10 +111,13 @@ test('employees cannot withdraw decided requests or other people\'s requests', (
   assert.equal(buildEmployeeWithdrawal({ ...draft, status: 'Pending' }, { status: 'Withdrawn' }, { employeeId: 'X', email: 'x@dilg.gov.ph' }), null);
 });
 
+// HR 2, who takes a request with no type (as a Travel Order) waiting for HR.
+const hr2 = { hrTask: 'pre-approval' };
+
 test('HR can only forward a request that is waiting for HR', () => {
   const forward = { status: 'For Supervisor', remarks: 'Checked.' };
-  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin'), null);
-  assert.equal(reviewUpdateProblem('Pending Review', forward, 'hr_admin'), null);
+  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin', hr2), null);
+  assert.equal(reviewUpdateProblem('Pending Review', forward, 'hr_admin', hr2), null);
   assert.match(reviewUpdateProblem('For Supervisor', forward, 'hr_admin'), /already forwarded/);
   assert.match(reviewUpdateProblem('Approved', forward, 'hr_admin'), /already Approved/);
   assert.match(reviewUpdateProblem('Rejected', forward, 'hr_admin'), /already Rejected/);
@@ -147,7 +150,7 @@ test('the supervisor decides a request once: a decided or returned one cannot be
 
 test('HR or the supervisor can return an undecided request, saying what to fix', () => {
   const returned = { status: 'Returned', remarks: 'Attach the medical certificate.' };
-  assert.equal(reviewUpdateProblem('Pending', returned, 'hr_admin'), null);
+  assert.equal(reviewUpdateProblem('Pending', returned, 'hr_admin', hr2), null);
   assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Returned', supervisorRemarks: 'Dates overlap the audit.' }, 'supervisor'), null);
   // Remarks say what the employee needs to do.
   assert.match(reviewUpdateProblem('Pending', { status: 'Returned', remarks: '  ' }, 'hr_admin'), /what the employee needs to fix/);
@@ -182,6 +185,6 @@ test('a request submitted again goes through HR\'s steps again, and the supervis
   assert.equal(update.creditCertification, null);
   assert.equal(update.recommendation, null);
   assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Approved' }, 'supervisor'), null);
-  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', remarks: 'Attach the medical certificate.' }, 'hr_admin', { type: 'Leave Request' }), null);
+  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', remarks: 'Attach the medical certificate.' }, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), null);
   assert.equal(buildEmployeeWithdrawal({ ...returned, status: 'For Pre-approval' }, { status: 'Withdrawn' }, employee).status, 'Withdrawn');
 });

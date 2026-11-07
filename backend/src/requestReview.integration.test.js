@@ -19,7 +19,9 @@ const app = createApiApp();
 // the future (a travel order or vacation leave cannot be filed for a day that has passed).
 const onNovember2 = t => t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-02T09:00:00+08:00') });
 
-const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', name: 'Ma. Joane O. Salcedo', role: 'ADAS II', accessLevel: 'hr_admin', accountStatus: 'Active' };
+// HR 1 (Ms. Salcedo) and HR 2 (Sir Erick).
+const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', name: 'Ma. Joane O. Salcedo', role: 'ADAS II', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
+const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
 const requests = {
   // A leave waiting for HR 1, one HR 1 certified (waiting for HR 2), and a Travel Order
   // waiting for HR 2.
@@ -74,8 +76,7 @@ test('HR 1 certifies a leave\'s credits and sends it to HR 2, who must do so bef
 });
 
 test('HR 2 pre-approves a certified leave or a Travel Order with a recommendation, then the supervisor decides', async t => {
-  const erick = { ...hr, _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager' };
-  const session = signInAsHr(t, { as: erick, employee: juan });
+  const session = signInAsHr(t, { as: hr2, employee: juan });
   const response = await session.patch('REQ-CERTIFIED', approve);
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const { recommendation } = session.saves.mock.calls[0].arguments[1];
@@ -278,7 +279,7 @@ const supervisors = [
 ];
 
 test('forwarding a request texts each active supervisor who has a mobile number', async t => {
-  const session = signInAsHr(t, { supervisors });
+  const session = signInAsHr(t, { supervisors, as: hr2 });
   const sms = useSmsGateway(t);
   const response = await session.patch('REQ-CERTIFIED', approve);
   assert.equal(response.status, 200);
@@ -290,19 +291,21 @@ test('forwarding a request texts each active supervisor who has a mobile number'
 });
 
 test('HR\'s steps are taken one request at a time, not through the bulk update', async t => {
-  const session = signInAsHr(t, { supervisors });
   const sms = useSmsGateway(t);
-  for (const update of [{ id: 'REQ-CERTIFIED', ...approve }, { id: 'REQ-PENDING', status: 'For Pre-approval' }]) {
+  // Each HR takes their own step: HR 2 pre-approves, HR 1 certifies.
+  for (const [as, update] of [[hr2, { id: 'REQ-CERTIFIED', ...approve }], [hr, { id: 'REQ-PENDING', status: 'For Pre-approval' }]]) {
+    const session = signInAsHr(t, { supervisors, as });
     const response = await session.put([update]);
     assert.equal(response.status, 409);
     assert.match(response.body.error, /Open the request/);
+    assert.equal(session.bulkSaves.mock.callCount(), 0);
+    t.mock.restoreAll();
   }
-  assert.equal(session.bulkSaves.mock.callCount(), 0);
   assert.equal(sms.gateway.mock.callCount(), 0);
 });
 
 test('a failed supervisor text does not stop the forward', async t => {
-  const session = signInAsHr(t, { supervisors });
+  const session = signInAsHr(t, { supervisors, as: hr2 });
   const sms = useSmsGateway(t, async () => { throw new Error('getaddrinfo ENOTFOUND'); });
   const response = await session.patch('REQ-CERTIFIED', approve);
   assert.equal(response.status, 200);

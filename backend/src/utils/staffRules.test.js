@@ -74,9 +74,15 @@ test('HR keeps a staff member\'s region and employment details, not their person
   assert.match(normalizeStaffInput({ division: 42 }, { partial: true }).error, /must be text/);
 });
 
-test('an HR/Admin account takes HR 1\'s step, HR 2\'s, or both', () => {
+test('an HR/Admin account takes HR 1\'s step or HR 2\'s, chosen when it is made', () => {
   assert.deepEqual(normalizeStaffInput({ hrTask: 'leave-credits' }, { partial: true }).value, { hrTask: 'leave-credits' });
   assert.deepEqual(normalizeStaffInput({ hrTask: 'pre-approval' }, { partial: true }).value, { hrTask: 'pre-approval' });
-  assert.deepEqual(normalizeStaffInput({ hrTask: 'both' }, { partial: true }).value, { hrTask: 'both' });
-  assert.match(normalizeStaffInput({ hrTask: 'approve-everything' }, { partial: true }).error, /HR 1 \(leave credits\), HR 2 \(pre-approval\), or both/);
+  for (const task of ['both', 'approve-everything']) {
+    assert.match(normalizeStaffInput({ hrTask: task }, { partial: true }).error, /HR 1 \(leave credits\) or HR 2 \(pre-approval\)/);
+  }
+  const account = { name: 'Ma. Joane O. Salcedo', email: 'joane@dilg.gov.ph', role: 'ADAS II (Chief)', office: 'Finance and Administrative Section (FAS)', phoneNumber: '0917 123 4567', dateHired: '2019-02-01', appointmentStatus: 'Permanent' };
+  assert.match(normalizeStaffInput({ ...account, accessLevel: 'hr_admin' }).error, /Choose the HR step/);
+  assert.equal(normalizeStaffInput({ ...account, accessLevel: 'hr_admin', hrTask: 'leave-credits' }).value.hrTask, 'leave-credits');
+  // A Supervisor takes no HR step.
+  assert.equal('hrTask' in normalizeStaffInput({ ...account, accessLevel: 'supervisor', hrTask: 'pre-approval' }).value, false);
 });

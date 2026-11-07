@@ -1,5 +1,5 @@
 import { getManilaDateString } from '../../../shared/localDate.js';
-import { FOR_PRE_APPROVAL, HR_STEP_NAMES, doesHrStep, hrStepOf } from '../../../shared/hrSteps.js';
+import { FOR_PRE_APPROVAL, HR_STEP_NAMES, HR_TASKS, doesHrStep, hrStepOf } from '../../../shared/hrSteps.js';
 
 // Fields only a reviewer (supervisor or HR) may set on a leave, travel, or certified copy request.
 const REVIEW_FIELDS = [
@@ -86,7 +86,9 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
         : 'This request needs only HR 2\'s pre-approval now. HR 2 sends it to the supervisor.';
     }
     if (!doesHrStep(hrTask, step)) {
-      return `This step is ${HR_STEP_NAMES[step]}'s. Your HR account does ${HR_STEP_NAMES[step === 'leave-credits' ? 'pre-approval' : 'leave-credits']} only.`;
+      return HR_TASKS.includes(hrTask)
+        ? `This step is ${HR_STEP_NAMES[step]}'s. Your HR account does ${HR_STEP_NAMES[hrTask]} only.`
+        : `This step is ${HR_STEP_NAMES[step]}'s. Your HR account has no HR step yet: ask HR to set it to HR 1 or HR 2 in Staff Accounts.`;
     }
     return null;
   }
