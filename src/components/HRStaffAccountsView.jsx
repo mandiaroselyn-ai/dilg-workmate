@@ -165,20 +165,6 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
     }
   };
 
-  // Sets which HR step of a request an HR/Admin account takes: HR 1's, HR 2's, or both.
-  const changeHrTask = async (account, hrTask) => {
-    setBusy(true);
-    setError('');
-    try {
-      const { account: updated } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(account))}`, 'PATCH', { hrTask });
-      replaceAccount(updated);
-      onToast?.(`${updated.name} now takes ${HR_TASK_LABELS[updated.hrTask] || NO_HR_TASK_LABEL}.`);
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const changeAccess = (account, accessLevel) => confirmAction({
     title: `Change ${account.name} to ${ACCESS_LABELS[accessLevel]}?`,
@@ -300,6 +286,14 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
             {[...NAME_FIELDS, ...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS].map(field => (
               <ProfileFieldInput key={field.key} item={field} value={editing.fields[field.key]} values={editing.fields} onChange={updateEditField} />
             ))}
+            {editing.account.accessLevel === 'hr_admin' && (
+              <label className={labelClass}>HR step on requests<RequiredMark />
+                <select name="hrTask" required value={editing.fields.hrTask} onChange={updateEditField} className={inputClass}>
+                  <option value="" disabled>Choose HR 1 or HR 2</option>
+                  {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
+                </select>
+              </label>
+            )}
           </div>
           {error && <p role="alert" className="rounded-xl bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
           <div className="flex gap-2">
@@ -330,21 +324,11 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                   <span className={`rounded-full px-2 py-0.5 text-xs font-black ${isActive(account) ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                     {account.accountStatus || 'Active'}
                   </span>
-                  {/* Which HR step of a request this HR/Admin takes. */}
-                  {account.accessLevel === 'hr_admin' && (self ? (
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700">{HR_TASK_LABELS[account.hrTask] || NO_HR_TASK_LABEL}</span>
-                  ) : (
-                    <select
-                      aria-label={`HR step for ${account.name}`}
-                      value={HR_TASK_LABELS[account.hrTask] ? account.hrTask : ''}
-                      onChange={event => event.target.value && changeHrTask(account, event.target.value)}
-                      disabled={busy}
-                      className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs font-black text-blue-700"
-                    >
-                      {!HR_TASK_LABELS[account.hrTask] && <option value="" disabled>{NO_HR_TASK_LABEL}</option>}
-                      {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
-                    </select>
-                  ))}
+                  {/* Which HR step of a request this HR/Admin takes: HR 1 or HR 2, set when the
+                      account is made (or corrected under Edit). */}
+                  {account.accessLevel === 'hr_admin' && (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-black ${HR_TASK_LABELS[account.hrTask] ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>{HR_TASK_LABELS[account.hrTask] || NO_HR_TASK_LABEL}</span>
+                  )}
                 </div>
                 {!self && <HRResetPasswordCard account={account} />}
               </div>
@@ -352,7 +336,7 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
                 <p className="max-w-[220px] text-right text-xs font-semibold text-slate-500">Another HR/Admin must change your own access or status. Edit your details under Profile.</p>
               ) : (
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { ...nameParts(account), ...profileFieldValues(account, [...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS]) } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
+                  <button type="button" onClick={() => { setError(''); setForm(null); setEditing({ account, fields: { ...nameParts(account), ...profileFieldValues(account, [...ASSIGNMENT_FIELDS, ...STAFF_EMPLOYMENT_FIELDS]), ...(account.accessLevel === 'hr_admin' ? { hrTask: HR_TASK_LABELS[account.hrTask] ? account.hrTask : '' } : {}) } }); }} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
                   <select
                     aria-label={`Change access for ${account.name}`}
                     value=""
