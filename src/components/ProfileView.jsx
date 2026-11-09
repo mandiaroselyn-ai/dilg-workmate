@@ -22,7 +22,7 @@ import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
 import { getManilaDateString } from '../../shared/localDate';
-import { requestCoversDate } from '../utils/hrAttendance';
+import { todayStatus } from '../utils/todayStatus';
 
 // What the employee can change on their profile. HR keeps the position, office, region,
 // and other employment details.
@@ -32,30 +32,20 @@ const editableValues = person => ({
   ...profileFieldValues(person, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS])
 });
 
-const STATUS_INDICATOR = {
-  'On Leave':  { label: 'On Leave',  dotClass: 'bg-white', pillClass: 'bg-orange-500 text-white' },
-  'On Travel': { label: 'On Travel', dotClass: 'bg-white', pillClass: 'bg-sky-500 text-white' },
-  'Late':      { label: 'Late',      dotClass: 'bg-white', pillClass: 'bg-red-500 text-white' },
-  'Absent':    { label: 'Absent',    dotClass: 'bg-white', pillClass: 'bg-red-500 text-white' },
+const STATUS_PILL_CLASS = {
+  'on-leave':  'bg-orange-500 text-white',
+  'on-travel': 'bg-sky-500 text-white',
+  late:        'bg-red-500 text-white',
 };
 
-export default function ProfileView({ user, attendanceHistory = [], requests = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
+export default function ProfileView({ user, attendanceHistory = [], requests = [], holidays = [], onUpdateUser, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [form, setForm] = useState(() => editableValues(user));
   const { name } = form;
   const { role, office, employeeId } = user;
   const badge = employmentBadge(user);
-  const today = getManilaDateString();
-  const approvedToday = type => requests.some(r =>
-    /approved/i.test(r?.status || '') && r?.type === type && requestCoversDate(r, today)
-  );
-  const isLateToday = attendanceHistory.some(r =>
-    r?.date === today && (r?.late || /late/i.test(r?.status || ''))
-  );
-  const todayStatus = approvedToday('Leave Request') ? 'On Leave'
-    : approvedToday('Travel Order') ? 'On Travel'
-    : isLateToday ? 'Late'
-    : null;
-  const statusIndicator = STATUS_INDICATOR[todayStatus] || null;
+  // Today's status beside the name, such as "On Leave · until Nov 10".
+  const status = todayStatus({ requests, attendanceHistory, today: getManilaDateString(), holidays });
+  const statusIndicator = status ? { label: status.text, pillClass: STATUS_PILL_CLASS[status.kind] } : null;
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
@@ -315,7 +305,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
               <p className="mt-2 text-xs font-extrabold leading-snug text-white">{role}</p>
               {statusIndicator && (
                 <span className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black uppercase ${statusIndicator.pillClass}`}>
-                  <span className={`h-2 w-2 rounded-full shrink-0 animate-pulse ${statusIndicator.dotClass}`} />
+                  <span className="h-2 w-2 rounded-full shrink-0 bg-white" />
                   {statusIndicator.label}
                 </span>
               )}
@@ -436,7 +426,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
           <p id="txt-profile-top-role" className="text-sm text-yellow-300 font-extrabold">{role}</p>
           {statusIndicator && (
             <span className={`inline-flex items-center gap-1.5 text-[10px] uppercase font-black tracking-widest text-white px-2.5 py-1 rounded-full ${statusIndicator.pillClass}`}>
-              <span className={`h-2 w-2 rounded-full shrink-0 animate-pulse ${statusIndicator.dotClass}`} />
+              <span className="h-2 w-2 rounded-full shrink-0 bg-white" />
               {statusIndicator.label}
             </span>
           )}

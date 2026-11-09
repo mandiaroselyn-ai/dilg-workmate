@@ -1592,6 +1592,7 @@ export default function App() {
           employees={employees}
           requests={requests}
           attendanceHistory={dtrAttendance}
+          holidays={holidays}
           smsConfigured={smsConfigured}
           onMarkNotificationRead={handleMarkNotificationRead}
           onMarkNotificationUnread={id => handleMarkNotificationRead(id, false)}
@@ -1753,6 +1754,7 @@ export default function App() {
               user={user}
               attendanceHistory={dtrAttendance}
               requests={requests}
+              holidays={holidays}
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}
               onRefreshEnrollmentStatus={handleRefreshBiometricStatus}

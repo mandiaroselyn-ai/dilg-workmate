@@ -13,7 +13,7 @@ import SmsCenter from './SmsCenter';
 import { unreadTextsCount, unseenSmsCount } from '../utils/smsLog';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 import { getManilaDateString } from '../../shared/localDate';
-import { requestCoversDate } from '../utils/hrAttendance';
+import { todayStatus } from '../utils/todayStatus';
 
 // When HR last opened the SMS list, remembered per account in this browser. The first
 // visit starts from now, so the badge counts only what arrives afterwards.
@@ -38,6 +38,7 @@ export default function Header({
   employees = [],
   requests = [],
   attendanceHistory = [],
+  holidays = [],
   smsConfigured,
   onMarkNotificationRead,
   onMarkNotificationUnread,
@@ -178,21 +179,11 @@ export default function Header({
     onViewChange(view);
   };
 
-  const today = getManilaDateString();
-  const approvedToday = type => activeRole === 'employee' && requests.some(r =>
-    /approved/i.test(r?.status || '') && r?.type === type && requestCoversDate(r, today)
-  );
-  const isLateToday = activeRole === 'employee' && attendanceHistory.some(r =>
-    r?.date === today && (r?.late || /late/i.test(r?.status || ''))
-  );
-  const todayStatus = approvedToday('Leave Request') ? 'on-leave'
-    : approvedToday('Travel Order') ? 'on-travel'
-    : isLateToday ? 'late'
+  // The employee's own status today, as a dot on their picture, with its words on hover.
+  const avatarStatus = activeRole === 'employee'
+    ? todayStatus({ requests, attendanceHistory, today: getManilaDateString(), holidays })
     : null;
-  const avatarDotClass = todayStatus === 'on-leave' ? 'bg-orange-400'
-    : todayStatus === 'on-travel' ? 'bg-sky-400'
-    : todayStatus === 'late' ? 'bg-red-400'
-    : null;
+  const avatarDotClass = { 'on-leave': 'bg-orange-400', 'on-travel': 'bg-sky-400', late: 'bg-red-400' }[avatarStatus?.kind] || null;
 
   return (
     <header className="h-[5.5rem] sm:h-20 bg-[#0B4EA2] border-b border-[#0B4EA2] px-3 sm:px-4 flex items-center justify-between sticky top-0 z-45 id-header shrink-0 font-sans">
@@ -433,12 +424,12 @@ export default function Header({
         </>
 
         {/* User Avatar */}
-        <div className="relative">
+        <div className="relative" title={avatarStatus?.text}>
           <button
             type="button"
             onClick={() => onViewChange('profile')}
             className="w-10 h-10 rounded-full border border-white/25 bg-white/10 flex items-center justify-center text-white shadow-sm hover:bg-white/15 transition-all"
-            aria-label="Open profile"
+            aria-label={avatarStatus ? `Open profile. ${avatarStatus.text}` : 'Open profile'}
           >
             {user.profilePicture ? (
               <img src={user.profilePicture} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
@@ -447,7 +438,7 @@ export default function Header({
             )}
           </button>
           {avatarDotClass && (
-            <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0B4EA2] shadow-sm z-10 animate-pulse ${avatarDotClass}`} />
+            <span aria-hidden="true" className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-[#0B4EA2] shadow-sm z-10 ${avatarDotClass}`} />
           )}
         </div>
       </div>
