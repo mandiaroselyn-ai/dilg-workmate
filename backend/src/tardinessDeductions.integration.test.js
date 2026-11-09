@@ -10,7 +10,8 @@ const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 
 const app = createApiApp();
-const hrAdmin = { _id: '64b000000000000000000041', email: 'hr@dilg.gov.ph', employeeId: 'HR-4', name: 'Maria Santos', accessLevel: 'hr_admin', accountStatus: 'Active' };
+// HR 1, who changes leave credits.
+const hrAdmin = { _id: '64b000000000000000000041', email: 'hr@dilg.gov.ph', employeeId: 'HR-4', name: 'Maria Santos', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
 const employee = { _id: '64b000000000000000000042', email: 'juan@dilg.gov.ph', employeeId: 'EMP-4', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
 
 const signIn = (t, as = hrAdmin) => {
@@ -66,6 +67,28 @@ test('an employee cannot charge leave credits', async t => {
   const response = await send({ month: '2026-09', deductions: [{ identifier: 'EMP-4', minutes: 0 }] });
   assert.equal(response.status, 403);
   assert.equal(User.deductTardiness.mock.callCount(), 0);
+});
+
+test('only HR 1 changes leave credits: HR 2, or an HR account with no step, cannot', async t => {
+  for (const hrTask of ['pre-approval', '', 'both']) {
+    const as = { ...hrAdmin, hrTask };
+    t.mock.method(User, 'findByEmail', async () => as);
+    t.mock.method(User, 'deductTardiness', async () => null);
+    t.mock.method(User, 'setLeaveCredits', async () => null);
+    const token = `Bearer ${createAuthToken(as)}`;
+    for (const [path, method, body] of [
+      ['/api/employees/tardiness-deductions', 'post', { month: '2026-09', deductions: [{ identifier: 'EMP-4', minutes: 5 }] }],
+      ['/api/employees/leave-earnings', 'post', { month: '2026-09', identifiers: ['EMP-4'] }],
+      ['/api/employees/EMP-4/leave-credits', 'patch', { vacationLeaveCredits: 5, sickLeaveCredits: 5, reason: 'Leave card' }]
+    ]) {
+      const response = await request(app)[method](path).set('Authorization', token).send(body);
+      assert.equal(response.status, 403, `${hrTask || 'no step'} ${path}`);
+      assert.match(response.body.error, /Only HR 1/);
+    }
+    assert.equal(User.deductTardiness.mock.callCount(), 0);
+    assert.equal(User.setLeaveCredits.mock.callCount(), 0);
+    t.mock.restoreAll();
+  }
 });
 
 test('HR credits a month of earned leave, less for the days without pay that month', async t => {

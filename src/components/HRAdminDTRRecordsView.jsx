@@ -265,7 +265,8 @@ const offlineRowLabels = record => [
   record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
 ].filter(Boolean);
 
-export default function HRAdminDTRRecordsView({ employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
+// `canChangeCredits`: whether this HR account (HR 1) charges and credits leave.
+export default function HRAdminDTRRecordsView({ canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
@@ -429,6 +430,7 @@ export default function HRAdminDTRRecordsView({ employees = [], attendanceHistor
         loadedMonths={loadedAttendanceMonths}
         onLoadMonth={onLoadAttendanceMonth}
         onEmployeesChange={onEmployeesChange}
+        canChangeCredits={canChangeCredits}
       />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
       <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />

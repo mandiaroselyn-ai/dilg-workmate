@@ -28,6 +28,12 @@ import {
   getEmployeeEnrollmentImages
 } from '../controllers/faceController.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { LEAVE_CREDITS_HR_ONLY, canChangeLeaveCredits } from '../../../shared/hrSteps.js';
+
+// Leave credits are HR 1's to change (shared/hrSteps.js).
+const requireLeaveCreditsHr = (req, res, next) => (canChangeLeaveCredits(req.user)
+  ? next()
+  : res.status(403).json({ success: false, error: LEAVE_CREDITS_HR_ONLY }));
 import {
   createRegistrationOptions,
   verifyRegistration,
@@ -100,11 +106,11 @@ router.post('/employees', requireAdmin, createEmployee);
 router.patch('/employees/:identifier', requireAdmin, updateEmployee);
 router.patch('/employees/:identifier/status', requireAdmin, updateEmployeeAccountStatus);
 router.delete('/employees/:identifier', requireAdmin, deleteEmployee);
-router.patch('/employees/:identifier/leave-credits', requireAdmin, updateEmployeeLeaveCredits);
+router.patch('/employees/:identifier/leave-credits', requireAdmin, requireLeaveCreditsHr, updateEmployeeLeaveCredits);
 // One ended month's tardiness and undertime charged to vacation leave (see deductTardinessCredits).
-router.post('/employees/tardiness-deductions', requireAdmin, deductTardinessCredits);
+router.post('/employees/tardiness-deductions', requireAdmin, requireLeaveCreditsHr, deductTardinessCredits);
 // One ended month's earned leave credited (see creditLeaveEarnings).
-router.post('/employees/leave-earnings', requireAdmin, creditLeaveEarnings);
+router.post('/employees/leave-earnings', requireAdmin, requireLeaveCreditsHr, creditLeaveEarnings);
 router.post('/login', loginUser);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset-hr-request', requestHrPasswordReset);

@@ -33,6 +33,12 @@ export const hrStepOf = request => {
 // until HR sets it in Staff Accounts.
 export const doesHrStep = (hrTask, step) => Boolean(step) && HR_TASKS.includes(hrTask) && hrTask === step;
 
+// Leave credits are HR 1's to review and update, everywhere they change by hand: adjusting a
+// balance, an opening balance from the leave card, charging a month's tardiness, and crediting a
+// month's earned leave. HR 2 only pre-approves. (An approved leave is charged by the system.)
+export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' && doesHrStep(user.hrTask, 'leave-credits');
+export const LEAVE_CREDITS_HR_ONLY = 'Only HR 1 (leave credits) changes leave credits. Ask HR 1 to do it.';
+
 const round3 = number => Math.round(number * 1000) / 1000;
 
 // HR 1's certification of the employee's leave credits for a leave of `days` working days

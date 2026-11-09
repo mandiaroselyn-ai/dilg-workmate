@@ -13,7 +13,8 @@ const { createAuthToken } = await import('./utils/authToken.js');
 const app = createApiApp();
 const employee = { _id: 'emp-1', name: 'Juan Dela Cruz', email: 'juan@dilg.gov.ph', employeeId: 'DILG-2026-1', accessLevel: 'employee', accountStatus: 'Active', role: 'LGOO II', office: 'Boac' };
 const supervisor = { _id: 'sup-1', name: 'Ana Reyes', email: 'ana@dilg.gov.ph', employeeId: 'DILG-2026-2', accessLevel: 'supervisor', accountStatus: 'Active' };
-const hr = { _id: 'hr-1', name: 'HR Officer', email: 'hr@dilg.gov.ph', employeeId: 'DILG-2026-3', accessLevel: 'hr_admin', accountStatus: 'Active' };
+// HR 1, who also enters leave credits.
+const hr = { _id: 'hr-1', name: 'HR Officer', email: 'hr@dilg.gov.ph', employeeId: 'DILG-2026-3', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
 
 // Saves the signed-in person's profile with the database replaced, and returns what
 // would have been saved.
@@ -150,6 +151,18 @@ test('HR enters a transferee\'s leave balance from the leave card, but none for 
   assert.match(jobOrder.body.error, /do not earn leave credits/);
   // Without a balance, a job order worker's account is made.
   assert.equal((await createAccount({ ...newAccount, appointmentStatus: 'Job Order' })).status, 201);
+});
+
+test('only HR 1 enters an opening balance; HR 2 makes the account with none', async t => {
+  const hr2 = { ...hr, _id: 'hr-2', email: 'erick@dilg.gov.ph', hrTask: 'pre-approval' };
+  t.mock.method(User, 'findByEmail', async () => hr2);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  const asHr2 = body => request(app).post('/api/employees').set('Authorization', `Bearer ${createAuthToken(hr2)}`).send(body);
+  const withBalance = await asHr2({ ...newAccount, openingVacationLeaveCredits: '10' });
+  assert.equal(withBalance.status, 403);
+  assert.match(withBalance.body.error, /Only HR 1/);
+  assert.equal(creates.mock.callCount(), 0);
+  assert.equal((await asHr2(newAccount)).status, 201);
 });
 
 test('HR cannot give a COS or JO worker leave credits by adjustment, only clear them', async t => {

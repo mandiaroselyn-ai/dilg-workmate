@@ -20,6 +20,7 @@ import HREmployeeDocuments from './HREmployeeDocuments';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
+import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
 
 // HR's form takes the name, login email, mobile number, and employment details. The employee
@@ -142,7 +143,9 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
-export default function HRAdminEmployeesView({ employees = [], onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
+export default function HRAdminEmployeesView({ employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
+  // Leave credits are HR 1's to change (shared/hrSteps.js); other HR accounts only see them.
+  const canEditCredits = canChangeLeaveCredits(currentUser);
   // A notification's button opens this employee's profile first.
   const focusedEmployee = focusEmployeeId ? findTargetEmployee(employees, focusEmployeeId) : null;
   const [screen, setScreen] = useState(() => (focusedEmployee ? 'profile' : 'list'));
@@ -750,7 +753,9 @@ This cannot be undone.`
               {!editingId && (
                 <div className="sm:col-span-2 xl:col-span-4">
                   <p className="text-[11px] font-black text-slate-700">Opening Leave Balance</p>
-                  {earnsLeaveCredits(form) ? (
+                  {!canEditCredits ? (
+                    <p className="mt-1 text-xs font-medium text-slate-500">Only HR 1 enters leave credits. Make the account without a balance; HR 1 adds it from the leave card afterwards.</p>
+                  ) : earnsLeaveCredits(form) ? (
                     <>
                       <p className="mt-1 text-xs font-medium text-slate-500">From the leave card, for a transferee or an employee who already has earned leave. Leave blank for a new employee: they start with none and earn 1.25 days of each a month.</p>
                       <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -918,9 +923,10 @@ This cannot be undone.`
                 <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Leave Credits</h3>
                 <p className="mt-1 text-xs font-semibold text-slate-500">Approved vacation, forced, and sick leave is deducted automatically. Adjust here to match the official leave card.</p>
               </div>
-              {!creditForm && (
+              {!creditForm && canEditCredits && (
                 <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">Adjust</button>
               )}
+              {!canEditCredits && <p className="max-w-[160px] text-right text-[11px] font-semibold text-slate-500">Only HR 1 adjusts leave credits.</p>}
             </div>
             {creditForm ? (
               <form onSubmit={saveLeaveCredits} className="mt-3 space-y-3">

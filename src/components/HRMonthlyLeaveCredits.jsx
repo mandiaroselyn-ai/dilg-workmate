@@ -33,7 +33,8 @@ const lastEndedMonth = () => {
 // Each step is done once per month and employee, and the employee is notified. Contract of
 // service and job order workers earn no leave credits, so step 2 leaves them out; their
 // tardiness in step 1 is all without pay.
-export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange }) {
+// `canChangeCredits`: only HR 1 charges and credits leave (shared/hrSteps.js); other HR accounts only see the month.
+export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange, canChangeCredits = true }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(lastEndedMonth);
   const [saving, setSaving] = useState(false);
@@ -144,16 +145,17 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
       </button>
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
+          {!canChangeCredits && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Only HR 1 (leave credits) charges tardiness and credits earned leave. You can see the month here.</p>}
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-[11px] font-black text-slate-600">Month
               <input type="month" value={month} max={latestMonth} onChange={event => event.target.value && setMonth(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
             </label>
             {monthLoaded && (
               <>
-                <button type="button" onClick={() => charge(toCharge)} disabled={saving || !toCharge.length} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
+                <button type="button" onClick={() => charge(toCharge)} disabled={!canChangeCredits || saving || !toCharge.length} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
                   1. Charge all not yet charged ({toCharge.length})
                 </button>
-                <button type="button" onClick={() => credit(toCredit)} disabled={saving || !toCredit.length} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
+                <button type="button" onClick={() => credit(toCredit)} disabled={!canChangeCredits || saving || !toCredit.length} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
                   2. Credit all earned leave ({toCredit.length})
                 </button>
               </>
@@ -189,7 +191,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                           Charged {daysText(row.charged.days)}{row.charged.withoutPayDays ? ` · ${daysText(row.charged.withoutPayDays)} without pay${withoutPayAmount(row.employee, row.charged.withoutPayDays) ? ` (${pesoText(withoutPayAmount(row.employee, row.charged.withoutPayDays))})` : ''}` : ''}
                         </span>
                       ) : (
-                        <button type="button" onClick={() => charge([row])} disabled={saving} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 font-black text-blue-700 disabled:opacity-50">Charge</button>
+                        <button type="button" onClick={() => charge([row])} disabled={!canChangeCredits || saving} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 font-black text-blue-700 disabled:opacity-50">Charge</button>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -203,7 +205,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                       ) : !row.earnsLeave ? (
                         <span className="text-[11px] font-semibold text-slate-400">{row.employee.appointmentStatus}: no leave credits</span>
                       ) : row.charged ? (
-                        <button type="button" onClick={() => credit([row])} disabled={saving} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-black text-emerald-700 disabled:opacity-50">Credit</button>
+                        <button type="button" onClick={() => credit([row])} disabled={!canChangeCredits || saving} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-black text-emerald-700 disabled:opacity-50">Credit</button>
                       ) : (
                         <span className="text-[11px] font-semibold text-slate-400">Charge step 1 first</span>
                       )}

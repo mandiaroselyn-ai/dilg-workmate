@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString, isRealDate } from '../../../shared/localDate.js';
 import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isSignUpApproval, missingApprovalDetails, officeError } from '../../../shared/dilgAssignments.js';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, NAME_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
+import { LEAVE_CREDITS_HR_ONLY, canChangeLeaveCredits } from '../../../shared/hrSteps.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
   announceAccountApproved,
@@ -313,6 +314,10 @@ export const createEmployee = async (req, res) => {
     }
     const opening = normalizeOpeningLeaveCredits(req.body);
     if (opening.error) return res.status(400).json({ success: false, error: opening.error });
+    // An opening balance from the leave card is HR 1's to enter, like any change to leave credits.
+    if (opening.value && !canChangeLeaveCredits(req.user)) {
+      return res.status(403).json({ success: false, error: `${LEAVE_CREDITS_HR_ONLY} Leave the opening balance blank; HR 1 adds it after the account is made.` });
+    }
     if (opening.value && !earnsLeaveCredits(employee)) {
       return res.status(400).json({ success: false, error: 'Contract of service and job order workers do not earn leave credits, so leave their opening balances blank.' });
     }

@@ -39,6 +39,7 @@ import HRAdminAttendanceView from './HRAdminAttendanceView';
 import HRAdminDTRRecordsView from './HRAdminDTRRecordsView';
 import HRAdminAttendanceHistoryView from './HRAdminAttendanceHistoryView';
 import HRAdminRequestsView from './HRAdminRequestsView';
+import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import HRAdminEmployeesView from './HRAdminEmployeesView';
 import HRAdminProfileView from './HRAdminProfileView';
 import HRAnnouncementsManager from './HRAnnouncementsManager';
@@ -400,6 +401,7 @@ export default function HRAdminView({
         loadedAttendanceMonths={loadedAttendanceMonths}
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         reviewerName={user?.name || 'HR/Admin'}
+        canChangeCredits={canChangeLeaveCredits(user)}
         onSaveRecord={onUpdateAttendance ? update => onUpdateAttendance([update]) : undefined}
         onEmployeesChange={onEmployeesChange}
         requests={requests}
