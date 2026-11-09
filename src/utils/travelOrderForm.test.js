@@ -9,6 +9,7 @@ import {
   formatTravelTime,
   travelOrderAddressee,
   travelOrderNumber,
+  travelOrderPersonnel,
   travelSubject
 } from './travelOrderForm.js';
 
@@ -40,6 +41,21 @@ test('the order is addressed to the position and name, without a generic role', 
   assert.equal(travelOrderAddressee({ name: 'Juan A. Dela Cruz', role: 'LGOO II' }), 'LGOO II JUAN A. DELA CRUZ');
   assert.equal(travelOrderAddressee({ name: 'Maria Peñafiel', role: 'Employee' }), 'MARIA PEÑAFIEL');
   assert.equal(travelOrderAddressee(undefined, { employeeName: 'Ana Reyes' }), 'ANA REYES');
+});
+
+test('the order names the employee who filed it, then the employees it includes from other offices', () => {
+  const juan = { employeeId: 'E1', email: 'juan@dilg.gov.ph', name: 'Juan A. Dela Cruz', role: 'LGOO II' };
+  const request = {
+    employeeId: 'E1',
+    employeeEmail: 'juan@dilg.gov.ph',
+    employeeName: 'Juan A. Dela Cruz',
+    employee: { name: 'Juan A. Dela Cruz', role: 'LGOO II' },
+    companions: [{ employeeId: 'E7', name: 'Maria Santos', role: 'MLGOO', office: 'Office of the MLGOO - Gasan' }]
+  };
+  assert.equal(travelOrderPersonnel(request, juan), 'LGOO II JUAN A. DELA CRUZ, MLGOO MARIA SANTOS');
+  // Opened by Maria, whom it includes, it still names Juan first.
+  assert.equal(travelOrderPersonnel(request, { employeeId: 'E7', name: 'Maria Santos', role: 'MLGOO' }), 'LGOO II JUAN A. DELA CRUZ, MLGOO MARIA SANTOS');
+  assert.equal(travelOrderPersonnel({ employeeName: 'Ana Reyes' }, { name: 'Ana Reyes' }), 'ANA REYES');
 });
 
 test('the order number is the recorded one, or the filing year and request number', () => {

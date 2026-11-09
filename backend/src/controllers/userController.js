@@ -639,6 +639,22 @@ export const loginUser = async (req, res) => {
   }
 };
 
+// The active employees by name, position, and office (nothing else), for an employee to include
+// colleagues from other offices or towns in a Travel Order.
+export const getEmployeeDirectory = async (req, res) => {
+  try {
+    const people = await User.findEmployeeDirectory();
+    res.status(200).json({
+      success: true,
+      employees: people
+        .filter(person => person.employeeId && person.employeeId !== req.user?.employeeId)
+        .map(person => ({ employeeId: person.employeeId, name: person.name || '', role: person.role || '', office: person.office || '' }))
+    });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const getEmployees = async (req, res) => {
   try {
     const employees = await User.findByAccessLevel('employee');

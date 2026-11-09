@@ -1,5 +1,6 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
 import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
+import { travelOrderCovers } from '../../shared/travelStatus.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -33,7 +34,8 @@ const clock24Minutes = value => {
 const cannotEarnOvertime = (record, requests) => (record.dutyType || record.workAssignment?.assignmentRole) === 'wfh'
   || requests.some(request => request?.type === 'Travel Order' && /approved/i.test(request.status || '')
     && requestCoversDate(request, record.date)
-    && matchesAttendanceEmployee(request, { employeeId: record.employeeId, email: record.employeeEmail ?? record.email, name: record.employeeName }));
+    && (matchesAttendanceEmployee(request, { employeeId: record.employeeId, email: record.employeeEmail ?? record.email, name: record.employeeName })
+      || travelOrderCovers(request, { employeeId: record.employeeId })));
 
 // A record with what the office's calendar says about its day, for everything that reads it as
 // the DTR does: `holiday` when HR set its date as one, `noOvertime` for a day that earns none,
@@ -88,10 +90,11 @@ export const hasOnLeaveStatus = employee => (employee?.employmentStatus || '').t
 export const employeeDayStatus = (employee, { records = [], requests = [], date, holidays = [], today = '' }) => {
   const record = records.find(item => item.date === date && matchesAttendanceEmployee(item, employee) && !isRejectedOffline(item)) || null;
   if (record?.timeIn && record.status !== 'Absent') return { status: isLate(record) ? 'Late' : 'Present', record };
+  // Their own leave or travel, or a Travel Order that includes them.
   const approved = requests.filter(request => (
     /approved/i.test(request?.status || '')
     && requestCoversDate(request, date)
-    && matchesAttendanceEmployee(request, employee)
+    && (matchesAttendanceEmployee(request, employee) || travelOrderCovers(request, employee))
   ));
   if (approved.some(request => request.type === 'Leave Request')) return { status: 'On Leave', record };
   if (approved.some(request => request.type === 'Travel Order')) return { status: 'On Travel', record };

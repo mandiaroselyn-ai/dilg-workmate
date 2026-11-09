@@ -5,11 +5,17 @@
 // it is returned to the employee to fix, and once it is approved. A draft (not submitted yet),
 // a rejected, a withdrawn, or a cancelled request holds no dates.
 const TYPES = { 'Leave Request': 'leave', 'Travel Order': 'travel order' };
-const HOLDS_DATES = ['Pending', 'For Supervisor', 'Returned', 'Approved'];
+const HOLDS_DATES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor', 'Returned', 'Approved'];
 
 const dayOf = value => (typeof value === 'string' ? value.slice(0, 10) : '');
 const sameText = (a, b) => Boolean(a) && Boolean(b) && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 const idOf = request => request?.id || request?.customId || '';
+
+// Whether `other` holds days of the employee who files `request`: their own leave or travel order,
+// or a travel order that includes them (its `companions`).
+const holdsDaysOf = (other, request) => sameText(other.employeeId, request.employeeId)
+  || sameText(other.employeeEmail, request.employeeEmail)
+  || (other.companions || []).some(companion => sameText(companion?.employeeId, request.employeeId));
 
 // The same employee's other leave or travel order whose dates overlap those of `request` (both
 // ends of each range included), or null. `requests` may hold anyone's requests of any type.
@@ -22,7 +28,7 @@ export const overlappingRequest = (request, requests = []) => {
     TYPES[other?.type]
     && HOLDS_DATES.includes(other.status)
     && !(idOf(request) && idOf(other) === idOf(request))
-    && (sameText(other.employeeId, request.employeeId) || sameText(other.employeeEmail, request.employeeEmail))
+    && holdsDaysOf(other, request)
     && dayOf(other.startDate) <= end
     && start <= (dayOf(other.endDate) || dayOf(other.startDate))
   )) || null;

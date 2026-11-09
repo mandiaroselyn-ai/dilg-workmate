@@ -412,3 +412,52 @@ test('special privilege leave is 3 days a year and wellness leave 5, at most 3 a
   assert.equal((await send({ leaveType: 'Wellness Leave', startDate: '2026-11-16', endDate: '2026-11-17' })).status, 201);
   assert.equal(creates.mock.callCount(), 2);
 });
+
+test('a Travel Order includes colleagues from other offices; they see it and hear when it is approved', async t => {
+  onNovember2(t);
+  const juan = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
+  const maria = { _id: 'e-7', email: 'maria@dilg.gov.ph', employeeId: 'E7', name: 'Maria Santos', role: 'MLGOO', office: 'Office of the MLGOO - Gasan', accessLevel: 'employee', accountStatus: 'Active' };
+  const head = { _id: 's-1', email: 'boss@dilg.gov.ph', employeeId: 'S1', name: 'Ivan Fadri', accessLevel: 'supervisor', accountStatus: 'Active' };
+  const people = { [juan.email]: juan, [maria.email]: maria, [head.email]: head };
+  let mariasAbsences = [];
+  t.mock.method(User, 'findByEmail', async email => people[email] || null);
+  t.mock.method(User, 'findByEmployeeId', async id => ({ E1: juan, E7: maria }[id] || null));
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async ({ employeeId }) => (employeeId === 'E7' ? mariasAbsences : []));
+  t.mock.method(Holiday, 'findAll', async () => []);
+  const creates = t.mock.method(Leave, 'create', async body => ({ ...body, id: 'TO-NEW' }));
+  const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  const as = person => `Bearer ${createAuthToken(person)}`;
+  const file = body => request(app).post('/api/requests').set('Authorization', as(juan)).send({
+    type: 'Travel Order', status: 'Pending', purpose: 'Official Travel. LGU visit.', travelActivity: 'LGU visit', travelTime: '8:00 a.m.', travelVenue: 'Gasan Municipal Hall', startDate: '2026-11-10', endDate: '2026-11-10', ...body
+  });
+
+  // The names come from the accounts, not from what the form sent, and the one filing is left out.
+  const filed = await file({ companions: [{ employeeId: 'E7', name: 'Someone Else' }, { employeeId: 'E1' }] });
+  assert.equal(filed.status, 201, JSON.stringify(filed.body));
+  assert.deepEqual(creates.mock.calls[0].arguments[0].companions, [{ employeeId: 'E7', name: 'Maria Santos', role: 'MLGOO', office: 'Office of the MLGOO - Gasan' }]);
+  assert.match((await file({ companions: [{ employeeId: 'NOPE' }] })).body.error, /not an active employee account/);
+  // Maria cannot be included on a day she is on leave.
+  mariasAbsences = [{ id: 'L-9', type: 'Leave Request', status: 'Approved', startDate: '2026-11-10', endDate: '2026-11-10', employeeId: 'E7' }];
+  const busy = await file({ companions: [{ employeeId: 'E7' }] });
+  assert.equal(busy.status, 409);
+  assert.match(busy.body.error, /Maria Santos cannot be included: they already have a leave/);
+  assert.equal(creates.mock.callCount(), 1);
+
+  // Maria sees the Travel Orders that include her, and no other of Juan's.
+  const orders = {
+    'TO-1': { id: 'TO-1', type: 'Travel Order', status: 'For Supervisor', employeeId: 'E1', employeeName: 'Juan Dela Cruz', travelVenue: 'Gasan Municipal Hall', startDate: '2026-11-10', endDate: '2026-11-10', companions: [{ employeeId: 'E7', name: 'Maria Santos' }] },
+    'TO-2': { id: 'TO-2', type: 'Travel Order', status: 'For Supervisor', employeeId: 'E1', startDate: '2026-11-11', endDate: '2026-11-11', companions: [] }
+  };
+  t.mock.method(Leave, 'findAllRequests', async () => Object.values(orders));
+  const seen = await request(app).get('/api/requests').set('Authorization', as(maria));
+  assert.deepEqual(seen.body.map(item => item.id), ['TO-1']);
+
+  // When the Head approves it, Maria hears that she needs no Time In.
+  t.mock.method(Leave, 'findByCustomId', async id => orders[id] || null);
+  t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...orders[id], ...update }));
+  const approved = await request(app).patch('/api/requests/TO-1').set('Authorization', as(head)).send({ status: 'Approved', supervisorRemarks: 'Approved.' });
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  const notice = notices.mock.calls.map(call => call.arguments[0]).find(item => item.title === 'Included in a Travel Order');
+  assert.equal(notice.employeeId, 'E7');
+  assert.match(notice.message, /Juan Dela Cruz included you in Travel Order TO-1 \(Gasan Municipal Hall, Nov 10, 2026\), which was approved\. No Time In is needed/);
+});

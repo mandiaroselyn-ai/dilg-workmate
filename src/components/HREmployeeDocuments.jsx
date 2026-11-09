@@ -5,6 +5,7 @@ import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { dtrFilename, fillDTR } from '../utils/dtrForm';
 import { downloadBytes } from '../utils/documentFiles';
 import { recordsForEmployees } from '../utils/hrAttendance';
+import { travelOrderCovers } from '../../shared/travelStatus';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 import CSCForm6Preview from './CSCForm6Preview';
@@ -50,7 +51,7 @@ export default function HREmployeeDocuments({ employee, requests = [], attendanc
   const makeDtr = async () => {
     const [year, monthNumber] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
-    const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance, { summary: true, travelOrders: ownRequests });
+    const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance, { summary: true, travelOrders: requests.filter(request => travelOrderCovers(request, employee)) });
     return { fileName: dtrFilename(employee?.name, year, monthNumber), fileType: 'application/pdf', bytes };
   };
   const viewDtr = () => setViewer({ key: Date.now(), title: `DTR · ${employee?.name || 'Employee'} · ${month}`, load: makeDtr });

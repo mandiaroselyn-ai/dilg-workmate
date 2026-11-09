@@ -217,3 +217,12 @@ test('loading an earlier month replaces its records and keeps newest first', () 
   assert.deepEqual(merged.map(record => record.id), ['oct', 'jul']);
   assert.equal(merged[1].status, 'Absent');
 });
+
+test('an employee a Travel Order includes is On Travel on its days, not absent', async () => {
+  const { employeeDayStatus } = await import('./hrAttendance.js');
+  const maria = { employeeId: 'E7', email: 'maria@dilg.gov.ph', name: 'Maria Santos' };
+  const order = { type: 'Travel Order', status: 'Approved', startDate: '2026-11-10', endDate: '2026-11-12', employeeId: 'E1', employeeName: 'Juan Dela Cruz', companions: [{ employeeId: 'E7', name: 'Maria Santos' }] };
+  assert.equal(employeeDayStatus(maria, { requests: [order], date: '2026-11-11' }).status, 'On Travel');
+  assert.equal(employeeDayStatus(maria, { requests: [{ ...order, status: 'Pending' }], date: '2026-11-11' }).status, 'Absent');
+  assert.equal(employeeDayStatus({ employeeId: 'E8', name: 'Pedro Cruz' }, { requests: [order], date: '2026-11-11' }).status, 'Absent');
+});

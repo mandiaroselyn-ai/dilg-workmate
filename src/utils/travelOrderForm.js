@@ -90,6 +90,21 @@ export const travelOrderAddressee = (person = {}, request = {}) => {
   return [shownRole, name].filter(Boolean).join(' ').toUpperCase();
 };
 
+const sameText = (a, b) => Boolean(a) && Boolean(b) && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
+// Everyone the order is for, as its "TO" line names them: the employee who filed it, then the
+// employees from other offices or towns it includes (`request.companions`). `person` is the one
+// the order is shown to: the one who filed it, or, when it is an employee the order includes
+// viewing it, the requester saved on the request is named first instead.
+export const travelOrderPersonnel = (request = {}, person = {}) => {
+  const knowsWho = person?.employeeId || person?.email;
+  const filedIt = !knowsWho || sameText(person.employeeId, request.employeeId) || sameText(person.email, request.employeeEmail);
+  const filer = filedIt ? person : (request.employee || { name: request.employeeName });
+  return [travelOrderAddressee(filer, request), ...(request.companions || []).map(companion => travelOrderAddressee(companion))]
+    .filter(Boolean)
+    .join(', ');
+};
+
 // The order number: the one recorded on the request, or the year it was filed and the last
 // three digits of the request ID (for example "2026-042").
 export const travelOrderNumber = (request = {}) => {
@@ -140,7 +155,7 @@ export async function fillTravelOrder(templateBytes, request = {}, person = {}, 
   };
 
   put(`NO. ${printable(travelOrderNumber(request), bold) || BLANK}`, L.left, L.orderNo);
-  let y = row('TO', travelOrderAddressee(person, request), L.to);
+  let y = row('TO', travelOrderPersonnel(request, person), L.to);
   y = row('SUBJECT', travelSubject(request).toUpperCase(), y, SUBJECT_SIZE);
   const filed = toDate(request.submissionDate || request.createdAt);
   const dateY = y;

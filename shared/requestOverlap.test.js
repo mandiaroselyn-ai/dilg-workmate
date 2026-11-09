@@ -48,3 +48,14 @@ test('the message names the request in the way, and how to fix it', () => {
   assert.match(overlapMessage(filed[1]), /a leave for Nov 16, 2026 \(Ref req-2, Approved\).*Choose other dates/);
   assert.match(overlapMessage(filed[5]), /a travel order for Nov 10, 2026 to Nov 11, 2026 \(Ref req-6, Approved\)/);
 });
+
+test('a travel order that includes an employee holds their days too, and so does a leave HR 1 certified', () => {
+  const included = { id: 'TO-1', type: 'Travel Order', status: 'Approved', startDate: '2026-11-10', endDate: '2026-11-12', employeeId: 'E1', companions: [{ employeeId: 'E7', name: 'Maria Santos' }] };
+  // Maria, included in Juan's travel order, cannot file leave on its days.
+  assert.equal(overlappingRequest({ type: 'Leave Request', startDate: '2026-11-11', endDate: '2026-11-11', employeeId: 'E7' }, [included]), included);
+  assert.equal(overlappingRequest({ type: 'Leave Request', startDate: '2026-11-13', endDate: '2026-11-13', employeeId: 'E7' }, [included]), null);
+  assert.equal(overlappingRequest({ type: 'Leave Request', startDate: '2026-11-11', endDate: '2026-11-11', employeeId: 'E8' }, [included]), null);
+  // A leave whose credits HR 1 certified still holds its days.
+  const certified = { id: 'L-1', type: 'Leave Request', status: 'For Pre-approval', startDate: '2026-11-16', endDate: '2026-11-16', employeeId: 'E7' };
+  assert.equal(overlappingRequest({ type: 'Leave Request', startDate: '2026-11-16', endDate: '2026-11-16', employeeId: 'E7' }, [certified]), certified);
+});

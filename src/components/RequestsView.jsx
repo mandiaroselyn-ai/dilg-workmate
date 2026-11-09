@@ -37,6 +37,8 @@ import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { travelDayCount, travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft, yearlyLeaveProblem } from '../../shared/yearlyLeave';
+import { companionNames, travelOrderCovers } from '../../shared/travelStatus';
+import { apiFetch } from '../utils/api';
 
 // Attachments travel inside the request, which the server accepts up to about 4 MB, so one
 // file and all of them together are kept under these sizes.
@@ -75,6 +77,27 @@ export default function RequestsView({
   const [purpose, setPurpose] = useState('');
   const [commutation, setCommutation] = useState('Not Requested');
   
+  // A Travel Order's other employees from other offices or towns ([{ employeeId, name, role,
+  // office }]), picked from the directory of active employees (loaded when first needed).
+  const [companions, setCompanions] = useState([]);
+  const [directory, setDirectory] = useState(null);
+  const [directoryError, setDirectoryError] = useState('');
+  const [companionSearch, setCompanionSearch] = useState('');
+  useEffect(() => {
+    if (activeTab2 !== 'Travel' || directory) return;
+    apiFetch('/api/employees/directory')
+      .then(response => response.json().then(data => ({ response, data })))
+      .then(({ response, data }) => {
+        if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load the employees.');
+        setDirectory(data.employees || []);
+      })
+      .catch(error => setDirectoryError(error.message || 'Unable to load the employees.'));
+  }, [activeTab2, directory]);
+  const companionMatches = directory && companionSearch.trim()
+    ? directory.filter(person => !companions.some(companion => companion.employeeId === person.employeeId)
+      && `${person.name} ${person.role} ${person.office}`.toLowerCase().includes(companionSearch.trim().toLowerCase())).slice(0, 8)
+    : [];
+
   // Specific Leave sub-details based on Selected Leave Category
   const [detailsType, setDetailsType] = useState('Within Philippines');
   const [detailsSpecify, setDetailsSpecify] = useState('');
@@ -251,6 +274,7 @@ export default function RequestsView({
       travelActivity: activeTab2 === 'Travel' ? travelActivity : '',
       travelTime: activeTab2 === 'Travel' ? travelTime : '',
       travelVenue: activeTab2 === 'Travel' ? travelVenue : '',
+      companions: activeTab2 === 'Travel' ? companions : [],
       commutation: activeTab2 === 'Leave' ? commutation : 'Not Requested',
       workingDays: activeTab2 === 'Leave' ? workingDays : 0,
       attachments: attachments
@@ -289,6 +313,8 @@ export default function RequestsView({
     setTravelActivity('');
     setTravelTime('');
     setTravelVenue('');
+    setCompanions([]);
+    setCompanionSearch('');
     setCommutation('Not Requested');
 
     // Automatically transition view filters to see the results
@@ -311,6 +337,7 @@ export default function RequestsView({
       setTravelActivity(draft.travelActivity || '');
       setTravelTime(draft.travelTime || '');
       setTravelVenue(draft.travelVenue || '');
+      setCompanions(Array.isArray(draft.companions) ? draft.companions : []);
       setCommutation(draft.commutation || 'Not Requested');
     } else {
       setDetailsType(draft.detailsType || 'Provincial Operations Funds');
@@ -383,6 +410,8 @@ Reason (optional):`, '');
   const editingReturned = myRequests.some(request => request.id === editingDraftId && request.status === 'Returned');
   const leaveHistory = myRequests.filter(request => request.type === 'Leave Request');
   const travelHistory = myRequests.filter(request => request.type === 'Travel Order');
+  // Travel Orders other employees filed that include this one (read-only).
+  const includedIn = requests.filter(request => request.type === 'Travel Order' && !myRequests.includes(request) && travelOrderCovers(request, user));
 
   // Filter & Search the logs list
   const filteredRequests = myRequests.filter(req => {
@@ -548,6 +577,7 @@ Reason (optional):`, '');
                   <div className="min-w-0">
                     <p className="truncate text-xs font-black text-slate-800">{request.detailsSpecify && request.detailsSpecify !== 'N/A' ? request.detailsSpecify : 'Travel Order'}</p>
                     <p className="mt-1 line-clamp-1 text-[10px] font-semibold text-slate-500">{request.startDate} to {request.endDate} · {request.purpose}</p>
+                    {companionNames(request) && <p className="mt-0.5 line-clamp-1 text-[10px] font-semibold text-blue-700">With: {companionNames(request)}</p>}
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : request.status === 'Draft' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>{request.status}</span>
                 </div>
@@ -555,6 +585,22 @@ Reason (optional):`, '');
             </div>
           ) : (
             <p className="mt-4 rounded-xl bg-slate-50 p-4 text-center text-xs font-semibold text-slate-500">No travel history yet.</p>
+          )}
+          {includedIn.length > 0 && (
+            <div className="mt-4 border-t border-slate-100 pt-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Travel Orders that include you</p>
+              <div className="mt-2 space-y-2">
+                {includedIn.map(request => (
+                  <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-black text-slate-800">{request.travelActivity || 'Travel Order'}{request.travelVenue ? ` · ${request.travelVenue}` : ''}</p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500">{request.startDate} to {request.endDate} · Filed by {request.employeeName || 'a colleague'}</p>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{request.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </section>
       )}
@@ -743,6 +789,44 @@ Reason (optional):`, '');
                         className="w-full text-xs font-semibold rounded-lg border border-slate-200 pl-3 p-3.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af]"
                       />
                     </div>
+                  </div>
+
+                  {/* Other employees, from other offices or towns, who go on this travel: once the
+                      order is approved they need no Time In on its days either. */}
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Also included (other employees)</label>
+                    <p className="text-[10px] font-semibold text-slate-400">Add the employees from other offices or municipalities who go with you. Once approved, they need no Time In on these days.</p>
+                    {companions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {companions.map(companion => (
+                          <span key={companion.employeeId} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-800">
+                            {companion.name}{companion.office ? ` · ${companion.office}` : ''}
+                            <button type="button" aria-label={`Remove ${companion.name}`} onClick={() => setCompanions(previous => previous.filter(item => item.employeeId !== companion.employeeId))} className="ml-0.5 font-black text-blue-500 hover:text-rose-600">×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <input
+                      type="search"
+                      placeholder={directory ? 'Search by name, office, or position' : directoryError || 'Loading employees…'}
+                      disabled={!directory}
+                      value={companionSearch}
+                      onChange={(e) => setCompanionSearch(e.target.value)}
+                      className="w-full text-xs font-semibold rounded-lg border border-slate-200 pl-3 p-3 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af]"
+                    />
+                    {companionMatches.length > 0 && (
+                      <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white">
+                        {companionMatches.map(person => (
+                          <li key={person.employeeId}>
+                            <button type="button" onClick={() => { setCompanions(previous => [...previous, person]); setCompanionSearch(''); }} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-blue-50">
+                              <span><span className="font-bold text-slate-800">{person.name}</span><span className="block text-[10px] text-slate-500">{[person.role, person.office].filter(Boolean).join(' · ')}</span></span>
+                              <span className="text-[10px] font-black text-blue-700">Add</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {directory && companionSearch.trim() && companionMatches.length === 0 && <p className="text-[10px] font-semibold text-slate-400">No active employee matches.</p>}
                   </div>
 
                 </div>

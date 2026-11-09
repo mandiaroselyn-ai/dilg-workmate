@@ -29,6 +29,7 @@ import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { FOR_PRE_APPROVAL } from '../../shared/hrSteps';
+import { companionNames } from '../../shared/travelStatus';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 
@@ -601,6 +602,7 @@ export default function SupervisorView({
                     <p className="font-semibold text-slate-500 mt-0.5">Requested by: <span className="text-slate-800 font-bold">{requesterName(selectedRequest)}</span></p>
                     <p className="font-semibold text-slate-500 mt-0.5">Employee ID: <span className="text-slate-800 font-bold">{requesterId(selectedRequest)}</span></p>
                     {selectedRequest.workingDays && <p className="font-semibold text-emerald-800 font-sans mt-0.5">Total Days: {selectedRequest.workingDays} Day(s)</p>}
+                    {companionNames(selectedRequest) && <p className="font-semibold text-slate-500 mt-0.5">Also included: <span className="text-slate-800 font-bold">{companionNames(selectedRequest)}</span></p>}
                     {['Pending', FOR_PRE_APPROVAL, 'For Supervisor'].includes(selectedRequest.status) && selectedRequest.remarks && (
                       <p className="font-semibold text-slate-500 mt-0.5">HR remarks: <span className="text-slate-800 font-bold">{selectedRequest.remarks}</span></p>
                     )}

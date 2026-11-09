@@ -23,3 +23,16 @@ test('only an approved Travel Order counts, not a pending or disapproved one, or
   assert.equal(approvedTravelOrderOn([{ ...travel, type: 'Leave Request' }], '2026-11-11'), null);
   assert.equal(approvedTravelOrderOn(undefined, '2026-11-11'), null);
 });
+
+test('a Travel Order covers the one who filed it and the employees it includes', async () => {
+  const { travelOrderCovers, companionNames } = await import('./travelStatus.js');
+  const order = { type: 'Travel Order', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', companions: [{ employeeId: 'E7', name: 'Maria Santos' }, { employeeId: 'E9', name: 'Pedro Cruz' }] };
+  assert.equal(travelOrderCovers(order, { employeeId: 'E1' }), true);
+  assert.equal(travelOrderCovers(order, { email: 'JUAN@dilg.gov.ph' }), true);
+  assert.equal(travelOrderCovers(order, { employeeId: 'e7' }), true);
+  assert.equal(travelOrderCovers(order, { employeeId: 'E8' }), false);
+  // A leave covers nobody else.
+  assert.equal(travelOrderCovers({ ...order, type: 'Leave Request' }, { employeeId: 'E7' }), false);
+  assert.equal(companionNames(order), 'Maria Santos, Pedro Cruz');
+  assert.equal(companionNames({}), '');
+});

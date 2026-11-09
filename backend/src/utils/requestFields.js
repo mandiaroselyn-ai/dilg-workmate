@@ -121,6 +121,7 @@ const DRAFT_CONTENT_FIELDS = [
   'travelActivity',
   'travelTime',
   'travelVenue',
+  'companions',
   'commutation',
   'workingDays',
   'attachments'

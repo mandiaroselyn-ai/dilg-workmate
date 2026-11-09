@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { assignmentOfShift } from '../utils/shiftAssignment';
-import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn } from '../../shared/travelStatus';
+import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn, travelOrderCovers } from '../../shared/travelStatus';
 
 // A Travel Order's dates as shown: "Nov 10" or "Nov 10 – Nov 12".
 const formatTravelDates = travel => {
@@ -280,7 +280,8 @@ export default function AttendanceView({
   const isDoneForToday = Boolean(todayRecord?.timeOut);
   // An approved Travel Order for today: the employee is on official travel and needs no Time In.
   // Field attendance is for field work without one, so Field is not offered today.
-  const travelOrderToday = approvedTravelOrderOn(requests.filter(request => matchesAttendanceEmployee(request, user)), today);
+  // Their own Travel Order, or one that includes them.
+  const travelOrderToday = approvedTravelOrderOn(requests.filter(request => travelOrderCovers(request, user)), today);
   const fieldBlockedToday = Boolean(travelOrderToday) && !isCurrentlyActive;
   useEffect(() => {
     if (!fieldBlockedToday || assignmentMode !== 'field') return;
@@ -1246,7 +1247,7 @@ export default function AttendanceView({
       const response = await fetch(dtrTemplate);
       const templateBytes = await response.arrayBuffer();
       const pdfBytes = await fillDTR(templateBytes, user || { name: fillName, role: fillRole, office: fillOffice, employeeId: fillId }, year, month, attendanceHistory, {
-        travelOrders: requests.filter(request => matchesAttendanceEmployee(request, user))
+        travelOrders: requests.filter(request => travelOrderCovers(request, user))
       });
       await downloadBytes(pdfBytes, dtrFilename(user?.name || fillName, year, month), 'application/pdf');
     } catch (err) {

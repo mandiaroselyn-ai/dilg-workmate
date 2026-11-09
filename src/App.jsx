@@ -11,6 +11,7 @@ import Header from './components/Header';
 import MobileBottomNav from './components/MobileBottomNav';
 import NotificationCenter from './components/NotificationCenter';
 import SmsCenter from './components/SmsCenter';
+import { travelOrderCovers } from '../shared/travelStatus';
 import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueuedAttendance, removeQueuedTimeOut, syncQueuedAttendance } from './utils/offlineAttendance';
 import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
@@ -1534,8 +1535,9 @@ export default function App() {
   const visibleEmployeeRecords = activeRole === 'employee'
     ? dtrAttendance.filter(record => matchesAttendanceEmployee(record, user))
     : dtrAttendance;
+  // An employee's own requests, and the Travel Orders that include them (read-only).
   const visibleEmployeeRequests = activeRole === 'employee'
-    ? requests.filter(request => (request.employeeId || request.employeeEmail || request.employeeName) && matchesAttendanceEmployee(request, user))
+    ? requests.filter(request => ((request.employeeId || request.employeeEmail || request.employeeName) && matchesAttendanceEmployee(request, user)) || travelOrderCovers(request, user))
     : requests;
   const isWebOnlyRole = activeRole === 'supervisor' || activeRole === 'hr_admin';
   const focus = viewFocus?.visit === viewVisit ? viewFocus : null;

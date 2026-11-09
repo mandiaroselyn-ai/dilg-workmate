@@ -18,7 +18,7 @@ import {
 import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { approvedTravelOrderOn } from '../../shared/travelStatus';
+import { approvedTravelOrderOn, travelOrderCovers } from '../../shared/travelStatus';
 import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft } from '../../shared/yearlyLeave';
 import { monthAttendanceSummary, totalHoursWorked } from '../utils/hrAttendance';
 import { durationText } from '../utils/dtrDay';
@@ -209,7 +209,7 @@ export default function DashboardView({
               todayRecord={todayRecord}
               elapsedText={elapsedText}
               currentUtcTime={currentUtcTime}
-              travelOrder={approvedTravelOrderOn(personalRequests, today)}
+              travelOrder={approvedTravelOrderOn(requests.filter(request => travelOrderCovers(request, user)), today)}
               onViewDetails={() => onViewChange('attendance')}
             />
           </DashboardSection>

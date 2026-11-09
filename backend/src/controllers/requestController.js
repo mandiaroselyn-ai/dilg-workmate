@@ -6,7 +6,7 @@ import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
-import { noticeRequestDecision } from '../services/employeeNotices.js';
+import { noticeEmployee, noticeRequestDecision, requestDates } from '../services/employeeNotices.js';
 import { overlapMessage, overlappingRequest } from '../../../shared/requestOverlap.js';
 import { filingDate, lateFilingProblem } from '../../../shared/requestFiling.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
@@ -123,8 +123,11 @@ export const getRequests = async (req, res) => {
   try {
     const list = await Leave.findAllRequests();
     // A draft is the employee's own until they submit it.
+    // An employee also sees, read-only, the submitted Travel Orders that include them.
+    const includesMe = request => request.status !== 'Draft'
+      && (request.companions || []).some(companion => companion?.employeeId === req.user.employeeId);
     const visible = req.user?.accessLevel === 'employee'
-      ? list.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email)
+      ? list.filter(request => request.employeeId === req.user.employeeId || request.employeeEmail === req.user.email || includesMe(request))
       : list.filter(request => request.status !== 'Draft');
     res.status(200).json(await enrichRequestEmployees(visible));
   } catch (error) {
@@ -139,6 +142,53 @@ const overlapProblem = async request => {
   const absences = await Leave.findAbsencesOfEmployee({ employeeId: request.employeeId, email: request.employeeEmail });
   const other = overlappingRequest(request, absences);
   return other ? overlapMessage(other) : null;
+};
+
+// The other employees a Travel Order includes, from other offices or towns (`list`, as the form
+// sends them), as their accounts are now: each an active employee account, not the one filing,
+// at most 50. Returns { value } or { error }.
+const MAX_COMPANIONS = 50;
+const readCompanions = async (list, filer) => {
+  if (!Array.isArray(list)) return { value: [] };
+  const ids = [...new Set(list.map(item => String(item?.employeeId || '').trim()).filter(Boolean))]
+    .filter(id => id !== filer?.employeeId);
+  if (ids.length > MAX_COMPANIONS) return { error: `A Travel Order can include at most ${MAX_COMPANIONS} other employees.` };
+  const value = [];
+  for (const id of ids) {
+    const account = await User.findByEmployeeId(id);
+    const active = account && (account.accountStatus || 'Active').toString().toLowerCase() === 'active';
+    if (!active || (account.accessLevel || 'employee') !== 'employee') return { error: `Employee ${id} is not an active employee account.` };
+    value.push({ employeeId: account.employeeId, name: account.name || '', role: account.role || '', office: account.office || '' });
+  }
+  return { value };
+};
+
+// Why a Travel Order being submitted cannot include one of its other employees: they already have
+// leave or travel on its dates. Null when none does.
+const companionOverlapProblem = async request => {
+  if (request?.type !== 'Travel Order' || request.status === 'Draft' || !request.companions?.length) return null;
+  for (const companion of request.companions) {
+    const absences = await Leave.findAbsencesOfEmployee({ employeeId: companion.employeeId });
+    const other = overlappingRequest({ ...request, employeeId: companion.employeeId, employeeEmail: '' }, absences);
+    if (other) return `${companion.name || companion.employeeId} cannot be included: ${overlapMessage(other).replace(/^You already have/, 'they already have')}`;
+  }
+  return null;
+};
+
+// Tells the other employees of a Travel Order that was just approved that they go on it and need
+// no Time In on its days. A failed notice never fails the approval.
+const noticeCompanionsOfApproval = async request => {
+  const details = [request.travelVenue, requestDates(request)].filter(Boolean).join(', ');
+  for (const companion of request.companions || []) {
+    const account = await User.findByEmployeeId(companion.employeeId).catch(() => null);
+    if (!account) continue;
+    await noticeEmployee(account, {
+      title: 'Included in a Travel Order',
+      message: `${request.employeeName || 'A colleague'} included you in Travel Order ${request.id}${details ? ` (${details})` : ''}, which was approved. No Time In is needed on those days.`,
+      type: 'request',
+      view: 'attendance'
+    }).catch(error => console.error('Unable to notify an employee included in a travel order:', error));
+  }
 };
 
 // Why a special privilege or wellness leave being submitted asks for more than its year has left
@@ -187,6 +237,10 @@ export const createRequest = async (req, res) => {
     const requestBody = req.user?.accessLevel === 'employee'
       ? buildEmployeeRequest(req.body, req.user)
       : { ...req.body };
+    // A Travel Order's other employees, as their accounts are now.
+    const companions = requestBody.type === 'Travel Order' ? await readCompanions(requestBody.companions, req.user) : { value: [] };
+    if (companions.error) return res.status(400).json({ success: false, error: companions.error });
+    requestBody.companions = companions.value;
     if (requestBody.type === 'Leave Request' && requestBody.startDate) requestBody.workingDays = await serverLeaveDays(requestBody);
     // An employee's leave or travel order filed after it should have been (see lateFilingProblem).
     const late = req.user?.accessLevel === 'employee' && requestBody.status === 'Pending'
@@ -197,6 +251,8 @@ export const createRequest = async (req, res) => {
     if (overlap) return res.status(409).json({ success: false, error: overlap });
     const yearly = req.user?.accessLevel === 'employee' ? await yearlyLimitProblem(requestBody) : null;
     if (yearly) return res.status(409).json({ success: false, error: yearly });
+    const companionOverlap = await companionOverlapProblem(requestBody);
+    if (companionOverlap) return res.status(409).json({ success: false, error: companionOverlap });
     const newReq = await Leave.create(requestBody);
     if (req.user?.accessLevel === 'employee' && newReq.status === 'Pending') {
       await notifyHrOfSubmission(newReq, req.user);
@@ -225,6 +281,12 @@ export const updateRequestStatus = async (req, res) => {
       if (!update) {
         return res.status(403).json({ success: false, error: 'You can only change your own drafts and returned requests, or withdraw your own requests before they are approved or rejected.' });
       }
+      // An edited Travel Order's other employees, as their accounts are now.
+      if (update.companions !== undefined) {
+        const companions = (update.type || existing.type) === 'Travel Order' ? await readCompanions(update.companions, req.user) : { value: [] };
+        if (companions.error) return res.status(400).json({ success: false, error: companions.error });
+        update.companions = companions.value;
+      }
       // An edited leave's working days are counted again from its dates.
       const edited = { ...existing, ...update };
       if (editsOwnRequest && edited.type === 'Leave Request' && edited.startDate && update.status !== 'Cancelled') {
@@ -239,6 +301,8 @@ export const updateRequestStatus = async (req, res) => {
         if (overlap) return res.status(409).json({ success: false, error: overlap });
         const yearly = await yearlyLimitProblem({ ...existing, ...update });
         if (yearly) return res.status(409).json({ success: false, error: yearly });
+        const companionOverlap = await companionOverlapProblem({ ...existing, ...update, id: existing.customId });
+        if (companionOverlap) return res.status(409).json({ success: false, error: companionOverlap });
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);
@@ -261,6 +325,10 @@ export const updateRequestStatus = async (req, res) => {
     const deduction = newlyApprovedLeave ? leaveCreditDeduction(existing, updated, await Holiday.findAll()) : null;
     if (deduction && await Leave.markCreditsDeducted(id)) {
       await chargeApprovedLeave(updated, deduction);
+    }
+    // The other employees of a Travel Order just approved hear that they go on it.
+    if (updated?.type === 'Travel Order' && updated.status === 'Approved' && existing.status !== 'Approved') {
+      await noticeCompanionsOfApproval(updated);
     }
 
     if (updated && role === 'employee' && updated.status === 'Pending') {

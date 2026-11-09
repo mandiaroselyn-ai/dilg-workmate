@@ -253,6 +253,18 @@ export const User = {
     return MongoUser.findOne({ email: { $regex: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
   },
 
+  // The active employee accounts, with only who they are (employee ID, name, position, office),
+  // for an employee to include colleagues in a Travel Order.
+  findEmployeeDirectory: async () => {
+    ensureConnected();
+    return MongoUser.find({
+      $and: [
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] },
+        { $or: [{ accountStatus: 'Active' }, { accountStatus: { $exists: false } }] }
+      ]
+    }).select('employeeId name role office').sort({ name: 1 }).lean();
+  },
+
   findByAccessLevel: async (accessLevel) => {
     ensureConnected();
     const query = accessLevel === 'employee'

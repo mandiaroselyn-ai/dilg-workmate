@@ -10,6 +10,7 @@ import {
   updateEmployeeLeaveCredits,
   deductTardinessCredits,
   creditLeaveEarnings,
+  getEmployeeDirectory,
   changePassword,
   loginUser,
   seedDefaultUsers,
@@ -117,6 +118,8 @@ router.post('/password-reset-hr-request', requestHrPasswordReset);
 router.post('/password-reset', completePasswordReset);
 router.post('/change-password', changePassword);
 router.post('/seed-default-users', requireAdmin, seedDefaultUsers);
+// Any signed-in person: the employees by name, position, and office, to include in a Travel Order.
+router.get('/employees/directory', getEmployeeDirectory);
 router.get('/employees', requireAdmin, getEmployees);
 router.get('/state', getFullState);
 router.get('/updates', getUpdateStamps);

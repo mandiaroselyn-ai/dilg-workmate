@@ -59,6 +59,9 @@ const RequestSchema = new mongoose.Schema({
   // HR's steps (shared/hrSteps.js; CSC Form No. 6, section 7): HR 1's certification of the
   // employee's leave credits (7.A), and HR 2's recommendation (7.B), each with who and when.
   creditCertification: { type: mongoose.Schema.Types.Mixed, default: null },
+  // A Travel Order's other employees, from other offices or towns, who go with the one who filed
+  // it: [{ employeeId, name, role, office }] (see requestController's readCompanions).
+  companions: { type: [mongoose.Schema.Types.Mixed], default: [] },
   recommendation: { type: mongoose.Schema.Types.Mixed, default: null },
   // How the approved leave was charged: the working days, the days taken from sick and from
   // vacation leave, and the days without pay that the balances could not cover.
@@ -100,17 +103,17 @@ export const Leave = {
     });
   },
 
-  // One employee's leave requests and travel orders (any status), for checking that their dates
-  // do not overlap.
+  // One employee's leave requests and travel orders (any status), and the travel orders that
+  // include them, for checking that their dates do not overlap and whether they are on travel.
   findAbsencesOfEmployee: async ({ employeeId, email }) => {
     ensureConnected();
     const owners = [
-      ...(employeeId ? [{ employeeId }] : []),
+      ...(employeeId ? [{ employeeId }, { 'companions.employeeId': employeeId }] : []),
       ...(email ? [{ employeeEmail: email }] : [])
     ];
     if (!owners.length) return [];
     const list = await MongoRequest.find({ type: { $in: ['Leave Request', 'Travel Order'] }, $or: owners })
-      .select('customId type status startDate endDate employeeId employeeEmail leaveType creditCharge')
+      .select('customId type status startDate endDate employeeId employeeEmail leaveType creditCharge companions')
       .lean();
     return list.map(item => ({ ...item, id: item.customId }));
   },
@@ -165,6 +168,7 @@ export const Leave = {
       travelActivity: leaveData.travelActivity || '',
       travelTime: leaveData.travelTime || '',
       travelVenue: leaveData.travelVenue || '',
+      companions: leaveData.type === 'Travel Order' && Array.isArray(leaveData.companions) ? leaveData.companions : [],
       commutation: leaveData.commutation || 'Not Requested',
       workingDays: leaveData.workingDays || 1,
       attachments: leaveData.attachments || [],
