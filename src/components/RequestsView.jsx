@@ -341,15 +341,18 @@ export default function RequestsView({
       setLeaveType(leaveTypeOf(draft));
       setDetailsType(draft.detailsType || 'Within Philippines');
       setDetailsSpecify(draft.detailsSpecify || '');
-      setTravelActivity(draft.travelActivity || '');
-      setTravelTime(draft.travelTime || '');
-      setTravelVenue(draft.travelVenue || '');
-      setCompanions(Array.isArray(draft.companions) ? draft.companions : []);
       setCommutation(draft.commutation || 'Not Requested');
     } else {
       setDetailsType(draft.detailsType || 'Provincial Operations Funds');
       setDetailsSpecify(draft.detailsSpecify || '');
     }
+    // A Travel Order draft's subject, activity time, venue, and the employees it includes (blank
+    // for a leave draft, which has none), so an earlier draft's are not left in the form.
+    setTravelActivity(draft.travelActivity || '');
+    setTravelTime(draft.travelTime || '');
+    setTravelVenue(draft.travelVenue || '');
+    setCompanions(Array.isArray(draft.companions) ? draft.companions : []);
+    setCompanionSearch('');
     
     setStartDate(draft.startDate);
     setEndDate(draft.endDate);
