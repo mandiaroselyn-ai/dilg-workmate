@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import request from 'supertest';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'profile-fields-test-secret';
@@ -9,6 +9,9 @@ const { User } = await import('./models/User.js');
 const { Leave } = await import('./models/leaveModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
+const { AppSetting } = await import('./models/appSettingModel.js');
+// No start month for leave credits unless a test sets one.
+mock.method(AppSetting, 'get', async () => '');
 
 const app = createApiApp();
 const employee = { _id: 'emp-1', name: 'Juan Dela Cruz', email: 'juan@dilg.gov.ph', employeeId: 'DILG-2026-1', accessLevel: 'employee', accountStatus: 'Active', role: 'LGOO II', office: 'Boac' };
@@ -180,7 +183,7 @@ test('HR cannot give a COS or JO worker leave credits by adjustment, only clear 
   assert.equal((await adjust({ vacationLeaveCredits: 0, sickLeaveCredits: 0, reason: 'Cleared: job order' })).status, 200);
 });
 
-test('employees save their own personal details and ID numbers, but not HR\'s employment details', async t => {
+test('employees save their own personal details, ID numbers, position, office, and work details', async t => {
   const { response, saved } = await saveProfile(t, employee, {
     name: 'Juan Dela Cruz',
     firstName: 'Juan',
@@ -188,20 +191,47 @@ test('employees save their own personal details and ID numbers, but not HR\'s em
     civilStatus: 'Married',
     gsisNumber: ' 2004-123-456 ',
     emergencyContactNumber: '0917 123 4567',
-    role: 'Regional Director',
-    office: 'Central Office',
-    region: 'NCR',
+    role: 'Local Government Operations Officer III',
+    office: 'Office of the MLGOO - Gasan',
+    division: 'LGMED',
+    designation: 'MLGOO',
+    salaryGrade: 'SG 18',
+    salaryStep: 'Step 2',
     salary: 'PHP 200,000',
-    division: 'Finance'
+    immediateSupervisor: 'Provincial Director',
+    // HR's to keep.
+    region: 'NCR',
+    dateHired: '2001-01-01',
+    appointmentStatus: 'Permanent',
+    employmentStatus: 'ON LEAVE'
   });
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
   assert.equal(saved.civilStatus, 'Married');
   assert.equal(saved.gsisNumber, '2004-123-456');
   assert.equal(saved.lastName, 'Dela Cruz');
   assert.equal(saved.emergencyContactNumber, '0917 123 4567');
-  for (const field of ['role', 'office', 'region', 'salary', 'division']) {
+  assert.equal(saved.role, 'Local Government Operations Officer III');
+  assert.equal(saved.office, 'Office of the MLGOO - Gasan');
+  assert.equal(saved.division, 'LGMED');
+  assert.equal(saved.designation, 'MLGOO');
+  assert.equal(saved.immediateSupervisor, 'Provincial Director');
+  // The salary sent is ignored: it comes from SG 18, Step 2 in the salary schedule.
+  assert.equal(saved.salary, 'PHP 54,371');
+  for (const field of ['region', 'dateHired', 'appointmentStatus', 'employmentStatus']) {
     assert.equal(field in saved, false, `${field} is kept by HR`);
   }
+});
+
+test('an employee\'s position and office cannot be blank, and a new office comes from the list', async t => {
+  const blankPosition = await saveProfile(t, employee, { name: employee.name, role: ' ' });
+  assert.equal(blankPosition.response.status, 400);
+  assert.equal(blankPosition.response.body.error, 'Enter your position.');
+  const unlisted = await saveProfile(t, employee, { name: employee.name, office: 'Somewhere else' });
+  assert.equal(unlisted.response.status, 400);
+  assert.match(unlisted.response.body.error, /office from the list/);
+  // The office saved before the office list ('Boac') can still be kept.
+  const kept = await saveProfile(t, employee, { name: employee.name, office: 'Boac' });
+  assert.equal(kept.response.status, 200);
 });
 
 test('supervisors also leave their employment details to HR', async t => {

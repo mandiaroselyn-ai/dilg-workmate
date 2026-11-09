@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import request from 'supertest';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'tardiness-deduction-test-secret';
@@ -8,6 +8,9 @@ const { createApiApp } = await import('./app.js');
 const { User } = await import('./models/User.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
+const { AppSetting } = await import('./models/appSettingModel.js');
+// No start month for leave credits unless a test sets one.
+mock.method(AppSetting, 'get', async () => '');
 
 const app = createApiApp();
 // HR 1, who changes leave credits.

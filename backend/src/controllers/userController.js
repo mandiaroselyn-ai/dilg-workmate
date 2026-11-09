@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString, isRealDate } from '../../../shared/localDate.js';
 import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isSignUpApproval, missingApprovalDetails, officeError } from '../../../shared/dilgAssignments.js';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, NAME_FIELDS, PERSONAL_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, NAME_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
 import { LEAVE_CREDITS_HR_ONLY, canChangeLeaveCredits } from '../../../shared/hrSteps.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
@@ -17,6 +17,8 @@ import { changedRecordFields, noticeEmployee } from '../services/employeeNotices
 import { DEFAULT_LEAVE_CREDITS, minutesText, monthLabel, normalizeLeaveCreditInput, normalizeLeaveEarnings, normalizeOpeningLeaveCredits, normalizeTardinessDeductions } from '../utils/leaveCredits.js';
 import { monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from '../../../shared/leaveCalc.js';
 import { minutesToLeaveDays } from '../../../shared/leaveConversion.js';
+import { asOfLabel, beforeStartProblem, needsStartingBalance, readStartingBalance, startingBalanceAsOf, startMonthLabel, startMonthProblem } from '../../../shared/leaveStart.js';
+import { AppSetting, LEAVE_CREDITS_START, leaveCreditsStart } from '../models/appSettingModel.js';
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
@@ -61,15 +63,21 @@ export const isValidProfilePicture = value => typeof value === 'string' && (
 );
 
 // Everyone keeps their own name, contact number, photo, personal details, and government
-// ID numbers up to date. HR keeps the position, office, region, and employment details,
-// so only an HR/Admin changes their own here; everyone else's are changed in HR's forms.
+// ID numbers up to date. An employee also keeps their position, office, and employment details
+// (SELF_EMPLOYMENT_FIELDS), as on their Personal Data Sheet; HR keeps their region, date hired,
+// and status of appointment. A supervisor's are kept by HR in Staff Accounts, and an HR/Admin
+// changes all of their own here.
 const SELF_PROFILE_FIELDS = ['name', 'phoneNumber', 'profilePicture', 'signatureImage'];
+const EMPLOYEE_PROFILE_FIELDS = ['role', 'office'];
 const HR_PROFILE_FIELDS = ['role', 'office', 'region', 'dateHired'];
 
 export const updateUserProfile = async (req, res) => {
   try {
     const isHrAdmin = req.user.accessLevel === 'hr_admin';
-    const allowedFields = isHrAdmin ? [...SELF_PROFILE_FIELDS, ...HR_PROFILE_FIELDS] : SELF_PROFILE_FIELDS;
+    const isEmployee = req.user.accessLevel === 'employee';
+    const allowedFields = isHrAdmin ? [...SELF_PROFILE_FIELDS, ...HR_PROFILE_FIELDS]
+      : isEmployee ? [...SELF_PROFILE_FIELDS, ...EMPLOYEE_PROFILE_FIELDS]
+      : SELF_PROFILE_FIELDS;
     const profileData = allowedFields.reduce((data, field) => {
       if (req.body[field] !== undefined) data[field] = req.body[field];
       return data;
@@ -86,6 +94,7 @@ export const updateUserProfile = async (req, res) => {
     if (office) return res.status(400).json({ success: false, error: office });
     const details = readProfileFields(req.body, isHrAdmin
       ? [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...EMPLOYMENT_FIELDS]
+      : isEmployee ? [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...SELF_EMPLOYMENT_FIELDS]
       : [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS]);
     if (details.error) return res.status(400).json({ success: false, error: details.error });
     Object.assign(profileData, details.value);
@@ -118,7 +127,9 @@ const REGISTRATION_FIELD_LIMITS = {
   address: 250
 };
 
-// Self-registration only accepts basic profile fields. The account stays Pending
+// Self-registration accepts the basic profile fields and the employment details the employee
+// fills in themselves (EMPLOYMENT_FIELDS, with the status of appointment required), so HR only
+// adds the date hired to approve. The account stays Pending
 // until HR activates it, and the server assigns a unique employee ID. Someone who chose
 // Continue with Google sends its sign-up token in place of an email: the account takes the
 // email Google verified and signs in with Google or with that email and its password.
@@ -160,6 +171,12 @@ export const registerUser = async (req, res) => {
     }
     const office = officeError(profile.office);
     if (office) return res.status(400).json({ success: false, error: office });
+    const employment = readProfileFields(body, EMPLOYMENT_FIELDS);
+    if (employment.error) return res.status(400).json({ success: false, error: employment.error });
+    // It decides whether the employee earns leave credits (see earnsLeaveCredits).
+    if (!employment.value.appointmentStatus) {
+      return res.status(400).json({ success: false, error: 'Choose your status of appointment (or contract of service or job order).' });
+    }
     if (await User.findByEmail(profile.email)) {
       return res.status(409).json({ success: false, error: 'An account already uses this email address.' });
     }
@@ -167,7 +184,7 @@ export const registerUser = async (req, res) => {
     const signIn = google
       ? { googleId: google.googleId, profilePicture: google.picture, signUpMethod: 'google' }
       : { signUpMethod: 'form' };
-    const created = await User.createSelfServiceEmployee({ ...profile, ...signIn, password, accountStatus: 'Pending' });
+    const created = await User.createSelfServiceEmployee({ ...profile, ...employment.value, ...signIn, password, accountStatus: 'Pending' });
     if (!created) {
       return res.status(409).json({ success: false, error: 'Unable to register this account. Contact the HR Administrator.' });
     }
@@ -332,12 +349,15 @@ export const createEmployee = async (req, res) => {
       employee.employeeId = await unusedEmployeeId();
       if (!employee.employeeId) return res.status(500).json({ success: false, error: 'Unable to assign an employee ID. Enter one, or try again.' });
     }
-    // Balances from the leave card start the account's credit history.
+    // Balances from the leave card start the account's credit history, and are its starting
+    // balance for the month WorkMate starts counting leave credits (shared/leaveStart.js).
+    const enteredBy = req.user?.name || req.user?.email || 'HR/Admin';
     const credits = opening.value ? {
       ...opening.value,
+      startingLeaveBalance: { start: await leaveCreditsStart(), asOf: getManilaDateString(), ...opening.value, enteredAt: new Date(), enteredBy },
       leaveCreditHistory: [{
         changedAt: new Date(),
-        changedBy: req.user?.name || req.user?.email || 'HR/Admin',
+        changedBy: enteredBy,
         reason: 'Opening balance from the leave card',
         ...opening.value,
         previousVacationLeaveCredits: 0,
@@ -425,10 +445,20 @@ export const deductTardinessCredits = async (req, res) => {
   try {
     const { month, deductions, error } = normalizeTardinessDeductions(req.body, getManilaDateString().slice(0, 7));
     if (error) return res.status(400).json({ success: false, error });
+    // A month before WorkMate's start is on the leave card, in the starting balance.
+    const start = await leaveCreditsStart();
+    const early = beforeStartProblem(month, start);
+    if (early) return res.status(400).json({ success: false, error: early });
     const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
     const label = monthLabel(month);
     const results = [];
     for (const { identifier, minutes } of deductions) {
+      // The starting balance comes first, as entering it replaces the balance.
+      const account = start ? await User.findAccount(identifier) : null;
+      if (account && needsStartingBalance(account, start)) {
+        results.push({ identifier, status: 'no-starting-balance' });
+        continue;
+      }
       const days = minutesToLeaveDays(minutes);
       const reason = entry => `Tardiness and undertime, ${label}: ${minutesText(minutes)} = ${entry.days.toFixed(3)} day`
         + (entry.withoutPayDays ? `; ${entry.withoutPayDays.toFixed(3)} day without pay (not enough vacation leave)` : '');
@@ -473,6 +503,10 @@ export const creditLeaveEarnings = async (req, res) => {
   try {
     const { month, identifiers, error } = normalizeLeaveEarnings(req.body, getManilaDateString().slice(0, 7));
     if (error) return res.status(400).json({ success: false, error });
+    // A month before WorkMate's start is on the leave card, in the starting balance.
+    const start = await leaveCreditsStart();
+    const early = beforeStartProblem(month, start);
+    if (early) return res.status(400).json({ success: false, error: early });
     const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
     const label = monthLabel(month);
     const results = [];
@@ -484,6 +518,11 @@ export const creditLeaveEarnings = async (req, res) => {
       }
       if (!earnsLeaveCredits(account)) {
         results.push({ identifier, status: 'no-leave-credits' });
+        continue;
+      }
+      // The starting balance comes first, as entering it replaces the balance.
+      if (needsStartingBalance(account, start)) {
+        results.push({ identifier, status: 'no-starting-balance' });
         continue;
       }
       const leaves = await Leave.findAbsencesOfEmployee({ employeeId: account.employeeId, email: account.email });
@@ -521,6 +560,90 @@ export const creditLeaveEarnings = async (req, res) => {
       results.push({ identifier, status: 'credited', entry: result.entry, employee: employeeResponse(result.employee) });
     }
     res.status(200).json({ success: true, month, results });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+const startResponse = start => ({ success: true, start, asOf: start ? startingBalanceAsOf(start) : '' });
+
+// HR: the start month, and the leave card date starting balances are as of.
+export const getLeaveCreditsStart = async (req, res) => {
+  try {
+    res.status(200).json(startResponse(await leaveCreditsStart()));
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+// HR 1 sets the month WorkMate starts counting leave credits: { month: 'YYYY-MM' } (see
+// startMonthProblem for which months it can be).
+export const setLeaveCreditsStart = async (req, res) => {
+  try {
+    const month = typeof req.body?.month === 'string' ? req.body.month.trim() : '';
+    const [current, employees] = await Promise.all([leaveCreditsStart(), User.findByAccessLevel('employee')]);
+    const problem = startMonthProblem(month, { currentMonth: getManilaDateString().slice(0, 7), current, employees });
+    if (problem) return res.status(400).json({ success: false, error: problem });
+    await AppSetting.set(LEAVE_CREDITS_START, month, req.user?.name || req.user?.email || 'HR/Admin');
+    res.status(200).json(startResponse(month));
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
+// HR 1 enters the balances copied from the employees' leave cards as of the day before the start
+// month: { balances: [{ identifier, vacationLeaveCredits, sickLeaveCredits }] }. Each one replaces
+// the employee's balance, once per start (a correction afterwards is an adjustment with a reason),
+// and each employee is notified. COS and JO workers earn no leave credits and are left out.
+export const enterStartingBalances = async (req, res) => {
+  try {
+    const start = await leaveCreditsStart();
+    if (!start) return res.status(400).json({ success: false, error: 'Set the month WorkMate starts counting leave credits first.' });
+    const list = Array.isArray(req.body?.balances) ? req.body.balances : null;
+    if (!list?.length) return res.status(400).json({ success: false, error: 'Enter at least one starting balance.' });
+    if (list.length > 1000) return res.status(400).json({ success: false, error: 'Enter at most 1000 starting balances at a time.' });
+    const items = [];
+    for (const item of list) {
+      const identifier = typeof item?.identifier === 'string' ? item.identifier.trim() : '';
+      if (!identifier) return res.status(400).json({ success: false, error: 'Each starting balance needs an employee ID or email.' });
+      const { value, error } = readStartingBalance(item);
+      if (error) return res.status(400).json({ success: false, error });
+      items.push({ identifier, value });
+    }
+    const asOf = startingBalanceAsOf(start);
+    const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
+    const results = [];
+    for (const { identifier, value } of items) {
+      const account = await User.findAccount(identifier);
+      if (!account || !['employee', undefined, null].includes(account.accessLevel)) {
+        results.push({ identifier, status: 'not-found' });
+        continue;
+      }
+      if (!earnsLeaveCredits(account)) {
+        results.push({ identifier, status: 'no-leave-credits' });
+        continue;
+      }
+      const reason = `Starting balance from the leave card as of ${asOfLabel(asOf)}`;
+      const result = await User.setStartingBalance(account.employeeId || account.email, value, { start, asOf, reason, changedBy });
+      if (!result) {
+        results.push({ identifier, status: 'not-found' });
+        continue;
+      }
+      if (result.alreadySet) {
+        results.push({ identifier, status: 'already-set' });
+        continue;
+      }
+      await Announcement.createNotification({
+        title: 'Leave Credits Starting Balance',
+        message: `HR entered your leave balance from your leave card as of ${asOfLabel(asOf)}: ${value.vacationLeaveCredits} days vacation leave and ${value.sickLeaveCredits} days sick leave. WorkMate counts your leave credits from ${startMonthLabel(start)} on.`,
+        type: 'system',
+        view: 'dashboard',
+        employeeId: result.employee.employeeId || '',
+        employeeEmail: result.employee.email || ''
+      }).catch(notifyError => console.error('Unable to notify the employee about their starting balance:', notifyError));
+      results.push({ identifier, status: 'entered', employee: employeeResponse(result.employee) });
+    }
+    res.status(200).json({ success: true, start, results });
   } catch (error) {
     sendServerError(res, error);
   }

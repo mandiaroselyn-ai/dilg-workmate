@@ -176,6 +176,20 @@ const UserSchema = new mongoose.Schema({
     }],
     default: []
   },
+  // The balance HR 1 copied from the leave card when WorkMate started counting leave credits
+  // (shared/leaveStart.js), or one HR entered when making the account: the start month it is for
+  // ('' when no start was set yet), the date it is as of, and the days.
+  startingLeaveBalance: {
+    type: new mongoose.Schema({
+      start: { type: String, default: '' }, // YYYY-MM
+      asOf: { type: String, default: '' }, // YYYY-MM-DD
+      vacationLeaveCredits: Number,
+      sickLeaveCredits: Number,
+      enteredAt: { type: Date, default: Date.now },
+      enteredBy: { type: String, default: '' }
+    }, { _id: false }),
+    default: null
+  },
   // IDs of fingerprint proofs already used for a Time In, so each proof works only once.
   usedVerificationProofIds: { type: [String], default: [], select: false }
 }, { timestamps: true });
@@ -813,6 +827,47 @@ export const User = {
     employee.leaveCreditHistory = [...(employee.leaveCreditHistory || []), entry].slice(-50);
     await employee.save();
     return employee.toObject();
+  },
+
+  // Sets an employee's balances to the starting balance HR 1 copied from their leave card for the
+  // start month `start` (as of `asOf`), once per start, and records it in the leave credit
+  // history. Returns { employee }, { alreadySet } when one was already entered for this start,
+  // or null when no employee account matches.
+  setStartingBalance: async (identifier, credits, { start, asOf, reason, changedBy }) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const employee = await MongoUser.findOne({
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    });
+    if (!employee) return null;
+    if (employee.startingLeaveBalance?.start === start) return { alreadySet: employee.startingLeaveBalance };
+    const entry = {
+      changedAt: new Date(),
+      changedBy,
+      reason,
+      ...credits,
+      previousVacationLeaveCredits: employee.vacationLeaveCredits,
+      previousSickLeaveCredits: employee.sickLeaveCredits
+    };
+    // Only when none was entered for this start in the meantime.
+    const updated = await MongoUser.findOneAndUpdate(
+      { _id: employee._id, 'startingLeaveBalance.start': { $ne: start } },
+      {
+        $set: { ...credits, startingLeaveBalance: { start, asOf, ...credits, enteredAt: new Date(), enteredBy: changedBy } },
+        $push: { leaveCreditHistory: { $each: [entry], $slice: -50 } }
+      },
+      { new: true }
+    );
+    if (!updated) {
+      const latest = await MongoUser.findById(employee._id);
+      return { alreadySet: latest?.startingLeaveBalance || null };
+    }
+    return { employee: updated.toObject() };
   },
 
   // Charges one month's tardiness and undertime (`minutes`, which convert to `days`) to an

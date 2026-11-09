@@ -14,6 +14,8 @@ import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
 import { FOR_PRE_APPROVAL, leaveCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
 import { YEARLY_LEAVES, yearlyLeaveProblem } from '../../../shared/yearlyLeave.js';
+import { needsStartingBalance } from '../../../shared/leaveStart.js';
+import { leaveCreditsStart } from '../models/appSettingModel.js';
 
 const reviewerName = req => req.user?.name || (req.user?.accessLevel === 'supervisor' ? 'your supervisor' : 'HR');
 const reviewRemarks = update => update?.supervisorRemarks || update?.remarks || '';
@@ -86,6 +88,10 @@ const hrStepRecord = async (existing, update, req) => {
     const employee = (existing.employeeId && await User.findByEmployeeId(existing.employeeId))
       || (existing.employeeEmail && await User.findByEmail(existing.employeeEmail));
     if (!employee) return { error: 'The employee\'s account was not found, so their leave credits cannot be certified.' };
+    // Until HR 1 enters the balance from the leave card, WorkMate's balance is not the real one.
+    if (needsStartingBalance(employee, await leaveCreditsStart())) {
+      return { error: `Enter ${employee.name || 'the employee'}'s starting balance from the leave card first (DTR Records, Leave Credits Start), so the certification shows their real balance.` };
+    }
     const certification = leaveCreditCertification({
       leaveType: existing.leaveType,
       days: await serverLeaveDays(existing),

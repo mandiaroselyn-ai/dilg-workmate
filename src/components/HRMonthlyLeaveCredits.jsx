@@ -4,6 +4,7 @@ import { getManilaDateString } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import { monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from '../../shared/leaveCalc';
 import { earnsLeaveCredits } from '../../shared/profileFields';
+import { beforeStartProblem, needsStartingBalance } from '../../shared/leaveStart';
 import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import { apiFetch } from '../utils/api';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -34,7 +35,9 @@ const lastEndedMonth = () => {
 // service and job order workers earn no leave credits, so step 2 leaves them out; their
 // tardiness in step 1 is all without pay.
 // `canChangeCredits`: only HR 1 charges and credits leave (shared/hrSteps.js); other HR accounts only see the month.
-export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange, canChangeCredits = true }) {
+// `creditsStart`: the month WorkMate starts counting leave credits (shared/leaveStart.js). Months
+// before it are on the leave cards, and an employee waiting for a starting balance is skipped.
+export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange, canChangeCredits = true }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(lastEndedMonth);
   const [saving, setSaving] = useState(false);
@@ -62,6 +65,7 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
     const earnsLeave = earnsLeaveCredits(employee);
     return {
       employee,
+      needsStart: needsStartingBalance(employee, creditsStart),
       minutes,
       days: minutesToLeaveDays(minutes),
       charged,
@@ -74,8 +78,9 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
       issues: records.filter(record => dtrIssue(record, today)).length
     };
   });
-  const toCharge = rows.filter(row => !row.charged);
-  const toCredit = rows.filter(row => row.earnsLeave && row.charged && !row.credited);
+  const toCharge = rows.filter(row => !row.charged && !row.needsStart);
+  const toCredit = rows.filter(row => row.earnsLeave && row.charged && !row.credited && !row.needsStart);
+  const beforeStart = beforeStartProblem(month, creditsStart);
   const issueCount = rows.reduce((total, row) => total + row.issues, 0);
   const issueWarning = issueCount ? `\n\n${issueCount} DTR record${issueCount === 1 ? '' : 's'} this month still need review in DTR Records; the charge uses the DTR as it is now.` : '';
 
@@ -148,9 +153,9 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
           {!canChangeCredits && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Only HR 1 (leave credits) charges tardiness and credits earned leave. You can see the month here.</p>}
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-[11px] font-black text-slate-600">Month
-              <input type="month" value={month} max={latestMonth} onChange={event => event.target.value && setMonth(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
+              <input type="month" value={month} min={creditsStart || undefined} max={latestMonth} onChange={event => event.target.value && setMonth(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
             </label>
-            {monthLoaded && (
+            {monthLoaded && !beforeStart && (
               <>
                 <button type="button" onClick={() => charge(toCharge)} disabled={!canChangeCredits || saving || !toCharge.length} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
                   1. Charge all not yet charged ({toCharge.length})
@@ -164,7 +169,9 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
           <p className="text-xs text-slate-500">
             Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge step 1 first. In the month an employee was hired, they earn 1.25/30 for each day from their Date Hired (CSC Table II), so fill in each new employee's Date Hired first.
           </p>
-          {!monthLoaded ? (
+          {beforeStart ? (
+            <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">{beforeStart}</p>
+          ) : !monthLoaded ? (
             <div className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">
               {monthLabel(month)} attendance is not loaded yet.{' '}
               <button type="button" onClick={loadMonth} disabled={loading || !onLoadMonth} className="font-black text-blue-700 underline disabled:opacity-50">{loading ? 'Loading…' : `Load ${monthLabel(month)}`}</button>
@@ -186,7 +193,9 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                     </p>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-slate-600">1. Late &amp; undertime: {row.minutes ? `${durationText(row.minutes)} = ${daysText(row.days)}` : 'none'}</span>
-                      {row.charged ? (
+                      {row.needsStart && !row.charged ? (
+                        <span className="text-[11px] font-semibold text-amber-700">Enter the starting balance first (Leave Credits Start)</span>
+                      ) : row.charged ? (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">
                           Charged {daysText(row.charged.days)}{row.charged.withoutPayDays ? ` · ${daysText(row.charged.withoutPayDays)} without pay${withoutPayAmount(row.employee, row.charged.withoutPayDays) ? ` (${pesoText(withoutPayAmount(row.employee, row.charged.withoutPayDays))})` : ''}` : ''}
                         </span>
@@ -204,6 +213,8 @@ export default function HRMonthlyLeaveCredits({ employees = [], attendanceHistor
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-black text-emerald-700">Credited</span>
                       ) : !row.earnsLeave ? (
                         <span className="text-[11px] font-semibold text-slate-400">{row.employee.appointmentStatus}: no leave credits</span>
+                      ) : row.needsStart ? (
+                        <span className="text-[11px] font-semibold text-amber-700">Enter the starting balance first (Leave Credits Start)</span>
                       ) : row.charged ? (
                         <button type="button" onClick={() => credit([row])} disabled={!canChangeCredits || saving} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-black text-emerald-700 disabled:opacity-50">Credit</button>
                       ) : (

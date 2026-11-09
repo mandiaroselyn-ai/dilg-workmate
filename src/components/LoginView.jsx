@@ -7,9 +7,31 @@ import React, { useEffect, useState } from 'react';
 import backgroundImage from '../assets/login-bg.jpg';
 import logoImage from '../assets/dilg-logo.png';
 import { DEFAULT_REGION } from '../../shared/dilgAssignments';
-import { OfficeOptions, PositionTitleSelect } from './ProfileDetails';
+import { EMPLOYMENT_FIELDS, profileFieldValues } from '../../shared/profileFields';
+import { OfficeOptions, PositionTitleSelect, ProfileFieldInput } from './ProfileDetails';
 import { clearSessionToken } from '../utils/api';
 import AddressPicker from './AddressPicker';
+
+// The employment details the person signing up fills in themselves, as on their Personal Data
+// Sheet, so HR only adds the date hired to approve the account. The status of appointment is
+// required: it decides whether they earn leave credits, and after approval only HR changes it.
+const SignUpEmploymentDetails = ({ values, onChange, className = '' }) => (
+  <div className={`space-y-2 ${className}`}>
+    <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Employment Details</p>
+    <p className="text-[10px] font-semibold text-slate-500">As on your appointment. Leave blank what you do not know, and HR fills it in. Contract of service and job order workers have no salary grade.</p>
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      {EMPLOYMENT_FIELDS.map(field => (
+        <ProfileFieldInput
+          key={field.key}
+          item={field.key === 'appointmentStatus' ? { ...field, required: true } : field}
+          value={values[field.key]}
+          values={values}
+          onChange={onChange}
+        />
+      ))}
+    </div>
+  </div>
+);
 const GoogleIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -86,6 +108,11 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
   const [regRole, setRegRole] = useState('');
   const [regOffice, setRegOffice] = useState('');
   const [regRegion, setRegRegion] = useState(DEFAULT_REGION);
+  const [regEmployment, setRegEmployment] = useState(() => profileFieldValues({}, EMPLOYMENT_FIELDS));
+  const handleEmploymentChange = event => {
+    const { name, value } = event.target;
+    setRegEmployment(previous => ({ ...previous, [name]: value }));
+  };
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState('');
   // Set when Continue with Google found no account for the Google email: the sign-up form
@@ -262,7 +289,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
 
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
-    if (!regName || !regEmail || !regPassword || !regRole || !regOffice || !regRegion || !regPhone || !regAddress) {
+    if (!regName || !regEmail || !regPassword || !regRole || !regOffice || !regRegion || !regPhone || !regAddress || !regEmployment.appointmentStatus) {
       setErrorText('Please fill out all registration fields.');
       return;
     }
@@ -285,6 +312,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
       region: regRegion,
       phoneNumber: regPhone,
       address: regAddress,
+      // The monthly salary is worked out by the server from the salary grade and step.
+      ...regEmployment,
       password: regPassword,
       ...(googleSignUp ? { googleSignUp: googleSignUp.token } : { email: regEmail })
     };
@@ -380,6 +409,7 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Full Name<input type="text" required value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Full Name" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Office<select required value={regOffice} onChange={(e) => setRegOffice(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none"><option value="" disabled>Select Office</option><OfficeOptions /></select></label>
                 <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Position Title<PositionTitleSelect value={regRole} onChange={(e) => setRegRole(e.target.value)} required className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-bold normal-case tracking-normal text-slate-800 focus:border-indigo-500 focus:bg-white focus:outline-none" /></label>
+                <SignUpEmploymentDetails values={regEmployment} onChange={handleEmploymentChange} />
                 <div className="grid grid-cols-2 gap-3"><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Account Role<input readOnly value="Employee" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label><label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Region<input readOnly value={regRegion} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label></div>
                 {googleSignUp ? (
                   <label className="block text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Google email<input type="email" readOnly value={regEmail} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 p-3 text-xs font-bold normal-case tracking-normal text-slate-500" /></label>
@@ -800,6 +830,8 @@ export default function LoginView({ onLogin, onRequestPasswordReset, mobileOnly 
                         />
                       </div>
                     </div>
+
+                    <SignUpEmploymentDetails values={regEmployment} onChange={handleEmploymentChange} className="md:col-span-2" />
 
                     {/* Home Address */}
                     <div className="space-y-1.5 text-xs md:col-span-2">

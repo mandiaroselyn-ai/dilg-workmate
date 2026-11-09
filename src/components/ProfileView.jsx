@@ -20,16 +20,18 @@ import {
 import BiometricEnrollmentView from './BiometricEnrollmentView';
 import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
-import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, profileFieldValues } from '../../shared/profileFields';
+import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, profileFieldValues } from '../../shared/profileFields';
 import { getManilaDateString } from '../../shared/localDate';
 import { todayStatus } from '../utils/todayStatus';
 
-// What the employee can change on their profile. HR keeps the position, office, region,
-// and other employment details.
+// What the employee can change on their profile: also their position, office, and work details.
+// HR keeps the region, date hired, employment status, and status of appointment.
 const editableValues = person => ({
   name: person?.name || '',
   phoneNumber: person?.phoneNumber || '',
-  ...profileFieldValues(person, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS])
+  role: person?.role || '',
+  office: person?.office || '',
+  ...profileFieldValues(person, [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS, ...SELF_EMPLOYMENT_FIELDS])
 });
 
 const STATUS_PILL_CLASS = {
@@ -326,7 +328,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 sm:flex"><Database className="h-6 w-6" /> Personnel<br />Record</div>
           </div>
           <div className="pt-4">
-            <ProfileDetails person={user} form={form} onChange={handleChange} editing={editingInfo} attendanceAssignment />
+            <ProfileDetails person={user} form={form} onChange={handleChange} editing={editingInfo} employmentEditable="employee" attendanceAssignment />
           </div>
           {editingInfo ? (
             <div className="mt-5 flex gap-2">
@@ -449,7 +451,7 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
             <span className="text-xs font-mono text-slate-650 font-extrabold bg-slate-50 border border-slate-200 px-2.5 py-1 rounded">DILG Core Server V4</span>
           </div>
 
-          <ProfileDetails person={user} form={form} onChange={handleChange} editing attendanceAssignment />
+          <ProfileDetails person={user} form={form} onChange={handleChange} editing employmentEditable="employee" attendanceAssignment />
 
           {profileSuccess && (
             <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-4 rounded-xl text-xs font-semibold flex items-center gap-2">

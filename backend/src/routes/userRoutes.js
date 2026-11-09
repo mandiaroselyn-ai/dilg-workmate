@@ -10,6 +10,9 @@ import {
   updateEmployeeLeaveCredits,
   deductTardinessCredits,
   creditLeaveEarnings,
+  getLeaveCreditsStart,
+  setLeaveCreditsStart,
+  enterStartingBalances,
   getEmployeeDirectory,
   changePassword,
   loginUser,
@@ -112,6 +115,10 @@ router.patch('/employees/:identifier/leave-credits', requireAdmin, requireLeaveC
 router.post('/employees/tardiness-deductions', requireAdmin, requireLeaveCreditsHr, deductTardinessCredits);
 // One ended month's earned leave credited (see creditLeaveEarnings).
 router.post('/employees/leave-earnings', requireAdmin, requireLeaveCreditsHr, creditLeaveEarnings);
+// The month WorkMate starts counting leave credits, and the starting balances from the leave cards.
+router.get('/employees/leave-credits-start', requireAdmin, getLeaveCreditsStart);
+router.put('/employees/leave-credits-start', requireAdmin, requireLeaveCreditsHr, setLeaveCreditsStart);
+router.post('/employees/starting-balances', requireAdmin, requireLeaveCreditsHr, enterStartingBalances);
 router.post('/login', loginUser);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset-hr-request', requestHrPasswordReset);

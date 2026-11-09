@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS } from '../../shared/profileFields';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS } from '../../shared/profileFields';
 import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES, POSITION_TITLE_GROUPS } from '../../shared/dilgAssignments';
 import AddressPicker from './AddressPicker';
 
@@ -158,10 +158,16 @@ const Section = ({ title, note, children }) => (
   </section>
 );
 
+// The employment details an employee keeps on their own profile (`employmentEditable` 'employee'):
+// their position, office, and work as on their Personal Data Sheet. HR keeps the region, employee
+// ID, employment status, date hired, and status of appointment.
+const EMPLOYEE_EDITABLE_KEYS = ['role', 'office', ...SELF_EMPLOYMENT_FIELDS.map(item => item.key)];
+
 // The profile's details in four sections. `form` holds what is being edited and
 // `onChange` updates it by input name. While `editing`, the person's own details are
-// inputs; employment details are inputs only when `employmentEditable` (an HR/Admin's own
-// profile), otherwise HR keeps them. Fields marked readOnly are always shown as text.
+// inputs; employment details are inputs when `employmentEditable` is true (all of them, on an
+// HR/Admin's own profile) or 'employee' (EMPLOYEE_EDITABLE_KEYS), otherwise HR keeps them.
+// Fields marked readOnly are always shown as text.
 // `attendanceAssignment` adds the station, LGU, and approved WFH location, which only
 // employees who time in have.
 export default function ProfileDetails({ person = {}, form = {}, onChange, editing = false, employmentEditable = false, attendanceAssignment = false }) {
@@ -186,7 +192,12 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
     { key: 'employmentStatus', label: 'Employment Status', readOnly: true },
     { key: 'dateHired', label: 'Date Hired', type: 'date' },
     ...EMPLOYMENT_FIELDS
-  ].map(item => (employmentEditable ? item : { ...item, readOnly: true }));
+  ].map(item => (employmentEditable === true || (employmentEditable === 'employee' && EMPLOYEE_EDITABLE_KEYS.includes(item.key))
+    ? item
+    : { ...item, readOnly: true }));
+  const employmentNote = !editing ? ''
+    : employmentEditable === 'employee' ? 'HR keeps your date hired, employment status, and status of appointment. Ask HR to correct those.'
+    : employmentEditable ? '' : 'Managed by the HR Administrator. Ask HR to correct anything here.';
 
   return (
     <div className="space-y-6">
@@ -202,7 +213,7 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
         {GOVERNMENT_ID_FIELDS.map(item => show(item))}
       </Section>
 
-      <Section title="Employment Information" note={editing && !employmentEditable ? 'Managed by the HR Administrator. Ask HR to correct anything here.' : ''}>
+      <Section title="Employment Information" note={employmentNote}>
         {employment.map(item => show(item, item.key === 'employmentStatus' ? person.employmentStatus || 'ACTIVE' : undefined))}
         {attendanceAssignment && (
           <>

@@ -79,6 +79,13 @@ export const EMPLOYMENT_FIELDS = [
   { key: 'immediateSupervisor', label: 'Immediate Supervisor', max: 160 }
 ];
 
+// The employment details an employee fills in when signing up and keeps up to date on their
+// Profile, as they write their work in their CSC Personal Data Sheet (position, salary grade and
+// step, status of appointment), so HR only checks them and adds the date hired to approve. The
+// status of appointment is chosen at sign-up only: it decides whether the employee earns leave
+// credits, so once the account is approved only HR changes it.
+export const SELF_EMPLOYMENT_FIELDS = EMPLOYMENT_FIELDS.filter(field => field.key !== 'appointmentStatus');
+
 // The full name as shown and as attendance records are matched: the name parts and suffix.
 export const fullNameOf = person => [person?.firstName, person?.middleName, person?.lastName, person?.suffix]
   .map(part => (part || '').trim()).filter(Boolean).join(' ');

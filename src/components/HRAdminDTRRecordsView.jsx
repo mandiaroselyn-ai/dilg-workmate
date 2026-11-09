@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -9,7 +9,9 @@ import { dayEntry } from '../utils/dtrMonth';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import HRHolidays from './HRHolidays';
+import HRLeaveCreditsStart from './HRLeaveCreditsStart';
 import HRMonthlyLeaveCredits from './HRMonthlyLeaveCredits';
+import { apiFetch } from '../utils/api';
 import HROvertimeOrders from './HROvertimeOrders';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 
@@ -272,6 +274,16 @@ export default function HRAdminDTRRecordsView({ canChangeCredits = true, employe
   const [officeFilter, setOfficeFilter] = useState('All Offices');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedId, setSelectedId] = useState(null);
+  // The month WorkMate starts counting leave credits, and the leave card date it starts from.
+  const [creditsStart, setCreditsStart] = useState({ start: '', asOf: '' });
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/employees/leave-credits-start')
+      .then(response => response.json())
+      .then(data => { if (!cancelled && data?.success) setCreditsStart({ start: data.start || '', asOf: data.asOf || '' }); })
+      .catch(error => console.error('Unable to load the leave credits start:', error));
+    return () => { cancelled = true; };
+  }, []);
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const today = getManilaDateString();
   // Only records that belong to current employee accounts.
@@ -422,7 +434,16 @@ export default function HRAdminDTRRecordsView({ canChangeCredits = true, employe
         <h2 className="text-xl font-black text-slate-900">DTR Records</h2>
       </div>
       <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
+      <HRLeaveCreditsStart
+        employees={employees}
+        start={creditsStart.start}
+        asOf={creditsStart.asOf}
+        onStartChange={setCreditsStart}
+        onEmployeesChange={onEmployeesChange}
+        canChangeCredits={canChangeCredits}
+      />
       <HRMonthlyLeaveCredits
+        creditsStart={creditsStart.start}
         employees={employees}
         attendanceHistory={attendanceHistory}
         requests={requests}

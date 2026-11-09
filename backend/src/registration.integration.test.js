@@ -18,6 +18,7 @@ const signUp = {
   region: 'DILG Region IV-B - MIMAROPA',
   phoneNumber: '09171234567',
   address: 'Tampus (Pob.), Boac, Marinduque',
+  appointmentStatus: 'Permanent',
   password: 'a-long-password-42'
 };
 
@@ -65,6 +66,48 @@ test('a sign-up takes its office from the list', async t => {
   assert.equal(response.status, 400);
   assert.match(response.body.error, /office from the list/);
   assert.equal(create.mock.callCount(), 0);
+});
+
+test('a sign-up saves the employment details the employee fills in, and needs the status of appointment', async t => {
+  t.mock.method(User, 'findByEmail', async () => null);
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  const create = t.mock.method(User, 'createSelfServiceEmployee', async data => ({ ...data, _id: 'new-3', employeeId: 'DILG-2026-111111', accessLevel: 'employee' }));
+
+  const noStatus = await request(app).post('/api/register').send({ ...signUp, appointmentStatus: '' });
+  assert.equal(noStatus.status, 400);
+  assert.match(noStatus.body.error, /status of appointment/);
+  const unlisted = await request(app).post('/api/register').send({ ...signUp, appointmentStatus: 'Volunteer' });
+  assert.equal(unlisted.status, 400);
+  assert.equal(create.mock.callCount(), 0);
+
+  const response = await request(app).post('/api/register').send({
+    ...signUp,
+    appointmentStatus: 'Casual',
+    designation: 'MLGOO',
+    division: 'LGMED',
+    plantillaItemNumber: 'DILGB-ADA4-1-2020',
+    salaryGrade: 'SG 4',
+    salaryStep: 'Step 2',
+    salary: 'PHP 999,999',
+    immediateSupervisor: 'Provincial Director',
+    // HR's to fill in, so a sign-up cannot set them.
+    dateHired: '2020-01-06',
+    vacationLeaveCredits: 50
+  });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const saved = create.mock.calls[0].arguments[0];
+  assert.equal(saved.appointmentStatus, 'Casual');
+  assert.equal(saved.designation, 'MLGOO');
+  assert.equal(saved.division, 'LGMED');
+  assert.equal(saved.plantillaItemNumber, 'DILGB-ADA4-1-2020');
+  assert.equal(saved.salaryGrade, 'SG 4');
+  assert.equal(saved.salaryStep, 'Step 2');
+  // The monthly salary comes from the salary schedule, not from what was sent.
+  assert.notEqual(saved.salary, 'PHP 999,999');
+  assert.match(saved.salary, /^PHP /);
+  assert.equal(saved.immediateSupervisor, 'Provincial Director');
+  assert.equal(saved.dateHired, undefined);
+  assert.equal(saved.vacationLeaveCredits, undefined);
 });
 
 test('an email that already has an account cannot sign up again', async t => {

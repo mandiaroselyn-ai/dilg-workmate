@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import request from 'supertest';
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'request-review-test-secret';
@@ -12,6 +12,9 @@ const { Leave } = await import('./models/leaveModel.js');
 const { Holiday } = await import('./models/holidayModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
+const { AppSetting } = await import('./models/appSettingModel.js');
+// No start month for leave credits unless a test sets one.
+mock.method(AppSetting, 'get', async () => '');
 
 const app = createApiApp();
 
@@ -73,6 +76,22 @@ test('HR 1 certifies a leave\'s credits and sends it to HR 2, who must do so bef
   assert.deepEqual(creditCertification.certifiedBy, { name: 'Ma. Joane O. Salcedo', position: 'ADAS II' });
   // HR hears that it is ready for pre-approval.
   assert.ok(Announcement.createNotification.mock.calls.some(call => call.arguments[0].title === 'Leave for Pre-approval'));
+});
+
+test('once WorkMate counts leave credits from a start month, HR 1 certifies only after the starting balance', async t => {
+  t.mock.method(AppSetting, 'get', async () => '2026-11');
+  const longTime = { ...juan, name: 'Juan Dela Cruz', appointmentStatus: 'Permanent', dateHired: '2015-06-01' };
+  const before = signInAsHr(t, { employee: longTime });
+  const refused = await before.patch('REQ-PENDING', { status: 'For Pre-approval' });
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.error, /Enter Juan Dela Cruz's starting balance from the leave card first/);
+  assert.equal(before.saves.mock.callCount(), 0);
+  t.mock.restoreAll();
+
+  t.mock.method(AppSetting, 'get', async () => '2026-11');
+  const after = signInAsHr(t, { employee: { ...longTime, startingLeaveBalance: { start: '2026-11', asOf: '2026-10-31' } } });
+  const certified = await after.patch('REQ-PENDING', { status: 'For Pre-approval' });
+  assert.equal(certified.status, 200, JSON.stringify(certified.body));
 });
 
 test('HR 2 pre-approves a certified leave or a Travel Order with a recommendation, then the supervisor decides', async t => {

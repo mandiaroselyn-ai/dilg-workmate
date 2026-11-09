@@ -298,6 +298,7 @@ const googleSignUpDetails = {
   region: 'DILG Region IV-B - MIMAROPA',
   phoneNumber: '0917 555 1234',
   address: '12 Mabini St., Santol, Boac, Marinduque',
+  appointmentStatus: 'Permanent',
   password: 'a-long-password-42'
 };
 

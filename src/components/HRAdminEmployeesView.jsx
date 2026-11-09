@@ -645,6 +645,7 @@ This cannot be undone.`
             <h2 className="text-xl font-black text-slate-900">{editingId ? 'Update Employee Account' : 'Create Employee Account'}</h2>
             <p className="mt-1 text-xs font-semibold text-slate-500">Employee account details are saved to the shared database and used across HR and employee views. Fields marked <span className="text-rose-600">*</span> are required.</p>
             <p className="mt-1 text-xs font-semibold text-slate-500">The employee fills in their own birthday, gender, civil status, home address, emergency contact, and government ID numbers on their Profile. You can see them on the employee's profile.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">A person who signs up also fills in their position, office, and employment details, and keeps them up to date on their Profile, so to approve a sign-up you only add the Date Hired. Check what they entered; you can still correct it here. Only HR changes the Status of Appointment once the account is approved.</p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <label className="text-[11px] font-black text-slate-600">First Name<RequiredMark />
