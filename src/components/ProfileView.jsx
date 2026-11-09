@@ -21,8 +21,8 @@ import BiometricEnrollmentView from './BiometricEnrollmentView';
 import ProfileDetails, { employmentBadge } from './ProfileDetails';
 import { encodeProfilePhoto, resizeProfilePhoto } from '../utils/profilePhoto.js';
 import { GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, profileFieldValues } from '../../shared/profileFields';
-import { getManilaDateString } from '../../shared/localDate';
 import { todayStatus } from '../utils/todayStatus';
+import useManilaToday from '../utils/useManilaToday';
 
 // What the employee can change on their profile: also their position, office, and work details.
 // HR keeps the region, date hired, employment status, and status of appointment.
@@ -45,8 +45,9 @@ export default function ProfileView({ user, attendanceHistory = [], requests = [
   const { name } = form;
   const { role, office, employeeId } = user;
   const badge = employmentBadge(user);
-  // Today's status beside the name, such as "On Leave · until Nov 10".
-  const status = todayStatus({ requests, attendanceHistory, today: getManilaDateString(), holidays });
+  // Today's status beside the name, such as "On Leave · until Nov 10", following the date past midnight.
+  const today = useManilaToday();
+  const status = todayStatus({ requests, attendanceHistory, today, holidays });
   const statusIndicator = status ? { label: status.text, pillClass: STATUS_PILL_CLASS[status.kind] } : null;
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [editingInfo, setEditingInfo] = useState(false);

@@ -12,8 +12,8 @@ import NotificationCenter from './NotificationCenter';
 import SmsCenter from './SmsCenter';
 import { unreadTextsCount, unseenSmsCount } from '../utils/smsLog';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
-import { getManilaDateString } from '../../shared/localDate';
 import { todayStatus } from '../utils/todayStatus';
+import useManilaToday from '../utils/useManilaToday';
 
 // When HR last opened the SMS list, remembered per account in this browser. The first
 // visit starts from now, so the badge counts only what arrives afterwards.
@@ -179,9 +179,11 @@ export default function Header({
     onViewChange(view);
   };
 
-  // The employee's own status today, as a dot on their picture, with its words on hover.
+  // The employee's own status today, as a dot on their picture, with its words on hover. The date
+  // is followed past midnight, so a leave's dot goes the day after it ends even if the app stays open.
+  const today = useManilaToday();
   const avatarStatus = activeRole === 'employee'
-    ? todayStatus({ requests, attendanceHistory, today: getManilaDateString(), holidays })
+    ? todayStatus({ requests, attendanceHistory, today, holidays })
     : null;
   const avatarDotClass = { 'on-leave': 'bg-orange-400', 'on-travel': 'bg-sky-400', late: 'bg-red-400' }[avatarStatus?.kind] || null;
 

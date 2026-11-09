@@ -11,6 +11,11 @@ const MANILA_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
 // Returns the Manila calendar date as YYYY-MM-DD.
 export const getManilaDateString = (date = new Date()) => MANILA_DATE_FORMAT.format(date);
 
+// Milliseconds from `now` (a time in ms) until the next midnight in Manila, which is UTC+8 all
+// year (the Philippines has no daylight saving time).
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const msUntilManilaMidnight = (now = Date.now()) => DAY_MS - ((now + 8 * 60 * 60 * 1000) % DAY_MS);
+
 // True for a YYYY-MM-DD date that is on the calendar (not 2026-02-30).
 export const isRealDate = value => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value)
   && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
