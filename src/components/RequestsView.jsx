@@ -35,6 +35,7 @@ import TravelOrderPreview from './TravelOrderPreview';
 import { Plane, MapPin } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { travelDayCount, travelDurationLabel } from '../utils/travelDuration';
+import { readTravelTime, travelTimeProblem, travelTimeText } from '../utils/travelTime';
 import AttachmentList from './AttachmentList';
 import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft, yearlyLeaveProblem } from '../../shared/yearlyLeave';
 import { companionNames, travelOrderCovers } from '../../shared/travelStatus';
@@ -103,6 +104,8 @@ export default function RequestsView({
   const [detailsSpecify, setDetailsSpecify] = useState('');
   const [travelActivity, setTravelActivity] = useState('');
   const [travelTime, setTravelTime] = useState('');
+  // The activity time's two clocks ("HH:MM"), read from the saved text.
+  const travelClock = readTravelTime(travelTime);
   const [travelVenue, setTravelVenue] = useState('');
 
   // Draft tracker ID & Editing state
@@ -253,12 +256,16 @@ export default function RequestsView({
     if (activeTab2 === 'Travel') {
       const missingTravelField = [
         [travelActivity, 'Subject'],
-        [travelTime, 'Activity Time'],
         [travelVenue, 'Venue / Office']
       ].find(([value]) => !value.trim());
 
       if (missingTravelField) {
         setFormErrorMessage(`Please provide the ${missingTravelField[1]} for the Provincial Order.`);
+        return;
+      }
+      const timeProblem = travelTimeProblem(travelTime);
+      if (timeProblem) {
+        setFormErrorMessage(timeProblem);
         return;
       }
     }
@@ -768,15 +775,30 @@ Reason (optional):`, '');
 
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5 text-left">
-                      <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Activity Time</label>
-                      <input
-                        required
-                        type="text"
-                        placeholder="e.g., 8:00 a.m. to 5:00 p.m."
-                        value={travelTime}
-                        onChange={(e) => setTravelTime(e.target.value)}
-                        className="w-full text-xs font-semibold rounded-lg border border-slate-200 pl-3 p-3.5 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af]"
-                      />
+                      <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Activity Time</span>
+                      {/* Two clocks, so the time is picked, not typed. It is saved as "8:00 AM - 5:00 PM"
+                          and the Travel Order prints it as "8:00 a.m. to 5:00 p.m.". */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block text-[10px] font-bold text-slate-500">From
+                          <input
+                            required
+                            type="time"
+                            value={travelClock.from}
+                            onChange={(e) => setTravelTime(travelTimeText(e.target.value, travelClock.to))}
+                            className="mt-1 w-full text-xs font-semibold rounded-lg border border-slate-200 p-3 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af]"
+                          />
+                        </label>
+                        <label className="block text-[10px] font-bold text-slate-500">To
+                          <input
+                            required
+                            type="time"
+                            min={travelClock.from || undefined}
+                            value={travelClock.to}
+                            onChange={(e) => setTravelTime(travelTimeText(travelClock.from, e.target.value))}
+                            className="mt-1 w-full text-xs font-semibold rounded-lg border border-slate-200 p-3 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af]"
+                          />
+                        </label>
+                      </div>
                     </div>
                     <div className="space-y-1.5 text-left">
                       <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Venue / Office</label>
