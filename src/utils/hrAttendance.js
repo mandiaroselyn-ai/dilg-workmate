@@ -1,6 +1,7 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
 import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
 import { travelOrderCovers } from '../../shared/travelStatus.js';
+import { holidaysFor } from '../../shared/phHolidays.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -84,7 +85,7 @@ const isRejectedOffline = record => record?.offlineTimeIn?.decision === 'rejecte
 export const hasOnLeaveStatus = employee => (employee?.employmentStatus || '').toString().trim().toUpperCase() === 'ON LEAVE';
 
 // An employee's attendance on `date`: Present, Late, On Leave, On Travel, Rest Day (a Saturday,
-// Sunday, or one of HR's holidays with none of those), or Absent. On Leave is an approved leave
+// Sunday, or a holiday of the employee's with none of those; a town's holiday is only its offices'), or Absent. On Leave is an approved leave
 // covering `date`, or, from `today` on, an Employment Status of ON LEAVE: that status says how
 // the employee is now, not since when, so earlier days go by the leave filed for them.
 export const employeeDayStatus = (employee, { records = [], requests = [], date, holidays = [], today = '' }) => {
@@ -99,7 +100,7 @@ export const employeeDayStatus = (employee, { records = [], requests = [], date,
   if (approved.some(request => request.type === 'Leave Request')) return { status: 'On Leave', record };
   if (approved.some(request => request.type === 'Travel Order')) return { status: 'On Travel', record };
   if (today && date >= today && hasOnLeaveStatus(employee)) return { status: 'On Leave', record };
-  return { status: isRestDate(date, holidays) ? 'Rest Day' : 'Absent', record };
+  return { status: isRestDate(date, holidaysFor(holidays, employee)) ? 'Rest Day' : 'Absent', record };
 };
 
 // An employee's attendance this month up to `today` (YYYY-MM-DD), one count per day:
@@ -117,7 +118,7 @@ export const monthAttendanceSummary = (employee, { records = [], requests = [], 
     if (status === 'Absent') {
       if (date !== today) counts.absent += 1;
     } else if (status === 'On Leave' || status === 'On Travel') {
-      if (!isRestDate(date, holidays)) counts.leave += 1;
+      if (!isRestDate(date, holidaysFor(holidays, employee))) counts.leave += 1;
     } else if (status === 'Late') {
       counts.late += 1;
     } else {

@@ -180,7 +180,7 @@ test('everyone sees the holidays; only HR adds or removes them', async t => {
 
   const added = await as(hrAdmin).post({ holidays: [{ date: '2026-12-24', name: 'Christmas Eve' }] });
   assert.equal(added.status, 200, JSON.stringify(added.body));
-  assert.deepEqual(saves.mock.calls[0].arguments[0], [{ date: '2026-12-24', name: 'Christmas Eve' }]);
+  assert.deepEqual(saves.mock.calls[0].arguments[0], [{ date: '2026-12-24', name: 'Christmas Eve', place: '' }]);
   assert.equal((await as(hrAdmin).post({ holidays: [{ date: '2026-13-01', name: 'Bad' }] })).status, 400);
   assert.equal((await as(hrAdmin).remove('2026-12-25')).status, 200);
   assert.equal(removes.mock.calls[0].arguments[0], '2026-12-25');

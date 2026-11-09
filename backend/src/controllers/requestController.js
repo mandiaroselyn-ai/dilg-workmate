@@ -15,6 +15,7 @@ import { Holiday } from '../models/holidayModel.js';
 import { FOR_PRE_APPROVAL, leaveCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
 import { YEARLY_LEAVES, yearlyLeaveProblem } from '../../../shared/yearlyLeave.js';
 import { needsStartingBalance } from '../../../shared/leaveStart.js';
+import { holidaysFor } from '../../../shared/phHolidays.js';
 import { leaveCreditsStart } from '../models/appSettingModel.js';
 
 const reviewerName = req => req.user?.name || (req.user?.accessLevel === 'supervisor' ? 'your supervisor' : 'HR');
@@ -197,17 +198,28 @@ const noticeCompanionsOfApproval = async request => {
   }
 };
 
+// The holidays that are days off for the employee who filed `request`: the national and province-wide
+// ones, and their own town's (see holidaysFor). The employee is looked up only when a town holiday exists.
+const holidaysOfRequest = async request => {
+  const holidays = await Holiday.findAll();
+  if (!holidays.some(holiday => holiday.place)) return holidays;
+  const employee = (request?.employeeId && await User.findByEmployeeId(request.employeeId))
+    || (request?.employeeEmail && await User.findByEmail(request.employeeEmail))
+    || null;
+  return holidaysFor(holidays, employee);
+};
+
 // Why a special privilege or wellness leave being submitted asks for more than its year has left
 // (or, for wellness leave, more than 3 days at a time), or null (see shared/yearlyLeave.js).
 const yearlyLimitProblem = async request => {
   if (request?.type !== 'Leave Request' || request.status === 'Draft' || !YEARLY_LEAVES[request.leaveType]) return null;
   const absences = await Leave.findAbsencesOfEmployee({ employeeId: request.employeeId, email: request.employeeEmail });
-  return yearlyLeaveProblem(request, absences, await Holiday.findAll());
+  return yearlyLeaveProblem(request, absences, await holidaysOfRequest(request));
 };
 
 // The working days of a leave, counted by the server from its dates (Monday to Friday, without
-// HR's holidays), so the number the form sent is never trusted.
-const serverLeaveDays = async request => countLeaveDays(request.startDate, request.endDate, await Holiday.findAll());
+// the employee's holidays), so the number the form sent is never trusted.
+const serverLeaveDays = async request => countLeaveDays(request.startDate, request.endDate, await holidaysOfRequest(request));
 
 const daysText = days => `${Number(days.toFixed(3))} day${days === 1 ? '' : 's'}`;
 // How an approved leave was charged, such as "2 days sick leave, 1 day vacation leave".
@@ -328,7 +340,7 @@ export const updateRequestStatus = async (req, res) => {
     // counted from its dates. The flag on the request makes sure two approvals at the same
     // moment cannot charge twice.
     const newlyApprovedLeave = updated?.type === 'Leave Request' && updated.status === 'Approved' && existing.status !== 'Approved';
-    const deduction = newlyApprovedLeave ? leaveCreditDeduction(existing, updated, await Holiday.findAll()) : null;
+    const deduction = newlyApprovedLeave ? leaveCreditDeduction(existing, updated, await holidaysOfRequest(updated)) : null;
     if (deduction && await Leave.markCreditsDeducted(id)) {
       await chargeApprovedLeave(updated, deduction);
     }

@@ -48,6 +48,14 @@ test('today\'s status counts Time Ins, late arrivals, leave, and travel', () => 
   assert.equal(employeeDayStatus(roselyn, { records, requests: [{ ...requests[0], status: 'Pending' }], date: today }).status, 'Absent');
 });
 
+test('a town holiday is a rest day only for the employees working in that town', () => {
+  const holidays = [{ date: '2026-08-20', name: 'Gasan Founding Anniversary', place: 'Gasan' }];
+  const inGasan = { ...rimhelyn, office: 'Office of the MLGOO - Gasan' };
+  const inBoac = { ...roselyn, office: 'Office of the MLGOO - Boac' };
+  assert.equal(employeeDayStatus(inGasan, { date: '2026-08-20', holidays, today: '2026-08-21' }).status, 'Rest Day');
+  assert.equal(employeeDayStatus(inBoac, { date: '2026-08-20', holidays, today: '2026-08-21' }).status, 'Absent');
+});
+
 test('an employee HR set to ON LEAVE is on leave from today on, not absent', () => {
   const onLeave = { ...roselyn, employmentStatus: 'ON LEAVE' };
   assert.equal(employeeDayStatus(onLeave, { records: [], requests: [], date: today, today }).status, 'On Leave');

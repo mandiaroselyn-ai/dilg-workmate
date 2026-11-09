@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { countLeaveDays, fixedHolidays, leaveCharge, leaveCreditField, monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from './leaveCalc.js';
+import { countLeaveDays, leaveCharge, leaveCreditField, monthlyEarnedCredits, monthServiceDays, monthWithoutPayDays } from './leaveCalc.js';
 
 test('a leave counts Monday to Friday, without holidays', () => {
   // Mon Nov 2 to Fri Nov 6, 2026.
@@ -81,9 +81,3 @@ test('vacation leave comes out of vacation leave only, and the rest is without p
   assert.equal(leaveCreditField('Maternity Leave'), null);
 });
 
-test('the fixed-date holidays of a year include National Heroes Day on the last Monday of August', () => {
-  const holidays = fixedHolidays(2026);
-  assert.ok(holidays.some(holiday => holiday.date === '2026-08-31' && holiday.name === 'National Heroes Day'));
-  assert.equal(fixedHolidays(2027).find(holiday => holiday.name === 'National Heroes Day').date, '2027-08-30');
-  assert.ok(holidays.some(holiday => holiday.date === '2026-12-25'));
-});

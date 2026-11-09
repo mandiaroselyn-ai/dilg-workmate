@@ -18,8 +18,11 @@ import {
   Megaphone
 } from 'lucide-react';
 
-export default function CalendarView({ events, onAddEvent }) {
+// `holidays`: the national holidays WorkMate adds and HR's local ones, each { date, name, kind },
+// shown on their days for everyone.
+export default function CalendarView({ events, holidays = [], onAddEvent }) {
   const evtList = events && events.length ? events : [];
+  const holidayOn = date => holidays.find(holiday => holiday.date === date) || null;
   // Opens on today's month with today selected (Philippine time).
   const today = getManilaDateString(); // YYYY-MM-DD
   const [currentYear, setCurrentYear] = useState(() => Number(today.slice(0, 4)));
@@ -119,6 +122,9 @@ export default function CalendarView({ events, onAddEvent }) {
 
   // Get events on selected day
   const selectedDayEvents = evtList.filter(evt => evt.date === selectedDayStr);
+  const selectedHoliday = holidayOn(selectedDayStr);
+  const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-`;
+  const monthHolidays = holidays.filter(holiday => holiday.date.startsWith(monthPrefix));
 
   // Helper to find if a day has events
   const getEventsForDay = (day) => {
@@ -190,21 +196,27 @@ export default function CalendarView({ events, onAddEvent }) {
                 const hasEvents = dayEvents.length > 0;
 
                 const isToday = dateStr === today;
+                const holiday = holidayOn(dateStr);
 
                 return (
                   <button
                     key={`day-${day}`}
                     id={`cal-day-cell-${day}`}
                     onClick={() => handleDaySelect(day)}
+                    title={holiday ? holiday.name : undefined}
+                    aria-label={holiday ? `${day}, ${holiday.name}` : undefined}
                     className={`aspect-square rounded-xl p-1.5 relative flex flex-col justify-between hover:bg-slate-100 transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-[#1e40af] text-white hover:bg-blue-800 shadow-sm font-extrabold'
                         : isToday
                         ? 'bg-slate-100 text-[#1e40af] border border-blue-300 font-extrabold'
+                        : holiday
+                        ? 'bg-rose-50 text-rose-700 font-extrabold hover:bg-rose-100'
                         : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <span>{day}</span>
+                    {holiday && <span aria-hidden="true" className={`mx-auto h-1 w-4 rounded-full ${isSelected ? 'bg-white' : 'bg-rose-500'}`}></span>}
                     
                     {/* Events Mini Dots indicators */}
                     {hasEvents && (
@@ -226,8 +238,25 @@ export default function CalendarView({ events, onAddEvent }) {
             </div>
           </div>
 
+          {/* The month's holidays */}
+          {monthHolidays.length > 0 && (
+            <div className="space-y-1.5 rounded-xl border border-rose-100 bg-rose-50/60 p-3">
+              <p className="text-[10px] font-extrabold uppercase tracking-widest text-rose-700">Holidays in {monthNames[currentMonth]}</p>
+              {monthHolidays.map(holiday => (
+                <p key={holiday.date} className="text-xs font-semibold text-slate-700">
+                  <b className="text-rose-700">{monthNames[currentMonth].slice(0, 3)} {Number(holiday.date.slice(8, 10))}</b> · {holiday.name}
+                  {holiday.kind && <span className="text-slate-500"> · {holiday.kind}</span>}
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Quick instructions legend */}
           <div className="pt-4 border-t border-slate-150 flex flex-wrap gap-5 text-[10px] text-slate-500 font-bold justify-center">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              <span>Holiday</span>
+            </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
               <span>Administrative Meetings</span>
@@ -254,7 +283,13 @@ export default function CalendarView({ events, onAddEvent }) {
             </div>
 
             <div className="space-y-4 max-h-56 overflow-y-auto pr-1">
-              {selectedDayEvents.length === 0 ? (
+              {selectedHoliday && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                  <h4 className="text-xs font-extrabold leading-tight text-rose-800">{selectedHoliday.name}</h4>
+                  <p className="mt-1 text-[11px] font-semibold text-rose-700">{selectedHoliday.kind || 'Holiday'}. {selectedHoliday.place ? `No work in the offices in ${selectedHoliday.place}, and not counted as a leave day there.` : 'No work, and not counted as a leave day.'}</p>
+                </div>
+              )}
+              {selectedDayEvents.length === 0 && selectedHoliday ? null : selectedDayEvents.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 font-bold text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50">
                   No official agendas scheduled for this calendar date.
                 </div>

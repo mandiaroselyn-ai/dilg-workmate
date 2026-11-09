@@ -12,6 +12,7 @@ import MobileBottomNav from './components/MobileBottomNav';
 import NotificationCenter from './components/NotificationCenter';
 import SmsCenter from './components/SmsCenter';
 import { travelOrderCovers } from '../shared/travelStatus';
+import { holidaysFor } from '../shared/phHolidays';
 import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueuedAttendance, removeQueuedTimeOut, syncQueuedAttendance } from './utils/offlineAttendance';
 import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
@@ -85,15 +86,11 @@ export default function App() {
   const loadedAttendanceMonthsRef = useRef(new Set());
   const [requests, setRequests] = useState([]);
   const [events, setEvents] = useState([]);
-  // HR's holidays, which are not counted as leave days and have no late or undertime.
+  // The holidays (national, Marinduque's, and HR's), which are not counted as leave days and have
+  // no late or undertime. A town's holiday is a day off only for the offices in that town.
   const [holidays, setHolidays] = useState([]);
   // The office orders for overtime: all of them for HR, an employee's own for an employee.
   const [overtimeOrders, setOvertimeOrders] = useState([]);
-  // Attendance as the DTR reads it, which the pages show. What is saved stays as it came.
-  const dtrAttendance = useMemo(
-    () => attendanceHistory.map(record => markDtrDay(record, { holidays, overtimeOrders, requests })),
-    [attendanceHistory, holidays, overtimeOrders, requests]
-  );
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [smsAlerts, setSmsAlerts] = useState([]);
@@ -102,6 +99,18 @@ export default function App() {
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminSmsAlerts, setAdminSmsAlerts] = useState([]);
   const [employees, setEmployees] = useState([]);
+  // An employee's own holidays: the national and province-wide ones, and their town's.
+  const myHolidays = useMemo(() => (activeRole === 'employee' ? holidaysFor(holidays, user) : holidays), [activeRole, holidays, user]);
+  // Attendance as the DTR reads it, which the pages show. What is saved stays as it came. A record
+  // on a town's holiday is a holiday only for an employee working in that town.
+  const dtrAttendance = useMemo(() => {
+    const townHolidayDates = new Set(holidays.filter(holiday => holiday.place).map(holiday => holiday.date));
+    return attendanceHistory.map(record => {
+      if (!townHolidayDates.has(record.date)) return markDtrDay(record, { holidays, overtimeOrders, requests });
+      const person = activeRole === 'employee' ? user : employees.find(employee => matchesAttendanceEmployee(record, employee)) || record;
+      return markDtrDay(record, { holidays: holidaysFor(holidays, person), overtimeOrders, requests });
+    });
+  }, [attendanceHistory, holidays, overtimeOrders, requests, activeRole, user, employees]);
   // Supervisors get only how many employee accounts can log in, not the employee list.
   const [activeEmployeeCount, setActiveEmployeeCount] = useState(null);
   const [acknowledgedAnnouncements, setAcknowledgedAnnouncements] = useState([]);
@@ -1592,7 +1601,7 @@ export default function App() {
           employees={employees}
           requests={requests}
           attendanceHistory={dtrAttendance}
-          holidays={holidays}
+          holidays={myHolidays}
           smsConfigured={smsConfigured}
           onMarkNotificationRead={handleMarkNotificationRead}
           onMarkNotificationUnread={id => handleMarkNotificationRead(id, false)}
@@ -1615,7 +1624,7 @@ export default function App() {
               user={user}
               attendanceHistory={visibleEmployeeRecords}
               requests={visibleEmployeeRequests}
-              holidays={holidays}
+              holidays={myHolidays}
               announcements={announcements}
               events={events}
               onViewChange={handleViewChange}
@@ -1628,7 +1637,7 @@ export default function App() {
               user={user}
               attendanceHistory={visibleEmployeeRecords}
               requests={visibleEmployeeRequests}
-              holidays={holidays}
+              holidays={myHolidays}
               onTimeIn={handleTimeIn}
               onTimeOut={handleTimeOut}
               onLunch={handleLunch}
@@ -1643,7 +1652,7 @@ export default function App() {
               requests={visibleEmployeeRequests}
               onSubmitRequest={handleSubmitRequest}
               onUpdateOwnRequest={handleUpdateOwnRequest}
-              holidays={holidays}
+              holidays={myHolidays}
             />
           )}
 
@@ -1734,6 +1743,7 @@ export default function App() {
           {currentView === 'calendar' && (
             <CalendarView
               events={events}
+              holidays={myHolidays}
               onAddEvent={activeRole === 'hr_admin' ? handleAddEvent : undefined}
             />
           )}
@@ -1754,7 +1764,7 @@ export default function App() {
               user={user}
               attendanceHistory={dtrAttendance}
               requests={requests}
-              holidays={holidays}
+              holidays={myHolidays}
               onUpdateUser={handleUpdateUser}
               onSubmitEnrollment={handleSubmitBiometricEnrollment}
               onRefreshEnrollmentStatus={handleRefreshBiometricStatus}

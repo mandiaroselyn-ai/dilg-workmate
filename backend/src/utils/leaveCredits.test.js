@@ -28,7 +28,10 @@ test('the days charged come from the dates, not from what the request says', () 
 });
 
 test('validates HR holidays', () => {
-  assert.deepEqual(normalizeHolidays({ holidays: [{ date: '2026-12-25', name: ' Christmas Day ' }] }), { holidays: [{ date: '2026-12-25', name: 'Christmas Day' }] });
+  assert.deepEqual(normalizeHolidays({ holidays: [{ date: '2026-12-25', name: ' Christmas Day ' }] }), { holidays: [{ date: '2026-12-25', name: 'Christmas Day', place: '' }] });
+  // A town's holiday is for one of Marinduque's towns.
+  assert.deepEqual(normalizeHolidays({ holidays: [{ date: '2026-08-20', name: 'Gasan Founding Anniversary', place: 'Gasan' }] }).holidays[0].place, 'Gasan');
+  assert.match(normalizeHolidays({ holidays: [{ date: '2026-08-20', name: 'Town day', place: 'Lucena' }] }).error, /one of Marinduque's towns/);
   assert.match(normalizeHolidays({ holidays: [{ date: '2026-02-30', name: 'Not a day' }] }).error, /real date/);
   assert.match(normalizeHolidays({ holidays: [{ date: '2026-12-25', name: '' }] }).error, /name/);
   assert.match(normalizeHolidays({ holidays: [] }).error, /at least one/);

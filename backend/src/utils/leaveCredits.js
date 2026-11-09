@@ -1,4 +1,5 @@
 import { countLeaveDays, leaveCreditField } from '../../../shared/leaveCalc.js';
+import { HOLIDAY_TOWNS } from '../../../shared/phHolidays.js';
 
 export { leaveCreditField };
 
@@ -20,7 +21,8 @@ export const leaveCreditDeduction = (previous, updated, holidays = []) => {
   return { field, days };
 };
 
-// Validates HR's holidays: { holidays: [{ date: 'YYYY-MM-DD', name }] }.
+// Validates HR's holidays: { holidays: [{ date: 'YYYY-MM-DD', name, place }] }, where `place` is ''
+// for the whole province or one of Marinduque's towns, for a day off in that town's offices only.
 export const normalizeHolidays = body => {
   const list = Array.isArray(body?.holidays) ? body.holidays : null;
   if (!list?.length) return { error: 'Add at least one holiday.' };
@@ -29,11 +31,13 @@ export const normalizeHolidays = body => {
   for (const item of list) {
     const date = typeof item?.date === 'string' ? item.date.trim() : '';
     const name = typeof item?.name === 'string' ? item.name.trim() : '';
+    const place = typeof item?.place === 'string' ? item.place.trim() : '';
     const valid = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)
       && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
     if (!valid) return { error: 'Each holiday needs a real date, like 2026-12-25.' };
     if (!name || name.length > 100) return { error: 'Each holiday needs a name of 100 characters or fewer.' };
-    holidays.push({ date, name });
+    if (place && !HOLIDAY_TOWNS.includes(place)) return { error: "Choose the whole province or one of Marinduque's towns for the holiday." };
+    holidays.push({ date, name, place });
   }
   return { holidays };
 };

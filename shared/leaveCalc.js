@@ -92,29 +92,3 @@ export const leaveCharge = ({ field, days, vacation, sick }) => {
     sickLeaveCredits: round3(sickLeft)
   };
 };
-
-// The holidays with fixed dates in a year, for HR to add at once: the regular and special
-// non-working days whose dates do not move (National Heroes Day is the last Monday of August).
-// Holy Week, the Eid holidays, Chinese New Year, and local holidays change each year and are
-// added by HR from the year's proclamation.
-export const fixedHolidays = year => {
-  const lastMondayOfAugust = (() => {
-    const date = new Date(Date.UTC(year, 7, 31));
-    date.setUTCDate(31 - ((date.getUTCDay() + 6) % 7));
-    return date.toISOString().slice(0, 10);
-  })();
-  return [
-    [`${year}-01-01`, "New Year's Day"],
-    [`${year}-04-09`, 'Araw ng Kagitingan'],
-    [`${year}-05-01`, 'Labor Day'],
-    [`${year}-06-12`, 'Independence Day'],
-    [`${year}-08-21`, 'Ninoy Aquino Day'],
-    [lastMondayOfAugust, 'National Heroes Day'],
-    [`${year}-11-01`, "All Saints' Day"],
-    [`${year}-11-30`, 'Bonifacio Day'],
-    [`${year}-12-08`, 'Feast of the Immaculate Conception of Mary'],
-    [`${year}-12-25`, 'Christmas Day'],
-    [`${year}-12-30`, 'Rizal Day'],
-    [`${year}-12-31`, 'Last Day of the Year']
-  ].map(([date, name]) => ({ date, name }));
-};
