@@ -69,6 +69,11 @@ const faqs = [
   },
   {
     topic: 'Leave and travel',
+    question: 'How many days of leave do I earn, and which ones carry over?',
+    answer: 'You earn 1.25 days of Vacation Leave and 1.25 days of Sick Leave each month, counted from your date hired. These add up from year to year. Special Privilege Leave is 3 days a year and Wellness Leave is 5 days a year (at most 3 days at a time). These two do not carry over: days not used by December 31 are forfeited, and each January starts again. They are not taken from your Vacation or Sick Leave.'
+  },
+  {
+    topic: 'Leave and travel',
     question: 'Can I file a leave or travel order for a day that has passed?',
     answer: 'Not a Travel Order, or a Vacation, Mandatory/Forced, Study, or Adoption Leave: file these before they start, today at the latest. Sick Leave is filed when you return to work, so it can cover days that have passed. So can the leave the CSC allows after an emergency: Special Privilege, Solo Parent, Maternity, Paternity, VAWC, Rehabilitation, Special Leave Benefits for Women, and Special Emergency Leave. A request HR returns to you keeps the day you first filed it.'
   },

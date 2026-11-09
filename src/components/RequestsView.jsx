@@ -36,6 +36,7 @@ import { Plane, MapPin } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { travelDayCount, travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
+import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft, yearlyLeaveProblem } from '../../shared/yearlyLeave';
 
 // Attachments travel inside the request, which the server accepts up to about 4 MB, so one
 // file and all of them together are kept under these sizes.
@@ -215,6 +216,14 @@ export default function RequestsView({
       }, requests);
       if (other) {
         setFormErrorMessage(overlapMessage(other));
+        return;
+      }
+      // Special privilege and wellness leave have so many days a year (the server checks too).
+      const yearly = activeTab2 === 'Leave'
+        ? yearlyLeaveProblem({ id: editingDraftId || undefined, type: 'Leave Request', leaveType, startDate, endDate }, requests, holidays)
+        : null;
+      if (yearly) {
+        setFormErrorMessage(yearly);
         return;
       }
     }
@@ -405,6 +414,12 @@ Reason (optional):`, '');
     const remaining = Math.max(0, Number(user?.[credit.field] ?? 0));
     return { ...credit, used, remaining, max: Math.max(15, remaining) };
   });
+  // Special privilege and wellness leave: the days left this year, which do not carry over.
+  const thisYear = Number(getManilaDateString().slice(0, 4));
+  const yearlyCredits = [
+    { label: 'Special Privilege Leave', type: 'Special Privilege Leave', color: 'text-amber-700', bar: 'bg-amber-500' },
+    { label: 'Wellness Leave', type: WELLNESS_LEAVE, color: 'text-violet-700', bar: 'bg-violet-500' }
+  ].map(credit => ({ ...credit, remaining: yearlyLeaveLeft(myRequests, credit.type, thisYear, holidays), max: YEARLY_LEAVES[credit.type].days, yearly: true }));
 
   return (
     <div className="p-4 sm:p-8 pb-24 sm:pb-8 space-y-8 overflow-y-auto flex-1 id-requests-view font-sans">
@@ -453,13 +468,13 @@ Reason (optional):`, '');
           <FileCheck2 className="h-5 w-5 text-blue-600" />
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {leaveCredits.map(credit => (
+          {[...leaveCredits, ...yearlyCredits].map(credit => (
             <div key={credit.label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
               <div className="flex items-end justify-between gap-2">
                 <span className="text-[10px] font-bold text-slate-500">{credit.label}</span>
                 <strong className={`text-lg font-black ${credit.color}`}>{credit.remaining}</strong>
               </div>
-              <p className="mt-1 text-[9px] font-semibold text-slate-400">of {credit.max} days remaining</p>
+              <p className="mt-1 text-[9px] font-semibold text-slate-400">{credit.yearly ? `of ${credit.max} days left in ${thisYear} (not carried over)` : `of ${credit.max} days remaining`}</p>
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
                 <div className={`h-full rounded-full ${credit.bar}`} style={{ width: `${(credit.remaining / credit.max) * 100}%` }} />
               </div>
@@ -669,6 +684,7 @@ Reason (optional):`, '');
                     <option value="Sick Leave">Sick Leave (Sec. 43, Rule XVI)</option>
                     <option value="Mandatory / Forced Leave">Mandatory/Forced Leave (Sec. 25, Rule XVI)</option>
                     <option value="Special Privilege Leave">Special Privilege Leave (Sec. 21, Rule XVI)</option>
+                    <option value={WELLNESS_LEAVE}>Wellness Leave (CSC Res. No. 2501292)</option>
                     <option value="Maternity Leave">Maternity Leave (R.A. 11210)</option>
                     <option value="Paternity Leave">Paternity Leave (R.A. 8187)</option>
                     <option value="Solo Parent Leave">Solo Parent Leave (R.A. 8972)</option>
@@ -680,6 +696,12 @@ Reason (optional):`, '');
                     <option value="Adoption Leave">Adoption Leave (R.A. 8552)</option>
                     <option value="Others">Others (e.g., CTO)</option>
                   </select>
+                  {/* Special privilege and wellness leave: so many days a year, not carried over. */}
+                  {YEARLY_LEAVES[leaveType] && (
+                    <p className="text-[10px] font-semibold text-blue-700">
+                      {yearlyLeaveLeft(requests, leaveType, Number((startDate || getManilaDateString()).slice(0, 4)), holidays)} of {YEARLY_LEAVES[leaveType].days} days left in {(startDate || getManilaDateString()).slice(0, 4)}. Unused days do not carry over to next year{YEARLY_LEAVES[leaveType].consecutive ? `; at most ${YEARLY_LEAVES[leaveType].consecutive} days at a time` : ''}.
+                    </p>
+                  )}
                 </div>
               )}
 

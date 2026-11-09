@@ -13,6 +13,7 @@ import { getManilaDateString } from '../../../shared/localDate.js';
 import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
 import { FOR_PRE_APPROVAL, leaveCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
+import { YEARLY_LEAVES, yearlyLeaveProblem } from '../../../shared/yearlyLeave.js';
 
 const reviewerName = req => req.user?.name || (req.user?.accessLevel === 'supervisor' ? 'your supervisor' : 'HR');
 const reviewRemarks = update => update?.supervisorRemarks || update?.remarks || '';
@@ -140,6 +141,14 @@ const overlapProblem = async request => {
   return other ? overlapMessage(other) : null;
 };
 
+// Why a special privilege or wellness leave being submitted asks for more than its year has left
+// (or, for wellness leave, more than 3 days at a time), or null (see shared/yearlyLeave.js).
+const yearlyLimitProblem = async request => {
+  if (request?.type !== 'Leave Request' || request.status === 'Draft' || !YEARLY_LEAVES[request.leaveType]) return null;
+  const absences = await Leave.findAbsencesOfEmployee({ employeeId: request.employeeId, email: request.employeeEmail });
+  return yearlyLeaveProblem(request, absences, await Holiday.findAll());
+};
+
 // The working days of a leave, counted by the server from its dates (Monday to Friday, without
 // HR's holidays), so the number the form sent is never trusted.
 const serverLeaveDays = async request => countLeaveDays(request.startDate, request.endDate, await Holiday.findAll());
@@ -186,6 +195,8 @@ export const createRequest = async (req, res) => {
     if (late) return res.status(400).json({ success: false, error: late });
     const overlap = await overlapProblem(requestBody);
     if (overlap) return res.status(409).json({ success: false, error: overlap });
+    const yearly = req.user?.accessLevel === 'employee' ? await yearlyLimitProblem(requestBody) : null;
+    if (yearly) return res.status(409).json({ success: false, error: yearly });
     const newReq = await Leave.create(requestBody);
     if (req.user?.accessLevel === 'employee' && newReq.status === 'Pending') {
       await notifyHrOfSubmission(newReq, req.user);
@@ -226,6 +237,8 @@ export const updateRequestStatus = async (req, res) => {
         if (late) return res.status(400).json({ success: false, error: late });
         const overlap = await overlapProblem({ ...existing, ...update });
         if (overlap) return res.status(409).json({ success: false, error: overlap });
+        const yearly = await yearlyLimitProblem({ ...existing, ...update });
+        if (yearly) return res.status(409).json({ success: false, error: yearly });
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);

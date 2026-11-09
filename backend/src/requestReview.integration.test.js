@@ -386,3 +386,29 @@ test('the supervisor disapproves a leave and a travel order with remarks and a s
   assert.equal(charges.mock.callCount(), 0);
   assert.ok(notices.mock.calls.some(call => /Disapproved|disapproved|Rejected/.test(`${call.arguments[0].title} ${call.arguments[0].message}`)));
 });
+
+test('special privilege leave is 3 days a year and wellness leave 5, at most 3 at a time, filed or approved', async t => {
+  onNovember2(t);
+  const employee = { _id: 'e-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
+  const taken = [
+    { id: 'REQ-SPL', type: 'Leave Request', leaveType: 'Special Privilege Leave', status: 'Approved', startDate: '2026-03-02', endDate: '2026-03-03', employeeId: 'E1' },
+    { id: 'REQ-WL', type: 'Leave Request', leaveType: 'Wellness Leave', status: 'For Supervisor', startDate: '2026-06-01', endDate: '2026-06-03', employeeId: 'E1' }
+  ];
+  t.mock.method(User, 'findByEmail', async () => employee);
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async () => taken);
+  t.mock.method(Holiday, 'findAll', async () => []);
+  const creates = t.mock.method(Leave, 'create', async body => ({ ...body, id: 'REQ-NEW' }));
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  const send = body => request(app).post('/api/requests').set('Authorization', `Bearer ${createAuthToken(employee)}`).send({ type: 'Leave Request', status: 'Pending', purpose: 'Leave Type.', ...body });
+
+  // 2 of the 3 days of special privilege leave are used, so 2 more are too many.
+  const spl = await send({ leaveType: 'Special Privilege Leave', startDate: '2026-11-09', endDate: '2026-11-10' });
+  assert.equal(spl.status, 409);
+  assert.match(spl.body.error, /You have 1 day left in 2026/);
+  assert.equal((await send({ leaveType: 'Special Privilege Leave', startDate: '2026-11-09', endDate: '2026-11-09' })).status, 201);
+  // Wellness leave: 3 at most at a time, and 2 of its 5 days are left.
+  assert.match((await send({ leaveType: 'Wellness Leave', startDate: '2026-11-09', endDate: '2026-11-12' })).body.error, /at most 3 days at a time/);
+  assert.match((await send({ leaveType: 'Wellness Leave', startDate: '2026-11-16', endDate: '2026-11-18' })).body.error, /2 days left in 2026/);
+  assert.equal((await send({ leaveType: 'Wellness Leave', startDate: '2026-11-16', endDate: '2026-11-17' })).status, 201);
+  assert.equal(creates.mock.callCount(), 2);
+});

@@ -19,6 +19,7 @@ import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { approvedTravelOrderOn } from '../../shared/travelStatus';
+import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft } from '../../shared/yearlyLeave';
 import { monthAttendanceSummary, totalHoursWorked } from '../utils/hrAttendance';
 import { durationText } from '../utils/dtrDay';
 import { monthUndertimeMinutes } from '../utils/dtrMonth';
@@ -160,7 +161,11 @@ export default function DashboardView({
   ].map((credit) => {
     const remaining = Math.max(0, credit.available);
     return { ...credit, remaining, max: Math.max(15, remaining) };
-  });
+  }).concat([
+    // So many days a year, not carried over (shared/yearlyLeave.js).
+    { title: 'Special Privilege Leave', type: 'Special Privilege Leave', color: 'bg-amber-500' },
+    { title: 'Wellness Leave', type: WELLNESS_LEAVE, color: 'bg-violet-500' }
+  ].map(credit => ({ ...credit, remaining: yearlyLeaveLeft(personalRequests, credit.type, Number(today.slice(0, 4)), holidays), max: YEARLY_LEAVES[credit.type].days })));
 
   // Upcoming Events lists the next three events from today on; announcements show newest first.
   const upcomingEvents = events
