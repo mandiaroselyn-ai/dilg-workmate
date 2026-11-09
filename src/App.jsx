@@ -14,6 +14,7 @@ import SmsCenter from './components/SmsCenter';
 import { travelOrderCovers } from '../shared/travelStatus';
 import { holidaysFor } from '../shared/phHolidays';
 import { applyQueuedAttendance, countQueuedAttendance, queueAttendance, readQueuedAttendance, removeQueuedTimeOut, syncQueuedAttendance } from './utils/offlineAttendance';
+import { timeoutSignal } from './utils/offlineTimeIn';
 import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
@@ -724,6 +725,7 @@ export default function App() {
   // key (an offline Time In); any other Time In needs the server to check the fingerprint.
   // A Lunch Out or Lunch In is never saved on the phone: it needs internet.
   const canSaveOnPhone = payload => payload.action === 'clock-out' || (payload.action === 'clock-in' && Boolean(payload.record?.offlineTimeIn));
+  const PUNCH_SEND_TIMEOUT_MS = 20000;
   const punchNames = { 'clock-in': 'Time In', 'lunch-out': 'Lunch Out', 'lunch-in': 'Lunch In', 'clock-out': 'Time Out' };
 
   const submitAttendance = async (payload, optimisticRecord) => {
@@ -761,7 +763,11 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // The phone's clock when it sent this, so the server can tell how far off it is.
-        body: JSON.stringify({ ...payload, sentAt: new Date().toISOString() })
+        body: JSON.stringify({ ...payload, sentAt: new Date().toISOString() }),
+        // On a phone that shows a connection but has no working internet (a weak signal, or
+        // Wi-Fi or data without internet), a Time In or Time Out that can be saved on the phone
+        // is saved there after a while instead of leaving the screen waiting.
+        signal: canSaveOnPhone(payload) ? timeoutSignal(PUNCH_SEND_TIMEOUT_MS) : undefined
       });
       const data = await response.json();
       if (!response.ok || !data.success) {

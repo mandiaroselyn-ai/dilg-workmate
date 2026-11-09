@@ -389,6 +389,16 @@ export const DtrLog = {
     return log ? toListLog(log) : null;
   },
 
+  // The employee's record whose offline Time Out was recorded at `recordedAt` (the time the
+  // phone saved it), shaped for lists, or null: the same Time Out already reached the server.
+  findOfflineTimeOut: async (employeeId, recordedAt) => {
+    ensureConnected();
+    const at = new Date(recordedAt);
+    if (!employeeId || Number.isNaN(at.getTime())) return null;
+    const log = await MongoDtrLog.findOne({ employeeId, 'offlineTimeOut.recordedAt': at, timeOut: { $nin: [null, ''] } }).lean();
+    return log ? toListLog(log) : null;
+  },
+
   findActiveByEmployee: async (employeeId, date) => {
     ensureConnected();
     return MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });

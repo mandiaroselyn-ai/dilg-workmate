@@ -244,6 +244,22 @@ test('an offline Time Out changed after it was signed is refused', async t => {
   assert.equal(DtrLog.closeActiveLog.mock.callCount(), 0);
 });
 
+test('the same offline Time Out sent again gets the saved record back, not a refusal', async t => {
+  const send = signIn(t);
+  const saved = { id: 'att-1', employeeId: employee.employeeId, date: '2026-10-05', timeOut: '05:02 PM' };
+  const find = t.mock.method(DtrLog, 'findOfflineTimeOut', async () => saved);
+  const recordedOfflineAt = '2026-10-05T09:02:00.000Z';
+  const again = await send({ action: 'clock-out', record: { ...timeOutRecord(), recordedOfflineAt }, sentAt: new Date().toISOString() });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.deepEqual(again.body.record, saved);
+  assert.deepEqual(find.mock.calls[0].arguments, [employee.employeeId, recordedOfflineAt]);
+  assert.equal(DtrLog.closeActiveLog.mock.callCount(), 0);
+  // An online Time Out with no open Time In is still refused.
+  const online = await send({ action: 'clock-out', record: timeOutRecord(), sentAt: new Date().toISOString() });
+  assert.equal(online.status, 400);
+  assert.match(online.body.error, /No active clock-in/);
+});
+
 test('a Time Out saved in a browser without internet has no fingerprint, so HR reviews it', async t => {
   const send = signIn(t, { activeLog: { timeInAt: new Date('2026-10-05T00:00:00Z'), assignmentSite: null } });
   const response = await send({

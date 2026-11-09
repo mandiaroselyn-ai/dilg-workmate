@@ -1,4 +1,9 @@
 import { apiFetch } from './api.js';
+import { timeoutSignal } from './offlineTimeIn.js';
+
+// How long one queued record may take to send. On a weak signal a send can hang for minutes,
+// and no other sync starts meanwhile, so it is given up and tried again on the next sync.
+export const SYNC_SEND_TIMEOUT_MS = 30000;
 
 const fetch = apiFetch;
 
@@ -139,7 +144,10 @@ export const syncQueuedAttendance = async (onRecord, owner, onDiscard) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // The phone's clock when it sent this, so the server can tell how far off it is.
-        body: JSON.stringify({ ...item.payload, sentAt: new Date().toISOString() })
+        body: JSON.stringify({ ...item.payload, sentAt: new Date().toISOString() }),
+        // A send that reached the server but whose answer was lost is sent again: the server
+        // answers a repeated Time In or Time Out with the record it already saved.
+        signal: timeoutSignal(SYNC_SEND_TIMEOUT_MS)
       });
       const data = await response.json();
       if (!response.ok || !data.success) {

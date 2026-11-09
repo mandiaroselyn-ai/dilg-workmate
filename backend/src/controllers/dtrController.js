@@ -513,6 +513,10 @@ export const clockInOut = async (req, res) => {
 
       const activeLog = await DtrLog.findActiveByEmployee(record.employeeId, record.date);
       if (!activeLog) {
+        // The same offline Time Out sent again (the phone did not get the answer to the first
+        // send) gets the saved record back, so the phone does not show it as refused.
+        const sent = record.recordedOfflineAt ? await DtrLog.findOfflineTimeOut(record.employeeId, record.recordedOfflineAt) : null;
+        if (sent) return res.status(200).json({ success: true, record: sent });
         return res.status(400).json({ success: false, error: 'No active clock-in found to clock out.' });
       }
       const isEmployee = req.user?.accessLevel === 'employee';
