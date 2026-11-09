@@ -7,9 +7,10 @@ import { leaveCharge, leaveCreditField } from './leaveCalc.js';
 // the two (`hrTask`): HR 1's or HR 2's, and nothing else of the review.
 
 export const HR_TASKS = ['leave-credits', 'pre-approval'];
+// As Staff Accounts and the Requests page show an account's step.
 export const HR_TASK_LABELS = {
-  'leave-credits': 'HR 1: leave credits (7.A)',
-  'pre-approval': 'HR 2: pre-approval (7.B)'
+  'leave-credits': 'HR 1',
+  'pre-approval': 'HR 2'
 };
 // An HR/Admin account whose step HR has not set yet (such as one made before the steps were split).
 export const NO_HR_TASK_LABEL = 'No HR step set';
