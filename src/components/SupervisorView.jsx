@@ -609,7 +609,7 @@ export default function SupervisorView({
                   </div>
                 </div>
 
-                {/* HR 1's certification of the leave credits (7.A) and HR 2's recommendation (7.B),
+                {/* HR 2's certification of the leave credits (7.A) and recommendation (7.B),
                     which the Head decides on. */}
                 {(selectedRequest.creditCertification || selectedRequest.recommendation) && (
                   <div className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-left text-xs text-slate-600">

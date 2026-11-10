@@ -60,7 +60,7 @@ const faqs = [
   {
     topic: 'Leave and travel',
     question: 'What do the request statuses mean?',
-    answer: 'Draft: saved but not sent. Pending: waiting for HR (HR 1 reviews and certifies a leave\'s credits; a Travel Order goes to HR 2). For Pre-approval: HR 1 certified your leave credits, and HR 2 is pre-approving it. For Supervisor: HR pre-approved it and sent it to the Head. Approved or Rejected: the Head\'s decision. Withdrawn: you took it back.'
+    answer: 'Draft: saved but not sent. Pending: waiting for HR 2, who certifies a leave\'s credits and pre-approves the leave or Travel Order. For Pre-approval: your leave credits were certified, and HR 2 is pre-approving it. For Supervisor: HR 2 pre-approved it and sent it to the Head. Approved or Rejected: the Head\'s decision. Withdrawn: you took it back.'
   },
   {
     topic: 'Leave and travel',

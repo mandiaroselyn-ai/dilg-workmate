@@ -121,7 +121,12 @@ test('HR can only forward a request that is waiting for HR', () => {
   assert.match(reviewUpdateProblem('For Supervisor', forward, 'hr_admin'), /already forwarded/);
   assert.match(reviewUpdateProblem('Approved', forward, 'hr_admin'), /already Approved/);
   assert.match(reviewUpdateProblem('Rejected', forward, 'hr_admin'), /already Rejected/);
-  assert.match(reviewUpdateProblem('Pending', { status: 'Approved' }, 'hr_admin'), /only forward/);
+  assert.match(reviewUpdateProblem('Pending', { status: 'Approved' }, 'hr_admin'), /only send requests to the supervisor/);
+  // HR 2 sends a leave straight to the supervisor; there is no HR 1 step in between.
+  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), null);
+  assert.match(reviewUpdateProblem('Pending', { status: 'For Pre-approval' }, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), /only send requests to the supervisor/);
+  // HR 1 takes no step on requests.
+  assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'leave-credits' }), /This step is HR 2 \(certification and pre-approval\)'s\. Your HR account does HR 1 \(leave credits\) only\./);
 });
 
 test('reviewers cannot act on drafts or withdrawn requests', () => {

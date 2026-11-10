@@ -12,7 +12,7 @@ import { filingDate, lateFilingProblem } from '../../../shared/requestFiling.js'
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
-import { FOR_PRE_APPROVAL, leaveCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
+import { leaveCreditCertification, needsCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
 import { YEARLY_LEAVES, yearlyLeaveProblem } from '../../../shared/yearlyLeave.js';
 import { needsStartingBalance } from '../../../shared/leaveStart.js';
 import { holidaysFor } from '../../../shared/phHolidays.js';
@@ -79,19 +79,23 @@ const enrichRequestEmployees = async (requests) => Promise.all(requests.map(asyn
 // Who took an HR step, as CSC Form No. 6 prints it under the signature: the name and position.
 const signatory = user => ({ name: user?.name || 'HR', position: user?.role || '' });
 
-// What an HR step records on the request (CSC Form No. 6, section 7): HR 1's certification of
-// the employee's leave credits when a leave goes for pre-approval (7.A), counted by the server
-// from the employee's balances now and the leave's working days, and HR 2's recommendation
-// when a request goes to the supervisor (7.B). Returns { fields } or { error }.
+// What HR 2's step records on a request it sends to the supervisor (CSC Form No. 6, section 7):
+// for a leave not certified yet, HR 2's certification of the employee's leave credits (7.A),
+// counted by the server from the employee's balances now and the leave's working days, and for
+// every request HR 2's recommendation (7.B). Returns { fields } or { error }.
 const hrStepRecord = async (existing, update, req) => {
+  if (update.status !== 'For Supervisor') return { fields: {} };
   const at = new Date().toISOString();
-  if (update.status === FOR_PRE_APPROVAL) {
+  const recommendation = readRecommendation(req.body?.recommendation);
+  if (recommendation.error) return { error: recommendation.error };
+  const fields = { recommendation: { ...recommendation.value, recommendedBy: signatory(req.user), recommendedAt: at } };
+  if (needsCreditCertification(existing)) {
     const employee = (existing.employeeId && await User.findByEmployeeId(existing.employeeId))
       || (existing.employeeEmail && await User.findByEmail(existing.employeeEmail));
-    if (!employee) return { error: 'The employee\'s account was not found, so their leave credits cannot be certified.' };
+    if (!employee) return { error: "The employee's account was not found, so their leave credits cannot be certified." };
     // Until HR 1 enters the balance from the leave card, WorkMate's balance is not the real one.
     if (needsStartingBalance(employee, await leaveCreditsStart())) {
-      return { error: `Enter ${employee.name || 'the employee'}'s starting balance from the leave card first (DTR Records, Leave Credits Start), so the certification shows their real balance.` };
+      return { error: `${employee.name || 'The employee'} has no starting balance from the leave card yet, so the certification would not show their real balance. Ask HR 1 to enter it (DTR Records, Leave Credits Start).` };
     }
     const certification = leaveCreditCertification({
       leaveType: existing.leaveType,
@@ -99,31 +103,9 @@ const hrStepRecord = async (existing, update, req) => {
       employee,
       asOf: getManilaDateString()
     });
-    return { fields: { creditCertification: { ...certification, certifiedBy: signatory(req.user), certifiedAt: at } } };
+    fields.creditCertification = { ...certification, certifiedBy: signatory(req.user), certifiedAt: at };
   }
-  if (update.status === 'For Supervisor') {
-    const recommendation = readRecommendation(req.body?.recommendation);
-    if (recommendation.error) return { error: recommendation.error };
-    return { fields: { recommendation: { ...recommendation.value, recommendedBy: signatory(req.user), recommendedAt: at } } };
-  }
-  return { fields: {} };
-};
-
-// Tells HR that HR 1 certified a leave's credits, so HR 2 pre-approves it. A failed
-// notification never fails the step.
-const notifyHrOfCertification = async (request, hr) => {
-  try {
-    await Announcement.createNotification({
-      title: 'Leave for Pre-approval',
-      message: `${hr?.name || 'HR 1'} certified the leave credits of ${request.employeeName || 'an employee'}'s ${request.leaveType || 'leave'} (Ref ${request.id}). It is ready for HR 2's pre-approval.`,
-      type: 'request',
-      recipientRole: 'hr_admin',
-      action: 'review_request',
-      targetId: request.id
-    });
-  } catch (error) {
-    console.error('Unable to notify HR about a certified leave:', error);
-  }
+  return { fields };
 };
 
 export const getRequests = async (req, res) => {
@@ -357,7 +339,6 @@ export const updateRequestStatus = async (req, res) => {
     }
     if (updated && role === 'hr_admin') {
       await textSupervisorsAboutForward(existing, updated);
-      if (updated.status === FOR_PRE_APPROVAL && existing.status !== FOR_PRE_APPROVAL) await notifyHrOfCertification(updated, req.user);
     }
     if (updated && (role === 'hr_admin' || role === 'supervisor')) {
       await noticeRequestDecision(existing, updated, { reviewer: reviewerName(req), remarks: reviewRemarks(update) });
@@ -383,8 +364,8 @@ export const bulkUpdateRequests = async (req, res) => {
       const existing = typeof update?.id === 'string' ? await Leave.findByCustomId(update.id) : null;
       const review = pickReviewUpdate(update);
       const problem = existing && (reviewUpdateProblem(existing.status, review, req.user?.accessLevel, { type: existing.type, hrTask: req.user?.hrTask })
-        || (req.user?.accessLevel === 'hr_admin' && [FOR_PRE_APPROVAL, 'For Supervisor'].includes(review.status)
-          ? 'Open the request to certify its leave credits or pre-approve it.' : null));
+        || (req.user?.accessLevel === 'hr_admin' && review.status === 'For Supervisor'
+          ? 'Open the request to certify its leave credits and pre-approve it.' : null));
       if (problem) return res.status(409).json({ success: false, error: `${update.id}: ${problem}` });
       if (existing) previousById.set(update.id, existing);
     }

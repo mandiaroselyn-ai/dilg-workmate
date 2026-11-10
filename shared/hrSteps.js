@@ -1,10 +1,11 @@
 import { leaveCharge, leaveCreditField } from './leaveCalc.js';
 
-// The HR steps a request takes before the Head decides it, as CSC Form No. 6, section 7, has them:
-// HR 1 reviews the employee's leave credits and certifies them (7.A), then HR 2 recommends
-// approval or disapproval (7.B) and sends it to the Head, who decides (7.C and 7.D). A Travel
-// Order has no leave credits, so it goes straight to HR 2. Each HR/Admin account does one of
-// the two (`hrTask`): HR 1's or HR 2's, and nothing else of the review.
+// The HR step a request takes before the Head decides it, as DILG Marinduque's CSC Form No. 6 has
+// it: HR 2 certifies the employee's leave credits (7.A) and recommends approval or disapproval
+// (7.B), both signed by HR 2 on the form, and sends it to the Head, who decides (7.C and 7.D). A
+// Travel Order has no leave credits, so HR 2 only pre-approves it. HR 1 takes no step on
+// requests: HR 1 reviews and updates the employees' leave credits on their own (Employee
+// Management and DTR Records). Each HR/Admin account is one of the two (`hrTask`).
 
 export const HR_TASKS = ['leave-credits', 'pre-approval'];
 // As Staff Accounts and the Requests page show an account's step.
@@ -14,20 +15,19 @@ export const HR_TASK_LABELS = {
 };
 // An HR/Admin account whose step HR has not set yet (such as one made before the steps were split).
 export const NO_HR_TASK_LABEL = 'No HR step set';
-export const HR_STEP_NAMES = { 'leave-credits': 'HR 1 (leave credits)', 'pre-approval': 'HR 2 (pre-approval)' };
+export const HR_STEP_NAMES = { 'leave-credits': 'HR 1 (leave credits)', 'pre-approval': 'HR 2 (certification and pre-approval)' };
 
-// A leave whose credits HR 1 certified, waiting for HR 2.
+// A leave whose credits HR 1 certified when HR 1 still did that step, waiting for HR 2.
 export const FOR_PRE_APPROVAL = 'For Pre-approval';
-const WAITING_FOR_HR = ['Pending', 'Pending Review'];
+const WAITING_FOR_HR = ['Pending', 'Pending Review', FOR_PRE_APPROVAL];
 
-// The HR step `request` is waiting for: 'leave-credits' for a leave HR 1 has not certified yet,
-// 'pre-approval' for one HR 1 has, or for a Travel Order waiting for HR, or null when it is not
-// waiting for HR.
-export const hrStepOf = request => {
-  if (request?.status === FOR_PRE_APPROVAL) return 'pre-approval';
-  if (!WAITING_FOR_HR.includes(request?.status)) return null;
-  return request.type === 'Leave Request' ? 'leave-credits' : 'pre-approval';
-};
+// The HR step `request` is waiting for: 'pre-approval' (HR 2's) for any request waiting for HR,
+// or null when it is not waiting for HR.
+export const hrStepOf = request => (WAITING_FOR_HR.includes(request?.status) ? 'pre-approval' : null);
+
+// True when HR 2 also certifies `request`'s leave credits (7.A) as it pre-approves it: a leave
+// not certified yet.
+export const needsCreditCertification = request => request?.type === 'Leave Request' && !request?.creditCertification;
 
 // Whether an HR/Admin account with `hrTask` does `step`. An account without one does neither
 // until HR sets it in Staff Accounts.
@@ -35,13 +35,14 @@ export const doesHrStep = (hrTask, step) => Boolean(step) && HR_TASKS.includes(h
 
 // Leave credits are HR 1's to review and update, everywhere they change by hand: adjusting a
 // balance, an opening balance from the leave card, charging a month's tardiness, and crediting a
-// month's earned leave. HR 2 only pre-approves. (An approved leave is charged by the system.)
+// month's earned leave. HR 2 certifies them on a leave but does not change them. (An approved
+// leave is charged by the system.)
 export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' && doesHrStep(user.hrTask, 'leave-credits');
 export const LEAVE_CREDITS_HR_ONLY = 'Only HR 1 (leave credits) changes leave credits. Ask HR 1 to do it.';
 
 const round3 = number => Math.round(number * 1000) / 1000;
 
-// HR 1's certification of the employee's leave credits for a leave of `days` working days
+// HR 2's certification of the employee's leave credits for a leave of `days` working days
 // (CSC Form No. 6, 7.A), as of `asOf` (YYYY-MM-DD): each balance now (Total Earned), the days
 // this leave takes from it (Less this application), and what is left (Balance), as approving it
 // will charge them (leaveCharge). A leave type with its own entitlement, such as maternity

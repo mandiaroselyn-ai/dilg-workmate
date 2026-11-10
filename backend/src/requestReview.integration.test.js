@@ -26,10 +26,10 @@ const onNovember2 = t => t.mock.timers.enable({ apis: ['Date'], now: new Date('2
 const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', name: 'Ma. Joane O. Salcedo', role: 'ADAS II', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
 const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
 const requests = {
-  // A leave waiting for HR 1, one HR 1 certified (waiting for HR 2), and a Travel Order
-  // waiting for HR 2.
+  // A leave waiting for HR 2, one HR 1 certified when HR 1 still did that step (waiting for
+  // HR 2), and a Travel Order waiting for HR 2.
   'REQ-PENDING': { id: 'REQ-PENDING', status: 'Pending', type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1' },
-  'REQ-CERTIFIED': { id: 'REQ-CERTIFIED', status: 'For Pre-approval', type: 'Leave Request', leaveType: 'Vacation Leave', employeeId: 'E1' },
+  'REQ-CERTIFIED': { id: 'REQ-CERTIFIED', status: 'For Pre-approval', type: 'Leave Request', leaveType: 'Vacation Leave', employeeId: 'E1', creditCertification: { asOf: '2026-11-02', certifiedBy: { name: 'Ma. Joane O. Salcedo' } } },
   'REQ-TRAVEL': { id: 'REQ-TRAVEL', status: 'Pending', type: 'Travel Order', employeeId: 'E1' },
   'REQ-APPROVED': { id: 'REQ-APPROVED', status: 'Approved', type: 'Leave Request', employeeId: 'E1' },
   'REQ-WITHDRAWN': { id: 'REQ-WITHDRAWN', status: 'Withdrawn', type: 'Travel Order', employeeId: 'E1' },
@@ -61,66 +61,69 @@ const signInAsHr = (t, { supervisors = [], as = hr, employee = null } = {}) => {
 const juan = { employeeId: 'E1', name: 'Juan Dela Cruz', vacationLeaveCredits: 10, sickLeaveCredits: 5 };
 const approve = { status: 'For Supervisor', recommendation: { decision: 'approval' } };
 
-test('HR 1 certifies a leave\'s credits and sends it to HR 2, who must do so before the supervisor', async t => {
-  const session = signInAsHr(t, { employee: juan });
-  const straight = await session.patch('REQ-PENDING', approve);
-  assert.equal(straight.status, 409);
-  assert.match(straight.body.error, /certifies the leave credits first/);
-
-  const response = await session.patch('REQ-PENDING', { status: 'For Pre-approval', remarks: 'Checked.' });
+test('HR 2 certifies the leave credits of a leave and pre-approves it in one step', async t => {
+  const session = signInAsHr(t, { as: hr2, employee: juan });
+  const response = await session.patch('REQ-PENDING', { ...approve, remarks: 'Checked.' });
   assert.equal(response.status, 200, JSON.stringify(response.body));
-  const { creditCertification } = session.saves.mock.calls[0].arguments[1];
-  // Two working days (Nov 9 and 10) of vacation leave, from the balances now.
-  assert.deepEqual(creditCertification.vacationLeave, { earned: 10, less: 2, balance: 8 });
-  assert.deepEqual(creditCertification.sickLeave, { earned: 5, less: 0, balance: 5 });
-  assert.deepEqual(creditCertification.certifiedBy, { name: 'Ma. Joane O. Salcedo', position: 'ADAS II' });
-  // HR hears that it is ready for pre-approval.
-  assert.ok(Announcement.createNotification.mock.calls.some(call => call.arguments[0].title === 'Leave for Pre-approval'));
+  const saved = session.saves.mock.calls[0].arguments[1];
+  assert.equal(saved.status, 'For Supervisor');
+  // 7.A: two working days (Nov 9 and 10) of vacation leave, from the balances now, signed by HR 2.
+  assert.deepEqual(saved.creditCertification.vacationLeave, { earned: 10, less: 2, balance: 8 });
+  assert.deepEqual(saved.creditCertification.sickLeave, { earned: 5, less: 0, balance: 5 });
+  assert.deepEqual(saved.creditCertification.certifiedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
+  // 7.B: HR 2's recommendation.
+  assert.equal(saved.recommendation.decision, 'approval');
+  assert.deepEqual(saved.recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
+  // There is no HR 1 step in between any more.
+  assert.equal((await session.patch('REQ-PENDING', { status: 'For Pre-approval' })).status, 409);
 });
 
-test('once WorkMate counts leave credits from a start month, HR 1 certifies only after the starting balance', async t => {
-  t.mock.method(AppSetting, 'get', async () => '2026-11');
-  const longTime = { ...juan, name: 'Juan Dela Cruz', appointmentStatus: 'Permanent', dateHired: '2015-06-01' };
-  const before = signInAsHr(t, { employee: longTime });
-  const refused = await before.patch('REQ-PENDING', { status: 'For Pre-approval' });
-  assert.equal(refused.status, 400);
-  assert.match(refused.body.error, /Enter Juan Dela Cruz's starting balance from the leave card first/);
-  assert.equal(before.saves.mock.callCount(), 0);
-  t.mock.restoreAll();
-
-  t.mock.method(AppSetting, 'get', async () => '2026-11');
-  const after = signInAsHr(t, { employee: { ...longTime, startingLeaveBalance: { start: '2026-11', asOf: '2026-10-31' } } });
-  const certified = await after.patch('REQ-PENDING', { status: 'For Pre-approval' });
-  assert.equal(certified.status, 200, JSON.stringify(certified.body));
-});
-
-test('HR 2 pre-approves a certified leave or a Travel Order with a recommendation, then the supervisor decides', async t => {
+test('a leave HR 1 certified before is pre-approved by HR 2 without certifying it again', async t => {
   const session = signInAsHr(t, { as: hr2, employee: juan });
   const response = await session.patch('REQ-CERTIFIED', approve);
   assert.equal(response.status, 200, JSON.stringify(response.body));
-  const { recommendation } = session.saves.mock.calls[0].arguments[1];
-  assert.equal(recommendation.decision, 'approval');
-  assert.deepEqual(recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
-  // A Travel Order has no leave credits, so it goes from HR 2 straight to the supervisor.
-  assert.equal((await session.patch('REQ-TRAVEL', { ...approve, recommendation: { decision: 'disapproval', reason: 'No funds for the travel.' } })).status, 200);
-  assert.equal((await session.patch('REQ-TRAVEL', { status: 'For Pre-approval' })).status, 409);
-  // A recommendation is needed, and a disapproval says why.
-  assert.match((await session.patch('REQ-CERTIFIED', { status: 'For Supervisor' })).body.error, /Choose the recommendation/);
-  assert.match((await session.patch('REQ-CERTIFIED', { status: 'For Supervisor', recommendation: { decision: 'disapproval' } })).body.error, /why/);
+  const saved = session.saves.mock.calls[0].arguments[1];
+  assert.equal(saved.creditCertification, undefined);
+  assert.equal(saved.recommendation.decision, 'approval');
 });
 
-test('each HR account takes only its own step', async t => {
-  const hr2Only = signInAsHr(t, { as: { ...hr, hrTask: 'pre-approval' }, employee: juan });
-  const certify = await hr2Only.patch('REQ-PENDING', { status: 'For Pre-approval' });
-  assert.equal(certify.status, 409);
-  assert.match(certify.body.error, /HR 1 \(leave credits\)'s/);
-  assert.equal((await hr2Only.patch('REQ-CERTIFIED', approve)).status, 200);
+test('once WorkMate counts leave credits from a start month, HR 2 certifies only after the starting balance', async t => {
+  t.mock.method(AppSetting, 'get', async () => '2026-11');
+  const longTime = { ...juan, name: 'Juan Dela Cruz', appointmentStatus: 'Permanent', dateHired: '2015-06-01' };
+  const before = signInAsHr(t, { as: hr2, employee: longTime });
+  const refused = await before.patch('REQ-PENDING', approve);
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.error, /Juan Dela Cruz has no starting balance from the leave card yet/);
+  assert.equal(before.saves.mock.callCount(), 0);
+  // A Travel Order has no leave credits to certify.
+  assert.equal((await before.patch('REQ-TRAVEL', approve)).status, 200);
   t.mock.restoreAll();
 
-  const hr1Only = signInAsHr(t, { as: { ...hr, hrTask: 'leave-credits' }, employee: juan });
-  assert.equal((await hr1Only.patch('REQ-CERTIFIED', approve)).status, 409);
-  assert.equal((await hr1Only.patch('REQ-TRAVEL', approve)).status, 409);
-  assert.equal((await hr1Only.patch('REQ-PENDING', { status: 'For Pre-approval' })).status, 200);
+  t.mock.method(AppSetting, 'get', async () => '2026-11');
+  const after = signInAsHr(t, { as: hr2, employee: { ...longTime, startingLeaveBalance: { start: '2026-11', asOf: '2026-10-31' } } });
+  const certified = await after.patch('REQ-PENDING', approve);
+  assert.equal(certified.status, 200, JSON.stringify(certified.body));
+});
+
+test('HR 2 pre-approves a Travel Order with a recommendation, and a disapproval says why', async t => {
+  const session = signInAsHr(t, { as: hr2, employee: juan });
+  assert.equal((await session.patch('REQ-TRAVEL', { ...approve, recommendation: { decision: 'disapproval', reason: 'No funds for the travel.' } })).status, 200);
+  assert.equal(session.saves.mock.calls[0].arguments[1].creditCertification, undefined);
+  assert.equal((await session.patch('REQ-TRAVEL', { status: 'For Pre-approval' })).status, 409);
+  // A recommendation is needed, and a disapproval says why.
+  assert.match((await session.patch('REQ-PENDING', { status: 'For Supervisor' })).body.error, /Choose the recommendation/);
+  assert.match((await session.patch('REQ-PENDING', { status: 'For Supervisor', recommendation: { decision: 'disapproval' } })).body.error, /why/);
+});
+
+test('HR 1 takes no step on requests; only HR 2 does', async t => {
+  const hr1Only = signInAsHr(t, { as: hr, employee: juan });
+  for (const id of ['REQ-PENDING', 'REQ-CERTIFIED', 'REQ-TRAVEL']) {
+    const response = await hr1Only.patch(id, approve);
+    assert.equal(response.status, 409, id);
+    assert.equal(response.body.error, "This step is HR 2 (certification and pre-approval)'s. Your HR account does HR 1 (leave credits) only.");
+  }
+  assert.equal((await hr1Only.patch('REQ-PENDING', { status: 'Returned', remarks: 'Attach the medical certificate.' })).status, 409);
+  assert.equal(hr1Only.saves.mock.callCount(), 0);
 });
 
 test('HR cannot forward decided, withdrawn, or draft requests, or approve one', async t => {
@@ -142,7 +145,7 @@ test('HR cannot forward decided, withdrawn, or draft requests, or approve one', 
 });
 
 test('HR returns a request to the employee only with remarks, and the employee is told what to fix', async t => {
-  const session = signInAsHr(t);
+  const session = signInAsHr(t, { as: hr2 });
   const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
   const noRemarks = await session.patch('REQ-PENDING', { status: 'Returned' });
   assert.equal(noRemarks.status, 409);
@@ -154,7 +157,7 @@ test('HR returns a request to the employee only with remarks, and the employee i
   const notice = notices.mock.calls.at(-1).arguments[0];
   assert.equal(notice.employeeId, 'E1');
   assert.equal(notice.title, 'Leave Request Needs Your Action');
-  assert.match(notice.message, /was returned to you by Ma\. Joane O\. Salcedo\. Fix it in Requests and submit it again\. Remarks: Attach the medical certificate\./);
+  assert.match(notice.message, /was returned to you by John Erick J\. Matining\. Fix it in Requests and submit it again\. Remarks: Attach the medical certificate\./);
 });
 
 test('the employee fixes a returned request and submits it again, and HR is told', async t => {
@@ -311,8 +314,8 @@ test('forwarding a request texts each active supervisor who has a mobile number'
 
 test('HR\'s steps are taken one request at a time, not through the bulk update', async t => {
   const sms = useSmsGateway(t);
-  // Each HR takes their own step: HR 2 pre-approves, HR 1 certifies.
-  for (const [as, update] of [[hr2, { id: 'REQ-CERTIFIED', ...approve }], [hr, { id: 'REQ-PENDING', status: 'For Pre-approval' }]]) {
+  // HR 2 certifies and pre-approves one request at a time.
+  for (const [as, update] of [[hr2, { id: 'REQ-CERTIFIED', ...approve }], [hr2, { id: 'REQ-PENDING', ...approve }]]) {
     const session = signInAsHr(t, { supervisors, as });
     const response = await session.put([update]);
     assert.equal(response.status, 409);

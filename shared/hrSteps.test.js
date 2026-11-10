@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { doesHrStep, hrStepOf, leaveCreditCertification, readRecommendation } from './hrSteps.js';
+import { doesHrStep, hrStepOf, leaveCreditCertification, needsCreditCertification, readRecommendation } from './hrSteps.js';
 
-test('a leave goes to HR 1, then HR 2; a Travel Order goes straight to HR 2', () => {
-  assert.equal(hrStepOf({ type: 'Leave Request', status: 'Pending' }), 'leave-credits');
+test('a leave and a Travel Order both go to HR 2; HR 1 takes no step on requests', () => {
+  assert.equal(hrStepOf({ type: 'Leave Request', status: 'Pending' }), 'pre-approval');
+  assert.equal(hrStepOf({ type: 'Leave Request', status: 'Pending Review' }), 'pre-approval');
+  // A leave HR 1 certified before HR 2 took that step too still goes to HR 2.
   assert.equal(hrStepOf({ type: 'Leave Request', status: 'For Pre-approval' }), 'pre-approval');
   assert.equal(hrStepOf({ type: 'Travel Order', status: 'Pending' }), 'pre-approval');
   for (const status of ['Draft', 'For Supervisor', 'Approved', 'Rejected', 'Returned', 'Withdrawn']) {
@@ -24,7 +26,13 @@ test('an HR account does HR 1\'s step or HR 2\'s, never both', () => {
   assert.equal(doesHrStep('leave-credits', null), false);
 });
 
-test('HR 1 certifies the leave credits as approving the leave will charge them', () => {
+test('HR 2 also certifies the leave credits of a leave not certified yet', () => {
+  assert.equal(needsCreditCertification({ type: 'Leave Request' }), true);
+  assert.equal(needsCreditCertification({ type: 'Leave Request', creditCertification: { asOf: '2026-11-09' } }), false);
+  assert.equal(needsCreditCertification({ type: 'Travel Order' }), false);
+});
+
+test('HR 2 certifies the leave credits as approving the leave will charge them', () => {
   const employee = { vacationLeaveCredits: 10.5, sickLeaveCredits: 2 };
   // Sick leave comes from sick leave, then vacation leave, then without pay.
   assert.deepEqual(leaveCreditCertification({ leaveType: 'Sick Leave', days: 3, employee, asOf: '2026-11-09' }), {

@@ -62,9 +62,9 @@ export const LEAVE_FORM_LAYOUT = {
   requested: 323.5,
   applicantName: { center: 437.3, y: 309.4, maxWidth: 185 },
 
-  // 7.A: HR 1's certification of the leave credits: the date on the "As of" line, each figure in
+  // 7.A: HR 2's certification of the leave credits: the date on the "As of" line, each figure in
   // the table's Vacation Leave and Sick Leave columns (x = the column's centre) and rows (y = the
-  // row's baseline), and HR 1's name and position in place of the template's.
+  // row's baseline), and the certifying officer's name and position in place of the template's.
   creditsAsOf: { x: 110, y: 252.3, maxWidth: 93 },
   creditColumns: { vacation: 203.6, sick: 275 },
   creditRows: { earned: 228.6, less: 218.9, balance: 209.1 },
@@ -231,7 +231,8 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
     }
   };
 
-  // 7.A: HR 1's certification of the employee's leave credits, once HR 1 has certified them.
+  // 7.A: the certification of the employee's leave credits, once HR 2 has certified them (or HR 1,
+  // on a leave certified when HR 1 still did that step).
   const certification = request.creditCertification;
   if (certification) {
     write(formatDate(certification.asOf), L.creditsAsOf);

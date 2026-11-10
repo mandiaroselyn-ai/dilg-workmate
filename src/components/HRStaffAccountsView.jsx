@@ -5,7 +5,7 @@ import HRResetPasswordCard from './HRResetPasswordCard';
 import { ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, PERSONAL_FIELDS, fullNameOf, profileFieldValues } from '../../shared/profileFields';
 import { DEFAULT_REGION } from '../../shared/dilgAssignments';
-import { HR_TASK_LABELS, NO_HR_TASK_LABEL } from '../../shared/hrSteps';
+import { HR_STEP_NAMES, HR_TASK_LABELS, NO_HR_TASK_LABEL } from '../../shared/hrSteps';
 
 const ACCESS_LABELS = { employee: 'Employee', supervisor: 'Supervisor', hr_admin: 'HR/Admin' };
 const MIN_PASSWORD_LENGTH = 10;
@@ -256,10 +256,10 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
               </select>
             </label>
             {form.accessLevel === 'hr_admin' && (
-              <label className={labelClass}>HR step on requests<RequiredMark />
+              <label className={labelClass}>HR step<RequiredMark />
                 <select name="hrTask" required value={form.hrTask} onChange={updateFormField} className={inputClass}>
                   <option value="" disabled>Choose HR 1 or HR 2</option>
-                  {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
+                  {Object.entries(HR_STEP_NAMES).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
                 </select>
               </label>
             )}
@@ -287,10 +287,10 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
               <ProfileFieldInput key={field.key} item={field} value={editing.fields[field.key]} values={editing.fields} onChange={updateEditField} />
             ))}
             {editing.account.accessLevel === 'hr_admin' && (
-              <label className={labelClass}>HR step on requests<RequiredMark />
+              <label className={labelClass}>HR step<RequiredMark />
                 <select name="hrTask" required value={editing.fields.hrTask} onChange={updateEditField} className={inputClass}>
                   <option value="" disabled>Choose HR 1 or HR 2</option>
-                  {Object.entries(HR_TASK_LABELS).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
+                  {Object.entries(HR_STEP_NAMES).map(([task, label]) => <option key={task} value={task}>{label}</option>)}
                 </select>
               </label>
             )}

@@ -57,10 +57,9 @@ const SUPERVISOR_DECISIONS = ['Approved', 'Rejected', 'Returned'];
 // Why a reviewer may not apply `update` to a request whose status is `currentStatus`, or
 // null when they may. A draft the employee has not submitted and a request the employee
 // withdrew are theirs alone. HR/Admin takes a request waiting for HR through its HR steps
-// (shared/hrSteps.js): HR 1 certifies a leave's credits and sends it for pre-approval, and
-// HR 2 pre-approves a leave or a Travel Order and sends it to the supervisor (the Head). Each
-// HR step may instead return the request to the employee, and only an HR account that does
-// that step (`hrTask`) may take it. The supervisor approves, rejects, or returns it. A request
+// (shared/hrSteps.js): HR 2 certifies a leave's credits and pre-approves a leave or a Travel
+// Order, and sends it to the supervisor (the Head), or returns it to the employee. Only an HR
+// account that does that step (`hrTask`, HR 2's) may take it; HR 1 takes no step on requests. The supervisor approves, rejects, or returns it. A request
 // is returned with remarks saying what the employee needs to do. `type` is the request's.
 export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask } = {}) => {
   if (currentStatus === 'Draft') return 'This request is still a draft. The employee has not submitted it.';
@@ -72,18 +71,12 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
   }
   if (role === 'hr_admin') {
     const step = hrStepOf({ status: currentStatus, type });
-    const forwardTo = step === 'leave-credits' ? FOR_PRE_APPROVAL : 'For Supervisor';
-    if (![FOR_PRE_APPROVAL, 'For Supervisor', 'Returned'].includes(nextStatus)) {
-      return 'HR/Admin can only forward requests (a leave to HR 2 for pre-approval, then to the supervisor) or return them to the employee. The supervisor approves or rejects them.';
+    if (!['For Supervisor', 'Returned'].includes(nextStatus)) {
+      return 'HR/Admin can only send requests to the supervisor (HR 2, after certifying the leave credits of a leave) or return them to the employee. The supervisor approves or rejects them.';
     }
     if (currentStatus === 'For Supervisor') return 'This request was already forwarded to the supervisor.';
     if (!step) {
       return `This request is already ${currentStatus || 'decided'}, so it cannot be ${nextStatus === 'Returned' ? 'returned' : 'forwarded'}.`;
-    }
-    if (nextStatus !== 'Returned' && nextStatus !== forwardTo) {
-      return step === 'leave-credits'
-        ? 'HR 1 certifies the leave credits first. Send the leave to HR 2 for pre-approval before the supervisor.'
-        : 'This request needs only HR 2\'s pre-approval now. HR 2 sends it to the supervisor.';
     }
     if (!doesHrStep(hrTask, step)) {
       return HR_TASKS.includes(hrTask)

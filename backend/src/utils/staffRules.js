@@ -10,7 +10,7 @@ export const ACCESS_LEVELS = ['employee', 'supervisor', 'hr_admin'];
 export const STAFF_ACCESS_LEVELS = ['supervisor', 'hr_admin'];
 export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Suspended'];
 
-const HR_TASK_ERROR = 'Choose the HR step: HR 1 (leave credits) or HR 2 (pre-approval).';
+const HR_TASK_ERROR = 'Choose the HR step: HR 1 (leave credits) or HR 2 (certification and pre-approval).';
 
 const FIELD_LIMITS = { name: 160, email: 254, role: 120, office: 160, phoneNumber: 250, employeeId: 64, region: 250, dateHired: 40 };
 
