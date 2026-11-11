@@ -3,6 +3,7 @@ import { CalendarDays, Download, Eye, FileText, Plane } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { dtrFilename, fillDTR } from '../utils/dtrForm';
+import { dtrSignatures, dtrStatusText } from '../utils/dtrSubmission';
 import { downloadBytes } from '../utils/documentFiles';
 import { recordsForEmployees } from '../utils/hrAttendance';
 import { travelOrderCovers } from '../../shared/travelStatus';
@@ -27,7 +28,7 @@ const buttonClass = 'inline-flex items-center gap-1 rounded-lg border border-sla
 // One employee's documents for HR, in one place: their DTR for any month (CSC Form 48),
 // their leave applications (CSC Form 6), their travel orders, and the files attached to
 // them, each viewed or downloaded here.
-export default function HREmployeeDocuments({ employee, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
+export default function HREmployeeDocuments({ employee, dtrSubmissions = [], requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
   const [month, setMonth] = useState(() => getManilaDateString().slice(0, 7));
   const [viewer, setViewer] = useState(null); // { key, title, load }
   const [form, setForm] = useState(null); // a leave or travel request
@@ -48,10 +49,12 @@ export default function HREmployeeDocuments({ employee, requests = [], attendanc
   const monthLoaded = !attendanceFrom || month >= attendanceFrom.slice(0, 7) || loadedAttendanceMonths.includes(month);
   const daysRecorded = new Set(ownAttendance.filter(record => String(record.date || '').startsWith(month)).map(record => record.date)).size;
 
+  // The month's DTR as signed through WorkMate, if it was.
+  const submission = dtrSubmissions.find(item => item.month === month && item.employeeId === employee?.employeeId) || null;
   const makeDtr = async () => {
     const [year, monthNumber] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
-    const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance, { summary: true, travelOrders: requests.filter(request => travelOrderCovers(request, employee)) });
+    const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance, { summary: true, travelOrders: requests.filter(request => travelOrderCovers(request, employee)), signatures: dtrSignatures(submission) });
     return { fileName: dtrFilename(employee?.name, year, monthNumber), fileType: 'application/pdf', bytes };
   };
   const viewDtr = () => setViewer({ key: Date.now(), title: `DTR · ${employee?.name || 'Employee'} · ${month}`, load: makeDtr });
@@ -103,7 +106,7 @@ export default function HREmployeeDocuments({ employee, requests = [], attendanc
           <button type="button" onClick={downloadDtr} disabled={!month || !monthLoaded || busy} className={buttonClass}><Download className="h-3.5 w-3.5" />{busy ? 'Preparing...' : 'Download'}</button>
         </div>
         {monthLoaded ? (
-          <p className="mt-1.5 text-[11px] font-semibold text-slate-500">{daysRecorded} day{daysRecorded === 1 ? '' : 's'} with attendance in this month.</p>
+          <p className="mt-1.5 text-[11px] font-semibold text-slate-500">{daysRecorded} day{daysRecorded === 1 ? '' : 's'} with attendance in this month. {submission ? `Signed DTR: ${submission.status}. ${dtrStatusText(submission)}.` : 'Not signed and submitted yet.'}</p>
         ) : (
           <p className="mt-1.5 text-[11px] font-semibold text-amber-800">
             This month's attendance is not loaded yet.{' '}

@@ -143,7 +143,7 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
-export default function HRAdminEmployeesView({ employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
+export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
   // Leave credits are HR 1's to change (shared/hrSteps.js); other HR accounts only see them.
   const canEditCredits = canChangeLeaveCredits(currentUser);
   // A notification's button opens this employee's profile first.
@@ -1160,6 +1160,7 @@ This cannot be undone.`
         <HREmployeeDocuments
           key={employeeKey(selectedEmployee)}
           employee={selectedEmployee}
+          dtrSubmissions={dtrSubmissions}
           requests={requests}
           attendanceHistory={attendanceHistory}
           attendanceFrom={attendanceFrom}

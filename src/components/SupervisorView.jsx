@@ -32,6 +32,7 @@ import { FOR_PRE_APPROVAL } from '../../shared/hrSteps';
 import { companionNames } from '../../shared/travelStatus';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
+import SupervisorDtrDesk from './SupervisorDtrDesk';
 
 // Up to three initials for the signature stamp: the first name's, the middle initial's, and the
 // last name's, such as "IFF" for "Ivan Stephen F. Fadri, CESE" (what follows a comma is left out).
@@ -68,7 +69,12 @@ export default function SupervisorView({
   onUpdateRequestStatus,
   onUpdateUser,
   // From a notification's button: { requestId } of the request to open.
-  focus = null
+  focus = null,
+  // The DTRs employees signed through WorkMate, for the Supervisor to verify as the In-charge.
+  dtrSubmissions = [],
+  onReviewDtr,
+  onOpenDtr,
+  onReloadDtrSubmissions
 }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [remarks, setRemarks] = useState('');
@@ -346,8 +352,22 @@ export default function SupervisorView({
           <FileCheck2 className="w-4 h-4" />
           <span>Leave & Travel Requests Desk ({requests.length})</span>
         </button>
+        <button
+          onClick={() => setActiveMainTab('dtr')}
+          className={`px-4 py-2 rounded-lg text-xs font-black cursor-pointer border-0 flex items-center gap-2 transition-all font-bold ${
+            activeMainTab === 'dtr'
+              ? 'bg-blue-800 text-white shadow-xs font-black'
+              : 'text-slate-500 hover:text-slate-855 bg-transparent'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>DTR to Verify ({dtrSubmissions.filter(item => item.status === 'Submitted').length})</span>
+        </button>
       </div>
 
+      {activeMainTab === 'dtr' ? (
+        <SupervisorDtrDesk user={user} submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} />
+      ) : (<>
       {/* Row 1: Quick Insights Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
           
@@ -950,6 +970,7 @@ export default function SupervisorView({
 
         </div>
       </div>
+      </>)}
 
       {/* Renders CSC Form No. 6 Modal Preview / Travel Order Preview */}
       {showForm6Request && showForm6Request.type === 'Leave Request' && (

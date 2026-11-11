@@ -10,6 +10,7 @@ import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import HRHolidays from './HRHolidays';
 import HRLeaveCreditsStart from './HRLeaveCreditsStart';
+import HRDtrSubmissions from './HRDtrSubmissions';
 import HRMonthlyLeaveCredits from './HRMonthlyLeaveCredits';
 import { apiFetch } from '../utils/api';
 import HROvertimeOrders from './HROvertimeOrders';
@@ -268,7 +269,7 @@ const offlineRowLabels = record => [
 ].filter(Boolean);
 
 // `canChangeCredits`: whether this HR account (HR 1) charges and credits leave.
-export default function HRAdminDTRRecordsView({ canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
+export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
@@ -434,6 +435,7 @@ export default function HRAdminDTRRecordsView({ canChangeCredits = true, employe
         <h2 className="text-xl font-black text-slate-900">DTR Records</h2>
       </div>
       <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
+      <HRDtrSubmissions employees={employees} submissions={dtrSubmissions} />
       <HRLeaveCreditsStart
         employees={employees}
         start={creditsStart.start}

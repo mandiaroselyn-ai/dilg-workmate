@@ -256,7 +256,7 @@ async function fillPage(pdf, page, employee, year, month, recordsByDay, font, bo
 // it; `summary` adds the month's late, undertime, deduction, and overtime under each copy,
 // which only HR's copy has. The days an approved Travel Order among `travelOrders` (the
 // employee's requests) covers, with no logs, show OFFICIAL TRAVEL.
-export async function fillDTR(templateBytes, employee = {}, year, month, attendanceRecords = [], { summary = false, travelOrders = [] } = {}) {
+export async function fillDTR(templateBytes, employee = {}, year, month, attendanceRecords = [], { summary = false, travelOrders = [], signatures = null } = {}) {
   const pdf = await PDFDocument.load(templateBytes);
   const pages = pdf.getPages();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -269,10 +269,72 @@ export async function fillDTR(templateBytes, employee = {}, year, month, attenda
   for (let i = 0; i < pages.length; i++) {
     if (i % 2 === 0) {
       await fillPage(pdf, pages[i], employee, year, month, recordsByDay, font, bold, summary, travelDays);
+      if (signatures) await drawSignatures(pdf, pages[i], signatures, font, bold);
     }
   }
 
   return pdf.save();
+}
+
+// Where the e-signatures go on each of the page's two copies, as the template draws them (the
+// left copy's x; the right copy is SIGNATURE_COPY_SHIFT to the right): the employee's over the
+// line under "I CERTIFY on my honor..." (y 151.1, x 171 to 239.4), and the In-charge's over the
+// name printed on the line above "In-charge" (y 129.3, x 171 to 267). The template prints the
+// Provincial Director's name there; another In-charge's name is written over it.
+const SIGNATURE_COPY_SHIFT = 236.2;
+const EMPLOYEE_SIGNATURE = { center: 205.2, bottom: 151.6, maxWidth: 92, maxHeight: 13 };
+const VERIFIER_SIGNATURE = { center: 219, bottom: 132, maxWidth: 92, maxHeight: 12 };
+const VERIFIER_NAME = { center: 219, y: 131, size: 6.5, maxWidth: 94, cover: { x: 171.5, y: 129.8, width: 95, height: 7.6 } };
+const TEMPLATE_IN_CHARGE = 'FADRI';
+// The line under each copy that says when each one signed.
+const SIGNED_NOTE = { x: 80, y: 116, size: 4.2, maxWidth: 214 };
+const grey = rgb(0.35, 0.35, 0.35);
+
+// A signature saved as a data: URL (PNG or JPEG), embedded in the PDF, or null.
+const embedSignature = async (pdf, dataUrl) => {
+  const match = /^data:image\/(png|jpeg);base64,(.+)$/.exec(String(dataUrl || ''));
+  if (!match) return null;
+  const bytes = Uint8Array.from(atob(match[2]), character => character.charCodeAt(0));
+  try {
+    return match[1] === 'png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+  } catch {
+    return null;
+  }
+};
+
+const signedTime = value => (value
+  ? new Date(value).toLocaleString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+  : '');
+
+// Draws the e-signatures of a DTR submitted through WorkMate: `signatures.employee` and
+// `signatures.verification`, each { image, name, signedAt }.
+async function drawSignatures(pdf, page, { employee, verification } = {}, font, bold) {
+  const employeeImage = await embedSignature(pdf, employee?.image);
+  const verifierImage = await embedSignature(pdf, verification?.image);
+  const otherInCharge = verification?.name && !verification.name.toUpperCase().includes(TEMPLATE_IN_CHARGE);
+  const note = [
+    employee?.signedAt ? `E-signed by the employee ${signedTime(employee.signedAt)}` : '',
+    verification?.signedAt ? `verified (e-signed) by ${verification.name || 'the In-charge'} ${signedTime(verification.signedAt)}` : '',
+  ].filter(Boolean).join('; ');
+  for (const shift of [0, SIGNATURE_COPY_SHIFT]) {
+    for (const [image, spot] of [[employeeImage, EMPLOYEE_SIGNATURE], [verifierImage, VERIFIER_SIGNATURE]]) {
+      if (!image) continue;
+      const scale = Math.min(spot.maxWidth / image.width, spot.maxHeight / image.height);
+      const width = image.width * scale;
+      page.drawImage(image, { x: spot.center + shift - width / 2, y: spot.bottom, width, height: image.height * scale });
+    }
+    if (otherInCharge) {
+      const { cover } = VERIFIER_NAME;
+      page.drawRectangle({ x: cover.x + shift, y: cover.y, width: cover.width, height: cover.height, color: rgb(1, 1, 1) });
+      const name = verification.name.toUpperCase();
+      const size = fitSize(name, bold, VERIFIER_NAME.maxWidth, VERIFIER_NAME.size);
+      page.drawText(name, { x: VERIFIER_NAME.center + shift - bold.widthOfTextAtSize(name, size) / 2, y: VERIFIER_NAME.y, size, font: bold, color: black });
+    }
+    if (note) {
+      const text = `${note}, through DILG WorkMate.`;
+      page.drawText(text, { x: SIGNED_NOTE.x + shift, y: SIGNED_NOTE.y, size: fitSize(text, font, SIGNED_NOTE.maxWidth, SIGNED_NOTE.size), font, color: grey });
+    }
+  }
 }
 
 // Produces the suggested filename: "DTR_DELA-CRUZ_2026-08.pdf"

@@ -9,6 +9,7 @@ import supportRoutes from './routes/supportRoutes.js';
 import holidayRoutes from './routes/holidayRoutes.js';
 import overtimeOrderRoutes from './routes/overtimeOrderRoutes.js';
 import downloadRoutes from './routes/downloadRoutes.js';
+import dtrSubmissionRoutes from './routes/dtrSubmissionRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
@@ -95,6 +96,7 @@ export function createApiApp() {
   app.use('/api', holidayRoutes);
   app.use('/api', overtimeOrderRoutes);
   app.use('/api', downloadRoutes);
+  app.use('/api', dtrSubmissionRoutes);
   app.use('/api/auth', googleAuthRoutes);
   app.use('/api', apiNotFound);
   app.use(apiErrorHandler);

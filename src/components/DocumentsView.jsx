@@ -14,6 +14,7 @@ import {
   FileText,
   FolderOpen,
   Paperclip,
+  PenLine,
   Plane
 } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
@@ -24,6 +25,8 @@ import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
 import { travelDurationLabel } from '../utils/travelDuration';
 import DocumentViewer from './DocumentViewer';
+import SignDtrDialog from './SignDtrDialog';
+import { dtrSignatures, DTR_CERTIFICATION, dtrStatusText } from '../utils/dtrSubmission';
 
 // Only documents the system makes from the employee's own requests and attendance.
 const categories = [
@@ -37,8 +40,10 @@ const CLOSED_STATUSES = ['Draft', 'Cancelled', 'Withdrawn'];
 
 const statusTone = status => ({
   Approved: 'bg-emerald-100 text-emerald-700',
+  Verified: 'bg-emerald-100 text-emerald-700',
   Rejected: 'bg-rose-100 text-rose-700',
-  Returned: 'bg-orange-100 text-orange-700'
+  Returned: 'bg-orange-100 text-orange-700',
+  Submitted: 'bg-blue-100 text-blue-700'
 }[status] || 'bg-amber-100 text-amber-700');
 
 const formatDate = value => {
@@ -89,7 +94,11 @@ const Empty = ({ children }) => (
   <p className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-center text-xs font-semibold text-slate-500">{children}</p>
 );
 
-export default function DocumentsView({ user, requests = [], attendanceHistory = [] }) {
+// `dtrSubmissions` are the employee's DTRs signed through WorkMate; `onSubmitDtr` signs and submits one.
+export default function DocumentsView({ user, requests = [], attendanceHistory = [], dtrSubmissions = [], onSubmitDtr }) {
+  const [signing, setSigning] = useState(''); // the month being signed
+  const [signedNote, setSignedNote] = useState('');
+  const submissionOf = month => dtrSubmissions.find(item => item.month === month) || null;
   const [openCategory, setOpenCategory] = useState(null);
   const [year, setYear] = useState('all');
   const [viewer, setViewer] = useState(null); // { key, title, load }
@@ -124,7 +133,7 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
   const makeDtr = async month => {
     const [dtrYear, dtrMonth] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
-    const bytes = await fillDTR(await response.arrayBuffer(), user || {}, dtrYear, dtrMonth, attendanceHistory, { travelOrders: requests });
+    const bytes = await fillDTR(await response.arrayBuffer(), user || {}, dtrYear, dtrMonth, attendanceHistory, { travelOrders: requests, signatures: dtrSignatures(submissionOf(month)) });
     return { fileName: dtrFilename(user?.name, dtrYear, dtrMonth), fileType: 'application/pdf', bytes };
   };
   const view = (title, load) => setViewer({ key: Date.now(), title, load });
@@ -249,18 +258,43 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
 
           {category.id === 'dtr' && (shown.length ? (
             <ul className="space-y-2">
-              {shown.map(({ month, days }) => (
-                <Row key={month} icon={Clock} title={`Daily Time Record – ${formatMonth(month)}`} meta={`${plural(days, 'day')} with attendance${month === thisMonth ? ' · This month so far' : ''}`}>
-                  <ActionButton icon={Eye} onClick={() => view(`Daily Time Record – ${formatMonth(month)}`, () => makeDtr(month))}>View</ActionButton>
-                  <ActionButton icon={Download} disabled={busy === month} onClick={() => downloadDtr(month)}>{busy === month ? 'Preparing...' : 'Download'}</ActionButton>
-                </Row>
-              ))}
+              {shown.map(({ month, days }) => {
+                const submission = submissionOf(month);
+                // A month that has ended is signed and submitted to the Supervisor (In-charge);
+                // a returned one is fixed and signed again.
+                const canSign = onSubmitDtr && month < thisMonth && (!submission || submission.status === 'Returned');
+                return (
+                  <Row key={month} icon={Clock} title={`Daily Time Record – ${formatMonth(month)}`} status={submission?.status} meta={[`${plural(days, 'day')} with attendance${month === thisMonth ? ' · This month so far' : ''}`, dtrStatusText(submission)].filter(Boolean).join(' · ')}>
+                    <ActionButton icon={Eye} onClick={() => view(`Daily Time Record – ${formatMonth(month)}`, () => makeDtr(month))}>View</ActionButton>
+                    <ActionButton icon={Download} disabled={busy === month} onClick={() => downloadDtr(month)}>{busy === month ? 'Preparing...' : 'Download'}</ActionButton>
+                    {canSign && <ActionButton icon={PenLine} primary onClick={() => { setSignedNote(''); setSigning(month); }}>{submission ? 'Sign & Submit Again' : 'Sign & Submit'}</ActionButton>}
+                  </Row>
+                );
+              })}
             </ul>
           ) : <Empty>Your DTR appears here once you have Time In records.</Empty>)}
+          {category.id === 'dtr' && signedNote && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-center text-xs font-bold text-emerald-700">{signedNote}</p>}
         </div>
       )}
 
       {viewer && <DocumentViewer key={viewer.key} title={viewer.title} load={viewer.load} onClose={() => setViewer(null)} />}
+      {signing && (
+        <SignDtrDialog
+          title={`Sign your DTR for ${formatMonth(signing)}`}
+          statement={DTR_CERTIFICATION}
+          savedSignature={user?.signatureImage || ''}
+          confirmLabel="Sign & Submit"
+          onCancel={() => setSigning('')}
+          onConfirm={async ({ signature, password, saveSignature }) => {
+            await onSubmitDtr({ month: signing, signature, password, saveSignature });
+            setSignedNote(`Your DTR for ${formatMonth(signing)} was signed and sent to the Supervisor for verification.`);
+            setSigning('');
+          }}
+        >
+          {submissionOf(signing)?.remarks && <p className="rounded-xl bg-orange-50 p-3 text-xs font-bold text-orange-800">Returned by the Supervisor: {submissionOf(signing).remarks}</p>}
+          <button type="button" onClick={() => view(`Daily Time Record – ${formatMonth(signing)}`, () => makeDtr(signing))} className="text-xs font-black text-blue-700 underline">Check the DTR before you sign it</button>
+        </SignDtrDialog>
+      )}
       {formPreview?.type === 'Leave Request' && <CSCForm6Preview request={formPreview} user={user} onClose={() => setFormPreview(null)} />}
       {formPreview?.type === 'Travel Order' && <TravelOrderPreview request={formPreview} user={user} onClose={() => setFormPreview(null)} />}
     </div>

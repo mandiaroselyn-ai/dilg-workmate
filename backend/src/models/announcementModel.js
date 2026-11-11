@@ -40,7 +40,7 @@ const NotificationSchema = new mongoose.Schema({
 
 export const NOTIFICATION_ACTIONS = ['review_account', 'reset_password', 'review_enrollment', 'review_request'];
 // 'sms' opens the employee's SMS screen instead of a page.
-export const NOTIFICATION_VIEWS = ['dashboard', 'attendance', 'requests', 'announcements', 'calendar', 'profile', 'settings', 'sms'];
+export const NOTIFICATION_VIEWS = ['dashboard', 'attendance', 'requests', 'announcements', 'calendar', 'profile', 'settings', 'sms', 'documents', 'supervisor'];
 
 const SmsAlertSchema = new mongoose.Schema({
   customId: { type: String, required: true },

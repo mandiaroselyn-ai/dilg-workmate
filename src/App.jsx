@@ -100,6 +100,7 @@ export default function App() {
   const [adminNotifications, setAdminNotifications] = useState([]);
   const [adminSmsAlerts, setAdminSmsAlerts] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [dtrSubmissions, setDtrSubmissions] = useState([]);
   // An employee's own holidays: the national and province-wide ones, and their town's.
   const myHolidays = useMemo(() => (activeRole === 'employee' ? holidaysFor(holidays, user) : holidays), [activeRole, holidays, user]);
   // Attendance as the DTR reads it, which the pages show. What is saved stays as it came. A record
@@ -586,6 +587,7 @@ export default function App() {
     setAdminSmsAlerts([]);
     setEmployees([]);
     setAcknowledgedAnnouncements([]);
+    setDtrSubmissions([]);
     setViewFocus(null);
     setCurrentView('dashboard');
     setSidebarOpen(false);
@@ -1224,6 +1226,48 @@ export default function App() {
     return data.request;
   };
 
+  // Monthly DTRs signed through WorkMate (CSC Form No. 48): the employee's own, or everyone's
+  // from the past year for the Supervisor and HR. Each handler throws with the server's message.
+  const loadDtrSubmissions = useCallback(async () => {
+    const response = await apiFetch('/api/dtr-submissions');
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.success) setDtrSubmissions(Array.isArray(data.submissions) ? data.submissions : []);
+  }, []);
+  useEffect(() => {
+    if (!authToken || !activeRole) return;
+    loadDtrSubmissions().catch(error => console.warn('Unable to load DTR submissions:', error));
+  }, [authToken, activeRole, loadDtrSubmissions]);
+  const sendDtrSubmission = async (method, body) => {
+    const response = await apiFetch('/api/dtr-submissions', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success || !data.submission) throw new Error(data.error || 'Unable to save the DTR.');
+    setDtrSubmissions(previous => [data.submission, ...previous.filter(item => item.id !== data.submission.id)]);
+    return data.submission;
+  };
+  // The employee signs and submits a month's DTR, and may keep the new signature on their profile.
+  const handleSubmitDtr = async ({ month, signature, password, saveSignature }) => {
+    const submission = await sendDtrSubmission('POST', { month, signature, password });
+    if (saveSignature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
+    return submission;
+  };
+  // The Supervisor verifies a DTR with their e-signature, or returns it with remarks.
+  const handleReviewDtr = async ({ id, action, signature, password, remarks, saveSignature }) => {
+    const submission = await sendDtrSubmission('PATCH', { id, action, signature, password, remarks });
+    if (saveSignature && signature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
+    return submission;
+  };
+  // One submission with the employee, records, and Travel Orders its DTR is made from.
+  const openDtrSubmission = async id => {
+    const response = await apiFetch(`/api/dtr-submissions?id=${encodeURIComponent(id)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success) throw new Error(data.error || 'Unable to open the DTR.');
+    return data;
+  };
+
   // HR announcements and calendar events. Each handler throws with the server's message
   // on failure so the HR screen can show it. The server notifies employees of new ones.
   const sendBulletinChange = async (path, method, body) => {
@@ -1671,6 +1715,10 @@ export default function App() {
               onUpdateRequestStatus={handleUpdateRequestStatus}
               onUpdateUser={handleUpdateUser}
               focus={focus}
+              dtrSubmissions={dtrSubmissions}
+              onReviewDtr={handleReviewDtr}
+              onOpenDtr={openDtrSubmission}
+              onReloadDtrSubmissions={loadDtrSubmissions}
             />
           )}
 
@@ -1701,6 +1749,7 @@ export default function App() {
               section={currentView}
               user={user}
               employees={employees}
+              dtrSubmissions={dtrSubmissions}
               attendanceHistory={dtrAttendance}
               attendanceFrom={attendanceWindowStart()}
               loadedAttendanceMonths={loadedAttendanceMonths}
@@ -1742,6 +1791,8 @@ export default function App() {
               user={user}
               requests={visibleEmployeeRequests}
               attendanceHistory={visibleEmployeeRecords}
+              dtrSubmissions={dtrSubmissions}
+              onSubmitDtr={handleSubmitDtr}
             />
           )}
           {currentView === 'office_directory' && <OfficeDirectoryView />}

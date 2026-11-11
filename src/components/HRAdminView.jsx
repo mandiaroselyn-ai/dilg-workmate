@@ -54,6 +54,8 @@ export default function HRAdminView({
   section = 'hr_dashboard',
   user = {},
   employees = [],
+  // The DTRs employees signed through WorkMate.
+  dtrSubmissions = [],
   attendanceHistory = [],
   attendanceFrom,
   loadedAttendanceMonths = [],
@@ -350,6 +352,7 @@ export default function HRAdminView({
             <HRStaffAccountsView currentUser={user} onToast={triggerToast} />
           ) : (
             <HRAdminEmployeesView
+              dtrSubmissions={dtrSubmissions}
               employees={employees}
               currentUser={user}
               onEmployeesChange={onEmployeesChange}
@@ -395,6 +398,7 @@ export default function HRAdminView({
       />}
 
       {activeTab === 'dtr_records' && <HRAdminDTRRecordsView
+        dtrSubmissions={dtrSubmissions}
         employees={employees}
         attendanceHistory={attendanceHistory}
         attendanceFrom={attendanceFrom}
