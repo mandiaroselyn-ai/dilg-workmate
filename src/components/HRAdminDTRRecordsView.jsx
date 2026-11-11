@@ -268,7 +268,7 @@ const offlineRowLabels = record => [
   record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
 ].filter(Boolean);
 
-// `canChangeCredits`: whether this HR account (HR 1) charges and credits leave.
+// `canChangeCredits`: whether this HR account (HR 1 or HR 2) charges and credits leave.
 export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');

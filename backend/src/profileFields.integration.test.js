@@ -156,16 +156,22 @@ test('HR enters a transferee\'s leave balance from the leave card, but none for 
   assert.equal((await createAccount({ ...newAccount, appointmentStatus: 'Job Order' })).status, 201);
 });
 
-test('only HR 1 enters an opening balance; HR 2 makes the account with none', async t => {
+test('HR 1 and HR 2 enter an opening balance; an HR account with no HR step makes the account with none', async t => {
+  const noStep = { ...hr, _id: 'hr-3', email: 'nostep@dilg.gov.ph', hrTask: '' };
+  t.mock.method(User, 'findByEmail', async () => noStep);
+  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  const asNoStep = body => request(app).post('/api/employees').set('Authorization', `Bearer ${createAuthToken(noStep)}`).send(body);
+  const withBalance = await asNoStep({ ...newAccount, openingVacationLeaveCredits: '10' });
+  assert.equal(withBalance.status, 403);
+  assert.match(withBalance.body.error, /Only HR 1 and HR 2/);
+  assert.equal(creates.mock.callCount(), 0);
+  assert.equal((await asNoStep(newAccount)).status, 201);
+  t.mock.restoreAll();
   const hr2 = { ...hr, _id: 'hr-2', email: 'erick@dilg.gov.ph', hrTask: 'pre-approval' };
   t.mock.method(User, 'findByEmail', async () => hr2);
-  const creates = t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
-  const asHr2 = body => request(app).post('/api/employees').set('Authorization', `Bearer ${createAuthToken(hr2)}`).send(body);
-  const withBalance = await asHr2({ ...newAccount, openingVacationLeaveCredits: '10' });
-  assert.equal(withBalance.status, 403);
-  assert.match(withBalance.body.error, /Only HR 1/);
-  assert.equal(creates.mock.callCount(), 0);
-  assert.equal((await asHr2(newAccount)).status, 201);
+  t.mock.method(User, 'createEmployee', async data => ({ ...data, _id: 'emp-new' }));
+  const byHr2 = await request(app).post('/api/employees').set('Authorization', `Bearer ${createAuthToken(hr2)}`).send({ ...newAccount, openingVacationLeaveCredits: '10' });
+  assert.equal(byHr2.status, 201, JSON.stringify(byHr2.body));
 });
 
 test('HR cannot give a COS or JO worker leave credits by adjustment, only clear them', async t => {

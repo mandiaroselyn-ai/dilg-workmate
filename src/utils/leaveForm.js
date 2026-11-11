@@ -69,6 +69,8 @@ export const LEAVE_FORM_LAYOUT = {
   creditColumns: { vacation: 203.6, sick: 275 },
   creditRows: { earned: 228.6, less: 218.9, balance: 209.1 },
   certifier: { center: 202, nameY: 171.7, positionY: 160.8, maxWidth: 212, coverX: 94, coverWidth: 216 },
+  // HR 2's signature, just over the certifying officer's name, under the table's last row.
+  certifierSignature: { center: 202, bottom: 179, width: 120, height: 24 },
 
   // 7.B: HR 2's recommendation: a check in the narrow space left of the chosen line (x = the
   // check's left edge, y = the line's baseline), a disapproval's reason after "due to" and on the
@@ -83,6 +85,8 @@ export const LEAVE_FORM_LAYOUT = {
     { x: 343, y: 205.1, maxWidth: 178 }
   ],
   recommender: { center: 432, nameY: 173.1, positionY: 160.8, maxWidth: 196, coverX: 340, coverWidth: 196 },
+  // HR 2's signature, just over the recommending officer's name, under the reason's last line.
+  recommenderSignature: { center: 432, bottom: 180.5, width: 120, height: 21 },
 
   // 7.C/7.D: the Supervisor's signature, just over the approving official's name that the
   // template prints at the bottom (its baseline is y 63.4), under 7.D's last line (y 107.6).
@@ -241,6 +245,7 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
       write(creditFigure(certification.sickLeave?.[row]), { center: L.creditColumns.sick, y, maxWidth: 66 });
     }
     writeSignatory(certification.certifiedBy, L.certifier);
+    await drawSignature(pdf, page, certification.certifiedBy?.signature, L.certifierSignature);
   }
 
   // 7.B: HR 2's recommendation, once HR 2 has pre-approved the leave.
@@ -272,6 +277,7 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
       flush();
     }
     writeSignatory(recommendation.recommendedBy, L.recommender);
+    await drawSignature(pdf, page, recommendation.recommendedBy?.signature, L.recommenderSignature);
   }
 
   // 7.C/7.D: once the Supervisor approves or disapproves, their signature goes over the

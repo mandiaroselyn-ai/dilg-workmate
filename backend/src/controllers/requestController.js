@@ -12,7 +12,7 @@ import { filingDate, lateFilingProblem } from '../../../shared/requestFiling.js'
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
-import { leaveCreditCertification, needsCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
+import { HR_SIGNATURE_NEEDED, leaveCreditCertification, needsCreditCertification, needsHrSignature, readRecommendation } from '../../../shared/hrSteps.js';
 import { YEARLY_LEAVES, yearlyLeaveProblem } from '../../../shared/yearlyLeave.js';
 import { needsStartingBalance } from '../../../shared/leaveStart.js';
 import { holidaysFor } from '../../../shared/phHolidays.js';
@@ -88,14 +88,18 @@ const hrStepRecord = async (existing, update, req) => {
   const at = new Date().toISOString();
   const recommendation = readRecommendation(req.body?.recommendation);
   if (recommendation.error) return { error: recommendation.error };
-  const fields = { recommendation: { ...recommendation.value, recommendedBy: signatory(req.user), recommendedAt: at } };
+  // HR 2 signs a leave's 7.A and 7.B with the signature saved on their account.
+  const signature = String(req.user?.signatureImage || '');
+  if (needsHrSignature(existing) && !signature) return { error: HR_SIGNATURE_NEEDED };
+  const signer = { ...signatory(req.user), ...(signature ? { signature } : {}) };
+  const fields = { recommendation: { ...recommendation.value, recommendedBy: signer, recommendedAt: at } };
   if (needsCreditCertification(existing)) {
     const employee = (existing.employeeId && await User.findByEmployeeId(existing.employeeId))
       || (existing.employeeEmail && await User.findByEmail(existing.employeeEmail));
     if (!employee) return { error: "The employee's account was not found, so their leave credits cannot be certified." };
-    // Until HR 1 enters the balance from the leave card, WorkMate's balance is not the real one.
+    // Until HR enters the balance from the leave card, WorkMate's balance is not the real one.
     if (needsStartingBalance(employee, await leaveCreditsStart())) {
-      return { error: `${employee.name || 'The employee'} has no starting balance from the leave card yet, so the certification would not show their real balance. Ask HR 1 to enter it (DTR Records, Leave Credits Start).` };
+      return { error: `${employee.name || 'The employee'} has no starting balance from the leave card yet, so the certification would not show their real balance. Enter it first (DTR Records, Leave Credits Start).` };
     }
     const certification = leaveCreditCertification({
       leaveType: existing.leaveType,
@@ -103,7 +107,7 @@ const hrStepRecord = async (existing, update, req) => {
       employee,
       asOf: getManilaDateString()
     });
-    fields.creditCertification = { ...certification, certifiedBy: signatory(req.user), certifiedAt: at };
+    fields.creditCertification = { ...certification, certifiedBy: signer, certifiedAt: at };
   }
   return { fields };
 };

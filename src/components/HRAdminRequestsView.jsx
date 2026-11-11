@@ -3,7 +3,7 @@ import AttachmentList from './AttachmentList';
 import { travelDurationLabel } from '../utils/travelDuration';
 import { companionNames } from '../../shared/travelStatus';
 import { getManilaDateString } from '../../shared/localDate';
-import { FOR_PRE_APPROVAL, HR_STEP_NAMES, HR_TASKS, HR_TASK_LABELS, doesHrStep, hrStepOf, leaveCreditCertification, needsCreditCertification } from '../../shared/hrSteps';
+import { FOR_PRE_APPROVAL, HR_SIGNATURE_NEEDED, HR_STEP_NAMES, HR_TASKS, HR_TASK_LABELS, doesHrStep, hrStepOf, leaveCreditCertification, needsCreditCertification, needsHrSignature } from '../../shared/hrSteps';
 import { ArrowRight, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, ChevronLeft, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, History, MapPin, MessageSquare, Plane, Search, ShieldCheck, UserRound, Users } from 'lucide-react';
 
 const statusTone = { Pending: 'bg-amber-50 text-amber-700', 'Pending Review': 'bg-amber-50 text-amber-700', [FOR_PRE_APPROVAL]: 'bg-indigo-50 text-indigo-700', Returned: 'bg-rose-50 text-rose-700', Validated: 'bg-emerald-50 text-emerald-700', 'For Supervisor': 'bg-blue-50 text-blue-700', Approved: 'bg-emerald-50 text-emerald-700', Rejected: 'bg-rose-50 text-rose-700' };
@@ -72,7 +72,10 @@ const Detail = ({ label, value, icon: Icon = FileText }) => <div className="flex
 const Stat = ({ label, value, icon: Icon, tone, onClick }) => <button type="button" onClick={onClick} className="rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"><div className="flex items-center justify-between"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></span><strong className="text-2xl font-black text-slate-900">{value}</strong></div><p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">{label}</p><span className="mt-1 block text-xs font-bold text-blue-600">View requests</span></button>;
 
 // `user` is the signed-in HR/Admin, whose `hrTask` says which HR step they take.
-export default function HRAdminRequestsView({ user = {}, requests = [], employees = [], onEmployeesChange, onUpdateRequests, onUpdateRequestStatus, focusRequestId }) {
+export default function HRAdminRequestsView({ user = {}, requests = [], employees = [], onEmployeesChange, onUpdateRequests, onUpdateRequestStatus, onUpdateUser, focusRequestId }) {
+  // HR 2's signature for 7.A and 7.B: a picked image waiting to be saved, and whether it is saving.
+  const [pickedSignature, setPickedSignature] = useState('');
+  const [savingSignature, setSavingSignature] = useState(false);
   // A notification's button opens this request first.
   const focusedRequest = focusRequestId ? requests.find(request => request.id === focusRequestId) || null : null;
   const [screen, setScreen] = useState(focusedRequest ? 'details' : 'dashboard');
@@ -148,7 +151,45 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
   };
   const allChecked = validationItems.every(item => checks[item]);
   const recommendationReady = recommendation.decision === 'approval' || recommendation.reason.trim();
-  const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee));
+  // A leave goes to the Head with HR 2's signature on 7.A and 7.B (shared/hrSteps.js).
+  const signatureNeeded = needsHrSignature(selected);
+  const savedSignature = user?.signatureImage || '';
+  const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee)) && (!signatureNeeded || Boolean(savedSignature));
+  // A scanned signature, shrunk to at most 400 x 150 and kept as a PNG, as the Supervisor's is.
+  const pickSignature = event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        let width = image.width;
+        let height = image.height;
+        if (width > 400) { height = Math.round(height * 400 / width); width = 400; }
+        if (height > 150) { width = Math.round(width * 150 / height); height = 150; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(image, 0, 0, width, height);
+        setPickedSignature(canvas.toDataURL('image/png'));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  const saveSignature = async () => {
+    if (!pickedSignature || !onUpdateUser || savingSignature) return;
+    setSavingSignature(true);
+    try {
+      if (await onUpdateUser({ signatureImage: pickedSignature })) {
+        setPickedSignature('');
+        notify('Signature saved. It goes on 7.A and 7.B of the leaves you send to the Head.');
+      }
+    } finally {
+      setSavingSignature(false);
+    }
+  };
   // HR 2 takes the step only after checking every validation item and choosing the recommendation.
   const handleSendOn = async () => {
     if (isUpdating || !selected || !canSendOn) return;
@@ -187,7 +228,7 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
             <p className="text-xs font-black uppercase tracking-wide text-slate-500">{selectedEmployee ? `${employeeName(selected)}'s leave credits, as they will be certified` : 'The employee\'s account was not found in Employee Management'}</p>
             {selectedEmployee && <CreditTable certification={creditPreview} />}
             {creditPreview?.withoutPayDays > 0 && <p className="mt-2 text-xs font-bold text-rose-700">{creditText(creditPreview.withoutPayDays)} day(s) would be without pay: the balances do not cover the whole leave.</p>}
-            {selectedEmployee && <p className="mt-2 text-xs font-semibold text-slate-600">A balance is wrong? Ask HR 1 to correct it in Employee Management before you send this on. HR 1 keeps the leave credits.</p>}
+            {selectedEmployee && <p className="mt-2 text-xs font-semibold text-slate-600">A balance is wrong? Correct it in Employee Management (Leave Credits, Adjust) before you send this on.</p>}
           </div>
         )}
         {recorded}
@@ -199,9 +240,29 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
             {recommendation.decision === 'disapproval' && <textarea value={recommendation.reason} onChange={event => setRecommendation(previous => ({ ...previous, reason: event.target.value }))} maxLength={300} placeholder="Why it is recommended for disapproval" className="min-h-16 w-full rounded-lg border border-slate-200 p-2 text-xs font-semibold" />}
           </fieldset>
         )}
+        {signatureNeeded && (
+          <div className="mt-3 rounded-xl bg-white/80 p-3">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Your signature (7.A and 7.B)</p>
+            {pickedSignature || savedSignature ? (
+              <div className="mt-2 flex min-h-16 items-center justify-center rounded-lg border border-slate-200 bg-white p-2"><img src={pickedSignature || savedSignature} alt="Your signature" className="max-h-14 max-w-full object-contain" /></div>
+            ) : (
+              <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-semibold text-slate-500">No signature yet</p>
+            )}
+            <div className="mt-2 flex gap-2">
+              <label className="inline-flex flex-1 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">
+                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={pickSignature} />
+                {savedSignature ? 'Replace Signature' : 'Upload Signature'}
+              </label>
+              {pickedSignature && (
+                <button type="button" onClick={saveSignature} disabled={savingSignature} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white hover:bg-emerald-600 disabled:opacity-60">{savingSignature ? 'Saving…' : 'Save Signature'}</button>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] font-semibold text-slate-500">Scan your handwritten signature on paper, crop it, and upload it (PNG or JPG). It goes on 7.A and 7.B of the employee's CSC Form 6.</p>
+          </div>
+        )}
         <textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add HR remarks..." className="mt-3 min-h-24 w-full rounded-xl border border-blue-200 bg-white p-3 text-xs font-semibold outline-none focus:border-blue-600" />
         <button type="button" onClick={handleSendOn} disabled={!canSendOn || isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck className="h-4 w-4" />{isUpdating ? 'Saving…' : certifying ? 'Certify Credits, Pre-approve & Send to the Head' : 'Pre-approve & Send to the Head'}</button>
-        <p className="mt-2 text-center text-xs font-bold text-blue-700">{firstStep && !allChecked ? 'Check every item above first.' : !recommendationReady ? 'Write why it is recommended for disapproval.' : 'The Head (Supervisor) makes the final decision.'}</p>
+        <p className="mt-2 text-center text-xs font-bold text-blue-700">{firstStep && !allChecked ? 'Check every item above first.' : !recommendationReady ? 'Write why it is recommended for disapproval.' : signatureNeeded && !savedSignature ? HR_SIGNATURE_NEEDED : 'The Head (Supervisor) makes the final decision.'}</p>
         <button type="button" onClick={handleReturnToEmployee} disabled={isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"><MessageSquare className="h-4 w-4" />{isUpdating ? 'Saving…' : 'Return to Employee'}</button>
         <p className="mt-2 text-center text-xs font-bold text-rose-700">Something to fix or missing? Write it in the remarks and return the request. The employee is notified.</p>
       </section>

@@ -34,7 +34,7 @@ import {
 import { requireAdmin } from '../middleware/auth.js';
 import { LEAVE_CREDITS_HR_ONLY, canChangeLeaveCredits } from '../../../shared/hrSteps.js';
 
-// Leave credits are HR 1's to change (shared/hrSteps.js).
+// Leave credits are HR 1's and HR 2's to change (shared/hrSteps.js).
 const requireLeaveCreditsHr = (req, res, next) => (canChangeLeaveCredits(req.user)
   ? next()
   : res.status(403).json({ success: false, error: LEAVE_CREDITS_HR_ONLY }));

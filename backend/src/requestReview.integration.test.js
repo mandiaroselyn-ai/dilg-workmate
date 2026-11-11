@@ -24,7 +24,8 @@ const onNovember2 = t => t.mock.timers.enable({ apis: ['Date'], now: new Date('2
 
 // HR 1 (Ms. Salcedo) and HR 2 (Sir Erick).
 const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', name: 'Ma. Joane O. Salcedo', role: 'ADAS II', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
-const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
+const HR2_SIGNATURE = 'data:image/png;base64,iVBORw0KGgo=';
+const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active', signatureImage: HR2_SIGNATURE };
 const requests = {
   // A leave waiting for HR 2, one HR 1 certified when HR 1 still did that step (waiting for
   // HR 2), and a Travel Order waiting for HR 2.
@@ -70,12 +71,24 @@ test('HR 2 certifies the leave credits of a leave and pre-approves it in one ste
   // 7.A: two working days (Nov 9 and 10) of vacation leave, from the balances now, signed by HR 2.
   assert.deepEqual(saved.creditCertification.vacationLeave, { earned: 10, less: 2, balance: 8 });
   assert.deepEqual(saved.creditCertification.sickLeave, { earned: 5, less: 0, balance: 5 });
-  assert.deepEqual(saved.creditCertification.certifiedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
+  assert.deepEqual(saved.creditCertification.certifiedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager', signature: HR2_SIGNATURE });
   // 7.B: HR 2's recommendation.
   assert.equal(saved.recommendation.decision, 'approval');
-  assert.deepEqual(saved.recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
+  assert.deepEqual(saved.recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager', signature: HR2_SIGNATURE });
   // There is no HR 1 step in between any more.
   assert.equal((await session.patch('REQ-PENDING', { status: 'For Pre-approval' })).status, 409);
+});
+
+test('HR 2 cannot send a leave to the Head without a signature; a Travel Order needs none', async t => {
+  const unsigned = { ...hr2, signatureImage: '' };
+  const session = signInAsHr(t, { as: unsigned, employee: juan });
+  const refused = await session.patch('REQ-PENDING', approve);
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.error, /Add your signature first/);
+  assert.equal(session.saves.mock.callCount(), 0);
+  const travel = await session.patch('REQ-TRAVEL', approve);
+  assert.equal(travel.status, 200, JSON.stringify(travel.body));
+  assert.deepEqual(session.saves.mock.calls[0].arguments[1].recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
 });
 
 test('a leave HR 1 certified before is pre-approved by HR 2 without certifying it again', async t => {

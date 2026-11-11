@@ -331,9 +331,9 @@ export const createEmployee = async (req, res) => {
     }
     const opening = normalizeOpeningLeaveCredits(req.body);
     if (opening.error) return res.status(400).json({ success: false, error: opening.error });
-    // An opening balance from the leave card is HR 1's to enter, like any change to leave credits.
+    // An opening balance from the leave card is HR 1's or HR 2's to enter, like any change to leave credits.
     if (opening.value && !canChangeLeaveCredits(req.user)) {
-      return res.status(403).json({ success: false, error: `${LEAVE_CREDITS_HR_ONLY} Leave the opening balance blank; HR 1 adds it after the account is made.` });
+      return res.status(403).json({ success: false, error: `${LEAVE_CREDITS_HR_ONLY} Leave the opening balance blank; HR 1 or HR 2 adds it after the account is made.` });
     }
     if (opening.value && !earnsLeaveCredits(employee)) {
       return res.status(400).json({ success: false, error: 'Contract of service and job order workers do not earn leave credits, so leave their opening balances blank.' });

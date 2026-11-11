@@ -11,7 +11,7 @@ const inputClass = 'mt-1 w-24 rounded-lg border border-slate-200 px-2 py-1.5 tex
 // leave card as of the day before (shared/leaveStart.js). Vacation and sick leave carry over from
 // year to year (CSC MC No. 41, s. 1998), so an employee's earlier leave is not started over: HR 1
 // sets the start month, copies each balance from the leave card, and WorkMate counts from the
-// start month on. Only HR 1 sets them (`canChangeCredits`); other HR accounts see them.
+// start month on. Only HR 1 and HR 2 set them (`canChangeCredits`); other HR accounts see them.
 // `start` and `asOf` come from the server; `onStartChange` gets a new { start, asOf }.
 export default function HRLeaveCreditsStart({ employees = [], start = '', asOf = '', onStartChange, onEmployeesChange, canChangeCredits = true }) {
   const [open, setOpen] = useState(false);
@@ -100,7 +100,7 @@ export default function HRLeaveCreditsStart({ employees = [], start = '', asOf =
           <p className="text-xs text-slate-500">
             Vacation and sick leave carry over from year to year (CSC MC No. 41, s. 1998), so nobody's earlier leave is started over. Choose the month WorkMate starts counting, then copy each active employee's balance from their leave card as of the day before. From that month on, WorkMate credits 1.25 days a month and deducts approved leave and tardiness; the months before it stay on the leave card. Employees hired from the start month on begin with none.
           </p>
-          {!canChangeCredits && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Only HR 1 (leave credits) sets the start and the starting balances. You can see them here.</p>}
+          {!canChangeCredits && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Only HR 1 and HR 2 set the start and the starting balances. You can see them here.</p>}
           <form onSubmit={saveStart} className="flex flex-wrap items-end gap-2">
             <label className="text-[11px] font-black text-slate-600">Start month
               <input type="month" value={month} onChange={event => setMonth(event.target.value)} disabled={!canChangeCredits} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800 disabled:bg-slate-100" />

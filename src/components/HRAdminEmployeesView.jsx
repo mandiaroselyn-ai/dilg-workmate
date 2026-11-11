@@ -144,7 +144,7 @@ const statusStyle = (status = '') => {
 };
 
 export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
-  // Leave credits are HR 1's to change (shared/hrSteps.js); other HR accounts only see them.
+  // Leave credits are HR 1's and HR 2's to change (shared/hrSteps.js); an HR account without an HR step only sees them.
   const canEditCredits = canChangeLeaveCredits(currentUser);
   // A notification's button opens this employee's profile first.
   const focusedEmployee = focusEmployeeId ? findTargetEmployee(employees, focusEmployeeId) : null;
@@ -755,7 +755,7 @@ This cannot be undone.`
                 <div className="sm:col-span-2 xl:col-span-4">
                   <p className="text-[11px] font-black text-slate-700">Opening Leave Balance</p>
                   {!canEditCredits ? (
-                    <p className="mt-1 text-xs font-medium text-slate-500">Only HR 1 enters leave credits. Make the account without a balance; HR 1 adds it from the leave card afterwards.</p>
+                    <p className="mt-1 text-xs font-medium text-slate-500">Only HR 1 and HR 2 enter leave credits. Make the account without a balance; HR 1 or HR 2 adds it from the leave card afterwards.</p>
                   ) : earnsLeaveCredits(form) ? (
                     <>
                       <p className="mt-1 text-xs font-medium text-slate-500">From the leave card, for a transferee or an employee who already has earned leave. Leave blank for a new employee: they start with none and earn 1.25 days of each a month.</p>
@@ -927,7 +927,7 @@ This cannot be undone.`
               {!creditForm && canEditCredits && (
                 <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">Adjust</button>
               )}
-              {!canEditCredits && <p className="max-w-[160px] text-right text-[11px] font-semibold text-slate-500">Only HR 1 adjusts leave credits.</p>}
+              {!canEditCredits && <p className="max-w-[160px] text-right text-[11px] font-semibold text-slate-500">Only HR 1 and HR 2 adjust leave credits.</p>}
             </div>
             {creditForm ? (
               <form onSubmit={saveLeaveCredits} className="mt-3 space-y-3">

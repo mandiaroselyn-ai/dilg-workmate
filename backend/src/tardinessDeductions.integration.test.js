@@ -72,8 +72,8 @@ test('an employee cannot charge leave credits', async t => {
   assert.equal(User.deductTardiness.mock.callCount(), 0);
 });
 
-test('only HR 1 changes leave credits: HR 2, or an HR account with no step, cannot', async t => {
-  for (const hrTask of ['pre-approval', '', 'both']) {
+test('only HR 1 and HR 2 change leave credits: an HR account with no step cannot', async t => {
+  for (const hrTask of ['', 'both']) {
     const as = { ...hrAdmin, hrTask };
     t.mock.method(User, 'findByEmail', async () => as);
     t.mock.method(User, 'deductTardiness', async () => null);
@@ -86,7 +86,7 @@ test('only HR 1 changes leave credits: HR 2, or an HR account with no step, cann
     ]) {
       const response = await request(app)[method](path).set('Authorization', token).send(body);
       assert.equal(response.status, 403, `${hrTask || 'no step'} ${path}`);
-      assert.match(response.body.error, /Only HR 1/);
+      assert.match(response.body.error, /Only HR 1 and HR 2/);
     }
     assert.equal(User.deductTardiness.mock.callCount(), 0);
     assert.equal(User.setLeaveCredits.mock.callCount(), 0);

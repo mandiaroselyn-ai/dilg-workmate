@@ -34,7 +34,7 @@ const lastEndedMonth = () => {
 // Each step is done once per month and employee, and the employee is notified. Contract of
 // service and job order workers earn no leave credits, so step 2 leaves them out; their
 // tardiness in step 1 is all without pay.
-// `canChangeCredits`: only HR 1 charges and credits leave (shared/hrSteps.js); other HR accounts only see the month.
+// `canChangeCredits`: only HR 1 and HR 2 charge and credit leave (shared/hrSteps.js); other HR accounts only see the month.
 // `creditsStart`: the month WorkMate starts counting leave credits (shared/leaveStart.js). Months
 // before it are on the leave cards, and an employee waiting for a starting balance is skipped.
 export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange, canChangeCredits = true }) {
@@ -150,7 +150,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
       </button>
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
-          {!canChangeCredits && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Only HR 1 (leave credits) charges tardiness and credits earned leave. You can see the month here.</p>}
+          {!canChangeCredits && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Only HR 1 and HR 2 charge tardiness and credit earned leave. You can see the month here.</p>}
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-[11px] font-black text-slate-600">Month
               <input type="month" value={month} min={creditsStart || undefined} max={latestMonth} onChange={event => event.target.value && setMonth(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />

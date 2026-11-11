@@ -61,13 +61,18 @@ test('HR 1 sets the month WorkMate starts counting leave credits, as of the leav
   assert.deepEqual(session.set.mock.calls[0].arguments.slice(0, 2), ['leaveCreditsStart', '2026-11']);
 });
 
-test('only HR 1 sets the start; HR 2 sees it', async t => {
-  const session = signIn(t, { as: hr2, start: '2026-11' });
+test('only HR 1 and HR 2 set the start; an HR account with no HR step sees it', async t => {
+  const session = signIn(t, { as: { ...hr2, hrTask: '' }, start: '2026-11' });
   assert.equal((await session.setStart('2027-01')).status, 403);
   assert.equal((await session.enter([{ identifier: 'EMP-5', vacationLeaveCredits: 40 }])).status, 403);
   const seen = await session.getStart();
   assert.equal(seen.body.start, '2026-11');
   assert.equal(session.set.mock.callCount(), 0);
+});
+
+test('HR 2 also sets the start', async t => {
+  const session = signIn(t, { as: hr2 });
+  assert.equal((await session.setStart('2026-12')).status, 200);
 });
 
 test('the start comes after any month already credited, and stays once starting balances are entered', async t => {

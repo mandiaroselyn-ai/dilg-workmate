@@ -33,12 +33,19 @@ export const needsCreditCertification = request => request?.type === 'Leave Requ
 // until HR sets it in Staff Accounts.
 export const doesHrStep = (hrTask, step) => Boolean(step) && HR_TASKS.includes(hrTask) && hrTask === step;
 
-// Leave credits are HR 1's to review and update, everywhere they change by hand: adjusting a
-// balance, an opening balance from the leave card, charging a month's tardiness, and crediting a
-// month's earned leave. HR 2 certifies them on a leave but does not change them. (An approved
+// Leave credits are HR 1's and HR 2's to review and update, everywhere they change by hand:
+// adjusting a balance, an opening balance from the leave card, charging a month's tardiness, and
+// crediting a month's earned leave. HR 2 (Sir Erick at DILG Marinduque) also enters the balances
+// he certifies on a leave. An HR/Admin account without an HR step changes none. (An approved
 // leave is charged by the system.)
-export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' && doesHrStep(user.hrTask, 'leave-credits');
-export const LEAVE_CREDITS_HR_ONLY = 'Only HR 1 (leave credits) changes leave credits. Ask HR 1 to do it.';
+export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' && HR_TASKS.includes(user.hrTask);
+export const LEAVE_CREDITS_HR_ONLY = 'Only HR 1 and HR 2 change leave credits. Ask HR to set your HR step in Staff Accounts.';
+
+// HR 2 signs a leave's 7.A (certification of leave credits) and 7.B (recommendation) on CSC Form
+// No. 6, as the HR officer and the employee's supervisor. The signature is the image HR 2 saves
+// on the Requests page; a leave cannot be sent to the Head without it.
+export const HR_SIGNATURE_NEEDED = 'Add your signature first. It goes on 7.A and 7.B of the CSC Form 6.';
+export const needsHrSignature = request => request?.type === 'Leave Request';
 
 const round3 = number => Math.round(number * 1000) / 1000;
 

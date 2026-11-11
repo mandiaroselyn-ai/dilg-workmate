@@ -438,6 +438,7 @@ export default function HRAdminView({
 
       {activeTab === 'requests' && <div className="hr-admin-requests-screen"><HRAdminRequestsView
         user={user}
+        onUpdateUser={onUpdateUser}
         requests={requests}
         employees={employees}
         onEmployeesChange={onEmployeesChange}
