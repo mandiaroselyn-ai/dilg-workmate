@@ -280,7 +280,7 @@ export default function HelpView({ user }) {
 
         <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <h2 className="flex items-center gap-2 text-sm font-black text-slate-900"><PhoneCall className="h-4 w-4 text-[#1e40af]" />Contact the office</h2>
-          <p className="text-xs text-slate-600">DILG Provincial Office hotline: <span className="select-all font-bold text-slate-900">(042) 332-1543</span></p>
+          <p className="text-xs text-slate-600">DILG Provincial Office hotline: <span className="select-all font-bold text-slate-900">(042) 332-1363</span></p>
           <p className="text-xs text-slate-500">Monday, {officeTimeText(OFFICE_HOURS.amStart)} to {officeTimeText(workdayEnd(OFFICE_HOURS.amStart))}; Tuesday to Friday, {officeTimeText(OFFICE_HOURS.amStart)} to {officeTimeText(workdayEnd(OFFICE_HOURS.flexLatestStart))}</p>
         </section>
 
