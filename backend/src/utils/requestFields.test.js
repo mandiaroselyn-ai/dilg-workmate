@@ -121,10 +121,16 @@ test('HR can only forward a request that is waiting for HR', () => {
   assert.match(reviewUpdateProblem('For Supervisor', forward, 'hr_admin'), /already forwarded/);
   assert.match(reviewUpdateProblem('Approved', forward, 'hr_admin'), /already Approved/);
   assert.match(reviewUpdateProblem('Rejected', forward, 'hr_admin'), /already Rejected/);
-  assert.match(reviewUpdateProblem('Pending', { status: 'Approved' }, 'hr_admin'), /only send requests to the supervisor/);
-  // HR 2 sends a leave straight to the supervisor; there is no HR 1 step in between.
-  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), null);
-  assert.match(reviewUpdateProblem('Pending', { status: 'For Pre-approval' }, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), /only send requests to the supervisor/);
+  assert.match(reviewUpdateProblem('Pending', { status: 'Approved' }, 'hr_admin'), /can only certify a leave \(HR 2\), send a request to the supervisor, or return it/);
+  // HR 2 certifies a leave, which makes its form; the leave goes to the supervisor only when HR 2
+  // uploads the form signed in Adobe. A Travel Order goes straight to the supervisor.
+  const leave = { type: 'Leave Request', hrTask: 'pre-approval' };
+  assert.equal(reviewUpdateProblem('Pending', { status: 'For Pre-approval' }, 'hr_admin', leave), null);
+  assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', leave), /sign 7\.A and 7\.B in Adobe, and upload the signed PDF/);
+  assert.match(reviewUpdateProblem('For Pre-approval', forward, 'hr_admin', leave), /sign 7\.A and 7\.B in Adobe/);
+  assert.match(reviewUpdateProblem('For Pre-approval', { status: 'For Pre-approval' }, 'hr_admin', leave), /already certified/);
+  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), null);
+  assert.match(reviewUpdateProblem('Pending', { status: 'For Pre-approval' }, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), /Only a leave is certified/);
   // HR 1 takes no step on requests.
   assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'leave-credits' }), /This step is HR 2 \(certification and pre-approval\)'s\. Your HR account does HR 1 \(leave credits\) only\./);
 });
@@ -137,9 +143,17 @@ test('reviewers cannot act on drafts or withdrawn requests', () => {
   }
 });
 
-test('the supervisor approves or rejects, and remarks alone are allowed', () => {
-  assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Approved' }, 'supervisor'), null);
-  assert.equal(reviewUpdateProblem('Pending', { status: 'Rejected' }, 'supervisor'), null);
+test('the supervisor approves, and disapproves a leave, only by uploading the form signed in Adobe', () => {
+  for (const type of ['Leave Request', 'Travel Order']) {
+    assert.match(reviewUpdateProblem('For Supervisor', { status: 'Approved' }, 'supervisor', { type }), /sign it in Adobe, and upload the signed PDF/);
+  }
+  assert.match(reviewUpdateProblem('For Supervisor', { status: 'Rejected', supervisorRemarks: 'Busy season.' }, 'supervisor', { type: 'Leave Request' }), /sign it in Adobe/);
+  // A Travel Order is disapproved without a signed form.
+  assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Rejected', supervisorRemarks: 'Not needed.' }, 'supervisor', { type: 'Travel Order' }), null);
+});
+
+test('the supervisor returns or disapproves a Travel Order, and remarks alone are allowed', () => {
+  assert.equal(reviewUpdateProblem('Pending', { status: 'Rejected' }, 'supervisor', { type: 'Travel Order' }), null);
   assert.match(reviewUpdateProblem('For Supervisor', { status: 'Pending' }, 'supervisor'), /approve, reject, or return/);
   assert.equal(reviewUpdateProblem('Approved', { remarks: 'Noted.' }, 'hr_admin'), null);
 });
@@ -150,7 +164,7 @@ test('the supervisor decides a request once: a decided or returned one cannot be
       assert.match(reviewUpdateProblem(current, { status, supervisorRemarks: 'Changed my mind.' }, 'supervisor'), new RegExp(`already ${current}, so it cannot be (approved|disapproved)\\.`), `${current} -> ${status}`);
     }
   }
-  assert.equal(reviewUpdateProblem('Pending Review', { status: 'Approved' }, 'supervisor'), null);
+  assert.match(reviewUpdateProblem('Pending Review', { status: 'Approved' }, 'supervisor'), /sign it in Adobe/);
 });
 
 test('HR or the supervisor can return an undecided request, saying what to fix', () => {
@@ -189,7 +203,7 @@ test('a request submitted again goes through HR\'s steps again, and the supervis
   const update = buildEmployeeDraftUpdate(returned, { status: 'Pending' }, employee, '2026-11-08');
   assert.equal(update.creditCertification, null);
   assert.equal(update.recommendation, null);
-  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Approved' }, 'supervisor'), null);
+  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', supervisorRemarks: 'Wrong dates.' }, 'supervisor'), null);
   assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', remarks: 'Attach the medical certificate.' }, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), null);
   assert.equal(buildEmployeeWithdrawal({ ...returned, status: 'For Pre-approval' }, { status: 'Withdrawn' }, employee).status, 'Withdrawn');
 });

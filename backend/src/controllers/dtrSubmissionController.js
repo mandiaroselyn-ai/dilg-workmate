@@ -10,9 +10,10 @@ import { monthLabel } from '../utils/leaveCredits.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { travelOrderCovers } from '../../../shared/travelStatus.js';
 
-// Monthly DTR submission (CSC Form No. 48) through WorkMate, e-signed. The employee certifies
-// their DTR for an ended month with their signature and password, and the Supervisor, as the
-// In-charge, verifies it the same way or returns it with remarks. Under the Electronic Commerce
+// Monthly DTR submission (CSC Form No. 48) through WorkMate. The employee certifies their DTR
+// for an ended month with their e-signature and password, and the Supervisor, as the In-charge,
+// verifies it by signing it in Adobe and uploading it (signedDocumentController), or returns it
+// with remarks. Under the Electronic Commerce
 // Act (RA 8792, Sec. 8) an electronic signature counts as a signature when it shows who signed
 // and that they approved: here the signer's own account, their password at the moment of
 // signing, and the time are kept with the signature.
@@ -122,9 +123,9 @@ export const submitDtr = async (req, res) => {
   }
 };
 
-// The Supervisor verifies a submitted DTR ({ id, action: 'verify', signature, password }) or
-// returns it to the employee ({ id, action: 'return', remarks }). A DTR whose attendance changed
-// after the employee signed it cannot be verified: it is returned so they sign the corrected one.
+// The Supervisor returns a submitted DTR to the employee ({ id, action: 'return', remarks }).
+// Verifying it is signing it in Adobe as the In-charge and uploading it (signedDocumentController),
+// which also refuses a DTR whose attendance changed after the employee signed it.
 export const reviewDtrSubmission = async (req, res) => {
   try {
     if (req.user?.accessLevel !== 'supervisor') {
@@ -140,22 +141,10 @@ export const reviewDtrSubmission = async (req, res) => {
     const employee = await employeeOf(submission);
     const person = employee || { employeeId: submission.employeeId, email: submission.employeeEmail };
 
+    // The Supervisor verifies a DTR by signing it in Adobe as the In-charge and uploading it
+    // (see signedDocumentController).
     if (action === 'verify') {
-      const problem = await signerProblem(req.user, req.body);
-      if (problem) return res.status(400).json({ success: false, error: problem });
-      const records = await DtrLog.findMonthForEmployee({ employeeId: person.employeeId, email: person.email }, submission.month);
-      if (dtrContentHash(records, submission.month) !== submission.contentHash) {
-        return res.status(409).json({ success: false, error: 'This DTR changed after the employee signed it (for example, HR corrected a record). Return it so the employee signs the corrected DTR.' });
-      }
-      const verified = await DtrSubmission.verify(id, { image: req.body.signature, name: req.user.name || '', position: req.user.role || '', signedAt: new Date() });
-      if (!verified) return res.status(409).json({ success: false, error: 'This DTR is no longer waiting for verification.' });
-      await noticeEmployee(person, {
-        title: 'DTR Verified',
-        message: `Your DTR for ${label} was verified by ${req.user.name || 'the Supervisor'}.`,
-        type: 'attendance',
-        view: 'documents'
-      });
-      return res.status(200).json({ success: true, submission: verified });
+      return res.status(409).json({ success: false, error: 'Download the DTR, sign it in Adobe as the In-charge, and upload the signed PDF to verify it.' });
     }
 
     if (action === 'return') {

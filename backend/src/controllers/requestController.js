@@ -12,7 +12,7 @@ import { filingDate, lateFilingProblem } from '../../../shared/requestFiling.js'
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
-import { HR_SIGNATURE_NEEDED, leaveCreditCertification, needsCreditCertification, needsHrSignature, readRecommendation } from '../../../shared/hrSteps.js';
+import { FOR_PRE_APPROVAL, leaveCreditCertification, needsCreditCertification, readRecommendation } from '../../../shared/hrSteps.js';
 import { YEARLY_LEAVES, yearlyLeaveProblem } from '../../../shared/yearlyLeave.js';
 import { needsStartingBalance } from '../../../shared/leaveStart.js';
 import { holidaysFor } from '../../../shared/phHolidays.js';
@@ -84,14 +84,12 @@ const signatory = user => ({ name: user?.name || 'HR', position: user?.role || '
 // counted by the server from the employee's balances now and the leave's working days, and for
 // every request HR 2's recommendation (7.B). Returns { fields } or { error }.
 const hrStepRecord = async (existing, update, req) => {
-  if (update.status !== 'For Supervisor') return { fields: {} };
+  if (![FOR_PRE_APPROVAL, 'For Supervisor'].includes(update.status)) return { fields: {} };
   const at = new Date().toISOString();
   const recommendation = readRecommendation(req.body?.recommendation);
   if (recommendation.error) return { error: recommendation.error };
-  // HR 2 signs a leave's 7.A and 7.B with the signature saved on their account.
-  const signature = String(req.user?.signatureImage || '');
-  if (needsHrSignature(existing) && !signature) return { error: HR_SIGNATURE_NEEDED };
-  const signer = { ...signatory(req.user), ...(signature ? { signature } : {}) };
+  // HR 2 signs a leave's 7.A and 7.B in Adobe, so the form carries only the name and position.
+  const signer = signatory(req.user);
   const fields = { recommendation: { ...recommendation.value, recommendedBy: signer, recommendedAt: at } };
   if (needsCreditCertification(existing)) {
     const employee = (existing.employeeId && await User.findByEmployeeId(existing.employeeId))
@@ -267,6 +265,41 @@ export const createRequest = async (req, res) => {
   }
 };
 
+// Saves a reviewer's update on a request and does what follows from it: charges the leave credits
+// of a leave just approved, tells the other employees of a Travel Order just approved, and
+// notifies the employee and the supervisors. Used by a status change and by a signed form upload.
+export const finishReview = async ({ id, existing, update, req }) => {
+  const role = req.user?.accessLevel;
+  const updated = await Leave.updateStatus(id, update);
+
+  // Charge leave credits the first time a leave request is approved, for the working days
+  // counted from its dates. The flag on the request makes sure two approvals at the same
+  // moment cannot charge twice.
+  const newlyApprovedLeave = updated?.type === 'Leave Request' && updated.status === 'Approved' && existing.status !== 'Approved';
+  const deduction = newlyApprovedLeave ? leaveCreditDeduction(existing, updated, await holidaysOfRequest(updated)) : null;
+  if (deduction && await Leave.markCreditsDeducted(id)) {
+    await chargeApprovedLeave(updated, deduction);
+  }
+  // The other employees of a Travel Order just approved hear that they go on it.
+  if (updated?.type === 'Travel Order' && updated.status === 'Approved' && existing.status !== 'Approved') {
+    await noticeCompanionsOfApproval(updated);
+  }
+
+  if (updated && role === 'employee' && updated.status === 'Pending') {
+    await notifyHrOfSubmission(updated, req.user);
+  }
+  if (updated && role === 'employee' && updated.status === 'Withdrawn') {
+    await notifyReviewersOfWithdrawal(updated, req.user, existing.status);
+  }
+  if (updated && role === 'hr_admin') {
+    await textSupervisorsAboutForward(existing, updated);
+  }
+  if (updated && (role === 'hr_admin' || role === 'supervisor')) {
+    await noticeRequestDecision(existing, updated, { reviewer: reviewerName(req), remarks: reviewRemarks(update) });
+  }
+  return updated;
+};
+
 export const updateRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -320,33 +353,7 @@ export const updateRequestStatus = async (req, res) => {
     } else {
       return res.status(403).json({ success: false, error: 'You do not have permission to perform this action.' });
     }
-    const updated = await Leave.updateStatus(id, update);
-
-    // Charge leave credits the first time a leave request is approved, for the working days
-    // counted from its dates. The flag on the request makes sure two approvals at the same
-    // moment cannot charge twice.
-    const newlyApprovedLeave = updated?.type === 'Leave Request' && updated.status === 'Approved' && existing.status !== 'Approved';
-    const deduction = newlyApprovedLeave ? leaveCreditDeduction(existing, updated, await holidaysOfRequest(updated)) : null;
-    if (deduction && await Leave.markCreditsDeducted(id)) {
-      await chargeApprovedLeave(updated, deduction);
-    }
-    // The other employees of a Travel Order just approved hear that they go on it.
-    if (updated?.type === 'Travel Order' && updated.status === 'Approved' && existing.status !== 'Approved') {
-      await noticeCompanionsOfApproval(updated);
-    }
-
-    if (updated && role === 'employee' && updated.status === 'Pending') {
-      await notifyHrOfSubmission(updated, req.user);
-    }
-    if (updated && role === 'employee' && updated.status === 'Withdrawn') {
-      await notifyReviewersOfWithdrawal(updated, req.user, existing.status);
-    }
-    if (updated && role === 'hr_admin') {
-      await textSupervisorsAboutForward(existing, updated);
-    }
-    if (updated && (role === 'hr_admin' || role === 'supervisor')) {
-      await noticeRequestDecision(existing, updated, { reviewer: reviewerName(req), remarks: reviewRemarks(update) });
-    }
+    const updated = await finishReview({ id, existing, update, req });
 
     if (updated) {
       res.status(200).json({ success: true, request: updated });

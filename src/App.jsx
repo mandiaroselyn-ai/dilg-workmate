@@ -18,6 +18,7 @@ import { timeoutSignal } from './utils/offlineTimeIn';
 import { clearOfflineSession, readOfflineSession, saveOfflineSession } from './utils/offlineSession';
 import { matchesAttendanceEmployee } from './utils/attendanceIdentity';
 import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeSessionToken } from './utils/api';
+import { uploadSignedForm } from './utils/signedForms';
 import { subscribeToWebPush } from './utils/webPush';
 import { employeeNotificationView } from './utils/notifications';
 
@@ -1254,11 +1255,40 @@ export default function App() {
     if (saveSignature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
     return submission;
   };
-  // The Supervisor verifies a DTR with their e-signature, or returns it with remarks.
-  const handleReviewDtr = async ({ id, action, signature, password, remarks, saveSignature }) => {
-    const submission = await sendDtrSubmission('PATCH', { id, action, signature, password, remarks });
-    if (saveSignature && signature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
-    return submission;
+  // The Supervisor returns a DTR with remarks. Verifying one is signing it in Adobe and uploading
+  // it (handleUploadSignedForm).
+  const handleReviewDtr = async ({ id, action, remarks }) => sendDtrSubmission('PATCH', { id, action, remarks });
+  // A form signed in Adobe and uploaded (HR 2's leave form, or the Head's leave form, Travel Order
+  // or DTR): the request or DTR it belongs to is saved as the server returns it, and the next
+  // reviewer is told, as a status change tells them.
+  const handleUploadSignedForm = async args => {
+    const data = await uploadSignedForm(args);
+    if (data.submission) setDtrSubmissions(previous => [data.submission, ...previous.filter(item => item.id !== data.submission.id)]);
+    const saved = data.request;
+    if (saved) {
+      setRequests(previous => previous.map(request => (request.id === saved.id ? saved : request)));
+      if (saved.status === 'For Supervisor') {
+        pushSystemNotification({
+          title: 'Request Ready for Review',
+          message: `${saved.type} ${saved.id} was signed by HR 2 and is ready for your review.`,
+          time: 'Just now',
+          type: 'request',
+          recipientRole: 'supervisor',
+          action: 'review_request',
+          targetId: saved.id
+        });
+      }
+      if (activeRole === 'supervisor' && ['Approved', 'Rejected'].includes(saved.status)) {
+        pushSystemNotification({
+          title: `${saved.type} ${saved.status === 'Approved' ? 'Approved' : 'Disapproved'} by Supervisor`,
+          message: `${saved.employeeName || 'An employee'}'s ${saved.type} ${saved.id} was ${saved.status === 'Approved' ? 'approved' : 'disapproved'} and signed in Adobe by ${user?.name || 'the supervisor'}. Remarks: ${saved.supervisorRemarks || 'none'}`,
+          time: 'Just now',
+          type: 'request',
+          recipientRole: 'hr_admin'
+        }).catch(error => console.error('Unable to notify HR about the supervisor decision:', error));
+      }
+    }
+    return data;
   };
   // One submission with the employee, records, and Travel Orders its DTR is made from.
   const openDtrSubmission = async id => {
@@ -1719,6 +1749,7 @@ export default function App() {
               onReviewDtr={handleReviewDtr}
               onOpenDtr={openDtrSubmission}
               onReloadDtrSubmissions={loadDtrSubmissions}
+              onUploadSignedForm={handleUploadSignedForm}
             />
           )}
 
@@ -1765,6 +1796,7 @@ export default function App() {
               overtimeOrders={overtimeOrders}
               onOvertimeOrdersChange={setOvertimeOrders}
               onUpdateUser={handleUpdateUser}
+              onUploadSignedForm={handleUploadSignedForm}
               onAdminNotification={handleAdminNotification}
               announcements={announcements}
               events={events}

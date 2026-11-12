@@ -1,5 +1,5 @@
 import { getManilaDateString } from '../../../shared/localDate.js';
-import { FOR_PRE_APPROVAL, HR_STEP_NAMES, HR_TASKS, doesHrStep, hrStepOf } from '../../../shared/hrSteps.js';
+import { FOR_PRE_APPROVAL, HEAD_SIGN_AND_UPLOAD, HR_SIGN_AND_UPLOAD, HR_STEP_NAMES, HR_TASKS, doesHrStep, hrStepOf } from '../../../shared/hrSteps.js';
 
 // Fields only a reviewer (supervisor or HR) may set on a leave, travel, or certified copy request.
 const REVIEW_FIELDS = [
@@ -71,8 +71,8 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
   }
   if (role === 'hr_admin') {
     const step = hrStepOf({ status: currentStatus, type });
-    if (!['For Supervisor', 'Returned'].includes(nextStatus)) {
-      return 'HR/Admin can only send requests to the supervisor (HR 2, after certifying the leave credits of a leave) or return them to the employee. The supervisor approves or rejects them.';
+    if (![FOR_PRE_APPROVAL, 'For Supervisor', 'Returned'].includes(nextStatus)) {
+      return 'HR/Admin can only certify a leave (HR 2), send a request to the supervisor, or return it to the employee. The supervisor approves or rejects them.';
     }
     if (currentStatus === 'For Supervisor') return 'This request was already forwarded to the supervisor.';
     if (!step) {
@@ -83,6 +83,12 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
         ? `This step is ${HR_STEP_NAMES[step]}'s. Your HR account does ${HR_STEP_NAMES[hrTask]} only.`
         : `This step is ${HR_STEP_NAMES[step]}'s. Your HR account has no HR step yet: ask HR to set it to HR 1 or HR 2 in Staff Accounts.`;
     }
+    // A leave is certified first (HR 2 makes its CSC Form No. 6), then HR 2 signs 7.A and 7.B in
+    // Adobe and uploads it, which sends it on. A Travel Order is pre-approved straight to the Head.
+    if (nextStatus === FOR_PRE_APPROVAL && (type !== 'Leave Request' || currentStatus === FOR_PRE_APPROVAL)) {
+      return type === 'Leave Request' ? 'This leave was already certified. Upload the form signed in Adobe to send it to the Head.' : 'Only a leave is certified. Pre-approve a Travel Order to send it to the Head.';
+    }
+    if (nextStatus === 'For Supervisor' && type === 'Leave Request') return HR_SIGN_AND_UPLOAD;
     return null;
   }
   if (role === 'supervisor' && !SUPERVISOR_DECISIONS.includes(nextStatus)) {
@@ -93,6 +99,11 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
   if (role === 'supervisor' && !AWAITING_SUPERVISOR_STATUSES.includes(currentStatus)) {
     const verb = { Approved: 'approved', Rejected: 'disapproved', Returned: 'returned' }[nextStatus];
     return `This request is already ${currentStatus || 'decided'}, so it cannot be ${verb}.`;
+  }
+  // An approval, and the disapproval of a leave (7.D), are made by signing the form in Adobe and
+  // uploading it (see signedDocumentController), not by changing the status here.
+  if (role === 'supervisor' && (nextStatus === 'Approved' || (nextStatus === 'Rejected' && type === 'Leave Request'))) {
+    return HEAD_SIGN_AND_UPLOAD;
   }
   // Only an undecided request goes back to the employee (an approved one may already have
   // used leave credits).

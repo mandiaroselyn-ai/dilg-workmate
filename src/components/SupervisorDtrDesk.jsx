@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Eye, MessageSquare, PenLine, RotateCcw } from 'lucide-react';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { dtrFilename, fillDTR } from '../utils/dtrForm';
-import { DTR_VERIFICATION, dtrSignatures, dtrStatusText } from '../utils/dtrSubmission';
+import { dtrSignatures, dtrStatusText } from '../utils/dtrSubmission';
+import { fetchSignedForm, signedNoteText, stampForSigning } from '../utils/signedForms';
 import DocumentViewer from './DocumentViewer';
-import SignDtrDialog from './SignDtrDialog';
+import SignedFormStep from './SignedFormStep';
 
 const TABS = [
   { status: 'Submitted', label: 'For Verification' },
@@ -14,9 +15,9 @@ const TABS = [
 const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 // The Supervisor's desk for the DTRs employees signed and submitted through WorkMate: as the
-// In-charge of CSC Form No. 48, the Supervisor opens each one, then verifies it with their
-// e-signature and password, or returns it to the employee with remarks.
-export default function SupervisorDtrDesk({ user, submissions = [], onReview, onOpen, onReload }) {
+// In-charge of CSC Form No. 48, the Supervisor opens each one, then verifies it by signing it in
+// Adobe and uploading it, or returns it to the employee with remarks.
+export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm }) {
   const [tab, setTab] = useState('Submitted');
   const [viewer, setViewer] = useState(null);
   const [verifying, setVerifying] = useState(null);
@@ -34,13 +35,21 @@ export default function SupervisorDtrDesk({ user, submissions = [], onReview, on
   const shown = submissions.filter(item => item.status === tab);
   const count = status => submissions.filter(item => item.status === status).length;
 
-  // The DTR as the employee signed it (and as verified), built from the records the server sends.
+  // The DTR as the employee signed it, built from the records the server sends; once verified,
+  // the copy the Supervisor signed in Adobe.
   const makeDtr = async submission => {
+    const signed = submission.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;
+    if (signed) return { fileName: signed.fileName || `DTR_${submission.id}.pdf`, fileType: 'application/pdf', bytes: signed.bytes };
     const { employee, records, travelOrders } = await onOpen(submission.id);
     const [year, month] = submission.month.split('-').map(Number);
     const template = await (await fetch(dtrTemplate)).arrayBuffer();
     const bytes = await fillDTR(template, employee, year, month, records, { travelOrders, signatures: dtrSignatures(submission) });
     return { fileName: dtrFilename(employee?.name || submission.employeeName, year, month), fileType: 'application/pdf', bytes };
+  };
+  // The DTR to sign in Adobe as the In-charge, tagged for the upload.
+  const dtrToSign = async submission => {
+    const made = await makeDtr(submission);
+    return { bytes: await stampForSigning(made.bytes, 'dtr-incharge', submission.id), fileName: made.fileName.replace(/\.pdf$/i, '_to_sign.pdf') };
   };
   const view = submission => setViewer({ key: Date.now(), title: `DTR of ${submission.employeeName} – ${monthText(submission.month)}`, load: () => makeDtr(submission) });
 
@@ -82,17 +91,35 @@ export default function SupervisorDtrDesk({ user, submissions = [], onReview, on
                 <p className="text-sm font-black text-slate-900">{submission.employeeName || submission.employeeId}</p>
                 <p className="text-xs font-semibold text-slate-600">DTR for {monthText(submission.month)}</p>
                 <p className="mt-0.5 text-[11px] text-slate-500">{dtrStatusText(submission)}</p>
+                {submission.signedForm && <p className="mt-0.5 text-[11px] font-bold text-emerald-700">{signedNoteText(submission.signedForm)}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => view(submission)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View DTR</button>
                 {submission.status === 'Submitted' && (
                   <>
-                    <button type="button" onClick={() => { setNote({ text: '', error: false }); setVerifying(submission); }} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white"><PenLine className="h-3.5 w-3.5" />Verify &amp; Sign</button>
+                    <button type="button" onClick={() => { setNote({ text: '', error: false }); setVerifying(submission); }} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white"><PenLine className="h-3.5 w-3.5" />Verify &amp; Sign in Adobe</button>
                     <button type="button" onClick={() => { setNote({ text: '', error: false }); setReturning(submission); setRemarks(''); }} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold text-rose-700"><RotateCcw className="h-3.5 w-3.5" />Return</button>
                   </>
                 )}
               </div>
             </div>
+            {verifying?.id === submission.id && (
+              <div className="mt-3">
+                <SignedFormStep
+                  title="Verify and sign as the In-charge in Adobe"
+                  description="The DTR carries the employee's signature. Check it, sign it with your digital ID as the In-charge, and upload it."
+                  downloadLabel="Download DTR to sign"
+                  submitLabel="Upload Signed DTR & Verify"
+                  onDownload={() => dtrToSign(submission)}
+                  onSubmit={async ({ file }) => {
+                    await onUploadSignedForm({ kind: 'dtr-incharge', ref: submission.id, file });
+                    setNote({ text: `${submission.employeeName}'s DTR for ${monthText(submission.month)} was verified and signed.`, error: false });
+                    setVerifying(null);
+                  }}
+                />
+                <button type="button" onClick={() => setVerifying(null)} className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600">Cancel</button>
+              </div>
+            )}
             {returning?.id === submission.id && (
               <form onSubmit={sendBack} className="mt-3 space-y-2 rounded-xl bg-rose-50 p-3">
                 <label className="block text-[11px] font-black text-rose-800">What should the employee fix?
@@ -114,22 +141,6 @@ export default function SupervisorDtrDesk({ user, submissions = [], onReview, on
       </ul>
 
       {viewer && <DocumentViewer key={viewer.key} title={viewer.title} load={viewer.load} onClose={() => setViewer(null)} />}
-      {verifying && (
-        <SignDtrDialog
-          title={`Verify ${verifying.employeeName}'s DTR for ${monthText(verifying.month)}`}
-          statement={`${DTR_VERIFICATION} I signed as the In-charge after checking this DTR.`}
-          savedSignature={user?.signatureImage || ''}
-          confirmLabel="Verify & Sign"
-          onCancel={() => setVerifying(null)}
-          onConfirm={async ({ signature, password, saveSignature }) => {
-            await onReview({ id: verifying.id, action: 'verify', signature, password, saveSignature });
-            setNote({ text: `${verifying.employeeName}'s DTR for ${monthText(verifying.month)} was verified and signed.`, error: false });
-            setVerifying(null);
-          }}
-        >
-          <button type="button" onClick={() => view(verifying)} className="text-xs font-black text-blue-700 underline">Open the DTR before you sign it</button>
-        </SignDtrDialog>
-      )}
     </section>
   );
 }

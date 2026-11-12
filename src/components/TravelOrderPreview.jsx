@@ -3,10 +3,14 @@ import { Download, Printer, X } from 'lucide-react';
 import travelOrderTemplate from '../assets/template/travelorder-template.pdf';
 import { fillTravelOrder, travelOrderNumber } from '../utils/travelOrderForm';
 import PdfPreview from './PdfPreview';
+import { firstSignedForm, signedNoteText } from '../utils/signedForms';
 
+// The Travel Order the Head signed in Adobe when there is one, or the order made from the request.
 async function makeFilledOrder(request, person) {
+  const signed = request.signedForms?.head ? await firstSignedForm(['travel-head'], request.id) : null;
+  if (signed) return { bytes: signed.bytes, signed };
   const response = await fetch(travelOrderTemplate);
-  return fillTravelOrder(await response.arrayBuffer(), request, person);
+  return { bytes: await fillTravelOrder(await response.arrayBuffer(), request, person), signed: null };
 }
 
 // The official Provincial Order (travel order) template, filled in for one travel request.
@@ -24,10 +28,10 @@ export default function TravelOrderPreview({ request, user, onClose }) {
     setPdf(null);
     setError('');
     makeFilledOrder(request, user || {})
-      .then(bytes => {
+      .then(({ bytes, signed }) => {
         if (!active) return;
         objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        setPdf({ url: objectUrl, bytes });
+        setPdf({ url: objectUrl, bytes, signed });
       })
       .catch(errorValue => active && setError(errorValue.message || 'Unable to generate the official travel order.'));
     return () => {
@@ -41,7 +45,7 @@ export default function TravelOrderPreview({ request, user, onClose }) {
     if (!pdf) return;
     const link = document.createElement('a');
     link.href = pdf.url;
-    link.download = `${travelOrderNumber(request) || request.id || 'travel-order'}_Provincial_Order.pdf`;
+    link.download = `${travelOrderNumber(request) || request.id || 'travel-order'}_Provincial_Order${pdf.signed ? '_signed' : ''}.pdf`;
     link.click();
   };
 
@@ -49,7 +53,7 @@ export default function TravelOrderPreview({ request, user, onClose }) {
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/80 p-2 sm:p-5">
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col overflow-hidden rounded-xl bg-slate-800 shadow-2xl">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 p-3 text-white">
-          <div className="min-w-0"><h2 className="text-sm font-extrabold">Official Travel Order</h2><p className="hidden text-[10px] text-slate-400 sm:block">Provincial Order template with the request's details</p></div>
+          <div className="min-w-0"><h2 className="text-sm font-extrabold">Official Travel Order</h2><p className="hidden text-[10px] text-slate-400 sm:block">{pdf?.signed ? signedNoteText(pdf.signed) : "Provincial Order template with the request's details"}</p></div>
           <div className="flex shrink-0 items-center gap-2">
             <button type="button" onClick={() => pdf && window.open(pdf.url, '_blank', 'noopener,noreferrer')} disabled={!pdf} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold disabled:opacity-50"><Printer className="h-4 w-4" />Print</button>
             <button type="button" onClick={download} disabled={!pdf} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold disabled:opacity-50"><Download className="h-4 w-4" />Download</button>

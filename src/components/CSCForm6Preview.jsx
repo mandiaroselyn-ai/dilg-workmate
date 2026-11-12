@@ -3,10 +3,16 @@ import { Download, Printer, X } from 'lucide-react';
 import cscForm6Template from '../assets/template/csc-form-6-template.pdf';
 import { fillLeaveForm } from '../utils/leaveForm';
 import PdfPreview from './PdfPreview';
+import { firstSignedForm, signedNoteText } from '../utils/signedForms';
 
+// The form signed in Adobe when there is one (the Head's, or HR 2's for HR and the Head while it
+// waits for the decision), or the form made from the request.
 async function makeFilledForm(request, user) {
+  const kinds = [request.signedForms?.head && 'leave-head', request.signedForms?.hr && 'leave-hr'].filter(Boolean);
+  const signed = kinds.length ? await firstSignedForm(kinds, request.id) : null;
+  if (signed) return { bytes: signed.bytes, signed };
   const response = await fetch(cscForm6Template);
-  return fillLeaveForm(await response.arrayBuffer(), request, user);
+  return { bytes: await fillLeaveForm(await response.arrayBuffer(), request, user), signed: null };
 }
 
 export default function CSCForm6Preview({ request, user, onClose }) {
@@ -23,10 +29,10 @@ export default function CSCForm6Preview({ request, user, onClose }) {
     setPdf(null);
     setError('');
     makeFilledForm(request, user)
-      .then(bytes => {
+      .then(({ bytes, signed }) => {
         if (!active) return;
         objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        setPdf({ url: objectUrl, bytes });
+        setPdf({ url: objectUrl, bytes, signed });
       })
       .catch(errorValue => active && setError(errorValue.message || 'Unable to generate the official CSC Form 6.'));
     return () => {
@@ -40,7 +46,7 @@ export default function CSCForm6Preview({ request, user, onClose }) {
     if (!pdf) return;
     const link = document.createElement('a');
     link.href = pdf.url;
-    link.download = `CSC_Form_6_${request.id || 'leave'}.pdf`;
+    link.download = `CSC_Form_6_${request.id || 'leave'}${pdf.signed ? '_signed' : ''}.pdf`;
     link.click();
   };
 
@@ -48,7 +54,7 @@ export default function CSCForm6Preview({ request, user, onClose }) {
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/80 p-2 sm:p-5">
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col overflow-hidden rounded-xl bg-slate-800 shadow-2xl">
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-700 bg-slate-900 p-3 text-white">
-          <div className="min-w-0"><h2 className="text-sm font-extrabold">Official CSC Form No. 6</h2><p className="hidden text-[10px] text-slate-400 sm:block">Official PDF template with dynamic fields</p></div>
+          <div className="min-w-0"><h2 className="text-sm font-extrabold">Official CSC Form No. 6</h2><p className="hidden text-[10px] text-slate-400 sm:block">{pdf?.signed ? signedNoteText(pdf.signed) : 'Official PDF template with dynamic fields'}</p></div>
           <div className="flex shrink-0 items-center gap-2">
             <button type="button" onClick={() => pdf && window.open(pdf.url, '_blank', 'noopener,noreferrer')} disabled={!pdf} className="inline-flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold disabled:opacity-50"><Printer className="h-4 w-4" />Print</button>
             <button type="button" onClick={download} disabled={!pdf} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold disabled:opacity-50"><Download className="h-4 w-4" />Download</button>

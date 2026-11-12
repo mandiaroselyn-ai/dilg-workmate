@@ -13,10 +13,33 @@ const { Holiday } = await import('./models/holidayModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 const { AppSetting } = await import('./models/appSettingModel.js');
+const { SignedDocument } = await import('./models/signedDocumentModel.js');
+const { PDFDocument } = await import('pdf-lib');
+const { signedFormMarker } = await import('../../shared/signedForms.js');
 // No start month for leave credits unless a test sets one.
 mock.method(AppSetting, 'get', async () => '');
 
 const app = createApiApp();
+
+// A form as WorkMate makes it for request `ref` (tagged `tag`), and the same file with a
+// signature added in Adobe: an appended revision with the signature's byte range.
+const madeForm = async (tag, ref) => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  pdf.setKeywords([signedFormMarker(tag, ref)]);
+  return Buffer.from(await pdf.save({ useObjectStreams: false }));
+};
+const addSignature = (bytes, n = 1) => Buffer.concat([bytes, Buffer.from(`\n${90 + n} 0 obj\n<< /Type /Sig /Filter /Adobe.PPKLite /ByteRange [0 100 200 300] /Contents <3082> >>\nendobj\n%%EOF\n`, 'latin1')]);
+const signedForm = async (tag, ref) => addSignature(await madeForm(tag, ref));
+const asUpload = (kind, ref, bytes, extra = {}) => ({ kind, ref, fileName: `${ref}.pdf`, data: Buffer.from(bytes).toString('base64'), ...extra });
+
+// The signed forms kept for one test, in memory. Returns the saved files by kind and reference.
+const useSignedStore = (t, initial = {}) => {
+  const files = new Map(Object.entries(initial));
+  t.mock.method(SignedDocument, 'find', async (kind, ref) => (files.has(`${kind}:${ref}`) ? { data: files.get(`${kind}:${ref}`) } : null));
+  t.mock.method(SignedDocument, 'save', async ({ kind, ref, bytes }) => { files.set(`${kind}:${ref}`, Buffer.from(bytes)); });
+  return files;
+};
 
 // Sets today to Mon Nov 2, 2026 in Manila for one test, so dates the tests file for stay in
 // the future (a travel order or vacation leave cannot be filed for a day that has passed).
@@ -24,8 +47,7 @@ const onNovember2 = t => t.mock.timers.enable({ apis: ['Date'], now: new Date('2
 
 // HR 1 (Ms. Salcedo) and HR 2 (Sir Erick).
 const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', name: 'Ma. Joane O. Salcedo', role: 'ADAS II', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
-const HR2_SIGNATURE = 'data:image/png;base64,iVBORw0KGgo=';
-const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active', signatureImage: HR2_SIGNATURE };
+const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
 const requests = {
   // A leave waiting for HR 2, one HR 1 certified when HR 1 still did that step (waiting for
   // HR 2), and a Travel Order waiting for HR 2.
@@ -55,56 +77,76 @@ const signInAsHr = (t, { supervisors = [], as = hr, employee = null } = {}) => {
     bulkSaves,
     patch: (id, body) => request(app).patch(`/api/requests/${id}`).set('Authorization', `Bearer ${token}`).send(body),
     put: body => request(app).put('/api/requests').set('Authorization', `Bearer ${token}`).send(body),
+    upload: body => request(app).post('/api/signed-documents').set('Authorization', `Bearer ${token}`).send(body),
     get: path => request(app).get(path).set('Authorization', `Bearer ${token}`)
   };
 };
 
 const juan = { employeeId: 'E1', name: 'Juan Dela Cruz', vacationLeaveCredits: 10, sickLeaveCredits: 5 };
 const approve = { status: 'For Supervisor', recommendation: { decision: 'approval' } };
+// HR 2 certifies a leave, which makes its form to sign in Adobe.
+const certify = { status: 'For Pre-approval', recommendation: { decision: 'approval' } };
 
-test('HR 2 certifies the leave credits of a leave and pre-approves it in one step', async t => {
+test('HR 2 certifies the leave credits of a leave with a recommendation, which makes its form to sign', async t => {
   const session = signInAsHr(t, { as: hr2, employee: juan });
-  const response = await session.patch('REQ-PENDING', { ...approve, remarks: 'Checked.' });
+  const response = await session.patch('REQ-PENDING', { ...certify, remarks: 'Checked.' });
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const saved = session.saves.mock.calls[0].arguments[1];
-  assert.equal(saved.status, 'For Supervisor');
-  // 7.A: two working days (Nov 9 and 10) of vacation leave, from the balances now, signed by HR 2.
+  assert.equal(saved.status, 'For Pre-approval');
+  // 7.A: two working days (Nov 9 and 10) of vacation leave, from the balances now. HR 2 signs
+  // it in Adobe, so only the name and position are kept.
   assert.deepEqual(saved.creditCertification.vacationLeave, { earned: 10, less: 2, balance: 8 });
   assert.deepEqual(saved.creditCertification.sickLeave, { earned: 5, less: 0, balance: 5 });
-  assert.deepEqual(saved.creditCertification.certifiedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager', signature: HR2_SIGNATURE });
+  assert.deepEqual(saved.creditCertification.certifiedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
   // 7.B: HR 2's recommendation.
   assert.equal(saved.recommendation.decision, 'approval');
-  assert.deepEqual(saved.recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager', signature: HR2_SIGNATURE });
-  // There is no HR 1 step in between any more.
-  assert.equal((await session.patch('REQ-PENDING', { status: 'For Pre-approval' })).status, 409);
+  assert.deepEqual(saved.recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
+  // A recommendation is needed.
+  assert.match((await session.patch('REQ-PENDING', { status: 'For Pre-approval' })).body.error, /Choose the recommendation/);
 });
 
-test('HR 2 cannot send a leave to the Head without a signature; a Travel Order needs none', async t => {
-  const unsigned = { ...hr2, signatureImage: '' };
-  const session = signInAsHr(t, { as: unsigned, employee: juan });
+test('HR 2 sends a leave to the Head only by uploading the form signed in Adobe; a Travel Order needs none', async t => {
+  const session = signInAsHr(t, { as: hr2, employee: juan });
   const refused = await session.patch('REQ-PENDING', approve);
-  assert.equal(refused.status, 400);
-  assert.match(refused.body.error, /Add your signature first/);
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error, /sign 7\.A and 7\.B in Adobe, and upload the signed PDF/);
   assert.equal(session.saves.mock.callCount(), 0);
   const travel = await session.patch('REQ-TRAVEL', approve);
   assert.equal(travel.status, 200, JSON.stringify(travel.body));
   assert.deepEqual(session.saves.mock.calls[0].arguments[1].recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
 });
 
-test('a leave HR 1 certified before is pre-approved by HR 2 without certifying it again', async t => {
+test('a certified leave goes to the Head when HR 2 uploads its form signed in Adobe', async t => {
   const session = signInAsHr(t, { as: hr2, employee: juan });
-  const response = await session.patch('REQ-CERTIFIED', approve);
+  const files = useSignedStore(t);
+  // It is not certified again, nor sent on without the signed form.
+  assert.match((await session.patch('REQ-CERTIFIED', certify)).body.error, /already certified/);
+  assert.match((await session.patch('REQ-CERTIFIED', approve)).body.error, /in Adobe/);
+  // A file that is not this leave's form, or has no signature, is refused.
+  assert.match((await session.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await signedForm('leave', 'REQ-PENDING')))).body.error, /not the form WorkMate made/);
+  assert.match((await session.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await madeForm('leave', 'REQ-CERTIFIED')))).body.error, /no digital signature/);
+  // A leave not certified yet has no form to sign.
+  assert.match((await session.upload(asUpload('leave-hr', 'REQ-PENDING', await signedForm('leave', 'REQ-PENDING')))).body.error, /Certify the leave credits first/);
+  assert.equal(session.saves.mock.callCount(), 0);
+
+  const response = await session.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await signedForm('leave', 'REQ-CERTIFIED'), { remarks: 'Checked.' }));
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const saved = session.saves.mock.calls[0].arguments[1];
-  assert.equal(saved.creditCertification, undefined);
-  assert.equal(saved.recommendation.decision, 'approval');
+  assert.equal(saved.status, 'For Supervisor');
+  assert.equal(saved.remarks, 'Checked.');
+  assert.equal(saved.signedForms.hr.uploadedBy, 'John Erick J. Matining');
+  assert.equal(saved.signedForms.hr.signatures, 1);
+  assert.ok(files.has('leave-hr:REQ-CERTIFIED'));
+  // Only HR 2 signs 7.A and 7.B.
+  const hr1 = signInAsHr(t, { as: hr, employee: juan });
+  assert.equal((await hr1.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await signedForm('leave', 'REQ-CERTIFIED')))).status, 403);
 });
 
 test('once WorkMate counts leave credits from a start month, HR 2 certifies only after the starting balance', async t => {
   t.mock.method(AppSetting, 'get', async () => '2026-11');
   const longTime = { ...juan, name: 'Juan Dela Cruz', appointmentStatus: 'Permanent', dateHired: '2015-06-01' };
   const before = signInAsHr(t, { as: hr2, employee: longTime });
-  const refused = await before.patch('REQ-PENDING', approve);
+  const refused = await before.patch('REQ-PENDING', certify);
   assert.equal(refused.status, 400);
   assert.match(refused.body.error, /Juan Dela Cruz has no starting balance from the leave card yet/);
   assert.equal(before.saves.mock.callCount(), 0);
@@ -114,7 +156,7 @@ test('once WorkMate counts leave credits from a start month, HR 2 certifies only
 
   t.mock.method(AppSetting, 'get', async () => '2026-11');
   const after = signInAsHr(t, { as: hr2, employee: { ...longTime, startingLeaveBalance: { start: '2026-11', asOf: '2026-10-31' } } });
-  const certified = await after.patch('REQ-PENDING', approve);
+  const certified = await after.patch('REQ-PENDING', certify);
   assert.equal(certified.status, 200, JSON.stringify(certified.body));
 });
 
@@ -124,8 +166,8 @@ test('HR 2 pre-approves a Travel Order with a recommendation, and a disapproval 
   assert.equal(session.saves.mock.calls[0].arguments[1].creditCertification, undefined);
   assert.equal((await session.patch('REQ-TRAVEL', { status: 'For Pre-approval' })).status, 409);
   // A recommendation is needed, and a disapproval says why.
-  assert.match((await session.patch('REQ-PENDING', { status: 'For Supervisor' })).body.error, /Choose the recommendation/);
-  assert.match((await session.patch('REQ-PENDING', { status: 'For Supervisor', recommendation: { decision: 'disapproval' } })).body.error, /why/);
+  assert.match((await session.patch('REQ-TRAVEL', { status: 'For Supervisor' })).body.error, /Choose the recommendation/);
+  assert.match((await session.patch('REQ-PENDING', { status: 'For Pre-approval', recommendation: { decision: 'disapproval' } })).body.error, /why/);
 });
 
 test('HR 1 takes no step on requests; only HR 2 does', async t => {
@@ -315,8 +357,9 @@ const supervisors = [
 
 test('forwarding a request texts each active supervisor who has a mobile number', async t => {
   const session = signInAsHr(t, { supervisors, as: hr2 });
+  useSignedStore(t);
   const sms = useSmsGateway(t);
-  const response = await session.patch('REQ-CERTIFIED', approve);
+  const response = await session.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await signedForm('leave', 'REQ-CERTIFIED')));
   assert.equal(response.status, 200);
   assert.equal(sms.gateway.mock.callCount(), 1);
   const sent = JSON.parse(sms.gateway.mock.calls[0].arguments[1].body);
@@ -332,7 +375,7 @@ test('HR\'s steps are taken one request at a time, not through the bulk update',
     const session = signInAsHr(t, { supervisors, as });
     const response = await session.put([update]);
     assert.equal(response.status, 409);
-    assert.match(response.body.error, /Open the request/);
+    assert.match(response.body.error, /Open the request|in Adobe/);
     assert.equal(session.bulkSaves.mock.callCount(), 0);
     t.mock.restoreAll();
   }
@@ -341,8 +384,9 @@ test('HR\'s steps are taken one request at a time, not through the bulk update',
 
 test('a failed supervisor text does not stop the forward', async t => {
   const session = signInAsHr(t, { supervisors, as: hr2 });
+  useSignedStore(t);
   const sms = useSmsGateway(t, async () => { throw new Error('getaddrinfo ENOTFOUND'); });
-  const response = await session.patch('REQ-CERTIFIED', approve);
+  const response = await session.patch('REQ-TRAVEL', approve);
   assert.equal(response.status, 200);
   assert.equal(session.saves.mock.callCount(), 1);
   assert.equal(sms.saved.mock.calls[0].arguments[0].status, 'Failed');
@@ -379,10 +423,29 @@ test('approved sick leave is charged to sick leave, then vacation leave, then wi
     return { employee: { employeeId: 'E1', email: owner.email, reasonWritten: reason(charge) }, charge };
   });
   const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  // HR 2 signed the form in Adobe; the Head signs that same file.
+  const byHr = await signedForm('leave', 'REQ-SICK');
+  useSignedStore(t, { 'leave-hr:REQ-SICK': byHr });
+  const head = body => request(app).post('/api/signed-documents').set('Authorization', `Bearer ${createAuthToken(supervisor)}`).send(body);
 
-  const response = await request(app).patch('/api/requests/REQ-SICK').set('Authorization', `Bearer ${createAuthToken(supervisor)}`)
-    .send({ status: 'Approved', supervisorRemarks: 'Get well.' });
+  // An approval is not a status change any more, and the upload must add the Head's signature to HR 2's file.
+  assert.match((await request(app).patch('/api/requests/REQ-SICK').set('Authorization', `Bearer ${createAuthToken(supervisor)}`).send({ status: 'Approved' })).body.error, /in Adobe/);
+  assert.match((await head(asUpload('leave-head', 'REQ-SICK', byHr, { decision: 'Approved' }))).body.error, /missing a digital signature/);
+  // A form made again (here with an extra page) and signed twice no longer keeps what HR 2 signed.
+  const remade = await PDFDocument.create();
+  remade.addPage();
+  remade.addPage();
+  remade.setKeywords([signedFormMarker('leave', 'REQ-SICK')]);
+  const forged = addSignature(addSignature(Buffer.from(await remade.save())), 2);
+  assert.match((await head(asUpload('leave-head', 'REQ-SICK', forged, { decision: 'Approved' }))).body.error, /changed what was already signed/);
+  assert.match((await head(asUpload('leave-head', 'REQ-SICK', addSignature(byHr, 2), { decision: 'Maybe' }))).body.error, /Choose your decision/);
+  assert.equal(charges.mock.callCount(), 0);
+
+  const response = await head(asUpload('leave-head', 'REQ-SICK', addSignature(byHr, 2), { decision: 'Approved', remarks: 'Get well.' }));
   assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.request.status, 'Approved');
+  assert.equal(response.body.request.supervisorRemarks, 'Get well.');
+  assert.equal(response.body.request.signedForms.head.signatures, 2);
   // The 4 days come from the dates, not the 1 on the request.
   assert.deepEqual(charges.mock.calls[0].arguments[1].field, 'sickLeaveCredits');
   assert.equal(charges.mock.calls[0].arguments[1].days, 4);
@@ -391,7 +454,7 @@ test('approved sick leave is charged to sick leave, then vacation leave, then wi
   assert.match(notice.message, /2 days sick leave, 1\.5 days vacation leave, 0\.5 days without pay/);
 });
 
-test('the supervisor disapproves a leave and a travel order with remarks and a signature', async t => {
+test('the supervisor disapproves a leave by uploading its signed form, and a travel order with remarks', async t => {
   const supervisor = { _id: 's-1', email: 'boss@dilg.gov.ph', employeeId: 'S1', name: 'Ana Reyes', accessLevel: 'supervisor', accountStatus: 'Active' };
   const waiting = {
     'REQ-LEAVE': { id: 'REQ-LEAVE', type: 'Leave Request', leaveType: 'Vacation Leave', status: 'For Supervisor', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', statusHistory: [] },
@@ -404,19 +467,20 @@ test('the supervisor disapproves a leave and a travel order with remarks and a s
   const saves = t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...waiting[id], ...update }));
   const charges = t.mock.method(User, 'chargeApprovedLeave', async () => null);
   const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
-  // What the Supervisor's screen sends for Disapprove Request.
-  const signature = `data:image/png;base64,${'A'.repeat(20000)}`;
-  for (const id of Object.keys(waiting)) {
-    const response = await request(app).patch(`/api/requests/${id}`).set('Authorization', `Bearer ${createAuthToken(supervisor)}`)
-      .send({
-        status: 'Rejected', stage: 'Rejected', approver: 'Supervisor Review Desk', remarks: 'Needed at the office.',
-        supervisorSignature: signature, supervisorRemarks: 'Needed at the office.', supervisorApprovedAt: '2026-11-02',
-        supervisorName: 'Ana Reyes', signatureData: signature,
-        statusHistory: [{ status: 'Rejected', date: '2026-11-02', actor: 'Supervisor Review Desk' }]
-      });
-    assert.equal(response.status, 200, `${id}: ${JSON.stringify(response.body)}`);
-    assert.equal(response.body.request.status, 'Rejected');
-  }
+  useSignedStore(t);
+  const as = `Bearer ${createAuthToken(supervisor)}`;
+  // A leave is disapproved (7.D) by uploading its form signed in Adobe, with the reason.
+  const leaveForm = await signedForm('leave', 'REQ-LEAVE');
+  const upload = body => request(app).post('/api/signed-documents').set('Authorization', as).send(body);
+  assert.match((await upload(asUpload('leave-head', 'REQ-LEAVE', leaveForm, { decision: 'Rejected' }))).body.error, /reason for disapproving/);
+  const leave = await upload(asUpload('leave-head', 'REQ-LEAVE', leaveForm, { decision: 'Rejected', remarks: 'Needed at the office.' }));
+  assert.equal(leave.status, 200, JSON.stringify(leave.body));
+  assert.equal(leave.body.request.status, 'Rejected');
+  // What the Supervisor's screen sends to disapprove a Travel Order: no signed form.
+  const travel = await request(app).patch('/api/requests/REQ-TRAVEL').set('Authorization', as)
+    .send({ status: 'Rejected', stage: 'Rejected', approver: 'Supervisor Review Desk', remarks: 'Needed at the office.', supervisorRemarks: 'Needed at the office.', supervisorName: 'Ana Reyes', statusHistory: [{ status: 'Rejected', date: '2026-11-02', actor: 'Supervisor Review Desk' }] });
+  assert.equal(travel.status, 200, JSON.stringify(travel.body));
+  assert.equal(travel.body.request.status, 'Rejected');
   assert.equal(saves.mock.callCount(), 2);
   assert.equal(charges.mock.callCount(), 0);
   assert.ok(notices.mock.calls.some(call => /Disapproved|disapproved|Rejected/.test(`${call.arguments[0].title} ${call.arguments[0].message}`)));
@@ -490,8 +554,10 @@ test('a Travel Order includes colleagues from other offices; they see it and hea
   // When the Head approves it, Maria hears that she needs no Time In.
   t.mock.method(Leave, 'findByCustomId', async id => orders[id] || null);
   t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...orders[id], ...update }));
-  const approved = await request(app).patch('/api/requests/TO-1').set('Authorization', as(head)).send({ status: 'Approved', supervisorRemarks: 'Approved.' });
+  useSignedStore(t);
+  const approved = await request(app).post('/api/signed-documents').set('Authorization', as(head)).send(asUpload('travel-head', 'TO-1', await signedForm('travel-head', 'TO-1')));
   assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal(approved.body.request.status, 'Approved');
   const notice = notices.mock.calls.map(call => call.arguments[0]).find(item => item.title === 'Included in a Travel Order');
   assert.equal(notice.employeeId, 'E7');
   assert.match(notice.message, /Juan Dela Cruz included you in Travel Order TO-1 \(Gasan Municipal Hall, Nov 10, 2026\), which was approved\. No Time In is needed/);

@@ -27,6 +27,7 @@ import { travelDurationLabel } from '../utils/travelDuration';
 import DocumentViewer from './DocumentViewer';
 import SignDtrDialog from './SignDtrDialog';
 import { dtrSignatures, DTR_CERTIFICATION, dtrStatusText } from '../utils/dtrSubmission';
+import { fetchSignedForm } from '../utils/signedForms';
 
 // Only documents the system makes from the employee's own requests and attendance.
 const categories = [
@@ -131,6 +132,10 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
   };
 
   const makeDtr = async month => {
+    // A DTR the Supervisor verified is the copy they signed in Adobe.
+    const submission = submissionOf(month);
+    const signed = submission?.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;
+    if (signed) return { fileName: signed.fileName || `DTR_${month}_signed.pdf`, fileType: 'application/pdf', bytes: signed.bytes };
     const [dtrYear, dtrMonth] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
     const bytes = await fillDTR(await response.arrayBuffer(), user || {}, dtrYear, dtrMonth, attendanceHistory, { travelOrders: requests, signatures: dtrSignatures(submissionOf(month)) });

@@ -63,6 +63,8 @@ const RequestSchema = new mongoose.Schema({
   // it: [{ employeeId, name, role, office }] (see requestController's readCompanions).
   companions: { type: [mongoose.Schema.Types.Mixed], default: [] },
   recommendation: { type: mongoose.Schema.Types.Mixed, default: null },
+  // The forms signed in Adobe and uploaded, as short notes: { hr, head } (see signedDocumentModel).
+  signedForms: { type: mongoose.Schema.Types.Mixed, default: null },
   // How the approved leave was charged: the working days, the days taken from sick and from
   // vacation leave, and the days without pay that the balances could not cover.
   creditCharge: {

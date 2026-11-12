@@ -4,6 +4,7 @@ import { getManilaDateString } from '../../shared/localDate';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { dtrFilename, fillDTR } from '../utils/dtrForm';
 import { dtrSignatures, dtrStatusText } from '../utils/dtrSubmission';
+import { fetchSignedForm } from '../utils/signedForms';
 import { downloadBytes } from '../utils/documentFiles';
 import { recordsForEmployees } from '../utils/hrAttendance';
 import { travelOrderCovers } from '../../shared/travelStatus';
@@ -52,6 +53,9 @@ export default function HREmployeeDocuments({ employee, dtrSubmissions = [], req
   // The month's DTR as signed through WorkMate, if it was.
   const submission = dtrSubmissions.find(item => item.month === month && item.employeeId === employee?.employeeId) || null;
   const makeDtr = async () => {
+    // A DTR the Supervisor verified is the copy they signed in Adobe.
+    const signed = submission?.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;
+    if (signed) return { fileName: signed.fileName || `DTR_${month}_signed.pdf`, fileType: 'application/pdf', bytes: signed.bytes };
     const [year, monthNumber] = month.split('-').map(Number);
     const response = await fetch(dtrTemplate);
     const bytes = await fillDTR(await response.arrayBuffer(), employee, year, monthNumber, ownAttendance, { summary: true, travelOrders: requests.filter(request => travelOrderCovers(request, employee)), signatures: dtrSignatures(submission) });

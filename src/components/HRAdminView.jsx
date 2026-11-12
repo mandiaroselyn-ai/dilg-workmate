@@ -71,6 +71,7 @@ export default function HRAdminView({
   overtimeOrders = [],
   onOvertimeOrdersChange,
   onUpdateUser,
+  onUploadSignedForm,
   onAdminNotification,
   announcements = [],
   events = [],
@@ -438,7 +439,7 @@ export default function HRAdminView({
 
       {activeTab === 'requests' && <div className="hr-admin-requests-screen"><HRAdminRequestsView
         user={user}
-        onUpdateUser={onUpdateUser}
+        onUploadSignedForm={onUploadSignedForm}
         requests={requests}
         employees={employees}
         onEmployeesChange={onEmployeesChange}

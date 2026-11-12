@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.5
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import {
   FileCheck2,
@@ -21,9 +21,7 @@ import {
   Sparkles,
   Users,
   Award,
-  Signature,
-  Upload,
-  ImagePlus
+  Signature
 } from 'lucide-react';
 import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
@@ -33,9 +31,13 @@ import { companionNames } from '../../shared/travelStatus';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 import SupervisorDtrDesk from './SupervisorDtrDesk';
+import SignedFormStep from './SignedFormStep';
+import cscForm6Template from '../assets/template/csc-form-6-template.pdf';
+import travelOrderTemplate from '../assets/template/travelorder-template.pdf';
+import { fillLeaveForm } from '../utils/leaveForm';
+import { fillTravelOrder } from '../utils/travelOrderForm';
+import { fetchSignedForm, signedNoteText, stampForSigning } from '../utils/signedForms';
 
-// Up to three initials for the signature stamp: the first name's, the middle initial's, and the
-// last name's, such as "IFF" for "Ivan Stephen F. Fadri, CESE" (what follows a comma is left out).
 // A request the Supervisor can still decide: one HR forwarded, or one still with HR (the server
 // allows the same). Approved, disapproved, returned, and withdrawn ones are done.
 const canDecide = request => ['Pending', 'Pending Review', FOR_PRE_APPROVAL, 'For Supervisor'].includes(request?.status);
@@ -56,18 +58,14 @@ const decisionText = request => {
   return `This request is ${request.status || 'not submitted'}.`;
 };
 
-const initialsOf = name => {
-  const words = String(name || '').split(',')[0].trim().split(/\s+/).filter(Boolean);
-  return (words.length > 3 ? [words[0], ...words.slice(-2)] : words).map(word => word[0]).join('').toUpperCase();
-};
-
 export default function SupervisorView({
   user,
   requests,
   employees = [],
   activeEmployeeCount = null,
   onUpdateRequestStatus,
-  onUpdateUser,
+  // Uploads a form signed in Adobe (see utils/signedForms.js).
+  onUploadSignedForm,
   // From a notification's button: { requestId } of the request to open.
   focus = null,
   // The DTRs employees signed through WorkMate, for the Supervisor to verify as the In-charge.
@@ -79,24 +77,6 @@ export default function SupervisorView({
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [remarks, setRemarks] = useState('');
   
-  // Signature settings
-  const [signatureMode, setSignatureMode] = useState(user?.signatureImage ? 'image' : 'type');
-  const [localSignatureImage, setLocalSignatureImage] = useState(user?.signatureImage || '');
-  const [isSavingSignatureImage, setIsSavingSignatureImage] = useState(false);
-  const sigImgInputRef = useRef(null);
-  // The typed signature and the stamp start from the signed-in supervisor's own name. The typed
-  // name is also saved as the request's supervisorName.
-  const [typewrittenName, setTypewrittenName] = useState(() => (user?.name || '').toUpperCase());
-  const [cursiveStyle, setCursiveStyle] = useState('Dancing Script');
-  const [customInitials, setCustomInitials] = useState(() => initialsOf(user?.name));
-  const [selectedInkColor, setSelectedInkColor] = useState('blue'); // blue, black, red
-
-  // Canvas drawing state
-  const canvasRef = useRef(null);
-  // A ref, so every pointer move sees at once that a stroke has started.
-  const drawingRef = useRef(false);
-  const [hasDrawn, setHasDrawn] = useState(false);
-
   // Filters & Tabs
   const [activeMainTab, setActiveMainTab] = useState('requests');
 
@@ -126,126 +106,8 @@ export default function SupervisorView({
   const requesterName = (request) => getRequester(request)?.name || request.employeeName || 'Employee name unavailable';
   const requesterId = (request) => getRequester(request)?.employeeId || request.employeeId || 'Not assigned';
 
-  // Setup canvas drawings
-  useEffect(() => {
-    if (signatureMode === 'draw' && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.strokeStyle = selectedInkColor === 'blue' ? '#1e40af' : selectedInkColor === 'red' ? '#dc2626' : '#0f172a';
-        ctx.lineWidth = 2.5;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-      }
-    }
-  }, [signatureMode, selectedInkColor]);
-
-  // The cursive signature fonts (loaded in index.css), by name.
-  const cursiveFontStyle = name => ({ fontFamily: `"${name}", cursive` });
-
-  // Where a mouse, finger, or pen is on the signature canvas, in canvas pixels: the canvas
-  // is drawn 350 px wide but shown at the width of its box.
-  const canvasPoint = (e, canvas) => {
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) * (canvas.width / rect.width),
-      y: (e.clientY - rect.top) * (canvas.height / rect.height)
-    };
-  };
-
-  const startDrawing = (e) => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    e.preventDefault();
-    // Keeps the stroke going when the finger slides past the edge; drawing works without it.
-    try {
-      canvas.setPointerCapture(e.pointerId);
-    } catch {
-      // Not every browser allows capturing this pointer.
-    }
-    const { x, y } = canvasPoint(e, canvas);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    drawingRef.current = true;
-  };
-
-  const draw = (e) => {
-    if (!drawingRef.current || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    e.preventDefault();
-    const { x, y } = canvasPoint(e, canvas);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    setHasDrawn(true);
-  };
-
-  const stopDrawing = () => {
-    drawingRef.current = false;
-  };
-
-  const clearCanvas = () => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasDrawn(false);
-  };
-
-  const getSignatureDataUrl = () => {
-    if (signatureMode === 'image') {
-      return user?.signatureImage || localSignatureImage || '';
-    }
-    if (signatureMode === 'type') {
-      return `type:${cursiveStyle}:${typewrittenName}`;
-    }
-    if (signatureMode === 'stamp') {
-      return `stamp:${customInitials}:${selectedInkColor}`;
-    }
-    if (signatureMode === 'draw' && canvasRef.current && hasDrawn) {
-      return canvasRef.current.toDataURL();
-    }
-    return '';
-  };
-
-  const handleSignatureImageUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxW = 400, maxH = 150;
-        let w = img.width, h = img.height;
-        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
-        if (h > maxH) { w = Math.round(w * maxH / h); h = maxH; }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        setLocalSignatureImage(canvas.toDataURL('image/png'));
-      };
-      img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const saveSignatureImage = async () => {
-    if (!localSignatureImage || !onUpdateUser) return;
-    setIsSavingSignatureImage(true);
-    try {
-      await onUpdateUser({ signatureImage: localSignatureImage });
-    } finally {
-      setIsSavingSignatureImage(false);
-    }
-  };
-
-  // Submit decision
+  // Returning a request to the employee, and disapproving a Travel Order, need no signed form.
+  // An approval, and a leave's disapproval (7.D), are made by uploading the form signed in Adobe.
   const handleDecision = async (decision) => {
     if (!selectedRequest || isSavingDecision) return;
     setErrorMsg('');
@@ -257,64 +119,55 @@ export default function SupervisorView({
       setErrorMsg('Write in the remarks what the employee needs to fix before returning the request.');
       return;
     }
-
-    const finalRemarks = remarks.trim() || (decision === 'Approved' ? 'Approved.' : 'Operational conflicts.');
-    const sigData = getSignatureDataUrl();
-
-    let updatePayload = {};
-    const today = getManilaDateString();
-
-    if (decision === 'Returned') {
-      // Returned for the employee to fix and submit again: no decision, so no signature.
-      updatePayload = {
-        status: 'Returned',
-        stage: 'Returned',
-        approver: 'Supervisor Review Desk',
-        remarks: finalRemarks,
-        supervisorRemarks: finalRemarks,
-        supervisorName: typewrittenName || user?.name || 'Supervisor'
-      };
-    } else if (decision === 'Rejected') {
-      updatePayload = {
-        status: 'Rejected',
-        stage: 'Rejected',
-        approver: 'Supervisor Review Desk',
-        remarks: finalRemarks,
-        supervisorSignature: sigData,
-        supervisorRemarks: finalRemarks,
-        supervisorApprovedAt: today,
-        supervisorName: typewrittenName || user?.name || 'Supervisor',
-        signatureData: sigData
-      };
-    } else {
-      updatePayload = {
-        status: 'Approved',
-        stage: 'Supervisor Approved',
-        approver: 'Supervisor Review Desk',
-        remarks: finalRemarks,
-        supervisorSignature: sigData,
-        supervisorRemarks: finalRemarks,
-        supervisorApprovedAt: today,
-        supervisorName: typewrittenName || user?.name || 'Supervisor',
-        signatureData: sigData
-      };
-    }
+    const finalRemarks = remarks.trim();
+    const updatePayload = {
+      status: decision,
+      stage: decision,
+      approver: 'Supervisor Review Desk',
+      remarks: finalRemarks,
+      supervisorRemarks: finalRemarks,
+      supervisorName: user?.name || 'Supervisor',
+      ...(decision === 'Rejected' ? { supervisorApprovedAt: getManilaDateString() } : {})
+    };
 
     setIsSavingDecision(true);
     try {
       await onUpdateRequestStatus(selectedRequest.id, updatePayload);
       setSuccessMsg(decision === 'Returned'
         ? `Application ID ${selectedRequest.id} was returned to the employee to fix and submit again.`
-        : `Application ID ${selectedRequest.id} was successfully ${decision === 'Rejected' ? 'Disapproved' : 'Approved'}.`);
+        : `Application ID ${selectedRequest.id} was disapproved.`);
       setSelectedRequest(null);
       setRemarks('');
-      clearCanvas();
       window.setTimeout(() => setSuccessMsg(''), 4500);
     } catch (error) {
       setErrorMsg(error.message || 'Unable to save the supervisor decision. Please try again.');
     } finally {
       setIsSavingDecision(false);
     }
+  };
+
+  // The form the Head signs in Adobe: a leave's CSC Form No. 6 as HR 2 signed it (or, for a leave
+  // HR sent before signed uploads began, made now), or the Travel Order made now.
+  const formToSign = async request => {
+    const person = getRequester(request) || { name: request.employeeName };
+    if (request.type === 'Leave Request') {
+      const signedByHr = request.signedForms?.hr ? await fetchSignedForm('leave-hr', request.id) : null;
+      if (signedByHr) return { bytes: signedByHr.bytes, fileName: `CSC_Form_6_${request.id}_to_sign.pdf` };
+      const template = await (await fetch(cscForm6Template)).arrayBuffer();
+      return { bytes: await stampForSigning(await fillLeaveForm(template, request, person), 'leave-head', request.id), fileName: `CSC_Form_6_${request.id}_to_sign.pdf` };
+    }
+    const template = await (await fetch(travelOrderTemplate)).arrayBuffer();
+    return { bytes: await stampForSigning(await fillTravelOrder(template, request, person), 'travel-head', request.id), fileName: `Travel_Order_${request.id}_to_sign.pdf` };
+  };
+  const uploadSignedDecision = async ({ file, decision, remarks: signedRemarks }) => {
+    const request = selectedRequest;
+    const leave = request.type === 'Leave Request';
+    const data = await onUploadSignedForm({ kind: leave ? 'leave-head' : 'travel-head', ref: request.id, file, decision: leave ? decision : 'Approved', remarks: signedRemarks });
+    const status = data?.request?.status;
+    setSuccessMsg(`Application ID ${request.id} was ${status === 'Rejected' ? 'disapproved' : 'approved'}. The form you signed in Adobe is now its official copy.`);
+    setSelectedRequest(null);
+    setRemarks('');
+    window.setTimeout(() => setSuccessMsg(''), 6000);
   };
 
   // Stats summaries
@@ -366,7 +219,7 @@ export default function SupervisorView({
       </div>
 
       {activeMainTab === 'dtr' ? (
-        <SupervisorDtrDesk user={user} submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} />
+        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} />
       ) : (<>
       {/* Row 1: Quick Insights Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
@@ -660,226 +513,43 @@ export default function SupervisorView({
                   <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-xs text-slate-600">
                     <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Decision</p>
                     <p className="font-bold text-slate-800">{decisionText(selectedRequest)}</p>
+                    {selectedRequest.signedForms?.head && <p className="font-semibold text-emerald-700">{signedNoteText(selectedRequest.signedForms.head)}</p>}
                     {['Approved', 'Rejected', 'Returned'].includes(selectedRequest.status) && (selectedRequest.supervisorRemarks || selectedRequest.remarks) && (
                       <p className="font-semibold">Remarks: <span className="font-bold text-slate-800">{selectedRequest.supervisorRemarks || selectedRequest.remarks}</span></p>
                     )}
                   </div>
                 ) : (<>
-                {/* Supervisor Remarks Input */}
-                <div className="space-y-1.5 text-xs text-left">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Approver's Official Remarks</label>
+                {selectedRequest.status === 'For Supervisor' ? (
+                  <SignedFormStep
+                    key={selectedRequest.id}
+                    title={selectedRequest.type === 'Leave Request' ? 'Decide and sign 7.C and 7.D in Adobe' : 'Sign the Travel Order in Adobe'}
+                    description={selectedRequest.type === 'Leave Request'
+                      ? (selectedRequest.signedForms?.hr ? 'The form already carries HR 2\'s signature at 7.A and 7.B. Mark your decision at 7.C or 7.D, sign it, and upload it.' : 'Mark your decision at 7.C or 7.D, sign it, and upload it.')
+                      : 'Signing the Travel Order approves it. To disapprove it, use the button below instead.'}
+                    decisions={selectedRequest.type === 'Leave Request' ? [{ value: 'Approved', label: 'Approved (7.C)' }, { value: 'Rejected', label: 'Disapproved (7.D)' }] : null}
+                    remarksLabel="Approver's Official Remarks"
+                    remarksPlaceholder="Recommendations or comments, or the reason for disapproving"
+                    remarksRequiredFor="Rejected"
+                    submitLabel={selectedRequest.type === 'Leave Request' ? 'Upload Signed Form & Record Decision' : 'Upload Signed Travel Order & Approve'}
+                    onDownload={() => formToSign(selectedRequest)}
+                    onSubmit={uploadSignedDecision}
+                  />
+                ) : (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">HR has not sent this request to you yet. You can sign it once HR 2 sends it; until then you can only return it to the employee.</p>
+                )}
+
+                {/* Returning needs no signed form; nor does disapproving a Travel Order. */}
+                <div className="space-y-1.5 border-t border-slate-100 pt-4 text-xs text-left">
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Remarks to return{selectedRequest.type === 'Travel Order' ? ' or disapprove' : ''}</label>
                   <textarea
                     rows={2}
                     value={remarks}
                     onChange={(e) => { setRemarks(e.target.value); if (e.target.value.trim()) setErrorMsg(''); }}
-                    placeholder="Enter recommendations or comments for leave or travel order approval..."
+                    placeholder="What the employee needs to fix, or why it is disapproved"
                     className="w-full font-semibold border border-slate-200 rounded-lg p-3 bg-slate-50 text-slate-800 focus:outline-[#1e40af] placeholder-slate-400"
                   />
-                  <span className="block text-[9.5px] font-semibold text-slate-500">Required to disapprove a request or return it to the employee.</span>
-                  {selectedRequest.status === 'Pending' && (
-                    <span className="text-[9.5px] text-slate-500 font-medium block leading-normal font-semibold">
-                      These remarks and signature will serve as the final decision and official signature on the document.
-                    </span>
-                  )}
                 </div>
 
-                {/* Digital Signature Designer Setup */}
-                <div className="space-y-3.5 border-t border-slate-100 pt-4 text-left">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Digital Signature Options</label>
-                    <div className="flex gap-1.5 text-[9.5px] font-bold flex-wrap">
-                      <button
-                        onClick={() => setSignatureMode('image')}
-                        className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold flex items-center gap-1 ${signatureMode === 'image' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        <ImagePlus className="w-3 h-3" />My Signature
-                      </button>
-                      <button
-                        onClick={() => setSignatureMode('type')}
-                        className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold ${signatureMode === 'type' ? 'bg-[#1e40af] text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        Typewritten
-                      </button>
-                      <button
-                        onClick={() => setSignatureMode('draw')}
-                        className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold ${signatureMode === 'draw' ? 'bg-[#1e40af] text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        Manual Draw
-                      </button>
-                      <button
-                        onClick={() => setSignatureMode('stamp')}
-                        className={`px-2 py-0.5 rounded cursor-pointer border-0 font-semibold ${signatureMode === 'stamp' ? 'bg-[#1e40af] text-white' : 'bg-slate-100 text-slate-600'}`}>
-                        Seal Stamp
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Mode 0: Uploaded actual signature image */}
-                  {signatureMode === 'image' && (
-                    <div className="space-y-2.5 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-left">
-                      {(localSignatureImage || user?.signatureImage) ? (
-                        <div className="bg-white border border-slate-200 rounded p-4 text-center min-h-[80px] flex items-center justify-center shadow-inner">
-                          <img
-                            src={localSignatureImage || user?.signatureImage}
-                            alt="Your signature"
-                            className="max-h-16 max-w-full object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="bg-white border border-dashed border-slate-300 rounded p-4 text-center min-h-[80px] flex flex-col items-center justify-center gap-1.5">
-                          <Upload className="w-5 h-5 text-slate-300" />
-                          <span className="text-[10px] text-slate-400 font-semibold">No signature uploaded yet</span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <input
-                          ref={sigImgInputRef}
-                          type="file"
-                          accept="image/png,image/jpeg,image/jpg"
-                          className="hidden"
-                          onChange={handleSignatureImageUpload}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => sigImgInputRef.current?.click()}
-                          className="flex-1 py-1.5 px-3 border border-slate-200 bg-white rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          {(localSignatureImage || user?.signatureImage) ? 'Replace Signature' : 'Upload Signature'}
-                        </button>
-                        {localSignatureImage && localSignatureImage !== user?.signatureImage && (
-                          <button
-                            type="button"
-                            onClick={saveSignatureImage}
-                            disabled={isSavingSignatureImage}
-                            className="py-1.5 px-3 bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold cursor-pointer disabled:opacity-60 hover:bg-emerald-600 transition-colors"
-                          >
-                            {isSavingSignatureImage ? 'Saving…' : 'Save'}
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
-                        Scan your actual handwritten signature on paper, crop it, then upload (PNG or JPG). This will appear on the CSC Form 6 and on the employee's approved request.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Mode 1: Cursive Script Generator */}
-                  {signatureMode === 'type' && (
-                    <div className="space-y-3 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-left">
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-bold text-slate-400 uppercase font-bold">Predefined Name</label>
-                          <input 
-                            type="text" 
-                            value={typewrittenName} 
-                            onChange={(e) => setTypewrittenName(e.target.value)}
-                            className="w-full text-xs font-bold rounded border border-slate-200 bg-white p-2 text-slate-800"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-bold text-slate-400 uppercase font-bold">Cursive Script Font</label>
-                          <select 
-                            value={cursiveStyle} 
-                            onChange={(e) => setCursiveStyle(e.target.value)}
-                            className="w-full text-xs font-bold rounded border border-slate-200 bg-white p-2 text-slate-800"
-                          >
-                            <option value="Dancing Script">Dancing Script (Elegant)</option>
-                            <option value="Alex Brush">Alex Brush (Calligraphy)</option>
-                            <option value="Caveat">Caveat (Modern Cursive)</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Preview script */}
-                      <div className="bg-white border border-slate-200 rounded p-4 text-center min-h-[50px] flex items-center justify-center select-none shadow-inner">
-                        <span className="text-2xl text-blue-700" style={cursiveFontStyle(cursiveStyle)}>
-                          {typewrittenName || 'Empty'}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mode 2: Manual draw canvas */}
-                  {signatureMode === 'draw' && (
-                    <div className="space-y-2 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-left">
-                      <div className="flex items-center justify-between text-[10px] font-bold flex-wrap gap-2 text-left">
-                        <span className="text-slate-400 uppercase font-bold text-[9px]">Draw signature with mouse or finger:</span>
-                        <div className="flex gap-2 text-[9px] font-bold select-none items-center">
-                          <span className="text-slate-400 font-bold">Color ink:</span>
-                          <button onClick={() => setSelectedInkColor('blue')} className={`w-3.5 h-3.5 rounded-full bg-blue-600 border border-white ${selectedInkColor === 'blue' ? 'ring-2 ring-indigo-500' : ''}`}></button>
-                          <button onClick={() => setSelectedInkColor('black')} className={`w-3.5 h-3.5 rounded-full bg-slate-900 border border-white ${selectedInkColor === 'black' ? 'ring-2 ring-indigo-500' : ''}`}></button>
-                          <button onClick={() => setSelectedInkColor('red')} className={`w-3.5 h-3.5 rounded-full bg-red-600 border border-white ${selectedInkColor === 'red' ? 'ring-2 ring-indigo-500' : ''}`}></button>
-                        </div>
-                      </div>
-                      
-                      <div className="relative border border-slate-200 bg-white rounded-lg shadow-inner overflow-hidden cursor-crosshair">
-                        <canvas
-                          ref={canvasRef}
-                          width={350}
-                          height={120}
-                          onPointerDown={startDrawing}
-                          onPointerMove={draw}
-                          onPointerUp={stopDrawing}
-                          onPointerCancel={stopDrawing}
-                          onPointerLeave={stopDrawing}
-                          className="w-full touch-none"
-                        />
-                      </div>
-                      <div className="flex justify-end select-none">
-                        <button
-                          type="button"
-                          onClick={clearCanvas}
-                          className="text-[9px] font-black text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded px-2.5 py-1 cursor-pointer transition-all font-semibold"
-                        >
-                          Clear Canvas drawing
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Mode 3: Badge stamp initials selection */}
-                  {signatureMode === 'stamp' && (
-                    <div className="space-y-3 bg-slate-50/50 p-3 rounded-lg border border-slate-200 text-left">
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-bold text-slate-400 uppercase font-bold">Stamp Initials</label>
-                          <input 
-                            type="text" 
-                            maxLength={3} 
-                            value={customInitials} 
-                            onChange={(e) => setCustomInitials(e.target.value.toUpperCase())}
-                            className="w-full text-xs font-bold rounded border border-slate-200 p-2 bg-white text-slate-800"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[8px] font-bold text-slate-400 uppercase font-bold">Stamp Colors</label>
-                          <select 
-                            value={selectedInkColor} 
-                            onChange={(e) => setSelectedInkColor(e.target.value)}
-                            className="w-full text-xs font-bold rounded border border-slate-200 p-2 bg-white text-slate-800"
-                          >
-                            <option value="blue">Official Royal Blue</option>
-                            <option value="red">Urgent Ruby Red</option>
-                            <option value="black">Doc Slate Black</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      {/* Display circular rubber ink stamp */}
-                      <div className="bg-white border border-slate-200 rounded p-4 text-center min-h-[90px] flex items-center justify-center select-none shadow-inner">
-                        <div className={`w-16 h-16 border-2 border-dashed rounded-full flex flex-col items-center justify-center font-mono leading-none ${
-                          selectedInkColor === 'blue' ? 'text-blue-600 border-blue-500 bg-blue-50/20' :
-                          selectedInkColor === 'red' ? 'text-red-700 border-red-500 bg-red-50/20' :
-                          'text-slate-900 border-slate-800 bg-slate-100/20'
-                        }`}>
-                          <span className="text-[6px] font-black uppercase font-bold">AUTHORIZED</span>
-                          <span className="text-sm font-black my-1 uppercase font-bold">{customInitials || 'STAMP'}</span>
-                          <span className="text-[5px] font-bold uppercase font-bold">DILG GOV</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right above the buttons, so a decision that cannot be saved says why where it was clicked. */}
                 {errorMsg && (
                   <div role="alert" className="bg-rose-50 border border-rose-200 text-rose-800 p-3 rounded-xl flex items-center gap-3 animate-fadeIn select-none text-left">
                     <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
@@ -887,31 +557,23 @@ export default function SupervisorView({
                   </div>
                 )}
 
-                {/* Double Decisive Button Layout Drawer */}
-                <div className="grid grid-cols-2 gap-3.5 pt-4 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => handleDecision('Rejected')}
-                    disabled={isSavingDecision}
-                    className="py-3 px-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold hover:bg-rose-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 font-semibold disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <XCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                    <span>{isSavingDecision ? 'Saving…' : 'Disapprove Request'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDecision('Approved')}
-                    disabled={isSavingDecision}
-                    className="py-3 px-3 rounded-xl bg-emerald-600 text-white font-extrabold hover:bg-emerald-500 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 shadow-sm font-semibold border-0 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
-                    <span>{isSavingDecision ? 'Saving…' : 'Sign & Approve Request'}</span>
-                  </button>
+                <div className={`grid gap-3 ${selectedRequest.type === 'Travel Order' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                  {selectedRequest.type === 'Travel Order' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDecision('Rejected')}
+                      disabled={isSavingDecision}
+                      className="py-2.5 px-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 font-bold hover:bg-rose-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <XCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span>{isSavingDecision ? 'Saving…' : 'Disapprove Travel Order'}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => handleDecision('Returned')}
                     disabled={isSavingDecision}
-                    className="col-span-2 py-2.5 px-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 font-bold hover:bg-amber-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 font-semibold disabled:cursor-wait disabled:opacity-60"
+                    className="py-2.5 px-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 font-bold hover:bg-amber-100 transition-colors cursor-pointer text-xs flex items-center justify-center gap-1.5 disabled:cursor-wait disabled:opacity-60"
                   >
                     <span>{isSavingDecision ? 'Saving…' : 'Return to Employee (needs changes)'}</span>
                   </button>
@@ -925,44 +587,13 @@ export default function SupervisorView({
                   <Signature className="w-10 h-10 text-slate-300 mx-auto animate-none" />
                   <p className="font-extrabold text-xs">No applicant request selected.</p>
                   <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto leading-relaxed font-semibold">
-                    Select a request from the left panel to review its details, verify the leave balance, and apply your digital signature.
+                    Select a request from the left panel to review its details, verify the leave balance, and sign it in Adobe.
                   </p>
                 </div>
 
-                {/* Standalone signature upload — always accessible */}
-                <div className="border-t border-slate-100 pt-5 space-y-3 text-left">
-                  <div className="flex items-center gap-2">
-                    <ImagePlus className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span className="text-[10px] font-extrabold text-slate-600 uppercase tracking-widest">My Digital Signature</span>
-                  </div>
-                  {(localSignatureImage || user?.signatureImage) ? (
-                    <div className="bg-white border border-slate-200 rounded-lg p-4 flex items-center justify-center min-h-[80px] shadow-inner">
-                      <img src={localSignatureImage || user?.signatureImage} alt="Your signature" className="max-h-16 max-w-full object-contain" />
-                    </div>
-                  ) : (
-                    <div className="bg-white border border-dashed border-slate-300 rounded-lg p-4 flex flex-col items-center justify-center gap-1.5 min-h-[80px]">
-                      <Upload className="w-5 h-5 text-slate-300" />
-                      <span className="text-[10px] text-slate-400 font-semibold">No signature uploaded yet</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <input ref={sigImgInputRef} type="file" accept="image/png,image/jpeg,image/jpg" className="hidden" onChange={handleSignatureImageUpload} />
-                    <button type="button" onClick={() => sigImgInputRef.current?.click()}
-                      className="flex-1 py-2 px-3 border border-slate-200 bg-white rounded-lg text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer flex items-center justify-center gap-1.5">
-                      <Upload className="w-3.5 h-3.5" />
-                      {(localSignatureImage || user?.signatureImage) ? 'Replace Signature' : 'Upload Signature'}
-                    </button>
-                    {localSignatureImage && localSignatureImage !== user?.signatureImage && (
-                      <button type="button" onClick={saveSignatureImage} disabled={isSavingSignatureImage}
-                        className="py-2 px-3 bg-emerald-700 text-white rounded-lg text-[10px] font-extrabold cursor-pointer disabled:opacity-60 hover:bg-emerald-600 transition-colors">
-                        {isSavingSignatureImage ? 'Saving…' : 'Save'}
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-[9px] text-slate-400 font-semibold leading-relaxed">
-                    Scan your actual handwritten signature on paper, crop it, then upload (PNG or JPG). It will appear on the CSC Form 6 and on the employee's approved request.
-                  </p>
-                </div>
+                <p className="border-t border-slate-100 pt-4 text-[10px] font-semibold leading-relaxed text-slate-500">
+                  You sign leave forms, Travel Orders and DTRs in Adobe Acrobat with your digital ID: download the form here, sign it, and upload the signed PDF.
+                </p>
               </div>
             )}
           </div>

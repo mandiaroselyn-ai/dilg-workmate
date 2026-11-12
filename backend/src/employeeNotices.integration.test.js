@@ -24,6 +24,18 @@ const { createAuthToken } = await import('./utils/authToken.js');
 const { attendanceReviewNotices, changedRecordFields, requestDecisionNotice } = await import('./services/employeeNotices.js');
 
 const app = createApiApp();
+const { SignedDocument } = await import('./models/signedDocumentModel.js');
+const { PDFDocument } = await import('pdf-lib');
+const { signedFormMarker } = await import('../../shared/signedForms.js');
+
+// A leave form as WorkMate makes it for `ref`, signed in Adobe (an appended signature).
+const signedLeaveForm = async ref => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  pdf.setKeywords([signedFormMarker('leave', ref)]);
+  const signature = '\n91 0 obj\n<< /Type /Sig /ByteRange [0 100 200 300] /Contents <3082> >>\nendobj\n%%EOF\n';
+  return Buffer.concat([Buffer.from(await pdf.save({ useObjectStreams: false })), Buffer.from(signature, 'latin1')]);
+};
 const employee = { _id: 'emp-1', name: 'Juan Dela Cruz', email: 'juan@dilg.gov.ph', employeeId: 'DILG-2026-1', accessLevel: 'employee', accountStatus: 'Active', phoneNumber: '0917 123 4567' };
 const supervisor = { _id: 'sup-1', name: 'Ana Reyes', email: 'ana@dilg.gov.ph', employeeId: 'DILG-2026-2', accessLevel: 'supervisor', accountStatus: 'Active' };
 const hr = { _id: 'hr-1', name: 'HR Officer', email: 'hr@dilg.gov.ph', employeeId: 'DILG-2026-3', accessLevel: 'hr_admin', accountStatus: 'Active' };
@@ -70,12 +82,15 @@ test('the supervisor\'s decision reaches the employee from the server, at their 
   t.mock.method(Leave, 'updateStatus', async (_id, update) => ({ ...leave, ...update }));
   t.mock.method(Leave, 'markCreditsDeducted', async () => true);
   const notify = t.mock.method(Announcement, 'createNotification', async data => data);
+  t.mock.method(SignedDocument, 'find', async () => null);
+  t.mock.method(SignedDocument, 'save', async () => {});
 
+  // The Head approves by uploading the leave form signed in Adobe.
   const response = await request(app)
-    .patch('/api/requests/LV-1')
+    .post('/api/signed-documents')
     .set('Authorization', `Bearer ${createAuthToken(supervisor)}`)
-    .send({ status: 'Approved', remarks: 'Approved.' });
-  assert.equal(response.status, 200);
+    .send({ kind: 'leave-head', ref: 'LV-1', fileName: 'LV-1.pdf', data: (await signedLeaveForm('LV-1')).toString('base64'), decision: 'Approved', remarks: 'Approved.' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
 
   const notice = notify.mock.calls.map(call => call.arguments[0]).find(item => item.employeeId === employee.employeeId);
   assert.equal(notice.title, 'Leave Request Approved');

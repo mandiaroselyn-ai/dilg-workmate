@@ -42,10 +42,15 @@ export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' &&
 export const LEAVE_CREDITS_HR_ONLY = 'Only HR 1 and HR 2 change leave credits. Ask HR to set your HR step in Staff Accounts.';
 
 // HR 2 signs a leave's 7.A (certification of leave credits) and 7.B (recommendation) on CSC Form
-// No. 6, as the HR officer and the employee's supervisor. The signature is the image HR 2 saves
-// on the Requests page; a leave cannot be sent to the Head without it.
-export const HR_SIGNATURE_NEEDED = 'Add your signature first. It goes on 7.A and 7.B of the CSC Form 6.';
-export const needsHrSignature = request => request?.type === 'Leave Request';
+// No. 6 in Adobe, with a digital ID, and uploads the signed PDF (see shared/signedForms.js). In
+// WorkMate HR 2 first certifies and recommends, which makes the form ('For Pre-approval'); the
+// signed upload sends the leave to the Head. A Travel Order has no signature at this step.
+export const HR_SIGN_AND_UPLOAD = 'Download the form, sign 7.A and 7.B in Adobe, and upload the signed PDF. That sends the leave to the Head.';
+// The Head approves a request, or disapproves a leave, by signing the form in Adobe and uploading it.
+export const HEAD_SIGN_AND_UPLOAD = 'Download the form, sign it in Adobe, and upload the signed PDF. That records your decision.';
+// True when HR 2 sends the request to the Head by uploading a signed form: a leave. A Travel
+// Order is pre-approved without one.
+export const needsHrSignedUpload = request => request?.type === 'Leave Request';
 
 const round3 = number => Math.round(number * 1000) / 1000;
 

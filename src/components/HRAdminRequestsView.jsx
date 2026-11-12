@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import AttachmentList from './AttachmentList';
+import SignedFormStep from './SignedFormStep';
+import cscForm6Template from '../assets/template/csc-form-6-template.pdf';
+import { fillLeaveForm } from '../utils/leaveForm';
+import { signedNoteText, stampForSigning } from '../utils/signedForms';
 import { travelDurationLabel } from '../utils/travelDuration';
 import { companionNames } from '../../shared/travelStatus';
 import { getManilaDateString } from '../../shared/localDate';
-import { FOR_PRE_APPROVAL, HR_SIGNATURE_NEEDED, HR_STEP_NAMES, HR_TASKS, HR_TASK_LABELS, doesHrStep, hrStepOf, leaveCreditCertification, needsCreditCertification, needsHrSignature } from '../../shared/hrSteps';
+import { FOR_PRE_APPROVAL, HR_STEP_NAMES, HR_TASKS, HR_TASK_LABELS, doesHrStep, hrStepOf, leaveCreditCertification, needsCreditCertification, needsHrSignedUpload } from '../../shared/hrSteps';
 import { ArrowRight, BriefcaseBusiness, CalendarDays, Check, CheckCircle2, ChevronLeft, ClipboardCheck, Clock3, FileCheck2, FileText, Filter, History, MapPin, MessageSquare, Plane, Search, ShieldCheck, UserRound, Users } from 'lucide-react';
 
 const statusTone = { Pending: 'bg-amber-50 text-amber-700', 'Pending Review': 'bg-amber-50 text-amber-700', [FOR_PRE_APPROVAL]: 'bg-indigo-50 text-indigo-700', Returned: 'bg-rose-50 text-rose-700', Validated: 'bg-emerald-50 text-emerald-700', 'For Supervisor': 'bg-blue-50 text-blue-700', Approved: 'bg-emerald-50 text-emerald-700', Rejected: 'bg-rose-50 text-rose-700' };
@@ -39,6 +43,7 @@ const requestTimeline = request => {
       detail: certification ? `By ${certification.certifiedBy?.name || 'HR'}, as of ${certification.asOf}` : certified ? 'Certified' : 'Awaiting HR 2'
     }] : []),
     { label: 'HR 2: Pre-approved (7.B)', complete: preApproved, detail: recommendation ? `${recommendationText(recommendation)} · ${recommendation.recommendedBy?.name || 'HR 2'}` : preApproved ? 'Sent to the Head' : 'Awaiting HR 2' },
+    ...(request.type === 'Leave Request' ? [{ label: 'HR 2: Signed 7.A and 7.B in Adobe', complete: Boolean(request.signedForms?.hr), detail: request.signedForms?.hr ? signedNoteText(request.signedForms.hr) : 'Awaiting the signed form' }] : []),
     { label: decided ? status : 'Approved / Rejected', complete: decided, detail: decided ? `Final decision by the Head: ${status}` : 'Awaiting the Head\'s decision' }
   ];
 };
@@ -72,10 +77,7 @@ const Detail = ({ label, value, icon: Icon = FileText }) => <div className="flex
 const Stat = ({ label, value, icon: Icon, tone, onClick }) => <button type="button" onClick={onClick} className="rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"><div className="flex items-center justify-between"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></span><strong className="text-2xl font-black text-slate-900">{value}</strong></div><p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">{label}</p><span className="mt-1 block text-xs font-bold text-blue-600">View requests</span></button>;
 
 // `user` is the signed-in HR/Admin, whose `hrTask` says which HR step they take.
-export default function HRAdminRequestsView({ user = {}, requests = [], employees = [], onEmployeesChange, onUpdateRequests, onUpdateRequestStatus, onUpdateUser, focusRequestId }) {
-  // HR 2's signature for 7.A and 7.B: a picked image waiting to be saved, and whether it is saving.
-  const [pickedSignature, setPickedSignature] = useState('');
-  const [savingSignature, setSavingSignature] = useState(false);
+export default function HRAdminRequestsView({ user = {}, requests = [], employees = [], onEmployeesChange, onUpdateRequests, onUpdateRequestStatus, onUploadSignedForm, focusRequestId }) {
   // A notification's button opens this request first.
   const focusedRequest = focusRequestId ? requests.find(request => request.id === focusRequestId) || null : null;
   const [screen, setScreen] = useState(focusedRequest ? 'details' : 'dashboard');
@@ -117,11 +119,12 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
   const creditPreview = certifying
     ? leaveCreditCertification({ leaveType: selected.leaveType, days: Number(selected.workingDays) || 0, employee: selectedEmployee, asOf: getManilaDateString() })
     : null;
-  // Takes the request's HR step: HR 2 certifies a leave's credits, pre-approves the request with
-  // a recommendation, and sends it to the Head ('For Supervisor'), or returns it to the employee
-  // ('Returned'), with HR's remarks.
+  // Takes the request's HR step: HR 2 certifies a leave's credits with a recommendation, which
+  // makes its form to sign in Adobe (FOR_PRE_APPROVAL), or pre-approves a Travel Order and sends
+  // it to the Head ('For Supervisor'), or returns either to the employee ('Returned'), with HR's remarks.
   const update = async (request, status) => {
     const returning = status === 'Returned';
+    const certifyingLeave = status === FOR_PRE_APPROVAL;
     if (!request?.id) {
       notify(`Unable to ${returning ? 'return' : 'forward'}: request ID is missing.`);
       return;
@@ -130,19 +133,23 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
       status,
       remarks,
       ...(status === 'For Supervisor' ? { forwardedTo: 'Supervisor', recommendation } : {}),
+      ...(certifyingLeave ? { recommendation } : {}),
       adminActionAt: new Date().toISOString()
     };
     setIsUpdating(true);
     try {
+      let saved = null;
       if (onUpdateRequestStatus) {
-        await onUpdateRequestStatus(request.id, updatePayload);
+        saved = await onUpdateRequestStatus(request.id, updatePayload);
       } else {
         onUpdateRequests?.(requests.map(item => item.id === request.id ? { ...item, ...updatePayload } : item));
       }
-      setSelected({ ...request, ...updatePayload });
-      setScreen('dashboard');
+      setSelected({ ...request, ...updatePayload, ...(saved || {}) });
+      // A certified leave stays open for HR 2 to sign its form in Adobe and upload it.
+      if (!certifyingLeave) setScreen('dashboard');
       notify(returning ? 'Request returned to the employee. They were notified to fix it and submit it again.'
-        : 'Pre-approved and sent to the Head (Supervisor) for the decision.');
+        : certifyingLeave ? 'Leave credits certified. Download the form, sign 7.A and 7.B in Adobe, and upload it.'
+          : 'Pre-approved and sent to the Head (Supervisor) for the decision.');
     } catch (error) {
       notify(error.message || `Unable to ${returning ? 'return the request to the employee' : 'send the request on'}.`);
     } finally {
@@ -151,49 +158,26 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
   };
   const allChecked = validationItems.every(item => checks[item]);
   const recommendationReady = recommendation.decision === 'approval' || recommendation.reason.trim();
-  // A leave goes to the Head with HR 2's signature on 7.A and 7.B (shared/hrSteps.js).
-  const signatureNeeded = needsHrSignature(selected);
-  const savedSignature = user?.signatureImage || '';
-  const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee)) && (!signatureNeeded || Boolean(savedSignature));
-  // A scanned signature, shrunk to at most 400 x 150 and kept as a PNG, as the Supervisor's is.
-  const pickSignature = event => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const image = new Image();
-      image.onload = () => {
-        let width = image.width;
-        let height = image.height;
-        if (width > 400) { height = Math.round(height * 400 / width); width = 400; }
-        if (height > 150) { width = Math.round(width * 150 / height); height = 150; }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d').drawImage(image, 0, 0, width, height);
-        setPickedSignature(canvas.toDataURL('image/png'));
-      };
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
+  const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee));
+  // A certified leave waits for HR 2 to sign its form in Adobe and upload it (shared/hrSteps.js).
+  const signing = myStep && needsHrSignedUpload(selected) && selected?.status === FOR_PRE_APPROVAL && Boolean(selected?.creditCertification);
+  // The CSC Form No. 6 with HR 2's certification (7.A) and recommendation (7.B), to sign in Adobe.
+  const formToSign = async () => {
+    const template = await (await fetch(cscForm6Template)).arrayBuffer();
+    const bytes = await fillLeaveForm(template, selected, selectedEmployee || selected.employee || {});
+    return { bytes: await stampForSigning(bytes, 'leave-hr', selected.id), fileName: `CSC_Form_6_${selected.id}_to_sign.pdf` };
   };
-  const saveSignature = async () => {
-    if (!pickedSignature || !onUpdateUser || savingSignature) return;
-    setSavingSignature(true);
-    try {
-      if (await onUpdateUser({ signatureImage: pickedSignature })) {
-        setPickedSignature('');
-        notify('Signature saved. It goes on 7.A and 7.B of the leaves you send to the Head.');
-      }
-    } finally {
-      setSavingSignature(false);
-    }
+  const uploadSigned = async ({ file }) => {
+    const saved = await onUploadSignedForm({ kind: 'leave-hr', ref: selected.id, file, remarks: typedRemarks ? remarks.trim() : '' });
+    setSelected(previous => ({ ...previous, ...(saved?.request || {}) }));
+    setScreen('dashboard');
+    notify('Signed form uploaded. The leave was sent to the Head (Supervisor) for the decision.');
   };
   // HR 2 takes the step only after checking every validation item and choosing the recommendation.
+  // A leave is certified first; a Travel Order goes straight to the Head.
   const handleSendOn = async () => {
     if (isUpdating || !selected || !canSendOn) return;
-    await update(selected, 'For Supervisor');
+    await update(selected, needsHrSignedUpload(selected) ? FOR_PRE_APPROVAL : 'For Supervisor');
   };
   // HR returns a request waiting for its step when something needs the employee's action. The
   // remarks, which the employee receives, must say what to fix (not just the request's
@@ -216,6 +200,7 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
       <div className="mt-3 space-y-2">
         {selected.creditCertification && <div className="rounded-xl bg-white/80 p-3"><p className="text-xs font-black uppercase tracking-wide text-slate-500">Leave credits certified by {selected.creditCertification.certifiedBy?.name || 'HR'}</p><CreditTable certification={selected.creditCertification} />{selected.creditCertification.withoutPayDays > 0 && <p className="mt-2 text-xs font-bold text-rose-700">{creditText(selected.creditCertification.withoutPayDays)} day(s) would be without pay: the balances do not cover the whole leave.</p>}</div>}
         {selected.recommendation && <div className="rounded-xl bg-white/80 p-3"><p className="text-xs font-black uppercase tracking-wide text-slate-500">HR 2: Recommendation by {selected.recommendation.recommendedBy?.name || 'HR 2'}</p><p className="mt-1 text-xs font-bold text-slate-800">{recommendationText(selected.recommendation)}</p></div>}
+        {selected.signedForms?.hr && <p className="rounded-xl bg-white/80 p-3 text-xs font-bold text-emerald-700">7.A and 7.B: {signedNoteText(selected.signedForms.hr)}</p>}
       </div>
     );
     const stepTitle = certifying ? 'HR 2: Certification of Leave Credits (7.A) and Recommendation (7.B)' : 'HR 2: Pre-approval (7.B)';
@@ -232,7 +217,18 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
           </div>
         )}
         {recorded}
-        {step && (
+        {signing && (
+          <div className="mt-3">
+            <SignedFormStep
+              title="Sign 7.A and 7.B in Adobe"
+              description="The CSC Form No. 6 now has the leave credits you certified and your recommendation. Sign it with your digital ID; the upload sends the leave to the Head."
+              onDownload={formToSign}
+              submitLabel="Upload Signed Form & Send to the Head"
+              onSubmit={uploadSigned}
+            />
+          </div>
+        )}
+        {step && !signing && (
           <fieldset className="mt-3 space-y-2 rounded-xl bg-white/80 p-3">
             <legend className="text-xs font-black uppercase tracking-wide text-slate-500">Recommendation</legend>
             <label className="flex items-center gap-2 text-xs font-bold text-blue-950"><input type="radio" name="recommendation" checked={recommendation.decision === 'approval'} onChange={() => setRecommendation(previous => ({ ...previous, decision: 'approval' }))} className="h-4 w-4 accent-blue-700" />For approval</label>
@@ -240,29 +236,11 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
             {recommendation.decision === 'disapproval' && <textarea value={recommendation.reason} onChange={event => setRecommendation(previous => ({ ...previous, reason: event.target.value }))} maxLength={300} placeholder="Why it is recommended for disapproval" className="min-h-16 w-full rounded-lg border border-slate-200 p-2 text-xs font-semibold" />}
           </fieldset>
         )}
-        {signatureNeeded && (
-          <div className="mt-3 rounded-xl bg-white/80 p-3">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Your signature (7.A and 7.B)</p>
-            {pickedSignature || savedSignature ? (
-              <div className="mt-2 flex min-h-16 items-center justify-center rounded-lg border border-slate-200 bg-white p-2"><img src={pickedSignature || savedSignature} alt="Your signature" className="max-h-14 max-w-full object-contain" /></div>
-            ) : (
-              <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-white p-3 text-center text-xs font-semibold text-slate-500">No signature yet</p>
-            )}
-            <div className="mt-2 flex gap-2">
-              <label className="inline-flex flex-1 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">
-                <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={pickSignature} />
-                {savedSignature ? 'Replace Signature' : 'Upload Signature'}
-              </label>
-              {pickedSignature && (
-                <button type="button" onClick={saveSignature} disabled={savingSignature} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-black text-white hover:bg-emerald-600 disabled:opacity-60">{savingSignature ? 'Saving…' : 'Save Signature'}</button>
-              )}
-            </div>
-            <p className="mt-2 text-[11px] font-semibold text-slate-500">Scan your handwritten signature on paper, crop it, and upload it (PNG or JPG). It goes on 7.A and 7.B of the employee's CSC Form 6.</p>
-          </div>
-        )}
         <textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add HR remarks..." className="mt-3 min-h-24 w-full rounded-xl border border-blue-200 bg-white p-3 text-xs font-semibold outline-none focus:border-blue-600" />
-        <button type="button" onClick={handleSendOn} disabled={!canSendOn || isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck className="h-4 w-4" />{isUpdating ? 'Saving…' : certifying ? 'Certify Credits, Pre-approve & Send to the Head' : 'Pre-approve & Send to the Head'}</button>
-        <p className="mt-2 text-center text-xs font-bold text-blue-700">{firstStep && !allChecked ? 'Check every item above first.' : !recommendationReady ? 'Write why it is recommended for disapproval.' : signatureNeeded && !savedSignature ? HR_SIGNATURE_NEEDED : 'The Head (Supervisor) makes the final decision.'}</p>
+        {!signing && <>
+          <button type="button" onClick={handleSendOn} disabled={!canSendOn || isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck className="h-4 w-4" />{isUpdating ? 'Saving…' : needsHrSignedUpload(selected) ? 'Certify Credits & Make the Form to Sign' : 'Pre-approve & Send to the Head'}</button>
+          <p className="mt-2 text-center text-xs font-bold text-blue-700">{firstStep && !allChecked ? 'Check every item above first.' : !recommendationReady ? 'Write why it is recommended for disapproval.' : needsHrSignedUpload(selected) ? 'Next, you sign 7.A and 7.B in Adobe and upload the form.' : 'The Head (Supervisor) makes the final decision.'}</p>
+        </>}
         <button type="button" onClick={handleReturnToEmployee} disabled={isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"><MessageSquare className="h-4 w-4" />{isUpdating ? 'Saving…' : 'Return to Employee'}</button>
         <p className="mt-2 text-center text-xs font-bold text-rose-700">Something to fix or missing? Write it in the remarks and return the request. The employee is notified.</p>
       </section>

@@ -11,6 +11,19 @@ const { Leave } = await import('./models/leaveModel.js');
 const { Announcement } = await import('./models/announcementModel.js');
 const { DtrSubmission, dtrContentHash } = await import('./models/dtrSubmissionModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
+const { SignedDocument } = await import('./models/signedDocumentModel.js');
+const { PDFDocument } = await import('pdf-lib');
+const { signedFormMarker } = await import('../../shared/signedForms.js');
+
+// The DTR as WorkMate makes it for submission `ref`, signed in Adobe (an appended signature).
+const signedDtr = async (ref, { signed = true } = {}) => {
+  const pdf = await PDFDocument.create();
+  pdf.addPage();
+  pdf.setKeywords([signedFormMarker('dtr-incharge', ref)]);
+  const bytes = Buffer.from(await pdf.save({ useObjectStreams: false }));
+  return signed ? Buffer.concat([bytes, Buffer.from('\n91 0 obj\n<< /Type /Sig /ByteRange [0 100 200 300] /Contents <3082> >>\nendobj\n%%EOF\n', 'latin1')]) : bytes;
+};
+const asUpload = (ref, bytes) => ({ kind: 'dtr-incharge', ref, fileName: 'DTR_JUAN_2026-10_signed.pdf', data: bytes.toString('base64') });
 
 const app = createApiApp();
 
@@ -36,7 +49,8 @@ const signIn = (t, { as = employee, records = october, password = 'right-passwor
   return {
     submit: body => request(app).post('/api/dtr-submissions').set(auth).send(body),
     review: body => request(app).patch('/api/dtr-submissions').set(auth).send(body),
-    list: query => request(app).get(`/api/dtr-submissions${query || ''}`).set(auth)
+    list: query => request(app).get(`/api/dtr-submissions${query || ''}`).set(auth),
+    upload: body => request(app).post('/api/signed-documents').set(auth).send(body)
   };
 };
 
@@ -83,16 +97,26 @@ test('a DTR waits while HR still has to decide an offline punch, and is submitte
   assert.match(twice.body.error, /already submitted and waiting for the Supervisor/);
 });
 
-test('the Supervisor verifies a submitted DTR with their e-signature, and the employee is told', async t => {
+test('the Supervisor verifies a submitted DTR by uploading it signed in Adobe, and the employee is told', async t => {
   const session = signIn(t, { as: supervisor });
   const submitted = { id: 'dtr-1', employeeId: 'EMP-61', employeeEmail: employee.email, month: '2026-10', status: 'Submitted', contentHash: dtrContentHash(october, '2026-10') };
   t.mock.method(DtrSubmission, 'findById', async () => submitted);
-  const verify = t.mock.method(DtrSubmission, 'verify', async (id, signed) => ({ ...submitted, status: 'Verified', verification: signed }));
-  const response = await session.review({ id: 'dtr-1', action: 'verify', signature, password: 'right-password' });
+  const saved = t.mock.method(SignedDocument, 'save', async () => {});
+  const verify = t.mock.method(DtrSubmission, 'verify', async (id, signed, note) => ({ ...submitted, status: 'Verified', verification: signed, signedForm: note }));
+  // The in-app e-signature no longer verifies a DTR.
+  assert.match((await session.review({ id: 'dtr-1', action: 'verify', signature, password: 'right-password' })).body.error, /sign it in Adobe as the In-charge/);
+  // The upload must be this DTR, signed.
+  assert.match((await session.upload(asUpload('dtr-1', await signedDtr('dtr-2')))).body.error, /not the form WorkMate made/);
+  assert.match((await session.upload(asUpload('dtr-1', await signedDtr('dtr-1', { signed: false })))).body.error, /no digital signature/);
+  assert.equal(verify.mock.callCount(), 0);
+
+  const response = await session.upload(asUpload('dtr-1', await signedDtr('dtr-1')));
   assert.equal(response.status, 200, JSON.stringify(response.body));
-  const [, signed] = verify.mock.calls[0].arguments;
+  const [, signed, note] = verify.mock.calls[0].arguments;
   assert.equal(signed.name, 'Ivan Stephen F. Fadri, CESE');
   assert.equal(signed.position, 'Provincial Director');
+  assert.equal(note.uploadedBy, 'Ivan Stephen F. Fadri, CESE');
+  assert.equal(saved.mock.calls[0].arguments[0].kind, 'dtr-incharge');
   const notice = Announcement.createNotification.mock.calls.at(-1).arguments[0];
   assert.equal(notice.employeeId, 'EMP-61');
   assert.equal(notice.title, 'DTR Verified');
@@ -104,7 +128,8 @@ test('a DTR that changed after the employee signed it cannot be verified', async
   const session = signIn(t, { as: supervisor, records: changed });
   t.mock.method(DtrSubmission, 'findById', async () => ({ id: 'dtr-1', employeeId: 'EMP-61', month: '2026-10', status: 'Submitted', contentHash: dtrContentHash(october, '2026-10') }));
   const verify = t.mock.method(DtrSubmission, 'verify', async () => null);
-  const response = await session.review({ id: 'dtr-1', action: 'verify', signature, password: 'right-password' });
+  t.mock.method(SignedDocument, 'save', async () => {});
+  const response = await session.upload(asUpload('dtr-1', await signedDtr('dtr-1')));
   assert.equal(response.status, 409);
   assert.match(response.body.error, /changed after the employee signed it/);
   assert.equal(verify.mock.callCount(), 0);
@@ -125,6 +150,7 @@ test('the Supervisor returns a DTR with remarks, and only the Supervisor reviews
   for (const as of [hr, employee]) {
     const other = signIn(t, { as });
     assert.equal((await other.review({ id: 'dtr-1', action: 'verify', signature, password: 'right-password' })).status, 403);
+    assert.equal((await other.upload(asUpload('dtr-1', await signedDtr('dtr-1')))).status, 403);
     t.mock.restoreAll();
     t.mock.timers.reset();
   }

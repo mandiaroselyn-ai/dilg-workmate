@@ -26,6 +26,8 @@ const DtrSubmissionSchema = new mongoose.Schema({
   verification: { type: SignatureSchema, default: null },
   remarks: { type: String, default: '' },
   contentHash: { type: String, default: '' },
+  // The DTR the Supervisor signed in Adobe and uploaded, as a short note (see signedDocumentModel).
+  signedForm: { type: mongoose.Schema.Types.Mixed, default: null },
   history: {
     type: [{
       action: String, // submitted, verified, returned
@@ -103,7 +105,8 @@ export const DtrSubmission = {
       employeeSignature: signature,
       verification: null,
       remarks: '',
-      contentHash
+      contentHash,
+      signedForm: null
     };
     const existing = await MongoDtrSubmission.findOne({ employeeId: employee.employeeId, month });
     if (existing) {
@@ -131,12 +134,13 @@ export const DtrSubmission = {
     }
   },
 
-  // The Supervisor's verification of a Submitted DTR. Null when it is no longer waiting.
-  verify: async (id, signature) => {
+  // The Supervisor's verification of a Submitted DTR, with the note of the DTR they signed in
+  // Adobe (`signedForm`). Null when it is no longer waiting.
+  verify: async (id, signature, signedForm = null) => {
     ensureConnected();
     const updated = await MongoDtrSubmission.findOneAndUpdate(
       { customId: id, status: 'Submitted' },
-      { $set: { status: 'Verified', verification: signature, remarks: '' }, $push: { history: { action: 'verified', by: signature.name, at: signature.signedAt } } },
+      { $set: { status: 'Verified', verification: signature, remarks: '', signedForm }, $push: { history: { action: 'verified', by: signature.name, at: signature.signedAt } } },
       { new: true }
     );
     return updated ? toClient(updated) : null;
