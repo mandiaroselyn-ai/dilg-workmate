@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getManilaDateString } from '../../shared/localDate';
 import { overlapMessage, overlappingRequest } from '../../shared/requestOverlap';
-import { filedBeforeStart, filingDate, lateFilingProblem } from '../../shared/requestFiling';
+import { filedBeforeStart, filingDate, lateFilingProblem, travelOrderMemoProblem } from '../../shared/requestFiling';
 import { countLeaveDays } from '../../shared/leaveCalc';
 import { pesoText, withoutPayAmount } from '../../shared/salarySchedule';
 import {
@@ -191,7 +191,7 @@ export default function RequestsView({
         id: `file-${Date.now()}`,
         name: file.name,
         size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
-        type: section === 'medical' ? 'Medical Certificate' : 'Supporting Doc',
+        type: section === 'medical' ? 'Medical Certificate' : activeTab2 === 'Travel' ? 'Memo / Invitation' : 'Supporting Doc',
         mimeType: file.type,
         dataUrl
       }]);
@@ -269,6 +269,12 @@ export default function RequestsView({
       const timeProblem = travelTimeProblem(travelTime);
       if (timeProblem) {
         setFormErrorMessage(timeProblem);
+        return;
+      }
+      // Submitted with its memo or invitation attached (the server checks too).
+      const memoProblem = isDraftMode ? null : travelOrderMemoProblem({ type: 'Travel Order', attachments });
+      if (memoProblem) {
+        setFormErrorMessage(memoProblem);
         return;
       }
     }
@@ -1103,10 +1109,10 @@ Reason (optional):`, '');
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                      {activeTab2 === 'Leave' ? 'Supporting Documents' : 'Official Memo / Invitation'}
+                      {activeTab2 === 'Leave' ? 'Supporting Documents' : <>Official Memo / Invitation <span className="text-rose-600">*</span></>}
                     </label>
                     <p className="mt-1 text-[9px] font-semibold text-slate-400">
-                      {activeTab2 === 'Leave' ? 'Upload the documents required for your Leave request.' : 'Optional attachment for the Provincial Order.'}
+                      {activeTab2 === 'Leave' ? 'Upload the documents required for your Leave request.' : 'Required: attach the memo or invitation this Travel Order is for.'}
                     </p>
                   </div>
                   <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-1 text-[7.5px] font-black uppercase tracking-wider">Upload</span>

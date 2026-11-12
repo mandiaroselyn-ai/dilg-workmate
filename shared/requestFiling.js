@@ -22,11 +22,16 @@ const dateText = day => new Date(`${day}T00:00:00Z`).toLocaleDateString('en-US',
 export const filedBeforeStart = request => request?.type === 'Travel Order'
   || (request?.type === 'Leave Request' && FILED_BEFORE_LEAVES.includes(request.leaveType));
 
+// Whether a step of `request`'s history is the employee submitting it: Pending, or, for a travel
+// order, For Supervisor, since it goes straight to the Provincial Director when submitted.
+const isSubmission = (request, entry) => entry?.status === 'Pending'
+  || (request?.type === 'Travel Order' && entry?.status === 'For Supervisor');
+
 // The day `existing` was first submitted, or `today` for a request being submitted now.
 export const filingDate = (existing, today) => {
   if (existing?.status !== 'Returned') return today;
   const history = Array.isArray(existing.statusHistory) ? existing.statusHistory : [];
-  const submitted = history.filter(entry => entry?.status === 'Pending').map(entry => dayOf(entry.date)).filter(Boolean).sort();
+  const submitted = history.filter(entry => isSubmission(existing, entry)).map(entry => dayOf(entry.date)).filter(Boolean).sort();
   return submitted[0] || dayOf(existing.submissionDate) || today;
 };
 
@@ -40,3 +45,11 @@ export const lateFilingProblem = (request, filedOn) => {
   const hint = request.leaveType === 'Vacation Leave' ? ' If you were sick, file Sick Leave instead.' : '';
   return `${request.leaveType} is filed before the leave starts. ${dateText(start)} has already passed, so choose a date from today on.${hint}`;
 };
+
+// A travel order is made because of an invitation to an activity or an office memo, so it is
+// submitted with that memo or invitation attached (DILG Marinduque, 2026-11-12). A draft may wait.
+export const TRAVEL_ORDER_MEMO_REQUIRED = 'Attach the official memo or invitation for this Travel Order.';
+const hasAttachedFile = request => Array.isArray(request?.attachments)
+  && request.attachments.some(file => typeof file?.dataUrl === 'string' && file.dataUrl.startsWith('data:'));
+// Why the travel order `request` cannot be submitted without its memo or invitation, or null.
+export const travelOrderMemoProblem = request => (request?.type === 'Travel Order' && !hasAttachedFile(request) ? TRAVEL_ORDER_MEMO_REQUIRED : null);

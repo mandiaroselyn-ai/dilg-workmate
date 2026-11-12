@@ -46,3 +46,27 @@ test('a returned request keeps the day it was first submitted', () => {
   assert.equal(filingDate({ status: 'Draft' }, today), today);
   assert.equal(filingDate({ status: 'Returned', submissionDate: '2026-10-05' }, today), '2026-10-05');
 });
+
+test('a travel order returned more than once counts from the day it was first submitted to the Provincial Director', () => {
+  // Submitted Oct 28 (straight to the Provincial Director), returned, submitted again Oct 30
+  // (which moved its submission date), and returned again.
+  const returned = {
+    type: 'Travel Order', status: 'Returned', submissionDate: '2026-10-30', startDate: '2026-10-29',
+    statusHistory: [
+      { status: 'Draft', date: '2026-10-20' },
+      { status: 'For Supervisor', date: '2026-10-28' },
+      { status: 'Returned', date: '2026-10-29' },
+      { status: 'For Supervisor', date: '2026-10-30' },
+      { status: 'Returned', date: '2026-10-31' }
+    ]
+  };
+  assert.equal(filingDate(returned, '2026-11-02'), '2026-10-28');
+  // Filed before the travel (Oct 29), so it may be submitted again.
+  assert.equal(lateFilingProblem(returned, filingDate(returned, '2026-11-02')), null);
+  // One filed before travel orders went straight to the Provincial Director counts from its Pending step.
+  const older = { ...returned, statusHistory: [{ status: 'Pending', date: '2026-10-27' }, { status: 'For Supervisor', date: '2026-10-28' }, { status: 'Returned', date: '2026-10-29' }] };
+  assert.equal(filingDate(older, '2026-11-02'), '2026-10-27');
+  // A leave HR sent to the Supervisor counts from its Pending step only.
+  const leave = { type: 'Leave Request', status: 'Returned', submissionDate: '2026-10-30', statusHistory: [{ status: 'For Supervisor', date: '2026-10-26' }, { status: 'Pending', date: '2026-10-28' }] };
+  assert.equal(filingDate(leave, '2026-11-02'), '2026-10-28');
+});

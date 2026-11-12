@@ -86,6 +86,8 @@ const juan = { employeeId: 'E1', name: 'Juan Dela Cruz', vacationLeaveCredits: 1
 const approve = { status: 'For Supervisor', recommendation: { decision: 'approval' } };
 // HR 2 certifies a leave, which makes its form to sign in Adobe.
 const certify = { status: 'For Pre-approval', recommendation: { decision: 'approval' } };
+// The memo or invitation a Travel Order is submitted with.
+const memo = [{ id: 'file-1', name: 'invitation.pdf', type: 'Memo / Invitation', dataUrl: 'data:application/pdf;base64,JVBERi0xLjc=' }];
 
 test('HR 2 certifies the leave credits of a leave with a recommendation, which makes its form to sign', async t => {
   const session = signInAsHr(t, { as: hr2, employee: juan });
@@ -257,7 +259,7 @@ test('a leave or travel order that overlaps another submitted leave of the emplo
   assert.equal(creates.mock.callCount(), 0);
 
   // A travel order on a day of that leave is refused too.
-  const travel = await send({ type: 'Travel Order', startDate: '2026-11-04', endDate: '2026-11-04', purpose: 'Official Travel. LGU visit.', status: 'Pending' });
+  const travel = await send({ type: 'Travel Order', attachments: memo, startDate: '2026-11-04', endDate: '2026-11-04', purpose: 'Official Travel. LGU visit.', status: 'Pending' });
   assert.equal(travel.status, 409);
   assert.match(travel.body.error, /Leave and travel dates cannot overlap/);
   assert.equal(creates.mock.callCount(), 0);
@@ -299,7 +301,7 @@ test('vacation leave and travel orders cannot be filed for days that have passed
   assert.equal(creates.mock.callCount(), 0);
 
   // Today is still in time, and a draft is not filed yet.
-  assert.equal((await send({ type: 'Travel Order', leaveType: 'N/A', startDate: '2026-11-02', endDate: '2026-11-02', purpose: 'Official Travel. Today.', status: 'Pending' })).status, 201);
+  assert.equal((await send({ type: 'Travel Order', attachments: memo, leaveType: 'N/A', startDate: '2026-11-02', endDate: '2026-11-02', purpose: 'Official Travel. Today.', status: 'Pending' })).status, 201);
   assert.equal((await send({ type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-10-01', endDate: '2026-10-01', purpose: 'Leave Type: Vacation Leave. Draft.', status: 'Draft' })).status, 201);
 });
 
@@ -398,7 +400,7 @@ test('a Travel Order goes straight to the Provincial Director when the employee 
   t.mock.method(User, 'findByAccessLevel', async () => supervisors);
   const notices = Announcement.createNotification.mock;
   const sms = useSmsGateway(t);
-  const travel = { type: 'Travel Order', leaveType: 'N/A', startDate: '2026-11-10', endDate: '2026-11-10', purpose: 'Official Travel. Resource speaker.', travelActivity: 'Resource speaker', travelVenue: 'Gasan Municipal Hall', status: 'Pending' };
+  const travel = { type: 'Travel Order', attachments: memo, leaveType: 'N/A', startDate: '2026-11-10', endDate: '2026-11-10', purpose: 'Official Travel. Resource speaker.', travelActivity: 'Resource speaker', travelVenue: 'Gasan Municipal Hall', status: 'Pending' };
   const response = await send(travel);
   assert.equal(response.status, 201, JSON.stringify(response.body));
   const saved = creates.mock.calls[0].arguments[0];
@@ -418,7 +420,7 @@ test('a Travel Order goes straight to the Provincial Director when the employee 
 
 test('a Travel Order returned to be fixed goes straight back to the Provincial Director', async t => {
   const returned = {
-    id: 'TO-RETURNED', type: 'Travel Order', status: 'Returned',
+    id: 'TO-RETURNED', type: 'Travel Order', status: 'Returned', attachments: memo,
     startDate: '2026-11-10', endDate: '2026-11-10', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', submissionDate: '2026-11-01',
     statusHistory: [{ status: 'For Supervisor', date: '2026-11-01' }, { status: 'Returned', date: '2026-11-02' }]
   };
@@ -430,6 +432,36 @@ test('a Travel Order returned to be fixed goes straight back to the Provincial D
   assert.equal(update.status, 'For Supervisor');
   assert.equal(update.statusHistory.at(-1).status, 'For Supervisor');
   assert.ok(Announcement.createNotification.mock.calls.some(call => call.arguments[0].recipientRole === 'supervisor'));
+});
+
+test('a Travel Order is submitted with its memo or invitation attached; a draft may wait', async t => {
+  const travel = { type: 'Travel Order', leaveType: 'N/A', startDate: '2026-11-10', endDate: '2026-11-10', purpose: 'Official Travel. Resource speaker.', status: 'Pending' };
+  const { send, creates } = fileAsEmployee(t);
+  t.mock.method(User, 'findByAccessLevel', async () => []);
+  for (const attachments of [undefined, [], [{ name: 'invitation.pdf' }], [{ name: 'x', dataUrl: 'invitation.pdf' }]]) {
+    const refused = await send({ ...travel, attachments });
+    assert.equal(refused.status, 400, JSON.stringify(attachments));
+    assert.match(refused.body.error, /Attach the official memo or invitation/);
+  }
+  assert.equal(creates.mock.callCount(), 0);
+  assert.equal((await send({ ...travel, status: 'Draft' })).status, 201);
+  assert.equal((await send({ ...travel, attachments: memo })).status, 201);
+  // A leave does not need one.
+  assert.equal((await send({ type: 'Leave Request', leaveType: 'Sick Leave', startDate: '2026-11-03', endDate: '2026-11-03', purpose: 'Leave Type: Sick Leave.', status: 'Pending' })).status, 201);
+  t.mock.restoreAll();
+  t.mock.timers.reset();
+
+  // A draft or a returned Travel Order is submitted with it too.
+  const draft = { id: 'TO-DRAFT', ...travel, status: 'Draft', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', statusHistory: [{ status: 'Draft', date: '2026-11-01' }] };
+  const session = fileAsEmployee(t, draft);
+  t.mock.method(User, 'findByAccessLevel', async () => []);
+  const missing = await session.resubmit({ status: 'Pending' });
+  assert.equal(missing.status, 400);
+  assert.match(missing.body.error, /Attach the official memo or invitation/);
+  assert.equal(session.saves.mock.callCount(), 0);
+  const submitted = await session.resubmit({ status: 'Pending', attachments: memo });
+  assert.equal(submitted.status, 200, JSON.stringify(submitted.body));
+  assert.equal(session.saves.mock.calls[0].arguments[1].status, 'For Supervisor');
 });
 
 test('the Provincial Director signs a Travel Order filed before Travel Orders went straight to him', async t => {
@@ -583,7 +615,7 @@ test('a Travel Order includes colleagues from other offices; they see it and hea
   t.mock.method(User, 'findByAccessLevel', async () => [head]);
   const as = person => `Bearer ${createAuthToken(person)}`;
   const file = body => request(app).post('/api/requests').set('Authorization', as(juan)).send({
-    type: 'Travel Order', status: 'Pending', purpose: 'Official Travel. LGU visit.', travelActivity: 'LGU visit', travelTime: '8:00 a.m.', travelVenue: 'Gasan Municipal Hall', startDate: '2026-11-10', endDate: '2026-11-10', ...body
+    type: 'Travel Order', attachments: memo, status: 'Pending', purpose: 'Official Travel. LGU visit.', travelActivity: 'LGU visit', travelTime: '8:00 a.m.', travelVenue: 'Gasan Municipal Hall', startDate: '2026-11-10', endDate: '2026-11-10', ...body
   });
 
   // The names come from the accounts, not from what the form sent, and the one filing is left out.

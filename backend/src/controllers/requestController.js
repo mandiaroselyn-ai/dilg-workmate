@@ -8,7 +8,7 @@ import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
 import { noticeEmployee, noticeRequestDecision, requestDates } from '../services/employeeNotices.js';
 import { overlapMessage, overlappingRequest } from '../../../shared/requestOverlap.js';
-import { filingDate, lateFilingProblem } from '../../../shared/requestFiling.js';
+import { filingDate, lateFilingProblem, travelOrderMemoProblem } from '../../../shared/requestFiling.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { countLeaveDays } from '../../../shared/leaveCalc.js';
 import { Holiday } from '../models/holidayModel.js';
@@ -270,6 +270,9 @@ export const createRequest = async (req, res) => {
       ? lateFilingProblem(requestBody, getManilaDateString())
       : null;
     if (late) return res.status(400).json({ success: false, error: late });
+    // A Travel Order is submitted with its memo or invitation attached.
+    const memo = req.user?.accessLevel === 'employee' && requestBody.status === 'Pending' ? travelOrderMemoProblem(requestBody) : null;
+    if (memo) return res.status(400).json({ success: false, error: memo });
     const overlap = await overlapProblem(requestBody);
     if (overlap) return res.status(409).json({ success: false, error: overlap });
     const yearly = req.user?.accessLevel === 'employee' ? await yearlyLimitProblem(requestBody) : null;
@@ -362,6 +365,8 @@ export const updateRequestStatus = async (req, res) => {
       if (update.status === 'Pending') {
         const late = lateFilingProblem(edited, filingDate(existing, getManilaDateString()));
         if (late) return res.status(400).json({ success: false, error: late });
+        const memo = travelOrderMemoProblem(edited);
+        if (memo) return res.status(400).json({ success: false, error: memo });
         const overlap = await overlapProblem({ ...existing, ...update });
         if (overlap) return res.status(409).json({ success: false, error: overlap });
         const yearly = await yearlyLimitProblem({ ...existing, ...update });
