@@ -38,6 +38,11 @@ const RequestSchema = new mongoose.Schema({
   travelActivity: { type: String, default: '' },
   travelTime: { type: String, default: '' },
   travelVenue: { type: String, default: '' },
+  // The Post Activity Reports or Certificates of Appearance its employees attached once it was
+  // approved (shared/travelDocuments.js), as short notes:
+  // [{ id, kind, fileName, mimeType, size, uploadedBy, uploadedByEmployeeId, uploadedAt }]. The
+  // files themselves are kept apart (see travelDocumentModel).
+  travelDocuments: { type: [mongoose.Schema.Types.Mixed], default: [] },
   commutation: { type: String, default: 'Not Requested' },
   workingDays: { type: Number, default: 1 },
   attachments: { type: [mongoose.Schema.Types.Mixed], default: [] },
@@ -210,6 +215,35 @@ export const Leave = {
     ensureConnected();
     const result = await MongoRequest.updateOne({ customId: id, creditsDeducted: { $ne: true } }, { $set: { creditsDeducted: true } });
     return result.modifiedCount === 1;
+  },
+
+  // Adds the note of a report or certificate attached to a Travel Order (see travelDocuments),
+  // unless it already has `max` of them. Returns the request, or null when it did not change.
+  addTravelDocument: async (id, note, max) => {
+    ensureConnected();
+    const updated = await MongoRequest.findOneAndUpdate(
+      { customId: id, type: 'Travel Order', [`travelDocuments.${max - 1}`]: { $exists: false } },
+      { $push: { travelDocuments: note } },
+      { new: true }
+    );
+    if (!updated) return null;
+    const obj = updated.toObject();
+    obj.id = obj.customId;
+    return obj;
+  },
+
+  // Removes the note of one attached report or certificate. Returns the request.
+  removeTravelDocument: async (id, documentId) => {
+    ensureConnected();
+    const updated = await MongoRequest.findOneAndUpdate(
+      { customId: id, type: 'Travel Order' },
+      { $pull: { travelDocuments: { id: documentId } } },
+      { new: true }
+    );
+    if (!updated) return null;
+    const obj = updated.toObject();
+    obj.id = obj.customId;
+    return obj;
   },
 
   findByCustomId: async (id) => {

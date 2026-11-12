@@ -41,6 +41,7 @@ import HRAdminAttendanceHistoryView from './HRAdminAttendanceHistoryView';
 import HRAdminRequestsView from './HRAdminRequestsView';
 import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import HRAdminEmployeesView from './HRAdminEmployeesView';
+import HRLeaveCreditsView from './HRLeaveCreditsView';
 import HRAdminProfileView from './HRAdminProfileView';
 import HRAnnouncementsManager from './HRAnnouncementsManager';
 import HRStaffAccountsView from './HRStaffAccountsView';
@@ -90,6 +91,7 @@ export default function HRAdminView({
     dtr_records: 'dtr_records',
     hr_employees: 'directory',
     hr_leave_records: 'requests',
+    hr_leave_credits: 'leave_credits',
     hr_announcements: 'announcements',
     hr_directory: 'directory',
     hr_records: 'records',
@@ -448,6 +450,17 @@ export default function HRAdminView({
         onBack={() => setActiveTab('dashboard')}
         focusRequestId={focus?.requestId}
       /></div>}
+
+      {activeTab === 'leave_credits' && <HRLeaveCreditsView
+        user={user}
+        employees={employees}
+        attendanceHistory={attendanceHistory}
+        attendanceFrom={attendanceFrom}
+        loadedAttendanceMonths={loadedAttendanceMonths}
+        onLoadAttendanceMonth={onLoadAttendanceMonth}
+        requests={requests}
+        onEmployeesChange={onEmployeesChange}
+      />}
 
       {selectedVerificationPhoto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" onClick={() => setSelectedVerificationPhoto(null)}>

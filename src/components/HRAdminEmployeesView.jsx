@@ -17,6 +17,7 @@ import { registeredFingerprints } from '../utils/fingerprintMessages';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES, PROVINCE_LGU, lguOfStation } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
+import HRLeaveCreditsCard from './HRLeaveCreditsCard';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
@@ -170,8 +171,6 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [accountStatusUpdating, setAccountStatusUpdating] = useState(false);
-  const [creditForm, setCreditForm] = useState(null); // { vacationLeaveCredits, sickLeaveCredits, reason } while editing
-  const [creditSaving, setCreditSaving] = useState(false);
   const [promotion, setPromotion] = useState(null); // { accessLevel, password } while confirming
   const [promotionSaving, setPromotionSaving] = useState(false);
 
@@ -348,8 +347,8 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
 
   const openView = (employee) => {
     setSelectedId(employeeKey(employee));
-    // Adjustment and promotion forms belong to one employee, so start closed on each profile.
-    setCreditForm(null);
+    // The promotion form belongs to one employee, so it starts closed on each profile (the
+    // leave credits card is keyed to the employee).
     setPromotion(null);
     setScreen('profile');
   };
@@ -591,41 +590,6 @@ This cannot be undone.`
       notify(error.message || 'Unable to change access.', true);
     } finally {
       setPromotionSaving(false);
-    }
-  };
-
-  const creditsOf = employee => ({
-    vacationLeaveCredits: Number(employee?.vacationLeaveCredits ?? 0),
-    sickLeaveCredits: Number(employee?.sickLeaveCredits ?? 0)
-  });
-
-  const startCreditAdjustment = () => {
-    const credits = creditsOf(selectedEmployee);
-    setCreditForm({ vacationLeaveCredits: String(credits.vacationLeaveCredits), sickLeaveCredits: String(credits.sickLeaveCredits), reason: '' });
-  };
-
-  // Saves HR's adjustment of the selected employee's leave balances.
-  const saveLeaveCredits = async event => {
-    event.preventDefault();
-    if (!selectedEmployee || !creditForm) return;
-    const key = employeeKey(selectedEmployee);
-    setCreditSaving(true);
-    try {
-      const identifier = selectedEmployee.employeeId || selectedEmployee.email;
-      const response = await apiFetch(`/api/employees/${encodeURIComponent(identifier)}/leave-credits`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(creditForm)
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success || !data.employee) throw new Error(data.error || 'Unable to update leave credits.');
-      onEmployeesChange?.(previous => previous.map(employee => employeeKey(employee) === key ? { ...employee, ...data.employee } : employee));
-      setCreditForm(null);
-      notify('Leave credits updated. The employee was notified.');
-    } catch (error) {
-      notify(error.message || 'Unable to update leave credits.', true);
-    } finally {
-      setCreditSaving(false);
     }
   };
 
@@ -918,54 +882,7 @@ This cannot be undone.`
             </div>
           )}
 
-          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Leave Credits</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Approved vacation, forced, and sick leave is deducted automatically. Adjust here to match the official leave card.</p>
-              </div>
-              {!creditForm && canEditCredits && (
-                <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">Adjust</button>
-              )}
-              {!canEditCredits && <p className="max-w-[160px] text-right text-[11px] font-semibold text-slate-500">Only HR 1 and HR 2 adjust leave credits.</p>}
-            </div>
-            {creditForm ? (
-              <form onSubmit={saveLeaveCredits} className="mt-3 space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-xs font-black uppercase text-slate-500">Vacation leave (days)
-                    <input type="number" min="0" max="1000" step="0.001" required value={creditForm.vacationLeaveCredits} onChange={event => setCreditForm(form => ({ ...form, vacationLeaveCredits: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800" />
-                  </label>
-                  <label className="text-xs font-black uppercase text-slate-500">Sick leave (days)
-                    <input type="number" min="0" max="1000" step="0.001" required value={creditForm.sickLeaveCredits} onChange={event => setCreditForm(form => ({ ...form, sickLeaveCredits: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-800" />
-                  </label>
-                </div>
-                <label className="block text-xs font-black uppercase text-slate-500">Reason (recorded and sent to the employee)
-                  <input required maxLength={300} value={creditForm.reason} onChange={event => setCreditForm(form => ({ ...form, reason: event.target.value }))} placeholder="e.g. Balance from the leave card as of September 2026" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold normal-case text-slate-800" />
-                </label>
-                <div className="flex gap-2">
-                  <button type="submit" disabled={creditSaving} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{creditSaving ? 'Saving...' : 'Save credits'}</button>
-                  <button type="button" onClick={() => setCreditForm(null)} disabled={creditSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Cancel</button>
-                </div>
-              </form>
-            ) : (
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                {[['Vacation leave', creditsOf(selectedEmployee).vacationLeaveCredits], ['Sick leave', creditsOf(selectedEmployee).sickLeaveCredits]].map(([label, days]) => (
-                  <div key={label} className="rounded-xl bg-slate-50 p-3">
-                    <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-                    <p className="mt-1 text-xl font-black text-slate-900">{days} <span className="text-xs font-bold text-slate-500">days</span></p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {(() => {
-              const last = (selectedEmployee.leaveCreditHistory || []).at(-1);
-              return last ? (
-                <p className="mt-2 text-xs font-semibold text-slate-500">
-                  Last adjusted {new Date(last.changedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} by {last.changedBy}: {last.reason}
-                </p>
-              ) : null;
-            })()}
-          </section>
+          <HRLeaveCreditsCard key={employeeKey(selectedEmployee)} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} />
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">

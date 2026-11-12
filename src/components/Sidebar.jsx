@@ -23,8 +23,11 @@ import {
   FolderKanban,
   CalendarCheck,
   ContactRound,
-  LogOut
+  LogOut,
+  ClipboardCheck,
+  Scale
 } from 'lucide-react';
+import { usesHr2Desk } from '../../shared/hrSteps';
 
 export default function Sidebar({ currentView, onViewChange, user, activeRole, onLogout, isOpen, onClose }) {
   const [showConfirmLogout, setShowConfirmLogout] = useState(false);
@@ -63,6 +66,13 @@ export default function Sidebar({ currentView, onViewChange, user, activeRole, o
     { id: 'hr_profile', label: 'Profile', icon: User },
   ];
 
+  // HR 2's desk: only the requests to pre-approve and the leave credits (shared/hrSteps.js).
+  const hr2WebMenuItems = [
+    { id: 'hr_leave_records', label: 'Pre-approval', icon: ClipboardCheck },
+    { id: 'hr_leave_credits', label: 'Leave Credits', icon: Scale },
+    { id: 'hr_profile', label: 'Profile', icon: User },
+  ];
+
   const mobileMenuItems = [
     { id: 'announcements', label: 'Announcements', icon: Megaphone },
     { id: 'documents', label: 'Documents', icon: FileArchive },
@@ -83,7 +93,7 @@ export default function Sidebar({ currentView, onViewChange, user, activeRole, o
   const isWebDesktopRole = activeRole === 'hr_admin' || activeRole === 'supervisor';
 
   const menuItems = isWebDesktopRole
-    ? (activeRole === 'hr_admin' ? hrWebMenuItems : allMenuItems.filter(item => item.roles.includes(activeRole)))
+    ? (activeRole === 'hr_admin' ? (usesHr2Desk(user) ? hr2WebMenuItems : hrWebMenuItems) : allMenuItems.filter(item => item.roles.includes(activeRole)))
     : (isMobile ? mobileMenuItems : allMenuItems.filter(item => item.roles.includes(activeRole)));
 
   return (

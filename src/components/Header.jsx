@@ -14,6 +14,7 @@ import { unreadTextsCount, unseenSmsCount } from '../utils/smsLog';
 import { employeeNotificationView, notificationWhen } from '../utils/notifications';
 import { todayStatus } from '../utils/todayStatus';
 import useManilaToday from '../utils/useManilaToday';
+import { usesHr2Desk } from '../../shared/hrSteps';
 
 // When HR last opened the SMS list, remembered per account in this browser. The first
 // visit starts from now, so the badge counts only what arrives afterwards.
@@ -161,6 +162,7 @@ export default function Header({
     hr_employees: 'Employee Management',
     hr_service_records: 'Service Records',
     hr_leave_records: 'Request Management',
+    hr_leave_credits: 'Leave Credits',
     hr_records: 'Record Management System',
     hr_announcements: 'Announcements',
     hr_directory: 'Employee Records',
@@ -169,8 +171,9 @@ export default function Header({
     sms_log: 'SMS Log'
   };
   // HR/Admins and Supervisors use the web panels; supervisors only decide requests, so
-  // they have no SMS list.
-  const showSmsButton = !isWebOnlyRole || activeRole === 'hr_admin';
+  // they have no SMS list, and neither does HR 2, whose desk is only pre-approval and leave
+  // credits (shared/hrSteps.js).
+  const showSmsButton = !isWebOnlyRole || (activeRole === 'hr_admin' && !usesHr2Desk(user));
   // HR: new failed texts and replies. Employee: texts since they last opened their messages.
   const smsBadgeCount = isWebOnlyRole ? unseenSmsCount(smsAlerts, smsSeenAt) : unreadTextsCount(smsAlerts, smsSeenAt);
   const goTo = view => {

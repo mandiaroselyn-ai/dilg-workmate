@@ -2,7 +2,7 @@ import { Leave } from '../models/leaveModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import { toRequesterProfile } from '../utils/passwordSecurity.js';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from '../utils/requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem, routeSubmittedTravelOrder } from '../utils/requestFields.js';
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
@@ -48,6 +48,27 @@ const notifyHrOfSubmission = async (request, employee) => {
     });
   } catch (error) {
     console.error('Unable to notify HR about a submitted request:', error);
+  }
+};
+
+// A Travel Order goes straight to the Head (the Provincial Director), who alone signs it, so the
+// server tells the supervisors, by notification and SMS, when an employee submits one. A failed
+// notice never fails the submission.
+const notifyHeadOfTravelOrder = async (request, employee) => {
+  try {
+    await Announcement.createNotification({
+      title: 'Travel Order for Your Approval',
+      message: `${employee.name || 'An employee'} submitted Travel Order ${request.id}${request.travelVenue ? ` (${request.travelVenue})` : ''} for your approval.`,
+      type: 'request',
+      recipientRole: 'supervisor',
+      action: 'review_request',
+      targetId: request.id
+    });
+    const supervisors = (await User.findByAccessLevel('supervisor'))
+      .filter(account => (account.accountStatus || 'Active').toString().toLowerCase() === 'active');
+    await sendSupervisorReviewSms(request, supervisors);
+  } catch (error) {
+    console.error('Unable to notify the supervisors about a submitted travel order:', error);
   }
 };
 
@@ -255,9 +276,13 @@ export const createRequest = async (req, res) => {
     if (yearly) return res.status(409).json({ success: false, error: yearly });
     const companionOverlap = await companionOverlapProblem(requestBody);
     if (companionOverlap) return res.status(409).json({ success: false, error: companionOverlap });
-    const newReq = await Leave.create(requestBody);
+    // An employee's Travel Order goes straight to the Head; a leave goes to HR.
+    const newReq = await Leave.create(req.user?.accessLevel === 'employee' ? routeSubmittedTravelOrder(requestBody) : requestBody);
     if (req.user?.accessLevel === 'employee' && newReq.status === 'Pending') {
       await notifyHrOfSubmission(newReq, req.user);
+    }
+    if (req.user?.accessLevel === 'employee' && newReq.type === 'Travel Order' && newReq.status === 'For Supervisor') {
+      await notifyHeadOfTravelOrder(newReq, req.user);
     }
     res.status(201).json({ success: true, request: newReq });
   } catch (error) {
@@ -287,6 +312,9 @@ export const finishReview = async ({ id, existing, update, req }) => {
 
   if (updated && role === 'employee' && updated.status === 'Pending') {
     await notifyHrOfSubmission(updated, req.user);
+  }
+  if (updated && role === 'employee' && updated.type === 'Travel Order' && updated.status === 'For Supervisor' && existing.status !== 'For Supervisor') {
+    await notifyHeadOfTravelOrder(updated, req.user);
   }
   if (updated && role === 'employee' && updated.status === 'Withdrawn') {
     await notifyReviewersOfWithdrawal(updated, req.user, existing.status);
@@ -340,6 +368,8 @@ export const updateRequestStatus = async (req, res) => {
         if (yearly) return res.status(409).json({ success: false, error: yearly });
         const companionOverlap = await companionOverlapProblem({ ...existing, ...update, id: existing.customId });
         if (companionOverlap) return res.status(409).json({ success: false, error: companionOverlap });
+        // A Travel Order goes straight to the Head.
+        update = routeSubmittedTravelOrder(update, edited.type);
       }
     } else if (role === 'supervisor' || role === 'hr_admin') {
       update = pickReviewUpdate(req.body);

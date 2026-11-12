@@ -50,7 +50,7 @@ const hr = { _id: 'hr-1', email: 'hr@dilg.gov.ph', name: 'Ma. Joane O. Salcedo',
 const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Matining', role: 'LGOO VI / Program Manager', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
 const requests = {
   // A leave waiting for HR 2, one HR 1 certified when HR 1 still did that step (waiting for
-  // HR 2), and a Travel Order waiting for HR 2.
+  // HR 2), and a Travel Order filed before Travel Orders went straight to the Head.
   'REQ-PENDING': { id: 'REQ-PENDING', status: 'Pending', type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1' },
   'REQ-CERTIFIED': { id: 'REQ-CERTIFIED', status: 'For Pre-approval', type: 'Leave Request', leaveType: 'Vacation Leave', employeeId: 'E1', creditCertification: { asOf: '2026-11-02', certifiedBy: { name: 'Ma. Joane O. Salcedo' } } },
   'REQ-TRAVEL': { id: 'REQ-TRAVEL', status: 'Pending', type: 'Travel Order', employeeId: 'E1' },
@@ -105,15 +105,12 @@ test('HR 2 certifies the leave credits of a leave with a recommendation, which m
   assert.match((await session.patch('REQ-PENDING', { status: 'For Pre-approval' })).body.error, /Choose the recommendation/);
 });
 
-test('HR 2 sends a leave to the Head only by uploading the form signed in Adobe; a Travel Order needs none', async t => {
+test('HR 2 sends a leave to the Head only by uploading the form signed in Adobe', async t => {
   const session = signInAsHr(t, { as: hr2, employee: juan });
   const refused = await session.patch('REQ-PENDING', approve);
   assert.equal(refused.status, 409);
   assert.match(refused.body.error, /sign 7\.A and 7\.B in Adobe, and upload the signed PDF/);
   assert.equal(session.saves.mock.callCount(), 0);
-  const travel = await session.patch('REQ-TRAVEL', approve);
-  assert.equal(travel.status, 200, JSON.stringify(travel.body));
-  assert.deepEqual(session.saves.mock.calls[0].arguments[1].recommendation.recommendedBy, { name: 'John Erick J. Matining', position: 'LGOO VI / Program Manager' });
 });
 
 test('a certified leave goes to the Head when HR 2 uploads its form signed in Adobe', async t => {
@@ -150,8 +147,6 @@ test('once WorkMate counts leave credits from a start month, HR 2 certifies only
   assert.equal(refused.status, 400);
   assert.match(refused.body.error, /Juan Dela Cruz has no starting balance from the leave card yet/);
   assert.equal(before.saves.mock.callCount(), 0);
-  // A Travel Order has no leave credits to certify.
-  assert.equal((await before.patch('REQ-TRAVEL', approve)).status, 200);
   t.mock.restoreAll();
 
   t.mock.method(AppSetting, 'get', async () => '2026-11');
@@ -160,19 +155,25 @@ test('once WorkMate counts leave credits from a start month, HR 2 certifies only
   assert.equal(certified.status, 200, JSON.stringify(certified.body));
 });
 
-test('HR 2 pre-approves a Travel Order with a recommendation, and a disapproval says why', async t => {
+test('HR takes no step on a Travel Order: it goes straight to the Provincial Director', async t => {
+  for (const as of [hr, hr2]) {
+    const session = signInAsHr(t, { as, employee: juan });
+    for (const body of [approve, { status: 'For Pre-approval', recommendation: { decision: 'approval' } }, { status: 'Returned', remarks: 'Wrong venue.' }]) {
+      const response = await session.patch('REQ-TRAVEL', body);
+      assert.equal(response.status, 409, `${as.name} ${body.status}`);
+      assert.match(response.body.error, /goes straight to the Provincial Director/);
+    }
+    assert.equal(session.saves.mock.callCount(), 0);
+    t.mock.restoreAll();
+  }
+  // A leave's disapproval still says why.
   const session = signInAsHr(t, { as: hr2, employee: juan });
-  assert.equal((await session.patch('REQ-TRAVEL', { ...approve, recommendation: { decision: 'disapproval', reason: 'No funds for the travel.' } })).status, 200);
-  assert.equal(session.saves.mock.calls[0].arguments[1].creditCertification, undefined);
-  assert.equal((await session.patch('REQ-TRAVEL', { status: 'For Pre-approval' })).status, 409);
-  // A recommendation is needed, and a disapproval says why.
-  assert.match((await session.patch('REQ-TRAVEL', { status: 'For Supervisor' })).body.error, /Choose the recommendation/);
   assert.match((await session.patch('REQ-PENDING', { status: 'For Pre-approval', recommendation: { decision: 'disapproval' } })).body.error, /why/);
 });
 
 test('HR 1 takes no step on requests; only HR 2 does', async t => {
   const hr1Only = signInAsHr(t, { as: hr, employee: juan });
-  for (const id of ['REQ-PENDING', 'REQ-CERTIFIED', 'REQ-TRAVEL']) {
+  for (const id of ['REQ-PENDING', 'REQ-CERTIFIED']) {
     const response = await hr1Only.patch(id, approve);
     assert.equal(response.status, 409, id);
     assert.equal(response.body.error, "This step is HR 2 (certification and pre-approval)'s. Your HR account does HR 1 (leave credits) only.");
@@ -386,10 +387,64 @@ test('a failed supervisor text does not stop the forward', async t => {
   const session = signInAsHr(t, { supervisors, as: hr2 });
   useSignedStore(t);
   const sms = useSmsGateway(t, async () => { throw new Error('getaddrinfo ENOTFOUND'); });
-  const response = await session.patch('REQ-TRAVEL', approve);
+  const response = await session.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await signedForm('leave', 'REQ-CERTIFIED')));
   assert.equal(response.status, 200);
   assert.equal(session.saves.mock.callCount(), 1);
   assert.equal(sms.saved.mock.calls[0].arguments[0].status, 'Failed');
+});
+
+test('a Travel Order goes straight to the Provincial Director when the employee submits it', async t => {
+  const { send, creates } = fileAsEmployee(t);
+  t.mock.method(User, 'findByAccessLevel', async () => supervisors);
+  const notices = Announcement.createNotification.mock;
+  const sms = useSmsGateway(t);
+  const travel = { type: 'Travel Order', leaveType: 'N/A', startDate: '2026-11-10', endDate: '2026-11-10', purpose: 'Official Travel. Resource speaker.', travelActivity: 'Resource speaker', travelVenue: 'Gasan Municipal Hall', status: 'Pending' };
+  const response = await send(travel);
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const saved = creates.mock.calls[0].arguments[0];
+  assert.equal(saved.status, 'For Supervisor');
+  assert.equal(saved.statusHistory.at(-1).status, 'For Supervisor');
+  assert.match(saved.remarks, /Provincial Director/);
+  // The Head is told, by notification and by SMS; HR is not asked to take a step.
+  const sent = notices.calls.map(call => call.arguments[0]);
+  assert.ok(sent.some(item => item.recipientRole === 'supervisor' && item.action === 'review_request' && item.targetId === 'REQ-NEW'));
+  assert.ok(!sent.some(item => item.recipientRole === 'hr_admin'));
+  assert.equal(sms.gateway.mock.callCount(), 1);
+  assert.match(JSON.parse(sms.gateway.mock.calls[0].arguments[1].body).content, /Travel Order is waiting for your approval/);
+  // A draft waits with the employee.
+  assert.equal((await send({ ...travel, status: 'Draft' })).status, 201);
+  assert.equal(creates.mock.calls[1].arguments[0].status, 'Draft');
+});
+
+test('a Travel Order returned to be fixed goes straight back to the Provincial Director', async t => {
+  const returned = {
+    id: 'TO-RETURNED', type: 'Travel Order', status: 'Returned',
+    startDate: '2026-11-10', endDate: '2026-11-10', employeeId: 'E1', employeeEmail: 'juan@dilg.gov.ph', submissionDate: '2026-11-01',
+    statusHistory: [{ status: 'For Supervisor', date: '2026-11-01' }, { status: 'Returned', date: '2026-11-02' }]
+  };
+  const { resubmit, saves } = fileAsEmployee(t, returned);
+  t.mock.method(User, 'findByAccessLevel', async () => []);
+  const response = await resubmit({ status: 'Pending', travelVenue: 'Boac Municipal Hall' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const update = saves.mock.calls[0].arguments[1];
+  assert.equal(update.status, 'For Supervisor');
+  assert.equal(update.statusHistory.at(-1).status, 'For Supervisor');
+  assert.ok(Announcement.createNotification.mock.calls.some(call => call.arguments[0].recipientRole === 'supervisor'));
+});
+
+test('the Provincial Director signs a Travel Order filed before Travel Orders went straight to him', async t => {
+  const head = { _id: 's-1', email: 'boss@dilg.gov.ph', employeeId: 'S1', name: 'Ivan Fadri', accessLevel: 'supervisor', accountStatus: 'Active' };
+  t.mock.method(User, 'findByEmail', async () => head);
+  t.mock.method(User, 'findByEmployeeId', async () => null);
+  t.mock.method(Holiday, 'findAll', async () => []);
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  t.mock.method(Leave, 'findByCustomId', async id => requests[id] || null);
+  t.mock.method(Leave, 'updateStatus', async (id, update) => ({ ...requests[id], ...update }));
+  useSignedStore(t);
+  const response = await request(app).post('/api/signed-documents').set('Authorization', `Bearer ${createAuthToken(head)}`)
+    .send(asUpload('travel-head', 'REQ-TRAVEL', await signedForm('travel-head', 'REQ-TRAVEL')));
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(response.body.request.status, 'Approved');
 });
 
 test('a leave\'s working days are counted by the server, without holidays, whatever the form sent', async t => {
@@ -525,6 +580,7 @@ test('a Travel Order includes colleagues from other offices; they see it and hea
   t.mock.method(Holiday, 'findAll', async () => []);
   const creates = t.mock.method(Leave, 'create', async body => ({ ...body, id: 'TO-NEW' }));
   const notices = t.mock.method(Announcement, 'createNotification', async notice => notice);
+  t.mock.method(User, 'findByAccessLevel', async () => [head]);
   const as = person => `Bearer ${createAuthToken(person)}`;
   const file = body => request(app).post('/api/requests').set('Authorization', as(juan)).send({
     type: 'Travel Order', status: 'Pending', purpose: 'Official Travel. LGU visit.', travelActivity: 'LGU visit', travelTime: '8:00 a.m.', travelVenue: 'Gasan Municipal Hall', startDate: '2026-11-10', endDate: '2026-11-10', ...body

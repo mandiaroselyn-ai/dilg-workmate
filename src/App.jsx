@@ -21,6 +21,7 @@ import { apiFetch, clearSessionToken, parseApiResponse, readSessionToken, storeS
 import { uploadSignedForm } from './utils/signedForms';
 import { subscribeToWebPush } from './utils/webPush';
 import { employeeNotificationView } from './utils/notifications';
+import { HR2_DESK_VIEWS, isHr2Notice, usesHr2Desk } from '../shared/hrSteps';
 
 const DashboardView = lazy(() => import('./components/DashboardView'));
 const AttendanceView = lazy(() => import('./components/AttendanceView'));
@@ -470,15 +471,20 @@ export default function App() {
   const roleAllowedViews = {
     employee: ['dashboard', 'attendance', 'requests', 'announcements', 'documents', 'office_directory', 'calendar', 'profile', 'settings', 'help'],
     supervisor: ['supervisor', 'announcements', 'calendar', 'profile', 'notifications'],
-    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log']
+    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log'],
+    // HR 2's desk: only pre-approval and leave credits (shared/hrSteps.js).
+    hr_2: HR2_DESK_VIEWS
   };
   // Shared links (such as the profile picture in the header) open HR's own version.
   const roleViewAliases = {
-    hr_admin: { dashboard: 'hr_dashboard', profile: 'hr_profile', announcements: 'hr_announcements' }
+    hr_admin: { dashboard: 'hr_dashboard', profile: 'hr_profile', announcements: 'hr_announcements' },
+    hr_2: { dashboard: HR2_DESK_VIEWS[0], hr_dashboard: HR2_DESK_VIEWS[0], profile: 'hr_profile' }
   };
+  // The desk an account works at: its role's, except HR 2, who has a desk of its own.
+  const deskOf = (role, account) => (role === 'hr_admin' && usesHr2Desk(account) ? 'hr_2' : role);
 
   const handleViewChange = (view) => {
-    const normalizedRole = normalizeRole(activeRole);
+    const normalizedRole = deskOf(normalizeRole(activeRole), userRef.current);
     const allowedViews = roleAllowedViews[normalizedRole] || roleAllowedViews.employee;
     const targetView = roleViewAliases[normalizedRole]?.[view] || view;
     setViewVisit(visit => visit + 1);
@@ -486,7 +492,9 @@ export default function App() {
       setCurrentView(targetView);
       return;
     }
-    if (normalizedRole === 'hr_admin') {
+    if (normalizedRole === 'hr_2') {
+      setCurrentView(HR2_DESK_VIEWS[0]);
+    } else if (normalizedRole === 'hr_admin') {
       setCurrentView('hr_dashboard');
     } else if (normalizedRole === 'supervisor') {
       setCurrentView('supervisor');
@@ -495,7 +503,10 @@ export default function App() {
     }
   };
 
-  const homeViewFor = role => (role === 'supervisor' ? 'supervisor' : role === 'hr_admin' ? 'hr_dashboard' : 'dashboard');
+  const homeViewFor = (role, account) => {
+    const desk = deskOf(role, account);
+    return desk === 'supervisor' ? 'supervisor' : desk === 'hr_2' ? HR2_DESK_VIEWS[0] : desk === 'hr_admin' ? 'hr_dashboard' : 'dashboard';
+  };
 
   // `remember` keeps the session after the browser is closed ("Remember me"); the WorkMate
   // phone app always does.
@@ -519,7 +530,7 @@ export default function App() {
     });
 
     subscribeToWebPush();
-    setCurrentView(homeViewFor(normalizedRole));
+    setCurrentView(homeViewFor(normalizedRole, profile));
   };
 
   // After a refresh or reopening the app, a session that is still valid (sessions last 8
@@ -540,7 +551,7 @@ export default function App() {
         if (cancelled) return;
         setUser(data.user);
         setActiveRole(role);
-        setCurrentView(homeViewFor(role));
+        setCurrentView(homeViewFor(role, data.user));
         subscribeToWebPush();
       })
       .catch(error => {
@@ -1290,6 +1301,10 @@ export default function App() {
     }
     return data;
   };
+  // A Travel Order as the server saved it after its certificate or report was uploaded or removed.
+  const handleRequestChange = saved => {
+    if (saved?.id) setRequests(previous => previous.map(request => (request.id === saved.id ? { ...request, ...saved } : request)));
+  };
   // One submission with the employee, records, and Travel Orders its DTR is made from.
   const openDtrSubmission = async id => {
     const response = await apiFetch(`/api/dtr-submissions?id=${encodeURIComponent(id)}`);
@@ -1570,7 +1585,8 @@ export default function App() {
       throw new Error(data.error || 'Unable to save the draft.');
     }
     setRequests(previous => previous.map(request => request.id === id ? { ...request, ...data.request } : request));
-    if (data.request.status === 'Pending') {
+    // A Travel Order submitted goes straight to the Provincial Director ('For Supervisor').
+    if (data.request.status === 'Pending' || (data.request.type === 'Travel Order' && data.request.status === 'For Supervisor')) {
       pushSystemNotification({
         title: 'Personnel Request Logged',
         message: `Your new '${data.request.type}' was received. Reference ID: ${data.request.id}.`,
@@ -1615,8 +1631,9 @@ export default function App() {
     );
   }
 
+  // HR 2 gets only the notices about requests (shared/hrSteps.js).
   const headerNotifications = activeRole === 'hr_admin'
-    ? adminNotifications
+    ? (usesHr2Desk(user) ? adminNotifications.filter(isHr2Notice) : adminNotifications)
     : scopeNotificationsToAccount(notifications, activeRole, user);
   const headerSmsAlerts = ['hr_admin', 'supervisor'].includes(activeRole)
     ? smsAlerts
@@ -1732,6 +1749,7 @@ export default function App() {
               requests={visibleEmployeeRequests}
               onSubmitRequest={handleSubmitRequest}
               onUpdateOwnRequest={handleUpdateOwnRequest}
+              onRequestChange={handleRequestChange}
               holidays={myHolidays}
             />
           )}
@@ -1774,7 +1792,7 @@ export default function App() {
             </div>
           )}
 
-          {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
+          {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_leave_credits', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
             <HRAdminView
               key={viewVisit}
               section={currentView}

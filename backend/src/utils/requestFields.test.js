@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from './requestFields.js';
+import { routeSubmittedTravelOrder, buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem } from './requestFields.js';
 
 const employee = {
   employeeId: 'DILG-2026-1001',
@@ -123,14 +123,18 @@ test('HR can only forward a request that is waiting for HR', () => {
   assert.match(reviewUpdateProblem('Rejected', forward, 'hr_admin'), /already Rejected/);
   assert.match(reviewUpdateProblem('Pending', { status: 'Approved' }, 'hr_admin'), /can only certify a leave \(HR 2\), send a request to the supervisor, or return it/);
   // HR 2 certifies a leave, which makes its form; the leave goes to the supervisor only when HR 2
-  // uploads the form signed in Adobe. A Travel Order goes straight to the supervisor.
+  // uploads the form signed in Adobe. A Travel Order takes no HR step: it goes straight to the
+  // Provincial Director when the employee submits it.
   const leave = { type: 'Leave Request', hrTask: 'pre-approval' };
   assert.equal(reviewUpdateProblem('Pending', { status: 'For Pre-approval' }, 'hr_admin', leave), null);
   assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', leave), /sign 7\.A and 7\.B in Adobe, and upload the signed PDF/);
   assert.match(reviewUpdateProblem('For Pre-approval', forward, 'hr_admin', leave), /sign 7\.A and 7\.B in Adobe/);
   assert.match(reviewUpdateProblem('For Pre-approval', { status: 'For Pre-approval' }, 'hr_admin', leave), /already certified/);
-  assert.equal(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), null);
-  assert.match(reviewUpdateProblem('Pending', { status: 'For Pre-approval' }, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), /Only a leave is certified/);
+  for (const update of [forward, { status: 'For Pre-approval' }, { status: 'Returned', remarks: 'Wrong venue.' }]) {
+    assert.match(reviewUpdateProblem('Pending', update, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), /goes straight to the Provincial Director/);
+  }
+  // HR may still add remarks only.
+  assert.equal(reviewUpdateProblem('For Supervisor', { remarks: 'Noted.' }, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), null);
   // HR 1 takes no step on requests.
   assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'leave-credits' }), /This step is HR 2 \(certification and pre-approval\)'s\. Your HR account does HR 1 \(leave credits\) only\./);
 });
@@ -197,13 +201,39 @@ test('employees can fix a returned request and submit it again, or save it as a 
   assert.equal(buildEmployeeWithdrawal(returnedRequest, { status: 'Withdrawn' }, employee, '2026-10-01').status, 'Withdrawn');
 });
 
-test('a request submitted again goes through HR\'s steps again, and the supervisor may decide one with HR', () => {
+test('a request submitted again goes through HR\'s steps again', () => {
   const employee = { employeeId: 'E1', email: 'juan@dilg.gov.ph', name: 'Juan' };
   const returned = { employeeId: 'E1', status: 'Returned', type: 'Leave Request', creditCertification: { asOf: '2026-11-02' }, recommendation: { decision: 'approval' } };
   const update = buildEmployeeDraftUpdate(returned, { status: 'Pending' }, employee, '2026-11-08');
   assert.equal(update.creditCertification, null);
   assert.equal(update.recommendation, null);
-  assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', supervisorRemarks: 'Wrong dates.' }, 'supervisor'), null);
   assert.equal(reviewUpdateProblem('For Pre-approval', { status: 'Returned', remarks: 'Attach the medical certificate.' }, 'hr_admin', { type: 'Leave Request', hrTask: 'pre-approval' }), null);
   assert.equal(buildEmployeeWithdrawal({ ...returned, status: 'For Pre-approval' }, { status: 'Withdrawn' }, employee).status, 'Withdrawn');
+});
+
+test('a leave reaches the supervisor (the Head) only after HR 2 confirms its credits and pre-approves it', () => {
+  // While it is with HR 2, the Head can neither decide nor return it.
+  for (const current of ['Pending', 'Pending Review', 'For Pre-approval']) {
+    for (const update of [{ status: 'Returned', supervisorRemarks: 'Wrong dates.' }, { status: 'Rejected', supervisorRemarks: 'No.' }, { status: 'Approved' }]) {
+      assert.match(reviewUpdateProblem(current, update, 'supervisor', { type: 'Leave Request' }), /still with HR 2 for the confirmation of leave credits and pre-approval/, `${current} -> ${update.status}`);
+    }
+  }
+  // Once HR 2 sends it, the Head decides it (approves or disapproves by the signed form) or returns it.
+  assert.equal(reviewUpdateProblem('For Supervisor', { status: 'Returned', supervisorRemarks: 'Dates overlap the audit.' }, 'supervisor', { type: 'Leave Request' }), null);
+  assert.match(reviewUpdateProblem('For Supervisor', { status: 'Approved' }, 'supervisor', { type: 'Leave Request' }), /sign it in Adobe/);
+  // A Travel Order still with HR the Head may still return or disapprove.
+  assert.equal(reviewUpdateProblem('Pending', { status: 'Returned', supervisorRemarks: 'Wrong venue.' }, 'supervisor', { type: 'Travel Order' }), null);
+});
+
+test('an employee\'s Travel Order being submitted is saved as sent to the Provincial Director', () => {
+  const submitted = { type: 'Travel Order', status: 'Pending', remarks: 'Awaiting initial HR administrative processing and review.', statusHistory: [{ status: 'Draft', date: '2026-11-01' }, { status: 'Pending', date: '2026-11-02', actor: 'Juan' }] };
+  const routed = routeSubmittedTravelOrder(submitted);
+  assert.equal(routed.status, 'For Supervisor');
+  assert.match(routed.remarks, /Provincial Director/);
+  assert.deepEqual(routed.statusHistory, [{ status: 'Draft', date: '2026-11-01' }, { status: 'For Supervisor', date: '2026-11-02', actor: 'Juan' }]);
+  // An edit names its type apart (the update itself may not).
+  assert.equal(routeSubmittedTravelOrder({ status: 'Pending' }, 'Travel Order').status, 'For Supervisor');
+  // A leave goes to HR, and a draft stays with the employee.
+  assert.equal(routeSubmittedTravelOrder({ ...submitted, type: 'Leave Request' }).status, 'Pending');
+  assert.equal(routeSubmittedTravelOrder({ ...submitted, status: 'Draft' }).status, 'Draft');
 });

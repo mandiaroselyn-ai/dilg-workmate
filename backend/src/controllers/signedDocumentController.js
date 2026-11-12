@@ -9,13 +9,14 @@ import { finishReview } from './requestController.js';
 import { countSignatures, sha256, signedPdfProblem } from '../utils/signedPdf.js';
 import { monthLabel } from '../utils/leaveCredits.js';
 import { MAX_SIGNED_PDF_BYTES, SIGNED_FORM_KINDS } from '../../../shared/signedForms.js';
-import { FOR_PRE_APPROVAL, doesHrStep } from '../../../shared/hrSteps.js';
+import { FOR_PRE_APPROVAL, awaitsHead, doesHrStep } from '../../../shared/hrSteps.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
 
 // Forms signed in Adobe and uploaded back to WorkMate (see shared/signedForms.js):
 // - HR 2 uploads a certified leave's CSC Form No. 6 signed at 7.A and 7.B, which sends it to the Head;
-// - the Head uploads that form signed at 7.C and 7.D with the decision, or a Travel Order signed
-//   to approve it, or an employee's DTR signed as the In-charge to verify it.
+// - the Head uploads that form signed at 7.C and 7.D with the decision, or a Travel Order (which
+//   comes straight to the Head) signed to approve it, or an employee's DTR signed as the In-charge
+//   to verify it.
 // The upload is the official copy that the employee and HR then view and download.
 
 const FINAL_KINDS = ['leave-head', 'travel-head', 'dtr-incharge'];
@@ -104,8 +105,9 @@ const uploadHeadDecision = async (req, res, { kind, ref, bytes, fileName }) => {
   const existing = await Leave.findByCustomId(ref);
   const type = kind === 'leave-head' ? 'Leave Request' : 'Travel Order';
   if (!existing || existing.type !== type) return res.status(404).json({ success: false, error: `${type === 'Leave Request' ? 'Leave' : 'Travel Order'} not found.` });
-  if (existing.status !== 'For Supervisor') {
-    return res.status(409).json({ success: false, error: `This request is ${existing.status || 'not waiting for you'}. Only a request HR sent to you is signed.` });
+  // A leave HR 2 sent, or a Travel Order, which comes straight to the Head (shared/hrSteps.js).
+  if (!awaitsHead(existing)) {
+    return res.status(409).json({ success: false, error: `This request is ${existing.status || 'not waiting for you'}. Only a leave HR 2 sent to you, or a submitted Travel Order, is signed.` });
   }
   const decision = kind === 'travel-head' ? 'Approved' : req.body?.decision;
   if (!['Approved', 'Rejected'].includes(decision)) return res.status(400).json({ success: false, error: 'Choose your decision: approved or disapproved.' });

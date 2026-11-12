@@ -60,7 +60,12 @@ const faqs = [
   {
     topic: 'Leave and travel',
     question: 'What do the request statuses mean?',
-    answer: 'Draft: saved but not sent. Pending: waiting for HR 2, who certifies a leave\'s credits and pre-approves the leave or Travel Order. For Pre-approval: your leave credits were certified, and HR 2 is pre-approving it. For Supervisor: HR 2 pre-approved it and sent it to the Head. Approved or Rejected: the Head\'s decision. Withdrawn: you took it back.'
+    answer: 'Draft: saved but not sent. Pending: your leave is waiting for HR 2, who certifies its leave credits and pre-approves it. For Pre-approval: your leave credits were certified, and HR 2 is pre-approving it. For Supervisor: HR 2 sent your leave to the Head, or your Travel Order went straight to the Provincial Director, who signs it. Approved or Rejected: the Head\'s decision. Withdrawn: you took it back.'
+  },
+  {
+    topic: 'Leave and travel',
+    question: 'Where do I attach my Post Activity Report or Certificate of Appearance?',
+    answer: 'Once your Travel Order is approved, open Requests. On the Travel Order, choose Post Activity Report or Certificate of Appearance, then tap Attach File (a PDF, JPG, or PNG of 3 MB at most). Each employee on the Travel Order attaches their own. HR is notified.'
   },
   {
     topic: 'Leave and travel',

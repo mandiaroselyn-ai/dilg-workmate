@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -12,9 +12,9 @@ import HRHolidays from './HRHolidays';
 import HRLeaveCreditsStart from './HRLeaveCreditsStart';
 import HRDtrSubmissions from './HRDtrSubmissions';
 import HRMonthlyLeaveCredits from './HRMonthlyLeaveCredits';
-import { apiFetch } from '../utils/api';
 import HROvertimeOrders from './HROvertimeOrders';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
+import useLeaveCreditsStart from '../utils/useLeaveCreditsStart';
 
 // "08:05 AM" (how Time In and Time Out are saved) as "08:05" for a time input, and back.
 const toInputTime = value => {
@@ -276,15 +276,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedId, setSelectedId] = useState(null);
   // The month WorkMate starts counting leave credits, and the leave card date it starts from.
-  const [creditsStart, setCreditsStart] = useState({ start: '', asOf: '' });
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch('/api/employees/leave-credits-start')
-      .then(response => response.json())
-      .then(data => { if (!cancelled && data?.success) setCreditsStart({ start: data.start || '', asOf: data.asOf || '' }); })
-      .catch(error => console.error('Unable to load the leave credits start:', error));
-    return () => { cancelled = true; };
-  }, []);
+  const [creditsStart, setCreditsStart] = useLeaveCreditsStart();
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const today = getManilaDateString();
   // Only records that belong to current employee accounts.

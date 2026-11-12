@@ -26,7 +26,8 @@ import {
 import CSCForm6Preview from './CSCForm6Preview';
 import TravelOrderPreview from './TravelOrderPreview';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { FOR_PRE_APPROVAL } from '../../shared/hrSteps';
+import { FOR_PRE_APPROVAL, awaitsHead, isLeaveWithHr } from '../../shared/hrSteps';
+import TravelDocumentsPanel from './TravelDocumentsPanel';
 import { companionNames } from '../../shared/travelStatus';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
@@ -38,9 +39,11 @@ import { fillLeaveForm } from '../utils/leaveForm';
 import { fillTravelOrder } from '../utils/travelOrderForm';
 import { fetchSignedForm, signedNoteText, stampForSigning } from '../utils/signedForms';
 
-// A request the Supervisor can still decide: one HR forwarded, or one still with HR (the server
-// allows the same). Approved, disapproved, returned, and withdrawn ones are done.
-const canDecide = request => ['Pending', 'Pending Review', FOR_PRE_APPROVAL, 'For Supervisor'].includes(request?.status);
+// A request the Supervisor can still decide: a leave HR 2 sent, or a Travel Order, which comes
+// straight to the Supervisor (the server allows the same). A leave comes only after HR 2 confirms
+// its leave credits and pre-approves it (shared/hrSteps.js). Approved, disapproved, returned, and
+// withdrawn ones are done.
+const canDecide = request => !isLeaveWithHr(request) && ['Pending', 'Pending Review', FOR_PRE_APPROVAL, 'For Supervisor'].includes(request?.status);
 
 const shortDate = value => {
   const date = new Date(`${String(value || '').slice(0, 10)}T00:00:00`);
@@ -60,7 +63,7 @@ const decisionText = request => {
 
 export default function SupervisorView({
   user,
-  requests,
+  requests: allRequests = [],
   employees = [],
   activeEmployeeCount = null,
   onUpdateRequestStatus,
@@ -74,6 +77,9 @@ export default function SupervisorView({
   onOpenDtr,
   onReloadDtrSubmissions
 }) {
+  // A leave still with HR 2 (confirmation of leave credits and pre-approval) is not the Head's
+  // yet, so it is not listed until HR 2 sends it.
+  const requests = allRequests.filter(request => !isLeaveWithHr(request));
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [remarks, setRemarks] = useState('');
   
@@ -517,9 +523,11 @@ export default function SupervisorView({
                     {['Approved', 'Rejected', 'Returned'].includes(selectedRequest.status) && (selectedRequest.supervisorRemarks || selectedRequest.remarks) && (
                       <p className="font-semibold">Remarks: <span className="font-bold text-slate-800">{selectedRequest.supervisorRemarks || selectedRequest.remarks}</span></p>
                     )}
+                    {/* An approved Travel Order's Post Activity Reports or Certificates of Appearance */}
+                    <TravelDocumentsPanel request={selectedRequest} user={user} className="mt-2" />
                   </div>
                 ) : (<>
-                {selectedRequest.status === 'For Supervisor' ? (
+                {awaitsHead(selectedRequest) ? (
                   <SignedFormStep
                     key={selectedRequest.id}
                     title={selectedRequest.type === 'Leave Request' ? 'Decide and sign 7.C and 7.D in Adobe' : 'Sign the Travel Order in Adobe'}

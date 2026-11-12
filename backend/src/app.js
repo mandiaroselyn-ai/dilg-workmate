@@ -11,6 +11,7 @@ import overtimeOrderRoutes from './routes/overtimeOrderRoutes.js';
 import downloadRoutes from './routes/downloadRoutes.js';
 import dtrSubmissionRoutes from './routes/dtrSubmissionRoutes.js';
 import signedDocumentRoutes from './routes/signedDocumentRoutes.js';
+import travelDocumentRoutes from './routes/travelDocumentRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
@@ -99,6 +100,7 @@ export function createApiApp() {
   app.use('/api', downloadRoutes);
   app.use('/api', dtrSubmissionRoutes);
   app.use('/api', signedDocumentRoutes);
+  app.use('/api', travelDocumentRoutes);
   app.use('/api/auth', googleAuthRoutes);
   app.use('/api', apiNotFound);
   app.use(apiErrorHandler);

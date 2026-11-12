@@ -40,6 +40,7 @@ import AttachmentList from './AttachmentList';
 import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft, yearlyLeaveProblem } from '../../shared/yearlyLeave';
 import { companionNames, travelOrderCovers } from '../../shared/travelStatus';
 import { apiFetch } from '../utils/api';
+import TravelDocumentsPanel from './TravelDocumentsPanel';
 
 // Attachments travel inside the request, which the server accepts up to about 4 MB, so one
 // file and all of them together are kept under these sizes.
@@ -65,6 +66,8 @@ export default function RequestsView({
   requests,
   onSubmitRequest,
   onUpdateOwnRequest,
+  // Gets a Travel Order after a report or certificate was attached to it or removed.
+  onRequestChange,
   holidays = []
 }) {
   // Configured view state
@@ -304,7 +307,7 @@ export default function RequestsView({
       ? 'A draft copy has been securely logged to your draft tray.'
       : activeTab2 === 'Leave'
         ? 'Leave application submitted to HR for review.'
-        : 'Travel order submitted to HR for review.';
+        : 'Travel Order submitted to the Provincial Director for approval.';
     
     setFormSuccessMessage(bannerMessage);
     setTimeout(() => setFormSuccessMessage(''), 5500);
@@ -576,7 +579,7 @@ Reason (optional):`, '');
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[10px] font-bold text-slate-500 sm:grid-cols-4">
             <div className="rounded-lg bg-slate-50 p-2"><strong className="block text-lg text-slate-800">{travelHistory.length}</strong>Total</div>
-            <div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg text-amber-600">{travelHistory.filter(request => request.status === 'Pending' || request.status === 'For Pre-approval').length}</strong>Pending</div>
+            <div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg text-amber-600">{travelHistory.filter(request => ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor'].includes(request.status)).length}</strong>Pending</div>
             <div className="rounded-lg bg-emerald-50 p-2"><strong className="block text-lg text-emerald-600">{travelHistory.filter(request => request.status === 'Approved').length}</strong>Approved</div>
             <div className="col-span-3 rounded-lg bg-rose-50 p-2 sm:col-span-1"><strong className="block text-lg text-rose-600">{travelHistory.filter(request => request.status === 'Rejected').length}</strong>Rejected</div>
           </div>
@@ -607,6 +610,7 @@ Reason (optional):`, '');
                       <p className="mt-1 text-[10px] font-semibold text-slate-500">{request.startDate} to {request.endDate} · Filed by {request.employeeName || 'a colleague'}</p>
                     </div>
                     <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{request.status}</span>
+                    <TravelDocumentsPanel request={request} user={user} canUpload onRequestChange={onRequestChange} className="w-full" />
                   </div>
                 ))}
               </div>
@@ -764,6 +768,10 @@ Reason (optional):`, '');
               {/* Provincial Order fields from the supplied blank form */}
               {activeTab2 === 'Travel' && (
                 <div className="space-y-4 animate-none">
+                  <p className="rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-left text-[10px] font-semibold text-slate-600">
+                    Your Travel Order goes straight to the Provincial Director, who signs it. Once it is approved, you can attach your Post Activity Report or Certificate of Appearance to it here in Requests.
+                  </p>
+
                   <div className="space-y-1.5 text-left">
                     <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">Subject</label>
                     <input
@@ -1332,6 +1340,9 @@ Reason (optional):`, '');
                       itemClassName="max-w-full bg-slate-100 text-slate-700 border border-slate-205 rounded px-2 py-0.5 text-[9px] font-bold"
                     />
 
+                    {/* An approved Travel Order's Post Activity Report or Certificate of Appearance */}
+                    <TravelDocumentsPanel request={req} user={user} canUpload onRequestChange={onRequestChange} />
+
                     {/* Supervisor approval signature block */}
                     {req.status === 'Approved' && req.supervisorName && (
                       <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2.5 space-y-1">
@@ -1396,9 +1407,9 @@ Reason (optional):`, '');
                               <>
                                 <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-ping"></span>
                                 <span>{req.status === 'Returned' ? 'Returned to you: fix it and submit again'
-                                  : req.status === 'For Supervisor' ? 'Awaiting supervisor approval'
+                                  : req.status === 'For Supervisor' ? (req.type === 'Travel Order' ? "Awaiting the Provincial Director's approval" : 'Awaiting supervisor approval')
                                     : req.status === 'For Pre-approval' ? 'Leave credits certified: awaiting HR pre-approval'
-                                      : req.type === 'Leave Request' ? 'Awaiting HR leave credit review' : 'Awaiting HR pre-approval'}</span>
+                                      : req.type === 'Leave Request' ? 'Awaiting HR leave credit review' : "Awaiting the Provincial Director's approval"}</span>
                               </>
                             ) : (
                               <>

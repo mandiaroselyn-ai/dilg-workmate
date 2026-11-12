@@ -1,5 +1,5 @@
 import { getManilaDateString } from '../../../shared/localDate.js';
-import { FOR_PRE_APPROVAL, HEAD_SIGN_AND_UPLOAD, HR_SIGN_AND_UPLOAD, HR_STEP_NAMES, HR_TASKS, doesHrStep, hrStepOf } from '../../../shared/hrSteps.js';
+import { FOR_PRE_APPROVAL, HEAD_SIGN_AND_UPLOAD, HR_SIGN_AND_UPLOAD, HR_STEP_NAMES, HR_TASKS, LEAVE_WITH_HR, TRAVEL_ORDER_SENT_REMARKS, TRAVEL_ORDER_TO_HEAD, doesHrStep, hrStepOf, isLeaveWithHr } from '../../../shared/hrSteps.js';
 
 // Fields only a reviewer (supervisor or HR) may set on a leave, travel, or certified copy request.
 const REVIEW_FIELDS = [
@@ -50,15 +50,17 @@ export const pickReviewUpdate = body => REVIEW_FIELDS.reduce((update, field) => 
 }, {});
 
 const AWAITING_HR_STATUSES = ['Pending', 'Pending Review', FOR_PRE_APPROVAL];
-// What the supervisor may still decide: a request HR forwarded, or one still with HR.
+// What the supervisor may still decide: a request HR forwarded, or a Travel Order (which goes
+// straight to the supervisor; one filed before that waits as Pending). A leave still with HR 2 is
+// not the supervisor's yet (shared/hrSteps.js).
 export const AWAITING_SUPERVISOR_STATUSES = [...AWAITING_HR_STATUSES, 'For Supervisor'];
 const SUPERVISOR_DECISIONS = ['Approved', 'Rejected', 'Returned'];
 
 // Why a reviewer may not apply `update` to a request whose status is `currentStatus`, or
 // null when they may. A draft the employee has not submitted and a request the employee
-// withdrew are theirs alone. HR/Admin takes a request waiting for HR through its HR steps
-// (shared/hrSteps.js): HR 2 certifies a leave's credits and pre-approves a leave or a Travel
-// Order, and sends it to the supervisor (the Head), or returns it to the employee. Only an HR
+// withdrew are theirs alone. HR/Admin takes a leave waiting for HR through its HR steps
+// (shared/hrSteps.js): HR 2 certifies its credits and pre-approves it, and sends it to the
+// supervisor (the Head), or returns it to the employee. A Travel Order takes no HR step. Only an HR
 // account that does that step (`hrTask`, HR 2's) may take it; HR 1 takes no step on requests. The supervisor approves, rejects, or returns it. A request
 // is returned with remarks saying what the employee needs to do. `type` is the request's.
 export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask } = {}) => {
@@ -70,6 +72,7 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
     return 'Write in the remarks what the employee needs to fix before returning the request.';
   }
   if (role === 'hr_admin') {
+    if (type === 'Travel Order') return TRAVEL_ORDER_TO_HEAD;
     const step = hrStepOf({ status: currentStatus, type });
     if (![FOR_PRE_APPROVAL, 'For Supervisor', 'Returned'].includes(nextStatus)) {
       return 'HR/Admin can only certify a leave (HR 2), send a request to the supervisor, or return it to the employee. The supervisor approves or rejects them.';
@@ -94,6 +97,7 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
   if (role === 'supervisor' && !SUPERVISOR_DECISIONS.includes(nextStatus)) {
     return 'The supervisor can only approve, reject, or return requests.';
   }
+  if (role === 'supervisor' && isLeaveWithHr({ status: currentStatus, type })) return LEAVE_WITH_HR;
   // A decision is made once: an approved leave has already used leave credits, and a
   // returned request is the employee's to fix and submit again.
   if (role === 'supervisor' && !AWAITING_SUPERVISOR_STATUSES.includes(currentStatus)) {
@@ -111,6 +115,20 @@ export const reviewUpdateProblem = (currentStatus, update, role, { type, hrTask 
     return `This request is already ${currentStatus}, so it cannot be returned.`;
   }
   return null;
+};
+
+// An employee's Travel Order being submitted (`request`, with status 'Pending') goes straight to
+// the Head: it is saved as 'For Supervisor', and so is the last step of its history. Anything else
+// is returned as it is.
+export const routeSubmittedTravelOrder = (request, type = request?.type) => {
+  if (type !== 'Travel Order' || request?.status !== 'Pending') return request;
+  const history = Array.isArray(request.statusHistory) ? request.statusHistory : null;
+  return {
+    ...request,
+    status: 'For Supervisor',
+    remarks: TRAVEL_ORDER_SENT_REMARKS,
+    ...(history ? { statusHistory: history.map((entry, index) => (index === history.length - 1 && entry?.status === 'Pending' ? { ...entry, status: 'For Supervisor' } : entry)) } : {})
+  };
 };
 
 // Fields an employee may change while a request is still their own draft.
