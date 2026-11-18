@@ -290,6 +290,16 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     }
   };
 
+  // The app's WebView has no live camera preview, so it opens the phone's own front camera.
+  const openSelfieCamera = () => {
+    if (window.ReactNativeWebView && selfieInputRef.current) {
+      selfieInputRef.current.setAttribute('capture', 'user');
+      selfieInputRef.current.click();
+      return;
+    }
+    startCamera('selfie');
+  };
+
   const handleImageSelection = async (event, target) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -619,9 +629,10 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                 <h3 className="font-black text-slate-900">02 · Capture Face Selfie</h3>
               </div>
               <p className="mt-2 text-xs text-slate-600">Take a fresh selfie using the camera. Liveness detection is not currently active and will not be claimed as passed.</p>
+              <input ref={selfieInputRef} type="file" accept="image/*" className="sr-only" disabled={submitting} onChange={event => handleImageSelection(event, 'selfie')} />
               {!cameraActive ? (
                 <div className="mt-4">
-                  <button type="button" onClick={() => startCamera('selfie')} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
+                  <button type="button" onClick={() => openSelfieCamera()} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
                     <Camera className="h-4 w-4" /> {selfieImage ? 'Retake Selfie' : 'Open Camera'}
                   </button>
                 </div>
@@ -653,7 +664,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               {selfieImage && !cameraActive && (
                 <div className="mt-4 space-y-2">
                   <img src={selfieImage} alt="Enrollment selfie preview" className="max-h-48 w-full rounded-xl border border-slate-200 object-contain" />
-                  <button type="button" onClick={() => startCamera('selfie')} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
+                  <button type="button" onClick={() => openSelfieCamera()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
                     <RefreshCw className="h-3.5 w-3.5" /> Try Again — Retake Selfie
                   </button>
                 </div>
