@@ -3,6 +3,7 @@ import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, R
 import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { scrollIntoContentView } from '../utils/scroll';
+import { hasNativeBiometricBridge, requestNativeBiometricSignature } from '../utils/nativeBiometricBridge.js';
 import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 
 // A registration prompt that has not opened or finished by now is abandoned.
@@ -62,7 +63,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const registrationAbortRef = useRef(null);
   const [confirmingNewPhone, setConfirmingNewPhone] = useState(false);
   // Registered on this visit, or already registered on the server.
-  const hasRegisteredFingerprint = fingerprintRegistered || Boolean(user?.hasBrowserFingerprint);
+  const hasRegisteredFingerprint = fingerprintRegistered || Boolean(user?.hasBrowserFingerprint) || Boolean(user?.hasPhoneFingerprint);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const idInputRef = useRef(null);
@@ -96,6 +97,40 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       return;
     }
     setRegisteringType(type);
+    if (hasNativeBiometricBridge()) {
+      // Inside the WorkMate app: register this phone's fingerprint key instead of WebAuthn.
+      setRegisteringFingerprint(true);
+      try {
+        const optionsResponse = await apiFetch('/api/biometric/native/options', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ replaceRegisteredKey: confirmingNewPhone })
+        });
+        const options = await parseApiResponse(optionsResponse, 'Phone fingerprint options');
+        if (!optionsResponse.ok || !options.challenge) {
+          throw new Error(options?.error || 'Unable to start phone fingerprint registration.');
+        }
+        const assertion = await requestNativeBiometricSignature(options.challenge, options.keyId);
+        const verifyResponse = await apiFetch('/api/biometric/native/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ challenge: options.challenge, signature: assertion.signature, publicKey: assertion.publicKey })
+        });
+        const verification = await parseApiResponse(verifyResponse, 'Phone fingerprint registration');
+        if (!verifyResponse.ok || !verification.success) {
+          throw new Error(verification?.error || 'Phone fingerprint registration failed.');
+        }
+        setFingerprintRegistered(true);
+        setConfirmingNewPhone(false);
+        refreshStatus();
+      } catch (nativeError) {
+        setFingerprintRegistrationError(nativeError?.message || 'Phone fingerprint registration failed.');
+      } finally {
+        setRegisteringFingerprint(false);
+        setRegisteringType(null);
+      }
+      return;
+    }
     if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials?.create) {
       setFingerprintRegistrationError('Fingerprint registration requires a supported browser on HTTPS or localhost.');
       return;
