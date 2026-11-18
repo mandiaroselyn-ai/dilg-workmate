@@ -403,10 +403,18 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         onChange={event => handleImageSelection(event, target)}
       />
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={() => inputRef.current?.click()} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
+        <button type="button" onClick={() => { inputRef.current?.removeAttribute('capture'); inputRef.current?.click(); }} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
           <Upload className="h-4 w-4" /> {image ? 'Upload Different Picture' : 'Upload Picture'}
         </button>
-        <button type="button" onClick={() => startCamera(target)} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">
+        <button type="button" onClick={() => {
+          // The app's WebView has no live camera preview, so open the phone's own camera app instead.
+          if (window.ReactNativeWebView && inputRef.current) {
+            inputRef.current.setAttribute('capture', 'environment');
+            inputRef.current.click();
+            return;
+          }
+          startCamera(target);
+        }} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-black text-slate-700 disabled:opacity-50">
           <Camera className="h-4 w-4" /> Open Camera
         </button>
       </div>
