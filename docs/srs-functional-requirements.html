@@ -1,0 +1,145 @@
+<!doctype html>
+<!-- The source of DILG-WorkMate-SRS-Functional-Requirements.pdf. Edit the `modules` list below,
+     then print this page to PDF on A4 without headers and footers, for example:
+     chrome --headless=new --no-pdf-header-footer --print-to-pdf=docs/DILG-WorkMate-SRS-Functional-Requirements.pdf docs/srs-functional-requirements.html -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DILG WorkMate SRS</title>
+<style>
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #111; line-height: 1.4; margin: 0; }
+  header { text-align: center; margin-bottom: 14pt; }
+  header h1 { font-size: 15pt; margin: 0 0 4pt; letter-spacing: .3pt; }
+  header .project { font-size: 10.5pt; margin: 0 0 8pt; }
+  header .doc { font-size: 12pt; font-weight: bold; margin: 0; padding-top: 6pt; border-top: 1.5pt solid #1e3a8a; display: inline-block; }
+  h2 { font-size: 11.5pt; margin: 14pt 0 5pt; color: #1e3a8a; page-break-after: avoid; }
+  table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+  tr { page-break-inside: avoid; }
+  th, td { border: .75pt solid #555; padding: 4pt 6pt; vertical-align: top; text-align: left; }
+  th { background: #e5e9f2; font-size: 9.5pt; }
+  td.no, th.no { width: 34pt; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>DILG WorkMate</h1>
+  <p class="project">DILG Employee Companion System with Geo-Tagging, Daily Time Record, Leave Application, and Travel Order</p>
+  <p class="doc">Software Requirements Specification: Functional Requirements</p>
+</header>
+
+<div id="content"></div>
+
+<script>
+const modules = [
+  ['User Management', [
+    'The system allows HR/Admin to create and manage employee, supervisor, and HR/Admin accounts with their assigned roles.',
+    'The system allows HR 2 to keep the employees’ leave credits, certify the leave credits on leave applications, and pre-approve them, while HR 1 handles the HR/Admin desk and monitors the employees’ transactions.',
+    'The system allows new users to register, including through Google sign-in, and HR/Admin to approve or reject their accounts.',
+    'The system notifies a newly approved user that they can log in, by SMS, or by email for an account registered through Google sign-in.',
+    'The system allows HR/Admin to activate, deactivate, or delete user accounts, and to promote an employee to supervisor or HR/Admin.',
+    'The system allows users to securely log in and log out using their account credentials.',
+    'The system allows users to update their profile, including their personal details, government ID numbers, contact number, and profile photo.',
+    'The system allows HR/Admin to maintain each employee’s employment details, including the date hired, status of appointment, and salary grade and step.',
+    'The system allows users to change their password, and to reset a forgotten password through an emailed reset link or, for DILG email accounts, a temporary password issued by HR/Admin.',
+    'The system ends a session after a set time (8 hours on a computer, 7 days with “Remember me,” and 30 days in the phone app) and signs the user out of all devices when their password is changed.',
+    'The system restricts access to system features based on the user’s assigned role.'
+  ]],
+  ['Attendance Management', [
+    'The system allows employees to enroll their DILG ID (front and back) and selfie for biometric verification, and HR/Admin to review and approve or reject the enrollment.',
+    'The system allows employees to register their phone’s fingerprint for attendance verification.',
+    'The system allows employees to choose where they work for the day: their office, a field assignment (municipality and barangay), or work from home at the address approved by HR/Admin.',
+    'The system allows HR/Admin to set each employee’s assigned station and approved work-from-home address.',
+    'The system allows employees to record their time-in, lunch break, and time-out using geo-tagging, selfie verification, and fingerprint scanning.',
+    'The system verifies the employee’s identity and checks whether their recorded location is within the authorized work area, accepting only a GPS reading accurate to 50 meters or better.',
+    'The system records the employee’s time-in automatically once their selfie and fingerprint are verified and they are within range of their chosen work area.',
+    'The system records each time-in and time-out using the server’s time, prevents duplicate entries for the same day, and shows the employee a receipt of each saved entry.',
+    'The system marks a day covered by an approved travel order as official travel on the DTR, so the employee does not need to time in that day.',
+    'The system computes late, undertime, and overtime from the employee’s time records, following the office hours of DILG Marinduque (fixed hours on Monday and flexitime from Tuesday to Friday) and the holidays and overtime office orders set by HR/Admin.',
+    'The system adds the national and Marinduque holidays automatically, and allows HR/Admin to add or remove other holidays, including those for a single town.',
+    'The system allows HR/Admin to enter the overtime office orders issued by the Head of Office for the named employees, dates, and hours.',
+    'The system allows employees to view their daily and monthly DTR records and attendance history, and to export their monthly DTR as a PDF file.',
+    'The system allows employees to sign their monthly DTR (CSC Form No. 48) with an electronic signature confirmed by their password and submit it to the supervisor, and the supervisor to verify it with an electronic signature or return it to the employee with remarks.',
+    'The system allows HR/Admin to monitor which employees have submitted their monthly DTR and which DTRs the supervisor has verified.',
+    'The system allows HR/Admin to view, monitor, and manage employee attendance records, including those from earlier months.',
+    'The system allows HR/Admin to verify attendance records one at a time or all at once, and to correct a record with a reason, keeping the originally recorded times for audit.',
+    'The system allows HR/Admin to compare an employee’s attendance selfies with their enrollment selfie.',
+    'The system lists attendance records that need attention, such as a missing time-in, time-out, lunch break entry, selfie verification, or fingerprint verification.',
+    'The system displays employees’ live locations and geofence status on a map for HR/Admin, sending the employee’s location only from time-in to time-out.',
+    'The system supports offline attendance recording and automatically synchronizes pending records when an internet connection becomes available.',
+    'The system allows employees to view their pending offline records and synchronize them manually, and to test their phone’s GPS and camera.',
+    'The system holds an offline record that failed a check, such as a selfie mismatch or an incorrect phone clock, for HR/Admin review before it counts in the DTR.'
+  ]],
+  ['Leave Management', [
+    'The system allows employees to submit leave applications for the types of leave under the CSC Omnibus Rules on Leave by providing the required information.',
+    'The system allows employees to save a leave application as a draft, preview its CSC Form No. 6 before submitting it, withdraw it before it is decided, and correct and resubmit one that was returned.',
+    'The system checks each leave application against the CSC filing rules, does not allow dates that overlap another leave or travel order of the employee, and counts only working days, excluding weekends and holidays.',
+    'The system limits special privilege leave to 3 days a year and wellness leave to 5 days a year, at most 3 days in a row.',
+    'The system allows HR/Admin (HR 2) to review leave applications, certify the employee’s leave credits, and recommend approval or disapproval before forwarding them to the supervisor, or return them to the employee for correction.',
+    'The system allows supervisors to approve, reject, or return leave applications with remarks and an electronic signature.',
+    'The system computes and updates each employee’s vacation and sick leave credits, including monthly earnings and deductions for approved leave and tardiness.',
+    'The system charges tardiness and undertime to vacation leave using the CSC table that converts hours and minutes into days, and does not give leave credits to contract of service and job order workers.',
+    'The system charges leave beyond the employee’s available credits as leave without pay and shows the amount, based on the employee’s salary grade and step.',
+    'The system allows HR/Admin (HR 2) to set the month the system starts keeping leave credits, enter each employee’s starting balance from their leave card, adjust balances to match the leave card, and record each month’s earned leave and tardiness charges.',
+    'The system allows employees to view their remaining leave credits and the status and history of their leave applications.'
+  ]],
+  ['Travel Order Management', [
+    'The system allows employees to submit travel order requests with the required travel details and supporting documents, including the memo or invitation for the activity.',
+    'The system allows employees to include other employees, including those from other offices or towns, in one travel order.',
+    'The system allows employees to save a travel order as a draft and to withdraw it before it is decided.',
+    'The system checks that a travel order is filed before the travel starts and does not overlap another leave or travel order of the same employee.',
+    'The system sends submitted travel order requests directly to the supervisor (the Provincial Director) for approval.',
+    'The system allows supervisors to approve, reject, or return travel order requests with remarks and an electronic signature.',
+    'The system allows each employee on an approved travel order to attach their Post Activity Report or Certificate of Appearance.',
+    'The system allows employees and HR/Admin to view and monitor travel order records and their current status.'
+  ]],
+  ['Document Generation', [
+    'The system generates the CSC Form No. 6 (Application for Leave), CSC Form No. 48 (Daily Time Record), and Travel Order from the employee’s records, with the monthly salary on the CSC Form No. 6 taken from the government salary schedule.',
+    'The system allows the signing officers (HR 2 and the supervisor) to download a generated form, sign it electronically, and upload the signed copy, which the system keeps as the official copy.',
+    'The system checks that an uploaded signed form is the form generated for that request or DTR and carries the required signatures.'
+  ]],
+  ['Notification Management', [
+    'The system sends notifications to users regarding attendance updates, leave applications, travel order requests, and other relevant transactions.',
+    'The system sends notifications in the system, as phone push notifications, and by SMS, including a confirmation of each time-in and time-out and updates on the status of requests.',
+    'The system notifies HR/Admin and supervisors when a request needs their action, lists those notifications first, and opens the request from the notification.',
+    'The system allows users to view their notification history, mark notifications as read or unread, and clear them.'
+  ]],
+  ['Announcements and Calendar', [
+    'The system allows HR/Admin to post, edit, and delete announcements and calendar events, and users to view them.',
+    'The system allows HR/Admin to file each announcement under a category, such as Memorandum Circular, Department Order, Advisory, or Special Order, and users to filter announcements.',
+    'The system allows employees to acknowledge receipt of an announcement.',
+    'The system shows national and local holidays on the calendar, and upcoming events on the dashboard.'
+  ]],
+  ['Dashboard Monitoring', [
+    'The system displays dashboard information based on the user’s assigned role, including relevant attendance, leave, and travel order transactions.',
+    'The system displays on the employee’s dashboard their attendance status for the day, attendance summary for the month, leave balances, recent requests, announcements, and upcoming events.',
+    'The system displays on the HR/Admin dashboard the employees’ latest time-ins, time-outs, and requests.',
+    'The system displays on the supervisor’s dashboard the leave applications, travel orders, and DTRs waiting for the supervisor’s action.'
+  ]],
+  ['Report Management', [
+    'The system allows HR/Admin to generate attendance, leave, and travel order reports.',
+    'The system allows HR/Admin to filter reports by employee, date, office, and status, view them, and export them as a CSV file or print them or save them as PDF.'
+  ]],
+  ['Record Management', [
+    'The system allows HR/Admin to add, update, search, and retrieve employee records.',
+    'The system allows employees to view and download their own records, and HR/Admin to access and download the records of employees, including their DTRs, leave applications, travel orders, and attached files.'
+  ]],
+  ['Messaging', [
+    'The system allows HR/Admin and employees to send, view, and reply to messages, which reach the employee in the system and by SMS, and employees to reply in the system or by texting back.',
+    'The system allows HR/Admin and employees to view their messaging history and receive notifications for new messages.',
+    'The system allows HR/Admin to see whether each SMS was delivered and to resend one that failed.',
+    'The system provides a Help and Support page that answers common questions, and allows employees to send a help request to HR/Admin on a chosen topic.'
+  ]]
+];
+
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+let n = 0;
+document.getElementById('content').innerHTML = modules.map(([name, items]) =>
+  `<section class="module"><h2>${esc(name)}</h2><table><thead><tr><th class="no">No.</th><th>Requirement</th></tr></thead><tbody>` +
+  items.map(text => `<tr><td class="no">${++n}</td><td>${esc(text)}</td></tr>`).join('') +
+  `</tbody></table></section>`
+).join('');
+</script>
+</body>
+</html>
