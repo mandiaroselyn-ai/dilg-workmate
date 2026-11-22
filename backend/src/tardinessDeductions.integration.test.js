@@ -13,8 +13,8 @@ const { AppSetting } = await import('./models/appSettingModel.js');
 mock.method(AppSetting, 'get', async () => '');
 
 const app = createApiApp();
-// HR 1, who changes leave credits.
-const hrAdmin = { _id: '64b000000000000000000041', email: 'hr@dilg.gov.ph', employeeId: 'HR-4', name: 'Maria Santos', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
+// HR 2, who changes leave credits.
+const hrAdmin = { _id: '64b000000000000000000041', email: 'hr@dilg.gov.ph', employeeId: 'HR-4', name: 'Maria Santos', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
 const employee = { _id: '64b000000000000000000042', email: 'juan@dilg.gov.ph', employeeId: 'EMP-4', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active' };
 
 const signIn = (t, as = hrAdmin) => {
@@ -72,8 +72,8 @@ test('an employee cannot charge leave credits', async t => {
   assert.equal(User.deductTardiness.mock.callCount(), 0);
 });
 
-test('only HR 1 and HR 2 change leave credits: an HR account with no step cannot', async t => {
-  for (const hrTask of ['', 'both']) {
+test('only HR 2 changes leave credits: HR 1 and an HR account with no step cannot', async t => {
+  for (const hrTask of ['leave-credits', '', 'both']) {
     const as = { ...hrAdmin, hrTask };
     t.mock.method(User, 'findByEmail', async () => as);
     t.mock.method(User, 'deductTardiness', async () => null);
@@ -86,7 +86,7 @@ test('only HR 1 and HR 2 change leave credits: an HR account with no step cannot
     ]) {
       const response = await request(app)[method](path).set('Authorization', token).send(body);
       assert.equal(response.status, 403, `${hrTask || 'no step'} ${path}`);
-      assert.match(response.body.error, /Only HR 1 and HR 2/);
+      assert.match(response.body.error, /Only HR 2 changes leave credits/);
     }
     assert.equal(User.deductTardiness.mock.callCount(), 0);
     assert.equal(User.setLeaveCredits.mock.callCount(), 0);

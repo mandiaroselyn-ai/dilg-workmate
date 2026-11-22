@@ -331,9 +331,9 @@ export const createEmployee = async (req, res) => {
     }
     const opening = normalizeOpeningLeaveCredits(req.body);
     if (opening.error) return res.status(400).json({ success: false, error: opening.error });
-    // An opening balance from the leave card is HR 1's or HR 2's to enter, like any change to leave credits.
+    // An opening balance from the leave card is HR 2's to enter, like any change to leave credits.
     if (opening.value && !canChangeLeaveCredits(req.user)) {
-      return res.status(403).json({ success: false, error: `${LEAVE_CREDITS_HR_ONLY} Leave the opening balance blank; HR 1 or HR 2 adds it after the account is made.` });
+      return res.status(403).json({ success: false, error: `${LEAVE_CREDITS_HR_ONLY} Leave the opening balance blank; HR 2 adds it after the account is made.` });
     }
     if (opening.value && !earnsLeaveCredits(employee)) {
       return res.status(400).json({ success: false, error: 'Contract of service and job order workers do not earn leave credits, so leave their opening balances blank.' });
@@ -576,7 +576,7 @@ export const getLeaveCreditsStart = async (req, res) => {
   }
 };
 
-// HR 1 sets the month WorkMate starts counting leave credits: { month: 'YYYY-MM' } (see
+// HR 2 sets the month WorkMate starts counting leave credits: { month: 'YYYY-MM' } (see
 // startMonthProblem for which months it can be).
 export const setLeaveCreditsStart = async (req, res) => {
   try {
@@ -591,7 +591,7 @@ export const setLeaveCreditsStart = async (req, res) => {
   }
 };
 
-// HR 1 enters the balances copied from the employees' leave cards as of the day before the start
+// HR 2 enters the balances copied from the employees' leave cards as of the day before the start
 // month: { balances: [{ identifier, vacationLeaveCredits, sickLeaveCredits }] }. Each one replaces
 // the employee's balance, once per start (a correction afterwards is an adjustment with a reason),
 // and each employee is notified. COS and JO workers earn no leave credits and are left out.

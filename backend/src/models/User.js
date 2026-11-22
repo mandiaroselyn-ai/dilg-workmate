@@ -18,8 +18,9 @@ const UserSchema = new mongoose.Schema({
   phoneNumber: { type: String, default: '0939 374 9823' },
   employeeId: { type: String, default: 'DILG-2026-7689' },
   accessLevel: { type: String, default: 'employee' },
-  // For an HR/Admin account, which HR step of a request it does (shared/hrSteps.js): HR 1's
-  // leave credits ('leave-credits') or HR 2's pre-approval ('pre-approval'). Empty, or the
+  // For an HR/Admin account, which HR it is (shared/hrSteps.js): HR 1, the HR/Admin desk
+  // ('leave-credits', its name from before HR 2 took over the leave credits), or HR 2, the leave
+  // credits, certification, and pre-approval ('pre-approval'). Empty, or the
   // 'both' some accounts were saved with before, until HR sets it; staffRules checks the value.
   hrTask: { type: String, default: '' },
   accountStatus: { type: String, default: 'Active' },
@@ -176,7 +177,7 @@ const UserSchema = new mongoose.Schema({
     }],
     default: []
   },
-  // The balance HR 1 copied from the leave card when WorkMate started counting leave credits
+  // The balance HR 2 copied from the leave card when WorkMate started counting leave credits
   // (shared/leaveStart.js), or one HR entered when making the account: the start month it is for
   // ('' when no start was set yet), the date it is as of, and the days.
   startingLeaveBalance: {
@@ -829,7 +830,7 @@ export const User = {
     return employee.toObject();
   },
 
-  // Sets an employee's balances to the starting balance HR 1 copied from their leave card for the
+  // Sets an employee's balances to the starting balance HR 2 copied from their leave card for the
   // start month `start` (as of `asOf`), once per start, and records it in the leave credit
   // history. Returns { employee }, { alreadySet } when one was already entered for this start,
   // or null when no employee account matches.

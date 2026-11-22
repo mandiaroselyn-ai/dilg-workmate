@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { HR2_DESK_VIEWS, awaitsHead, doesHrStep, hrStepOf, isHr2Notice, isLeaveWithHr, leaveCreditCertification, needsCreditCertification, readRecommendation, usesHr2Desk } from './hrSteps.js';
+import { HR2_DESK_VIEWS, awaitsHead, canChangeLeaveCredits, doesHrStep, hrStepOf, isHr2Notice, isLeaveWithHr, leaveCreditCertification, needsCreditCertification, readRecommendation, usesHr2Desk } from './hrSteps.js';
 
 test('a leave goes to HR 2, a Travel Order straight to the Head; HR 1 takes no step on requests', () => {
   assert.equal(hrStepOf({ type: 'Leave Request', status: 'Pending' }), 'pre-approval');
@@ -90,4 +90,13 @@ test('a leave is with HR 2 until HR 2 sends it to the Head; then the Head decide
   for (const status of ['For Supervisor', 'Approved', 'Rejected', 'Returned', 'Withdrawn', 'Draft']) {
     assert.equal(isLeaveWithHr({ type: 'Leave Request', status }), false, status);
   }
+});
+
+test('only HR 2 changes leave credits; HR 1 and an HR account without a step only see them', () => {
+  assert.equal(canChangeLeaveCredits({ accessLevel: 'hr_admin', hrTask: 'pre-approval' }), true);
+  for (const hrTask of ['leave-credits', '', 'both', undefined]) {
+    assert.equal(canChangeLeaveCredits({ accessLevel: 'hr_admin', hrTask }), false, String(hrTask));
+  }
+  assert.equal(canChangeLeaveCredits({ accessLevel: 'employee', hrTask: 'pre-approval' }), false);
+  assert.equal(canChangeLeaveCredits(null), false);
 });

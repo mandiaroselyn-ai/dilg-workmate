@@ -1,8 +1,8 @@
 import { earnsLeaveCredits } from './profileFields.js';
 
-// The month WorkMate starts keeping leave credits (YYYY-MM), set by HR 1. Vacation and sick
+// The month WorkMate starts keeping leave credits (YYYY-MM), set by HR 2. Vacation and sick
 // leave are cumulative and carry over to later years without limit (CSC MC No. 41, s. 1998,
-// Omnibus Rules on Leave), so an employee's earlier leave is not started over: HR 1 copies each
+// Omnibus Rules on Leave), so an employee's earlier leave is not started over: HR 2 copies each
 // active employee's balance on their leave card as of the day before the start, and WorkMate
 // counts from the start month on (1.25 days a month, approved leave, tardiness). The months
 // before it stay on the leave card.
@@ -32,7 +32,7 @@ export const asOfLabel = date => `${MONTH_NAMES[Number(date.slice(5, 7)) - 1]} $
 
 const isActive = employee => (employee?.accountStatus || 'Active').toString().toLowerCase() === 'active';
 
-// True when HR 1 still has to enter `employee`'s starting balance for `start`: an active employee
+// True when HR 2 still has to enter `employee`'s starting balance for `start`: an active employee
 // account that earns leave credits, hired before the start month (or with no date hired), with no
 // starting balance for this start yet. Someone hired from the start month on begins with none, as
 // any new employee does.
@@ -70,7 +70,7 @@ export const beforeStartProblem = (month, start) => (start && month < start
   ? `WorkMate starts counting leave credits in ${startMonthLabel(start)}. ${startMonthLabel(month)} is on the leave card, in the starting balance.`
   : '');
 
-// The starting balance HR 1 enters for one employee: { vacationLeaveCredits, sickLeaveCredits },
+// The starting balance HR 2 enters for one employee: { vacationLeaveCredits, sickLeaveCredits },
 // each a number of days from 0 to 1000 (blank is 0). Returns { value } or { error }.
 export const readStartingBalance = item => {
   const value = {};

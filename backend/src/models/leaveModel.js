@@ -61,7 +61,7 @@ const RequestSchema = new mongoose.Schema({
   statusHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
   // Set once leave credits have been deducted for this request's approval.
   creditsDeducted: { type: Boolean, default: false },
-  // HR's steps (shared/hrSteps.js; CSC Form No. 6, section 7): HR 1's certification of the
+  // HR's steps (shared/hrSteps.js; CSC Form No. 6, section 7): HR 2's certification of the
   // employee's leave credits (7.A), and HR 2's recommendation (7.B), each with who and when.
   creditCertification: { type: mongoose.Schema.Types.Mixed, default: null },
   // A Travel Order's other employees, from other offices or towns, who go with the one who filed

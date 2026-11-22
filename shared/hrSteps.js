@@ -4,10 +4,12 @@ import { leaveCharge, leaveCreditField } from './leaveCalc.js';
 // it: HR 2 certifies the employee's leave credits (7.A) and recommends approval or disapproval
 // (7.B), both signed by HR 2 on the form, and sends it to the Head, who decides (7.C and 7.D). A
 // Travel Order takes no HR step: it goes straight to the Head (the Provincial Director), who alone
-// signs it (the office, 2026-11-12). HR 1 takes no step on requests: HR 1 reviews and updates the
-// employees' leave credits on their own (Employee Management and DTR Records). Each HR/Admin
-// account is one of the two (`hrTask`).
+// signs it (the office, 2026-11-12). HR 2 also keeps the employees' leave credits. HR 1 (the Admin
+// Chief) takes no step on requests and does not change leave credits: HR 1 keeps the rest of the
+// HR/Admin desk and monitors everything. Each HR/Admin account is one of the two (`hrTask`).
 
+// The saved values. 'leave-credits' is HR 1's from before HR 2 took over the leave credits; it is
+// kept so the accounts already saved with it stay HR 1.
 export const HR_TASKS = ['leave-credits', 'pre-approval'];
 // As Staff Accounts and the Requests page show an account's step.
 export const HR_TASK_LABELS = {
@@ -16,7 +18,7 @@ export const HR_TASK_LABELS = {
 };
 // An HR/Admin account whose step HR has not set yet (such as one made before the steps were split).
 export const NO_HR_TASK_LABEL = 'No HR step set';
-export const HR_STEP_NAMES = { 'leave-credits': 'HR 1 (leave credits)', 'pre-approval': 'HR 2 (certification and pre-approval)' };
+export const HR_STEP_NAMES = { 'leave-credits': 'HR 1 (HR/Admin desk)', 'pre-approval': 'HR 2 (leave credits, certification, and pre-approval)' };
 
 // A leave whose credits HR 1 certified when HR 1 still did that step, waiting for HR 2.
 export const FOR_PRE_APPROVAL = 'For Pre-approval';
@@ -48,13 +50,13 @@ export const needsCreditCertification = request => request?.type === 'Leave Requ
 // until HR sets it in Staff Accounts.
 export const doesHrStep = (hrTask, step) => Boolean(step) && HR_TASKS.includes(hrTask) && hrTask === step;
 
-// Leave credits are HR 1's and HR 2's to review and update, everywhere they change by hand:
-// adjusting a balance, an opening balance from the leave card, charging a month's tardiness, and
-// crediting a month's earned leave. HR 2 (Sir Erick at DILG Marinduque) also enters the balances
-// he certifies on a leave. An HR/Admin account without an HR step changes none. (An approved
-// leave is charged by the system.)
-export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' && HR_TASKS.includes(user.hrTask);
-export const LEAVE_CREDITS_HR_ONLY = 'Only HR 1 and HR 2 change leave credits. Ask HR to set your HR step in Staff Accounts.';
+// Leave credits are HR 2's (Sir Erick at DILG Marinduque) to keep, everywhere they change by hand:
+// adjusting a balance, an opening balance from the leave card, the month WorkMate starts counting
+// and the starting balances, charging a month's tardiness, and crediting a month's earned leave.
+// HR 1 and an HR/Admin account without an HR step only see them. (An approved leave is charged by
+// the system.)
+export const canChangeLeaveCredits = user => user?.accessLevel === 'hr_admin' && user.hrTask === 'pre-approval';
+export const LEAVE_CREDITS_HR_ONLY = 'Only HR 2 changes leave credits.';
 
 // HR 1 and HR 2 have different desks. HR 1 (Ma'am Joane at DILG Marinduque, the Admin Chief)
 // keeps the whole HR/Admin desk and monitors everything. HR 2's desk (Sir Erick's) is only the

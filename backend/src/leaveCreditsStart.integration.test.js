@@ -12,9 +12,9 @@ const { AppSetting } = await import('./models/appSettingModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
 
 const app = createApiApp();
-// HR 1, who changes leave credits, and HR 2, who does not.
-const hr1 = { _id: '64b000000000000000000051', email: 'hr1@dilg.gov.ph', employeeId: 'HR-5', name: 'Ma. Joane O. Salcedo', accessLevel: 'hr_admin', hrTask: 'leave-credits', accountStatus: 'Active' };
-const hr2 = { ...hr1, _id: '64b000000000000000000052', email: 'hr2@dilg.gov.ph', employeeId: 'HR-6', hrTask: 'pre-approval' };
+// HR 2, who keeps the leave credits, and HR 1, who only sees them.
+const hr2 = { _id: '64b000000000000000000052', email: 'hr2@dilg.gov.ph', employeeId: 'HR-6', name: 'John Erick J. Matining', accessLevel: 'hr_admin', hrTask: 'pre-approval', accountStatus: 'Active' };
+const hr1 = { ...hr2, _id: '64b000000000000000000051', email: 'hr1@dilg.gov.ph', employeeId: 'HR-5', name: 'Ma. Joane O. Salcedo', hrTask: 'leave-credits' };
 // An employee since 2015 with no starting balance yet, one hired after the start, and a JO worker.
 const longTime = { _id: '64b000000000000000000053', email: 'juan@dilg.gov.ph', employeeId: 'EMP-5', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active', appointmentStatus: 'Permanent', dateHired: '2015-06-01', vacationLeaveCredits: 3, sickLeaveCredits: 3 };
 const newHire = { ...longTime, _id: '64b000000000000000000054', email: 'ana@dilg.gov.ph', employeeId: 'EMP-6', name: 'Ana Reyes', dateHired: '2026-11-16' };
@@ -28,7 +28,7 @@ const signOut = t => {
 };
 
 // Signs in as `as` with WorkMate's start month `start` and the employee accounts `employees`.
-const signIn = (t, { as = hr1, start = '', employees = accounts, now = '2026-11-20T02:00:00Z' } = {}) => {
+const signIn = (t, { as = hr2, start = '', employees = accounts, now = '2026-11-20T02:00:00Z' } = {}) => {
   t.mock.method(User, 'findByEmail', async email => (email === as.email ? as : null));
   t.mock.method(User, 'findAccount', async id => employees.find(item => item.employeeId === id || item.email === id) || null);
   t.mock.method(User, 'findByEmployeeId', async id => employees.find(item => item.employeeId === id) || null);
@@ -51,7 +51,7 @@ const signIn = (t, { as = hr1, start = '', employees = accounts, now = '2026-11-
   };
 };
 
-test('HR 1 sets the month WorkMate starts counting leave credits, as of the leave card the day before', async t => {
+test('HR 2 sets the month WorkMate starts counting leave credits, as of the leave card the day before', async t => {
   const session = signIn(t);
   const none = await session.getStart();
   assert.deepEqual(none.body, { success: true, start: '', asOf: '' });
@@ -61,18 +61,20 @@ test('HR 1 sets the month WorkMate starts counting leave credits, as of the leav
   assert.deepEqual(session.set.mock.calls[0].arguments.slice(0, 2), ['leaveCreditsStart', '2026-11']);
 });
 
-test('only HR 1 and HR 2 set the start; an HR account with no HR step sees it', async t => {
-  const session = signIn(t, { as: { ...hr2, hrTask: '' }, start: '2026-11' });
-  assert.equal((await session.setStart('2027-01')).status, 403);
-  assert.equal((await session.enter([{ identifier: 'EMP-5', vacationLeaveCredits: 40 }])).status, 403);
-  const seen = await session.getStart();
-  assert.equal(seen.body.start, '2026-11');
-  assert.equal(session.set.mock.callCount(), 0);
-});
-
-test('HR 2 also sets the start', async t => {
-  const session = signIn(t, { as: hr2 });
-  assert.equal((await session.setStart('2026-12')).status, 200);
+test('only HR 2 sets the start; HR 1 and an HR account with no HR step see it', async t => {
+  for (const as of [hr1, { ...hr2, hrTask: '' }]) {
+    const session = signIn(t, { as, start: '2026-11' });
+    const refused = await session.setStart('2027-01');
+    assert.equal(refused.status, 403, as.hrTask || 'no step');
+    assert.match(refused.body.error, /Only HR 2 changes leave credits/);
+    assert.equal((await session.enter([{ identifier: 'EMP-5', vacationLeaveCredits: 40 }])).status, 403);
+    assert.equal((await session.credit('2026-10', ['EMP-5'])).status, 403);
+    assert.equal((await session.charge('2026-10', [{ identifier: 'EMP-5', minutes: 5 }])).status, 403);
+    const seen = await session.getStart();
+    assert.equal(seen.body.start, '2026-11');
+    assert.equal(session.set.mock.callCount(), 0);
+    signOut(t);
+  }
 });
 
 test('the start comes after any month already credited, and stays once starting balances are entered', async t => {
@@ -88,7 +90,7 @@ test('the start comes after any month already credited, and stays once starting 
   assert.match(moved.body.error, /already entered, so the start stays November 2026/);
 });
 
-test('HR 1 enters each active employee\'s balance from the leave card once, and the employee is told', async t => {
+test('HR 2 enters each active employee\'s balance from the leave card once, and the employee is told', async t => {
   const session = signIn(t, { start: '2026-11' });
   const setBalance = t.mock.method(User, 'setStartingBalance', async (identifier, credits) => ({
     employee: { ...longTime, ...credits, startingLeaveBalance: { start: '2026-11', asOf: '2026-10-31', ...credits } }
@@ -142,7 +144,7 @@ test('months before the start are on the leave card, so they are not credited or
   assert.equal(charge.mock.callCount(), 0);
 });
 
-test('an employee without a starting balance is not credited or charged until HR 1 enters it', async t => {
+test('an employee without a starting balance is not credited or charged until HR 2 enters it', async t => {
   // Today is in December, so November has ended.
   const session = signIn(t, { start: '2026-11', now: '2026-12-03T02:00:00Z' });
   const credit = t.mock.method(User, 'creditMonthlyEarnings', async (identifier, entry) => ({

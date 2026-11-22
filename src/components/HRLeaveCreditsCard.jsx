@@ -10,7 +10,7 @@ const creditsOf = employee => ({
 });
 
 // One employee's vacation and sick leave balances, which HR adjusts to match the official leave
-// card. Approved leave is deducted by the system. `canEdit`: only HR 1 and HR 2 adjust them
+// card. Approved leave is deducted by the system. `canEdit`: only HR 2 adjusts them
 // (shared/hrSteps.js); other HR accounts only see them. `onNotify(message, isError)` shows the
 // result. Give each employee their own key, so a half-filled adjustment does not carry over.
 export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmployeesChange, onNotify, className = 'mt-5' }) {
@@ -59,7 +59,7 @@ export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmploy
         {!creditForm && canEdit && (
           <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">Adjust</button>
         )}
-        {!canEdit && <p className="max-w-[160px] text-right text-[11px] font-semibold text-slate-500">Only HR 1 and HR 2 adjust leave credits.</p>}
+        {!canEdit && <p className="max-w-[160px] text-right text-[11px] font-semibold text-slate-500">Only HR 2 adjusts leave credits.</p>}
       </div>
       {creditForm ? (
         <form onSubmit={saveLeaveCredits} className="mt-3 space-y-3">

@@ -136,7 +136,7 @@ test('HR can only forward a request that is waiting for HR', () => {
   // HR may still add remarks only.
   assert.equal(reviewUpdateProblem('For Supervisor', { remarks: 'Noted.' }, 'hr_admin', { type: 'Travel Order', hrTask: 'pre-approval' }), null);
   // HR 1 takes no step on requests.
-  assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'leave-credits' }), /This step is HR 2 \(certification and pre-approval\)'s\. Your HR account does HR 1 \(leave credits\) only\./);
+  assert.match(reviewUpdateProblem('Pending', forward, 'hr_admin', { type: 'Leave Request', hrTask: 'leave-credits' }), /This step is HR 2 \(leave credits, certification, and pre-approval\)'s\. Your HR account does HR 1 \(HR\/Admin desk\) only\./);
 });
 
 test('reviewers cannot act on drafts or withdrawn requests', () => {

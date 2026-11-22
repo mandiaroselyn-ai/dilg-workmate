@@ -31,5 +31,5 @@ export const AppSetting = {
   }
 };
 
-// The month WorkMate starts counting leave credits (YYYY-MM), or '' until HR 1 sets it.
+// The month WorkMate starts counting leave credits (YYYY-MM), or '' until HR 2 sets it.
 export const leaveCreditsStart = () => AppSetting.get(LEAVE_CREDITS_START);

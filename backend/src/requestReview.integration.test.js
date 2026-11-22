@@ -178,7 +178,7 @@ test('HR 1 takes no step on requests; only HR 2 does', async t => {
   for (const id of ['REQ-PENDING', 'REQ-CERTIFIED']) {
     const response = await hr1Only.patch(id, approve);
     assert.equal(response.status, 409, id);
-    assert.equal(response.body.error, "This step is HR 2 (certification and pre-approval)'s. Your HR account does HR 1 (leave credits) only.");
+    assert.equal(response.body.error, "This step is HR 2 (leave credits, certification, and pre-approval)'s. Your HR account does HR 1 (HR/Admin desk) only.");
   }
   assert.equal((await hr1Only.patch('REQ-PENDING', { status: 'Returned', remarks: 'Attach the medical certificate.' })).status, 409);
   assert.equal(hr1Only.saves.mock.callCount(), 0);

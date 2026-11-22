@@ -14,9 +14,9 @@ const daysText = value => Number(value ?? 0).toFixed(3);
 // HR 2's Leave Credits page (Sir Erick at DILG Marinduque, whose WorkMate is only the requests
 // to pre-approve and the leave credits): every employee's vacation and sick leave balances, which
 // he adjusts to match the leave card, the balances WorkMate starts from (Leave Credits Start),
-// and each ended month's tardiness charge and earned leave. HR 1 does the same in Employee
-// Management and DTR Records. Contract of service and job order workers earn no leave credits,
-// so they are not listed.
+// and each ended month's tardiness charge and earned leave. Only HR 2 changes them; HR 1 sees
+// them in Employee Management and DTR Records. Contract of service and job order workers earn no
+// leave credits, so they are not listed.
 export default function HRLeaveCreditsView({ user = {}, employees = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth, requests = [], onEmployeesChange }) {
   const canEdit = canChangeLeaveCredits(user);
   const [creditsStart, setCreditsStart] = useLeaveCreditsStart();
