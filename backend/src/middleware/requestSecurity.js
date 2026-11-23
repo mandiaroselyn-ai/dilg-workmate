@@ -25,6 +25,8 @@ export const validateApiBody = (req, res, next) => {
     'dilgIdImage',
     'dilgIdBackImage',
     'selfieImage',
+    // The head-turn photo taken right after the enrollment selfie.
+    'selfieTurnImage',
     ...(typeof body.record?.selfieUrl === 'string' ? ['record.selfieUrl'] : []),
     ...(typeof body.record?.timeOutSelfieUrl === 'string' ? ['record.timeOutSelfieUrl'] : []),
     // The head-turn photo taken right after an attendance selfie.

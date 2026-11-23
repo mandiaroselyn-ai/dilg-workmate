@@ -20,7 +20,7 @@ const faqs = [
   {
     topic: 'Getting started',
     question: 'What do I need before my first Time In?',
-    answer: 'Two things: (1) Biometric Enrollment approved by HR. Open Profile, then Biometric Enrollment, upload the front and back of your government ID, and take a selfie. The same tab shows whether HR has approved it. (2) Your fingerprint or face unlock registered on your phone. In a browser, tap Register this phone on the Biometric Enrollment tab. In the WorkMate app, your phone is registered the first time you verify your fingerprint on the Attendance page.'
+    answer: 'Two things: (1) Biometric Enrollment approved by HR. Open Profile, then Biometric Enrollment, choose your ID (the PhilSys National ID is best), type its number, upload photos of it (front and back, unless it has everything on one side), and take a selfie. The same tab shows whether HR has approved it. (2) Your fingerprint or face unlock registered on your phone. In a browser, tap Register this phone on the Biometric Enrollment tab. In the WorkMate app, your phone is registered the first time you verify your fingerprint on the Attendance page.'
   },
   {
     topic: 'Getting started',
@@ -294,8 +294,9 @@ export default function HelpView({ user }) {
           <p className="text-xs leading-5 text-slate-600">WorkMate collects the following to record your attendance and process your requests, in line with the Data Privacy Act of 2012 (Republic Act No. 10173):</p>
           <ul className="list-disc space-y-1 pl-5 text-xs leading-5 text-slate-600">
             <li>Your name, employee ID, position, office, email, and mobile number.</li>
-            <li>Your government ID photos and enrollment selfie, which HR reviews.</li>
-            <li>Your Time In selfie, which is compared with your enrollment selfie.</li>
+            <li>Your government ID photos, the type and number of that ID, and your enrollment selfie, which HR reviews. The server compares the face on your ID with your selfie to help HR. Only HR sees the ID number.</li>
+            <li>Your Time In, Lunch, and Time Out selfies, which are compared with your enrollment selfie.</li>
+            <li>A second photo with your head turned, taken with each selfie to show it is live. It is checked and not kept.</li>
             <li>Your location at Time In and Time Out, and while your shift is open.</li>
             <li>Your leave and travel requests and their attachments.</li>
           </ul>

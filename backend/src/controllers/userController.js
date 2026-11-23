@@ -288,7 +288,8 @@ const employeeResponse = employee => ({
   biometricEnrollmentReviewedAt: employee.biometricEnrollmentReviewedAt || null,
   biometricEnrollmentReviewedBy: employee.biometricEnrollmentReviewedBy || '',
   biometricEnrollmentReviewNote: employee.biometricEnrollmentReviewNote || '',
-  faceLivenessStatus: 'not-configured',
+  biometricReenrollRequested: Boolean(employee.biometricReenrollRequested),
+  faceLivenessStatus: employee.faceLivenessStatus || 'not-configured',
   faceVerificationAudit: (employee.faceVerificationAudit || []).map(event => ({
     timestamp: event.timestamp,
     outcome: event.outcome,

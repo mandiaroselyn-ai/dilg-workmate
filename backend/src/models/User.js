@@ -75,7 +75,21 @@ const UserSchema = new mongoose.Schema({
   faceEnrollmentDescriptor: { type: [Number], default: undefined, select: false },
   dilgIdPhoto: { type: String, default: '' },
   dilgIdBackPhoto: { type: String, default: '' },
+  // Which ID was submitted (see shared/enrollmentIds.js) and its number as printed, for HR to
+  // check against the PDS. The number is shown only to HR.
+  enrollmentIdType: { type: String, default: '' },
+  enrollmentIdNumber: { type: String, default: '' },
+  // How close the face on the ID is to the enrollment selfie, to help HR (null when no face
+  // was found on the ID), and whether it was compared (enrollments before this were not).
+  enrollmentIdFaceDistance: { type: Number, default: null },
+  enrollmentIdFaceCompared: { type: Boolean, default: false },
+  // True for an enrollment made with the sample ID the app used to offer for testing; the
+  // employee may submit a real ID in its place.
   biometricEnrollmentIsDemo: { type: Boolean, default: false },
+  // Set when HR asks an approved employee for a new enrollment selfie (for example when their
+  // looks changed and Time In keeps failing the face match). The approved one stays in use
+  // until they submit the new one.
+  biometricReenrollRequested: { type: Boolean, default: false },
   biometricEnrollmentStatus: {
     type: String,
     enum: ['not-submitted', 'pending', 'hr-approved', 'rejected'],
@@ -371,7 +385,7 @@ export const User = {
     ensureConnected();
     if (!mongoose.isValidObjectId(userId)) return null;
     return MongoUser.findById(userId)
-      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
+      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote biometricReenrollRequested faceLivenessStatus dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage enrollmentIdType enrollmentIdNumber enrollmentIdFaceDistance enrollmentIdFaceCompared')
       .lean();
   },
 
@@ -379,7 +393,7 @@ export const User = {
     ensureConnected();
     if (!employeeId) return null;
     return MongoUser.findOne({ employeeId: employeeId.toString().trim() })
-      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage')
+      .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote biometricReenrollRequested faceLivenessStatus dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage enrollmentIdType enrollmentIdNumber enrollmentIdFaceDistance enrollmentIdFaceCompared')
       .lean();
   },
 
@@ -575,15 +589,21 @@ export const User = {
           faceEnrollmentImage: enrollment.selfieImage,
           faceEnrollmentDescriptor: enrollment.faceDescriptor,
           dilgIdPhoto: enrollment.dilgIdImage,
-          dilgIdBackPhoto: enrollment.dilgIdBackImage,
-          biometricEnrollmentIsDemo: Boolean(enrollment.isDemoEnrollment),
+          dilgIdBackPhoto: enrollment.dilgIdBackImage || '',
+          enrollmentIdType: enrollment.idType,
+          enrollmentIdNumber: enrollment.idNumber,
+          enrollmentIdFaceDistance: Number.isFinite(enrollment.idFaceDistance) ? enrollment.idFaceDistance : null,
+          enrollmentIdFaceCompared: true,
+          biometricEnrollmentIsDemo: false,
           biometricEnrollmentStatus: 'pending',
-          biometricEnrollmentVersion: 3,
+          biometricEnrollmentVersion: 4,
           biometricEnrollmentSubmittedAt: now,
           biometricEnrollmentReviewedAt: null,
           biometricEnrollmentReviewedBy: '',
           biometricEnrollmentReviewNote: '',
-          faceLivenessStatus: 'not-configured',
+          biometricReenrollRequested: false,
+          // The selfie passed the head turn (see faceController.submitBiometricEnrollment).
+          faceLivenessStatus: 'head-turn-passed',
           dilgIdMatchConfidence: null,
           dilgIdVerifiedAt: null,
           dilgIdVerifiedBy: '',
@@ -607,7 +627,7 @@ export const User = {
     return { conflict: true };
   },
 
-  reviewBiometricEnrollment: async (userId, decision, note, reviewedBy, isDemoEnrollment = false) => {
+  reviewBiometricEnrollment: async (userId, decision, note, reviewedBy) => {
     ensureConnected();
     if (!mongoose.isValidObjectId(userId)) return null;
     const update = {
@@ -615,17 +635,12 @@ export const User = {
         biometricEnrollmentStatus: decision === 'approve' ? 'hr-approved' : 'rejected',
         biometricEnrollmentReviewedAt: new Date(),
         biometricEnrollmentReviewedBy: reviewedBy || '',
-        biometricEnrollmentReviewNote: note || '',
-        faceLivenessStatus: 'not-configured'
+        biometricEnrollmentReviewNote: note || ''
       },
       $push: {
         faceVerificationAudit: {
           $each: [{
-            outcome: decision === 'approve'
-              ? isDemoEnrollment
-                ? 'hr-demo-approved-attendance-test-only'
-                : 'hr-approved-liveness-not-configured'
-              : 'hr-rejected-enrollment',
+            outcome: decision === 'approve' ? 'hr-approved-liveness-not-configured' : 'hr-rejected-enrollment',
             reviewedBy: reviewedBy || '',
             provider: 'manual-hr-review'
           }],
@@ -644,6 +659,32 @@ export const User = {
       { new: true, runValidators: true }
     );
     return user ? user.toObject() : { conflict: true };
+  },
+
+  // HR asks an approved employee for a new enrollment selfie, with the reason (`note`). Null
+  // when the enrollment is not approved.
+  requestReenrollment: async (userId, note, reviewedBy = '') => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    const user = await MongoUser.findOneAndUpdate(
+      { _id: userId, accessLevel: 'employee', biometricEnrollmentStatus: 'hr-approved' },
+      {
+        $set: {
+          biometricReenrollRequested: true,
+          biometricEnrollmentReviewNote: note,
+          biometricEnrollmentReviewedAt: new Date(),
+          biometricEnrollmentReviewedBy: reviewedBy
+        },
+        $push: {
+          faceVerificationAudit: {
+            $each: [{ outcome: 'hr-requested-reenrollment', reviewedBy, provider: 'manual-hr-review' }],
+            $slice: -50
+          }
+        }
+      },
+      { new: true }
+    );
+    return user ? user.toObject() : null;
   },
 
   addFaceVerificationAudit: async (employeeId, event) => {

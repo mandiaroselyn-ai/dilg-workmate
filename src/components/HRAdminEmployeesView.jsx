@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { registeredFingerprints } from '../utils/fingerprintMessages';
+import { enrollmentIdNeedsBack, ID_PHOTO_SIMILAR_DISTANCE } from '../../shared/enrollmentIds.js';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES, PROVINCE_LGU, lguOfStation } from '../../shared/marinduqueLocations';
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
@@ -162,13 +163,18 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   const [savedEnrollmentImage, setSavedEnrollmentImage] = useState('');
   const [dilgIdPhoto, setDilgIdPhoto] = useState('');
   const [dilgIdBackPhoto, setDilgIdBackPhoto] = useState('');
+  // True for a submission made with the sample ID the app used to offer for testing.
   const [isDemoEnrollment, setIsDemoEnrollment] = useState(false);
+  // The submitted ID's type and number, for checking against the employee's PDS.
+  const [enrollmentId, setEnrollmentId] = useState({ type: '', label: '', number: '', faceCompared: false, faceDistance: null });
   const [enrollmentImagesLoading, setEnrollmentImagesLoading] = useState(false);
   const [enrollmentImagesError, setEnrollmentImagesError] = useState('');
   const [enrollmentImagesReloadKey, setEnrollmentImagesReloadKey] = useState(0);
   const [biometricReviewNote, setBiometricReviewNote] = useState('');
   const [biometricReviewLoading, setBiometricReviewLoading] = useState(false);
   const [deviceReviewLoading, setDeviceReviewLoading] = useState(false);
+  // HR's reason when asking an approved employee for a new enrollment selfie.
+  const [reenrollNote, setReenrollNote] = useState('');
   const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [accountStatusUpdating, setAccountStatusUpdating] = useState(false);
@@ -207,7 +213,8 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   const selectedEmployee = employeeAccounts.find((employee) => {
     return employeeKey(employee) === selectedId;
   });
-  const requiresBackId = (selectedEmployee?.biometricEnrollmentVersion || 1) >= 2;
+  // The back of the ID, except for an ID type with everything on one side or page.
+  const requiresBackId = (selectedEmployee?.biometricEnrollmentVersion || 1) >= 2 && enrollmentIdNeedsBack(enrollmentId.type);
 
   useEffect(() => {
     let active = true;
@@ -215,6 +222,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     setDilgIdBackPhoto('');
     setSavedEnrollmentImage('');
     setIsDemoEnrollment(false);
+    setEnrollmentId({ type: '', label: '', number: '', faceCompared: false, faceDistance: null });
     setBiometricReviewNote('');
     setEnrollmentImagesError('');
     const employeeId = selectedEmployee?.employeeId;
@@ -245,6 +253,13 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
           setDilgIdBackPhoto(result.dilgIdBackImage || '');
           setSavedEnrollmentImage(result.enrollmentImage || '');
           setIsDemoEnrollment(Boolean(result.enrollment?.biometricEnrollmentIsDemo));
+          setEnrollmentId({
+            type: result.enrollmentIdType || '',
+            label: result.enrollmentIdLabel || '',
+            number: result.enrollmentIdNumber || '',
+            faceCompared: Boolean(result.enrollmentIdFaceCompared),
+            faceDistance: Number.isFinite(result.enrollmentIdFaceDistance) ? result.enrollmentIdFaceDistance : null
+          });
           setBiometricReviewNote(result.enrollment?.biometricEnrollmentReviewNote || '');
           setEnrollmentImagesError('');
         }
@@ -295,12 +310,16 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
       notify('Add a rejection reason so the employee knows what to resubmit.', true);
       return;
     }
+    if (decision === 'reenroll' && !reenrollNote.trim()) {
+      notify('Write why a new selfie is needed, so the employee knows.', true);
+      return;
+    }
     setBiometricReviewLoading(true);
     try {
       const response = await apiFetch(`/api/face-enrollment?action=review&employeeId=${encodeURIComponent(selectedEmployee.employeeId)}&userId=${encodeURIComponent(selectedEmployee._id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, note: biometricReviewNote.trim() })
+        body: JSON.stringify({ decision, note: (decision === 'reenroll' ? reenrollNote : biometricReviewNote).trim() })
       });
       const data = await parseApiResponse(response, 'HR biometric review');
       if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save HR review.');
@@ -309,7 +328,10 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
           ? { ...employee, ...data.enrollment }
           : employee
       ));
-      const reviewMessage = data.notificationWarning || (decision === 'approve'
+      if (decision === 'reenroll') setReenrollNote('');
+      const reviewMessage = data.notificationWarning || (decision === 'reenroll'
+        ? 'The employee was asked for a new enrollment selfie. Their current one stays in use until they submit it.'
+        : decision === 'approve'
         ? 'HR review approved. Attendance selfies will now be compared with the approved enrollment selfie, and each needs a head turn.'
         : 'Enrollment rejected. The employee was notified to correct and resubmit.');
       notify(reviewMessage, Boolean(data.notificationWarning));
@@ -837,7 +859,7 @@ This cannot be undone.`
           </div>
           {isDemoEnrollment && (
             <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-900">
-              DEMO ONLY — this submission contains fictional sample ID images. You may approve it to test attendance selfie matching, but this is not identity verification and must not be used for real employee approval.
+This enrollment used the sample ID the app used to offer for testing, which does not show who the employee is. The employee can now submit their real ID; reject a pending one so they do.
             </p>
           )}
 
@@ -931,7 +953,7 @@ This cannot be undone.`
                   ? 'Pending HR review'
                   : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
                     ? selectedEmployee.biometricEnrollmentIsDemo
-                      ? 'DEMO approved · attendance matching for testing'
+                      ? 'Approved with the old sample ID · waiting for a real ID'
                       : 'HR approved · attendance face matching enabled'
                     : selectedEmployee.biometricEnrollmentStatus === 'rejected'
                       ? 'Not approved'
@@ -980,6 +1002,28 @@ This cannot be undone.`
                 </div>
               );
             })()}
+            {(enrollmentId.label || enrollmentId.number) && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">
+                <p>ID submitted: <b>{enrollmentId.label || 'Not stated'}</b>{enrollmentId.number ? <> · No. <b className="font-mono">{enrollmentId.number}</b></> : null}</p>
+                <p className="mt-1 text-slate-500">Check that this number and the name on the ID match the employee's Personal Data Sheet.</p>
+              </div>
+            )}
+            {/* The server's comparison of the face on the ID with the selfie: an aid, not a decision. */}
+            {enrollmentId.faceCompared && (
+              <p className={`mt-2 rounded-xl border p-3 text-xs font-semibold ${
+                enrollmentId.faceDistance === null
+                  ? 'border-slate-200 bg-slate-50 text-slate-700'
+                  : enrollmentId.faceDistance <= ID_PHOTO_SIMILAR_DISTANCE
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-amber-300 bg-amber-50 text-amber-900'
+              }`}>
+                {enrollmentId.faceDistance === null
+                  ? 'No clear face was found on the ID photo, so the server could not compare it with the selfie. Compare them by eye.'
+                  : enrollmentId.faceDistance <= ID_PHOTO_SIMILAR_DISTANCE
+                    ? `The face on the ID looks like the selfie (distance ${enrollmentId.faceDistance.toFixed(3)}). Still compare them by eye.`
+                    : `The face on the ID does not look like the selfie (distance ${enrollmentId.faceDistance.toFixed(3)}). Compare them carefully; an old or small ID photo can also do this.`}
+              </p>
+            )}
             {(dilgIdPhoto || dilgIdBackPhoto || savedEnrollmentImage) ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {dilgIdPhoto && (
@@ -1050,19 +1094,43 @@ This cannot be undone.`
                   />
                 </label>
                 {isDemoEnrollment ? (
-                  <p role="status" className="text-xs font-semibold text-amber-800">This is a demo enrollment. Approving enables attendance selfie matching for testing only.</p>
+                  <p role="status" className="text-xs font-semibold text-amber-800">This submission used the sample ID, which is no longer accepted. Reject it so the employee submits their real ID.</p>
                 ) : (!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
                   <p role="status" className="text-xs font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
-                    {biometricReviewLoading ? 'Saving...' : isDemoEnrollment ? 'Approve Demo for Testing' : 'Approve HR Review'}
+                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || isDemoEnrollment || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                    {biometricReviewLoading ? 'Saving...' : 'Approve HR Review'}
                   </button>
                   <button type="button" onClick={() => handleBiometricReview('reject')} disabled={biometricReviewLoading} className="rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
                     {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
                   </button>
                 </div>
                 <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies, each with a head turn that a printed photo cannot do. It does not stop a video played back on another screen.</p>
+              </div>
+            )}
+            {/* An approved employee whose Time In keeps failing the face match can be asked for a new selfie. */}
+            {selectedEmployee.biometricEnrollmentStatus === 'hr-approved' && (
+              <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                {selectedEmployee.biometricReenrollRequested ? (
+                  <p className="text-xs font-semibold text-amber-800">You asked this employee for a new enrollment selfie. Their current one stays in use until they submit it; then it waits for your approval here.</p>
+                ) : (
+                  <>
+                    <p className="text-xs font-black text-slate-700">Time In keeps failing the face match?</p>
+                    <p className="text-xs text-slate-600">Ask for a new enrollment selfie, for example after a change in looks (glasses, beard, weight). The current one stays in use until the employee submits the new one; then Time In waits for your approval.</p>
+                    <textarea
+                      value={reenrollNote}
+                      onChange={event => setReenrollNote(event.target.value)}
+                      maxLength={500}
+                      rows={2}
+                      placeholder="Reason, shown to the employee"
+                      className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium outline-none focus:border-blue-500"
+                    />
+                    <button type="button" onClick={() => handleBiometricReview('reenroll')} disabled={biometricReviewLoading || !reenrollNote.trim()} className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                      {biometricReviewLoading ? 'Saving...' : 'Ask to Re-enroll'}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </section>

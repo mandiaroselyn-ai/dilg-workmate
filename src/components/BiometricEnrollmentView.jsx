@@ -5,6 +5,7 @@ import { apiFetch, parseApiResponse } from '../utils/api';
 import { scrollIntoContentView } from '../utils/scroll';
 import { hasNativeBiometricBridge, requestNativeBiometricSignature } from '../utils/nativeBiometricBridge.js';
 import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
+import { ENROLLMENT_ID_TYPES, enrollmentIdType, normalizeEnrollmentIdNumber } from '../../shared/enrollmentIds.js';
 
 // A registration prompt that has not opened or finished by now is abandoned.
 const FINGERPRINT_PROMPT_TIMEOUT_MS = 65000;
@@ -44,9 +45,17 @@ const statusCopy = {
 export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRefreshEnrollmentStatus }) {
   const [dilgIdImage, setDilgIdImage] = useState('');
   const [dilgIdBackImage, setDilgIdBackImage] = useState('');
-  const [sampleIdSides, setSampleIdSides] = useState({ front: false, back: false });
-  const [loadingSampleId, setLoadingSampleId] = useState(false);
+  // Which ID is submitted (shared/enrollmentIds.js) and its number as printed.
+  const [idType, setIdType] = useState('');
+  const [idNumber, setIdNumber] = useState('');
   const [selfieImage, setSelfieImage] = useState('');
+  // The second photo, with the head turned a little to one side, which the server checks is
+  // the same face turned (a flat photo held up to the camera cannot do it).
+  const [selfieTurnImage, setSelfieTurnImage] = useState('');
+  const selectedIdType = enrollmentIdType(idType);
+  // An ID with all its details on one side or page needs no photo of its back.
+  const backNeeded = selectedIdType ? selectedIdType.backNeeded : true;
+  const idDetailsReady = Boolean(selectedIdType && normalizeEnrollmentIdNumber(idNumber));
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraTarget, setCameraTarget] = useState('');
   const [cameraError, setCameraError] = useState('');
@@ -75,13 +84,18 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const idInputRef = useRef(null);
   const idBackInputRef = useRef(null);
   const selfieInputRef = useRef(null);
+  const selfieTurnInputRef = useRef(null);
   const enrollmentFormRef = useRef(null);
   const automaticSubmissionStartedRef = useRef(false);
   const submissionInProgressRef = useRef(false);
   const status = user?.biometricEnrollmentStatus || 'not-submitted';
   const canResubmitPendingEnrollment = status === 'pending';
+  // An enrollment approved with the sample ID the app used to offer is replaced with a real ID.
+  const approvedWithSampleId = status === 'hr-approved' && Boolean(user?.biometricEnrollmentIsDemo);
+  // HR asked an approved employee for a new enrollment selfie.
+  const reenrollRequested = status === 'hr-approved' && Boolean(user?.biometricReenrollRequested);
   const canSubmit = !refreshingStatus
-    && (status === 'not-submitted' || status === 'rejected' || canResubmitPendingEnrollment);
+    && (status === 'not-submitted' || status === 'rejected' || canResubmitPendingEnrollment || approvedWithSampleId || reenrollRequested);
 
   const refreshStatus = async () => {
     if (!onRefreshEnrollmentStatus) return;
@@ -293,7 +307,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       streamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-          facingMode: target === 'selfie' ? 'user' : 'environment',
+          facingMode: target === 'selfie' || target === 'selfie-turn' ? 'user' : 'environment',
           width: { ideal: 1280 },
           height: { ideal: 960 }
         }
@@ -313,7 +327,9 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setCameraError('Wait until the camera preview is ready, then capture again.');
       return;
     }
-    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+    // The head-turn photo is only checked, not kept, so it is smaller.
+    const maxSide = cameraTarget === 'selfie-turn' ? 640 : 1280;
+    const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
@@ -323,38 +339,43 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       return;
     }
     // A selfie is saved as the mirror image the employee saw in the preview; ID photos are not.
-    if (cameraTarget === 'selfie') {
+    if (cameraTarget === 'selfie' || cameraTarget === 'selfie-turn') {
       context.translate(canvas.width, 0);
       context.scale(-1, 1);
     }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     try {
-      const image = encodeFaceImage(canvas, 1280, 0.78);
-      if (cameraTarget === 'id-front') {
-        setDilgIdImage(image);
-        setSampleIdSides(previous => ({ ...previous, front: false }));
-      } else if (cameraTarget === 'id-back') {
-        setDilgIdBackImage(image);
-        setSampleIdSides(previous => ({ ...previous, back: false }));
-      } else setSelfieImage(image);
+      const image = encodeFaceImage(canvas, maxSide, 0.78);
       automaticSubmissionStartedRef.current = false;
       setCameraError('');
       setError('');
       setSuccess('');
+      if (cameraTarget === 'selfie') {
+        // The camera stays open for the head-turn photo.
+        setSelfieImage(image);
+        setSelfieTurnImage('');
+        setCameraTarget('selfie-turn');
+        return;
+      }
+      if (cameraTarget === 'id-front') setDilgIdImage(image);
+      else if (cameraTarget === 'id-back') setDilgIdBackImage(image);
+      else if (cameraTarget === 'selfie-turn') setSelfieTurnImage(image);
       stopCamera();
     } catch (imageError) {
       setCameraError(imageError.message || 'Unable to prepare this camera image.');
     }
   };
 
-  // The app's WebView has no live camera preview, so it opens the phone's own front camera.
-  const openSelfieCamera = () => {
-    if (window.ReactNativeWebView && selfieInputRef.current) {
-      selfieInputRef.current.setAttribute('capture', 'user');
-      selfieInputRef.current.click();
+  // The app's WebView has no live camera preview, so it opens the phone's own front camera,
+  // once for the selfie and once more for the head turn.
+  const openSelfieCamera = (target = 'selfie') => {
+    const input = target === 'selfie-turn' ? selfieTurnInputRef.current : selfieInputRef.current;
+    if (window.ReactNativeWebView && input) {
+      input.setAttribute('capture', 'user');
+      input.click();
       return;
     }
-    startCamera('selfie');
+    startCamera(target);
   };
 
   const handleImageSelection = async (event, target) => {
@@ -371,14 +392,17 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       return;
     }
     try {
-      const image = await resizeFaceImage(file, 1280, 0.78);
+      const image = await resizeFaceImage(file, target === 'selfie-turn' ? 640 : 1280, 0.78);
       if (target === 'id-front') {
         setDilgIdImage(image);
-        setSampleIdSides(previous => ({ ...previous, front: false }));
       } else if (target === 'id-back') {
         setDilgIdBackImage(image);
-        setSampleIdSides(previous => ({ ...previous, back: false }));
-      } else setSelfieImage(image);
+      } else if (target === 'selfie-turn') {
+        setSelfieTurnImage(image);
+      } else {
+        setSelfieImage(image);
+        setSelfieTurnImage('');
+      }
       automaticSubmissionStartedRef.current = false;
       setError('');
       setCameraError('');
@@ -388,39 +412,27 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     }
   };
 
-  const handleUseSampleId = async () => {
-    setLoadingSampleId(true);
-    setError('');
-    try {
-      const [frontResponse, backResponse] = await Promise.all([
-        fetch('/sample-id-front.jpg', { cache: 'no-store' }),
-        fetch('/sample-id-back.jpg', { cache: 'no-store' })
-      ]);
-      if (!frontResponse.ok || !backResponse.ok) {
-        throw new Error('The sample ID images could not be loaded. Refresh the app and try again.');
-      }
-      const [frontBlob, backBlob] = await Promise.all([frontResponse.blob(), backResponse.blob()]);
-      const [frontImage, backImage] = await Promise.all([
-        resizeFaceImage(new File([frontBlob], 'sample-id-front.jpg', { type: frontBlob.type || 'image/jpeg' }), 1280, 0.78),
-        resizeFaceImage(new File([backBlob], 'sample-id-back.jpg', { type: backBlob.type || 'image/jpeg' }), 1280, 0.78)
-      ]);
-      setDilgIdImage(frontImage);
-      setDilgIdBackImage(backImage);
-      setSampleIdSides({ front: true, back: true });
-      automaticSubmissionStartedRef.current = false;
-      setSuccess('');
-    } catch (sampleError) {
-      setError(sampleError.message || 'Unable to load the demo ID images.');
-    } finally {
-      setLoadingSampleId(false);
-    }
-  };
+  const idImagesReady = Boolean(dilgIdImage && (dilgIdBackImage || !backNeeded));
 
   const handleSubmit = async () => {
     if (submissionInProgressRef.current) return;
     setError('');
-    if (!dilgIdImage || !dilgIdBackImage || !selfieImage) {
-      setError('Add clear photos of the front and back of your government ID, then capture your enrollment selfie.');
+    if (!selectedIdType) {
+      setError('Choose the type of ID you are submitting.');
+      return;
+    }
+    if (!normalizeEnrollmentIdNumber(idNumber)) {
+      setError('Enter the ID number as printed on your ID (letters, numbers, and dashes).');
+      return;
+    }
+    if (!idImagesReady || !selfieImage) {
+      setError(backNeeded
+        ? 'Add clear photos of the front and back of your ID, then capture your enrollment selfie.'
+        : 'Add a clear photo of your ID, then capture your enrollment selfie.');
+      return;
+    }
+    if (!selfieTurnImage) {
+      setError('Take the head-turn photo after your selfie: turn your head a little to one side.');
       return;
     }
     if (!onSubmitEnrollment) {
@@ -430,15 +442,20 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     submissionInProgressRef.current = true;
     setSubmitting(true);
     try {
-      const isDemoEnrollment = sampleIdSides.front || sampleIdSides.back;
-      const result = await onSubmitEnrollment({ dilgIdImage, dilgIdBackImage, selfieImage, isDemoEnrollment });
+      const result = await onSubmitEnrollment({
+        idType,
+        idNumber: normalizeEnrollmentIdNumber(idNumber),
+        dilgIdImage,
+        dilgIdBackImage: backNeeded ? dilgIdBackImage : '',
+        selfieImage,
+        selfieTurnImage
+      });
       setDilgIdImage('');
       setDilgIdBackImage('');
       setSelfieImage('');
-      setSampleIdSides({ front: false, back: false });
-      setSuccess(result.notificationWarning || (isDemoEnrollment
-        ? 'DEMO submission saved for HR review. HR may approve it for attendance matching tests only; this is not identity verification.'
-        : 'Enrollment submitted. HR/Admin has been notified to review your documents.'));
+      setSelfieTurnImage('');
+      setIdNumber('');
+      setSuccess(result.notificationWarning || 'Enrollment submitted. HR/Admin has been notified to review your documents.');
       setSuccessIsWarning(Boolean(result.notificationWarning));
     } catch (submitError) {
       setError(submitError.message || 'Unable to submit your enrollment.');
@@ -448,11 +465,13 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     }
   };
 
+  // Sent once the ID's details and all its photos are in (the ID number is typed before the
+  // photos, so this waits for the last photo, not for each typed letter).
   useEffect(() => {
-    if (!canSubmit || !dilgIdImage || !dilgIdBackImage || !selfieImage || automaticSubmissionStartedRef.current) return;
+    if (!canSubmit || !idDetailsReady || !idImagesReady || !selfieImage || !selfieTurnImage || automaticSubmissionStartedRef.current) return;
     automaticSubmissionStartedRef.current = true;
     void handleSubmit();
-  }, [canSubmit, dilgIdImage, dilgIdBackImage, selfieImage]);
+  }, [canSubmit, dilgIdImage, dilgIdBackImage, selfieImage, selfieTurnImage]);
 
   const renderIdSide = (title, target, image, inputRef) => (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -543,9 +562,11 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           </div>
           <div className="flex items-center gap-2">
             <span className={`rounded-full px-3 py-1.5 text-xs font-black ${badgeClass}`}>
-              ID &amp; selfie: {status === 'hr-approved' && user.biometricEnrollmentIsDemo
-                ? 'DEMO approved · attendance matching for testing'
-                : statusCopy[status] || 'Pending review'}
+              ID &amp; selfie: {approvedWithSampleId
+                ? 'Sample ID · submit your real ID'
+                : reenrollRequested
+                  ? 'HR asks for a new selfie'
+                  : statusCopy[status] || 'Pending review'}
             </span>
             <button type="button" onClick={refreshStatus} disabled={refreshingStatus} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-black text-slate-700 disabled:opacity-50">
               <RefreshCw className={`h-3 w-3 ${refreshingStatus ? 'animate-spin' : ''}`} /> Refresh
@@ -593,8 +614,8 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               <Clock3 className="h-5 w-5 shrink-0" />
               <p>
                 {user.biometricEnrollmentIsDemo
-                  ? 'DEMO ONLY: your sample ID images are waiting for HR review. HR may approve attendance selfie matching for testing, but the sample ID does not verify identity.'
-                  : 'Your submission is waiting for HR/Admin review. If HR cannot see your images, upload all three again; this replaces your pending submission.'}
+                  ? 'This submission used the sample ID, which is no longer accepted. Submit your real ID and a new selfie below; this replaces it.'
+                  : 'Your submission is waiting for HR/Admin review. If HR cannot see your images, upload them again; this replaces your pending submission.'}
               </p>
             </div>
             <button
@@ -610,8 +631,10 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           <div className="mt-4 flex gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             <p>{user.biometricEnrollmentIsDemo
-              ? 'DEMO ONLY: HR approved the sample ID submission for testing. Attendance selfies will be compared with this enrollment selfie, but the sample ID does not verify identity.'
-              : 'HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie, and each needs a head turn.'}</p>
+              ? 'Your enrollment was approved with the sample ID, which is no longer accepted. Submit your real ID and a new selfie below for HR review.'
+              : reenrollRequested
+                ? `HR asked you for a new enrollment selfie${user.biometricEnrollmentReviewNote ? `: ${user.biometricEnrollmentReviewNote}` : '.'} Submit your ID and a new selfie below. Your current one stays in use until you submit; after that, Time In waits until HR approves the new one.`
+                : 'HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie, and each needs a head turn.'}</p>
           </div>
         )}
         {status === 'rejected' && (
@@ -624,7 +647,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
         <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
           <p className="font-black">Face matching starts after HR approval. At attendance you also turn your head when asked.</p>
-          <p className="mt-1">The server checks whether your attendance selfie matches this enrollment selfie before saving Time In. It cannot tell whether a photo is live or detect a printed-photo or screen replay.</p>
+          <p className="mt-1">The server checks whether your attendance selfie matches this enrollment selfie before saving Time In. The head turn shows the selfie is live; it cannot stop a video played on another screen.</p>
         </div>
         {user.biometricEnrollmentSubmittedAt && (
           <p className="mt-3 text-xs font-semibold text-slate-500">
@@ -641,21 +664,41 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         <>
           <section ref={enrollmentFormRef} className="scroll-mt-24 space-y-4">
             <div>
-              <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">01 · Scan both sides of your government ID</h3>
-              <p className="mt-1 text-xs text-slate-600">Upload an existing photo or use the rear camera to capture each side separately.</p>
-              <button
-                type="button"
-                onClick={handleUseSampleId}
-                disabled={submitting || loadingSampleId}
-                className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-black text-amber-900 disabled:opacity-50"
-              >
-                {loadingSampleId ? 'Loading demo ID...' : 'Use Sample ID (DEMO ONLY)'}
-              </button>
-              <p className="mt-1 text-[10px] font-semibold text-amber-800">Fictional test images only. HR may approve for attendance matching tests, but this does not verify employee identity.</p>
+              <h3 className="text-sm font-black uppercase tracking-wide text-slate-800">01 · Your ID</h3>
+              <p className="mt-1 text-xs text-slate-600">Your PhilSys National ID is best. HR checks the ID number against your Personal Data Sheet.</p>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-black text-slate-700">
+                Type of ID
+                <select
+                  value={idType}
+                  onChange={event => setIdType(event.target.value)}
+                  disabled={submitting}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-sm font-semibold text-slate-800 disabled:opacity-50"
+                >
+                  <option value="">Choose your ID</option>
+                  {ENROLLMENT_ID_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
+                </select>
+              </label>
+              <label className="block text-xs font-black text-slate-700">
+                ID number
+                <input
+                  value={idNumber}
+                  onChange={event => setIdNumber(event.target.value)}
+                  disabled={submitting}
+                  maxLength={40}
+                  autoComplete="off"
+                  placeholder="As printed on the ID"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-sm font-semibold uppercase text-slate-800 disabled:opacity-50"
+                />
+              </label>
+            </div>
+            <p className="text-xs text-slate-600">Upload an existing photo or use the rear camera to capture {backNeeded ? 'each side separately' : 'the page with your photo and details'}.</p>
             <div className="grid gap-4 md:grid-cols-2">
-              {renderIdSide('Front of ID', 'id-front', dilgIdImage, idInputRef)}
-              {renderIdSide('Back of ID', 'id-back', dilgIdBackImage, idBackInputRef)}
+              {renderIdSide(backNeeded ? 'Front of ID' : 'ID (photo and details)', 'id-front', dilgIdImage, idInputRef)}
+              {backNeeded
+                ? renderIdSide('Back of ID', 'id-back', dilgIdBackImage, idBackInputRef)
+                : <p className="self-start rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-600">No back photo is needed for a {selectedIdType?.label}.</p>}
             </div>
           </section>
 
@@ -665,42 +708,59 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                 <Camera className="h-5 w-5 text-blue-700" />
                 <h3 className="font-black text-slate-900">02 · Capture Face Selfie</h3>
               </div>
-              <p className="mt-2 text-xs text-slate-600">Take a fresh selfie using the camera. Liveness detection is not currently active and will not be claimed as passed.</p>
+              <p className="mt-2 text-xs text-slate-600">Every Time In selfie is matched with this one, so take it well:</p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-slate-600">
+                <li>Stand in good light, facing a window or a light.</li>
+                <li>No cap, sunglasses, or face mask.</li>
+                <li>Hold the phone at arm's length so your face fills the oval.</li>
+                <li>Then take a second photo with your head turned a little to one side.</li>
+              </ul>
               <input ref={selfieInputRef} type="file" accept="image/*" className="sr-only" disabled={submitting} onChange={event => handleImageSelection(event, 'selfie')} />
+              <input ref={selfieTurnInputRef} type="file" accept="image/*" className="sr-only" disabled={submitting} onChange={event => handleImageSelection(event, 'selfie-turn')} />
               {!cameraActive ? (
                 <div className="mt-4">
                   <button type="button" onClick={() => openSelfieCamera()} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
                     <Camera className="h-4 w-4" /> {selfieImage ? 'Retake Selfie' : 'Open Camera'}
                   </button>
                 </div>
-              ) : cameraTarget === 'selfie' ? (
+              ) : cameraTarget === 'selfie' || cameraTarget === 'selfie-turn' ? (
                 <div className="mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-lg">
                   <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
                     <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white">
                       <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
                       Camera Preview
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-400">Enrollment selfie</span>
+                    <span className="text-[10px] font-semibold text-slate-400">{cameraTarget === 'selfie-turn' ? 'Head turn' : 'Enrollment selfie'}</span>
                   </div>
                   <div className="relative aspect-square sm:aspect-[3/4] overflow-hidden bg-slate-900">
                     <video ref={videoRef} autoPlay playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                       <div className="h-[60%] w-[55%] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_9999px_rgba(2,6,23,0.48)]" />
-                      <span className="absolute bottom-4 rounded-full bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-sm">
-                        Center your face in the frame
+                      <span className="absolute bottom-4 mx-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-center text-[10px] font-bold text-white backdrop-blur-sm">
+                        {cameraTarget === 'selfie-turn' ? 'Now turn your head a little to one side, then tap Capture' : 'Center your face in the frame'}
                       </span>
                     </div>
                   </div>
                   <div className="flex gap-2 px-3 py-3">
-                    <button type="button" onClick={captureImage} disabled={submitting} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">Capture Selfie</button>
+                    <button type="button" onClick={captureImage} disabled={submitting} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">{cameraTarget === 'selfie-turn' ? 'Capture Head Turn' : 'Capture Selfie'}</button>
                     <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"><X className="h-3 w-3" /> Cancel</button>
                   </div>
                 </div>
               ) : null}
-              {cameraError && cameraTarget === 'selfie' && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
+              {cameraError && (cameraTarget === 'selfie' || cameraTarget === 'selfie-turn') && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
               {selfieImage && !cameraActive && (
                 <div className="mt-4 space-y-2">
                   <img src={selfieImage} alt="Enrollment selfie preview" className="max-h-48 w-full rounded-xl border border-slate-200 object-contain" />
+                  {selfieTurnImage ? (
+                    <p className="text-xs font-bold text-emerald-700">✓ Head-turn photo taken</p>
+                  ) : (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                      <p className="text-xs font-semibold text-amber-900">Now take a second photo with your head turned a little to one side.</p>
+                      <button type="button" onClick={() => openSelfieCamera('selfie-turn')} disabled={submitting} className="mt-2 inline-flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
+                        <Camera className="h-3.5 w-3.5" /> Take Head-Turn Photo
+                      </button>
+                    </div>
+                  )}
                   <button type="button" onClick={() => openSelfieCamera()} disabled={submitting} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 py-2 text-xs font-black text-slate-700 disabled:opacity-50">
                     <RefreshCw className="h-3.5 w-3.5" /> Try Again — Retake Selfie
                   </button>
@@ -711,7 +771,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
 
           {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800">{error}</p>}
           {submitting && <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-800">Uploading your ID and selfie securely for HR review...</p>}
-          <button type="button" onClick={handleSubmit} disabled={submitting || !dilgIdImage || !dilgIdBackImage || !selfieImage} className="w-full rounded-xl bg-blue-700 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 md:w-auto">
+          <button type="button" onClick={handleSubmit} disabled={submitting || !idDetailsReady || !idImagesReady || !selfieImage || !selfieTurnImage} className="w-full rounded-xl bg-blue-700 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 md:w-auto">
             {submitting
               ? 'Uploading...'
               : canResubmitPendingEnrollment

@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   compareFaceDescriptors,
+  enrollmentSelfieProblem,
   FACE_MATCH_DISTANCE_THRESHOLD,
   headTurnOf,
   isValidFaceDescriptor,
+  judgeEnrollmentHeadTurn,
   judgeHeadTurn
 } from './faceMatchingService.js';
 
@@ -57,4 +59,22 @@ test('requires finite 128-value descriptors', () => {
     () => compareFaceDescriptors(Array(128).fill(0), Array(127).fill(0)),
     /128 finite numbers/
   );
+});
+
+test('an enrollment selfie that is too dark, too far, or unclear is retaken', () => {
+  const good = { score: 0.9, faceShare: 0.4, brightness: 130 };
+  assert.equal(enrollmentSelfieProblem(good), '');
+  assert.match(enrollmentSelfieProblem({ ...good, brightness: 30 }), /too dark/);
+  assert.match(enrollmentSelfieProblem({ ...good, faceShare: 0.1 }), /too small/);
+  assert.match(enrollmentSelfieProblem({ ...good, score: 0.52 }), /not clear/);
+});
+
+test('the enrollment head turn may go either way, but must be the same face, turned', () => {
+  const descriptor = Array(128).fill(0.1);
+  const selfieFace = { descriptor, turn: 0 };
+  assert.equal(judgeEnrollmentHeadTurn({ selfieFace, turnFace: { descriptor, turn: -0.4 } }).passed, true);
+  assert.equal(judgeEnrollmentHeadTurn({ selfieFace, turnFace: { descriptor, turn: 0.4 } }).passed, true);
+  assert.equal(judgeEnrollmentHeadTurn({ selfieFace, turnFace: { descriptor, turn: 0.1 } }).reason, 'no-turn');
+  const someoneElse = { descriptor: descriptor.map((value, index) => (index === 0 ? value + 1 : value)), turn: 0.5 };
+  assert.equal(judgeEnrollmentHeadTurn({ selfieFace, turnFace: someoneElse }).reason, 'different-face');
 });

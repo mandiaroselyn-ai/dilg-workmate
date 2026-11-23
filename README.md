@@ -107,9 +107,11 @@ From **Profile → Biometric Enrollment**, an employee uploads the front and bac
 
 HR/Admin can view enrollment images through the authenticated HR review screen and approve or reject the selected employee's pending submission. Approval requires a server-processed face descriptor; a normal enrollment must also have its required ID and selfie images on file. Rejection requires a reason, and the employee is notified to correct and resubmit. Approval enables the enrollment for attendance face matching. Enrollment images are restricted to authenticated HR review, and face descriptors remain server-side and are excluded from ordinary user responses.
 
-#### Demo sample ID (testing only)
+#### ID for enrollment
 
-The enrollment screen provides **Use Sample ID (DEMO ONLY)** for workflow testing. It fills the ID image fields with fictional sample cards; the employee must still provide a real enrollment selfie so the server can process a face descriptor. Once the sample ID and selfie fields are complete, the submission is automatically uploaded and clearly marked as a demo enrollment in MongoDB and in the HR review screen. HR/Admin may approve a demo enrollment only to test attendance selfie matching. A demo approval **does not verify identity and must not be treated as approval of a real employee's government ID**. Use genuine employee documents for real identity review. Demo and normal attendance matching use the same face-comparison flow and limitations described above.
+The employee chooses the type of ID and types its number as printed (see `shared/enrollmentIds.js`): the PhilSys National ID (PhilID) or ePhilID first, as RA 11055 and EO 162 (2022) make it sufficient proof of identity in government transactions; the DILG office ID; or a government-issued ID that the CSC Personal Data Sheet (CS Form No. 212) asks for (passport, UMID/GSIS, SSS, PRC, driver's license). An ID with all its details on one side or page (ePhilID, passport) needs no back photo. HR sees the ID type and number with the images and checks them against the employee's PDS; the number is not included in ordinary user responses.
+
+The sample ID the app once offered for testing has been removed. An enrollment approved with it can be submitted again with a real ID, and HR cannot approve a pending one.
 
 Existing HR-approved records without a face descriptor are upgraded from their approved enrollment selfie on their next attendance attempt.
 

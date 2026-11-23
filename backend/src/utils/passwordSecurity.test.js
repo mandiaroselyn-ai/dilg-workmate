@@ -26,6 +26,8 @@ test('removes authentication and biometric secrets from API user objects', () =>
     faceEnrollmentDescriptor: Array(128).fill(0.1),
     dilgIdPhoto: 'private-id-image',
     dilgIdBackPhoto: 'private-id-back-image',
+    enrollmentIdType: 'philid',
+    enrollmentIdNumber: '1234-5678-9012-3456',
     dilgIdVerifiedBy: 'hr-user',
     dilgIdVerifiedDetails: { name: 'Employee' },
     biometricEnrollmentStatus: 'pending',
@@ -46,11 +48,14 @@ test('removes authentication and biometric secrets from API user objects', () =>
   assert.equal('nativeBiometricPublicKey' in safeUser, false);
   assert.equal('nativeBiometricChallenge' in safeUser, false);
   assert.equal('nativeBiometricPendingKey' in safeUser, false);
+  // The ID number is shown only to HR, with the enrollment images.
+  assert.equal('enrollmentIdNumber' in safeUser, false);
   assert.equal('webauthnPendingCredential' in safeUser, false);
   assert.deepEqual(safeUser, {
     email: 'employee@example.com',
     biometricEnrollmentStatus: 'pending',
     biometricEnrollmentReviewNote: 'private HR note',
+    enrollmentIdType: 'philid',
     faceLivenessStatus: 'not-configured',
     // Only whether a password exists is shared, never the password itself.
     hasPassword: true,

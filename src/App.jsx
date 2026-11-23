@@ -663,10 +663,10 @@ export default function App() {
   };
 
   const handleSubmitBiometricEnrollment = async enrollment => {
+    // The server checks the ID's type, number, and whether its back is needed.
     if (!enrollment?.selfieImage?.startsWith('data:image/')
-      || !enrollment?.dilgIdImage?.startsWith('data:image/')
-      || !enrollment?.dilgIdBackImage?.startsWith('data:image/')) {
-      throw new Error('Upload the front and back of your government ID and capture an enrollment selfie before submitting.');
+      || !enrollment?.dilgIdImage?.startsWith('data:image/')) {
+      throw new Error('Upload your ID and capture an enrollment selfie before submitting.');
     }
     const response = await apiFetch('/api/face-enrollment', {
       method: 'POST',

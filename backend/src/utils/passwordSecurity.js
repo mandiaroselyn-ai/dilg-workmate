@@ -29,6 +29,7 @@ export const toSafeUser = (user) => {
     faceEnrollmentDescriptor,
     dilgIdPhoto,
     dilgIdBackPhoto,
+    enrollmentIdNumber,
     dilgIdVerifiedBy,
     dilgIdVerifiedDetails,
     faceVerificationAudit,
