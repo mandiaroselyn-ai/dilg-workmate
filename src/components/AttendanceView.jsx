@@ -338,14 +338,6 @@ export default function AttendanceView({
   const [capturedSelfie, setCapturedSelfie] = useState(null);
   const [selfieCameraActive, setSelfieCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-  // The head-turn check (backend utils/punchLiveness.js): when the camera opens, the server
-  // picks which way to turn ({ direction: 'left' | 'right', token }); `livenessReady` is set
-  // once it answered (null without internet). The camera (LiveFaceCamera) takes the selfie,
-  // then the photo with the head turned toward the arrow (`livenessSelfie`).
-  const [livenessChallenge, setLivenessChallenge] = useState(null);
-  const [livenessReady, setLivenessReady] = useState(false);
-  const livenessRequestRef = useRef(null);
-  const [livenessSelfie, setLivenessSelfie] = useState(null);
 
   // Fingerprint States
   const [fingerprintScanning, setFingerprintScanning] = useState(false);
@@ -441,38 +433,18 @@ export default function AttendanceView({
 
   const stopSelfieCamera = () => setSelfieCameraActive(false);
 
-  // Asks the server which way to turn for the head-turn check; null without internet.
-  const requestLivenessChallenge = () => apiFetch('/api/dtr/action?action=liveness-challenge', { cache: 'no-store', signal: timeoutSignal(10000) })
-    .then(async response => {
-      const data = await response.json().catch(() => ({}));
-      return response.ok && typeof data.token === 'string' && ['left', 'right'].includes(data.direction)
-        ? { token: data.token, direction: data.direction }
-        : null;
-    })
-    .catch(() => null);
-
   const startSelfieCamera = () => {
     setCameraError(null);
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera access requires HTTPS or localhost. Open this app using a secure connection and allow camera permission.');
       return;
     }
-    setLivenessChallenge(null);
-    setLivenessReady(false);
-    const request = requestLivenessChallenge();
-    livenessRequestRef.current = request;
-    request.then(challenge => {
-      if (livenessRequestRef.current !== request) return;
-      setLivenessChallenge(challenge);
-      setLivenessReady(true);
-    });
     setSelfieCameraActive(true);
   };
 
-  // The camera's selfie and head-turn photo (null without internet).
-  const finishSelfie = ({ selfie, turnPhoto }) => {
+  // The selfie the live face camera took.
+  const finishSelfie = ({ selfie }) => {
     setCapturedSelfie(selfie);
-    setLivenessSelfie(turnPhoto);
     setCameraError(null);
     handleResetFingerprint();
     stopSelfieCamera();
@@ -484,15 +456,6 @@ export default function AttendanceView({
     handleResetFingerprint();
     setCameraError(null);
   };
-
-  // A selfie used for a punch (or retaken) takes its head-turn photo with it.
-  useEffect(() => {
-    if (!capturedSelfie) setLivenessSelfie(null);
-  }, [capturedSelfie]);
-  // The head-turn photo and its token, sent with an online punch (null without one).
-  const punchLiveness = () => (livenessSelfie && livenessChallenge?.token
-    ? { token: livenessChallenge.token, selfie: livenessSelfie }
-    : null);
 
   useEffect(() => {
     const handleMobileLocationResult = (event) => {
@@ -1108,8 +1071,7 @@ export default function AttendanceView({
             user?.email || '',
             assignmentSite,
             accuracy,
-            offlineProof,
-            offlineProof ? null : punchLiveness()
+            offlineProof
           )).then(saved => showPunchReceipt('timeIn', saved));
           resetGpsStep();
           setCapturedSelfie(null);
@@ -1216,8 +1178,7 @@ export default function AttendanceView({
           ...fix,
           selfie: capturedSelfie,
           fingerprintProof,
-          offlineTimeOut: offlineTimeOutProof,
-          liveness: offlineTimeOutProof ? null : punchLiveness()
+          offlineTimeOut: offlineTimeOutProof
         })).then(saved => showPunchReceipt('timeOut', saved));
         resetGpsStep();
         setCapturedSelfie(null);
@@ -1273,7 +1234,7 @@ export default function AttendanceView({
     locatePunch(punch).then(fix => {
       if (!fix) return;
       setLunchSaving(true);
-      onLunch(action, { ...fix, selfie: capturedSelfie, fingerprintProof, liveness: punchLiveness() })
+      onLunch(action, { ...fix, selfie: capturedSelfie, fingerprintProof })
         .then(record => {
           resetGpsStep();
           setCapturedSelfie(null);
@@ -1689,9 +1650,7 @@ export default function AttendanceView({
                           <img src={capturedSelfie} alt="Attendance selfie photo" className="mx-auto max-h-64 rounded-xl object-contain" />
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs font-bold text-slate-600">
-                              {livenessSelfie
-                                ? `Selfie and head turn taken. The server compares this selfie with your HR-approved enrollment selfie and checks your head turn before saving ${punchLabel}.`
-                                : `No internet: taken without the head-turn check. The server compares this selfie with your HR-approved enrollment selfie when it is sent.`}
+                              The server compares this selfie with your HR-approved enrollment selfie before saving {punchLabel}.
                             </p>
                             <button type="button" onClick={handleResetSelfie} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
                               Take Again
@@ -1701,8 +1660,6 @@ export default function AttendanceView({
                       ) : selfieCameraActive ? (
                         <LiveFaceCamera
                           label="Attendance selfie"
-                          direction={livenessChallenge?.direction || null}
-                          directionReady={livenessReady}
                           onDone={finishSelfie}
                           onCancel={stopSelfieCamera}
                           onError={message => {

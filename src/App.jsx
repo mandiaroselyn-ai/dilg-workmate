@@ -874,10 +874,7 @@ export default function App() {
     assignmentSite = null,
     gpsAccuracy = null,
     // The phone's signed record of a Time In made without internet (utils/offlineTimeIn.js).
-    offlineTimeIn = null,
-    // The head-turn photo taken after the selfie and its token ({ token, selfie }), checked by
-    // the server (backend utils/punchLiveness.js); null without internet.
-    liveness = null
+    offlineTimeIn = null
   ) => {
     const today = getManilaDateString();
     const timeString = new Date().toLocaleTimeString('en-US', {
@@ -939,9 +936,8 @@ export default function App() {
     };
 
     // Resolves with what was saved ({ record, queued }), which the attendance page shows like
-    // a biometric terminal, or with null when it was not saved (the reason is shown here). The
-    // head-turn photo goes to the server only, not into the record shown on screen.
-    return submitAttendance({ action: 'clock-in', record: { ...newRecord, ...(liveness ? { liveness } : {}) } }, { ...newRecord, id: `offline-att-${Date.now()}` })
+    // a biometric terminal, or with null when it was not saved (the reason is shown here).
+    return submitAttendance({ action: 'clock-in', record: newRecord }, { ...newRecord, id: `offline-att-${Date.now()}` })
       .then((data) => {
         if (data.record) {
           if (!data.queued) setAttendanceHistory(prev => [data.record, ...prev]);
@@ -994,8 +990,7 @@ export default function App() {
         longitude: punch.longitude,
         gpsAccuracy: punch.gpsAccuracy,
         selfieUrl: punch.selfie,
-        fingerprintProof: punch.fingerprintProof || '',
-        ...(punch.liveness ? { liveness: punch.liveness } : {})
+        fingerprintProof: punch.fingerprintProof || ''
       }
     });
     if (data.record) {
@@ -1049,7 +1044,7 @@ export default function App() {
     // the phone signed without internet keeps the time it was signed.
     const fingerprint = providedGps.offlineTimeOut
       ? { offlineTimeOut: providedGps.offlineTimeOut, recordedOfflineAt: providedGps.offlineTimeOut.recordedAt }
-      : { fingerprintProof: providedGps.fingerprintProof || '', ...(providedGps.liveness ? { liveness: providedGps.liveness } : {}) };
+      : { fingerprintProof: providedGps.fingerprintProof || '' };
 
     // Resolves with what was saved ({ record, queued, afterQueuedTimeIn }), which the attendance
     // page shows like a biometric terminal (with the offline notes), or with null when it was not

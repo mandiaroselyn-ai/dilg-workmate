@@ -3,9 +3,7 @@ import { User } from '../models/User.js';
 import {
   analyzeFace,
   compareIdPhotoToSelfie,
-  enrollmentSelfieProblem,
-  FaceImageError,
-  judgeEnrollmentHeadTurn
+  enrollmentSelfieProblem
 } from '../services/faceMatchingService.js';
 import { hasRequiredEnrollmentImages } from '../utils/biometricEnrollment.js';
 import { pendingFingerprints } from '../utils/passwordSecurity.js';
@@ -64,30 +62,10 @@ export const submitBiometricEnrollment = async (req, res) => {
       });
     }
 
-    // The selfie is what every attendance selfie is matched with: it must be clear, and the
-    // head-turn photo taken after it must show the same face turned to one side.
-    if (!isSupportedImage(req.body?.selfieTurnImage)) {
-      return res.status(400).json({ success: false, error: 'Take the head-turn photo after your selfie: turn your head a little to one side.' });
-    }
+    // The selfie is what every attendance selfie is matched with, so it must be clear.
     const selfieFace = await analyzeFace(selfieImage);
     const qualityProblem = enrollmentSelfieProblem(selfieFace);
     if (qualityProblem) return res.status(422).json({ success: false, error: qualityProblem });
-    let turnFace;
-    try {
-      turnFace = await analyzeFace(req.body.selfieTurnImage);
-    } catch (error) {
-      if (!(error instanceof FaceImageError)) throw error;
-      return res.status(422).json({ success: false, error: 'Your face was not found in the head-turn photo. Turn your head only a little so your whole face stays in the photo, then take both photos again.' });
-    }
-    const headTurn = judgeEnrollmentHeadTurn({ selfieFace, turnFace });
-    if (!headTurn.passed) {
-      return res.status(422).json({
-        success: false,
-        error: headTurn.reason === 'different-face'
-          ? 'The head-turn photo does not show the same face as the selfie. Take both photos again.'
-          : 'Your head turn was not seen. Take both photos again, and for the second one turn your head a little to one side.'
-      });
-    }
     const faceDescriptor = selfieFace.descriptor;
     // To help HR: how close the face on the ID is to the selfie.
     const idFaceDistance = await compareIdPhotoToSelfie({ idImage: dilgIdImage, selfieImage, selfieFace });
@@ -142,7 +120,7 @@ export const submitBiometricEnrollment = async (req, res) => {
       success: true,
       enrollment: enrollmentStatus(user),
       notificationWarning,
-      notice: 'Your ID and selfie were saved for HR review. After HR approves enrollment, attendance selfies will be matched on this server, each with a head turn.'
+      notice: 'Your ID and selfie were saved for HR review. After HR approves enrollment, attendance selfies will be matched on this server. This does not check liveness.'
     });
   } catch (error) {
     console.error('Biometric enrollment submission failed:', error);
@@ -221,7 +199,7 @@ export const reviewBiometricEnrollment = async (req, res) => {
       await Announcement.createNotification({
         title: approved ? 'Biometric Enrollment HR Review Approved' : 'Biometric Enrollment Needs Changes',
         message: approved
-          ? 'HR approved your ID and face enrollment. Attendance selfies will now be compared with the approved enrollment selfie, and each needs a head turn.'
+          ? 'HR approved your ID and face enrollment. Attendance selfies will now be compared with the approved enrollment selfie. Liveness is not checked.'
           : `HR did not approve your ID and selfie submission. Reason: ${note.trim()} You may upload corrected images in Profile > Biometric Enrollment.`,
         type: 'biometric_enrollment',
         view: 'profile',

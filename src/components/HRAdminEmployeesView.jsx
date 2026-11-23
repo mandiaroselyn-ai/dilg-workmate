@@ -332,7 +332,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
       const reviewMessage = data.notificationWarning || (decision === 'reenroll'
         ? 'The employee was asked for a new enrollment selfie. Their current one stays in use until they submit it.'
         : decision === 'approve'
-        ? 'HR review approved. Attendance selfies will now be compared with the approved enrollment selfie, and each needs a head turn.'
+        ? 'HR review approved. Attendance selfies will now be compared with the approved enrollment selfie. Liveness is not checked.'
         : 'Enrollment rejected. The employee was notified to correct and resubmit.');
       notify(reviewMessage, Boolean(data.notificationWarning));
     } catch (error) {
@@ -938,7 +938,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched, and each needs a head turn.</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
                 selectedEmployee.biometricEnrollmentStatus === 'rejected'
@@ -1106,7 +1106,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
                     {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
                   </button>
                 </div>
-                <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies, each with a head turn that a printed photo cannot do. It does not stop a video played back on another screen.</p>
+                <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
               </div>
             )}
             {/* An approved employee whose Time In keeps failing the face match can be asked for a new selfie. */}
@@ -1147,7 +1147,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches and head-turn checks are shown on DTR records.</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
           {selectedEmployee.faceVerificationAudit?.length ? (
             <div className="mt-3 space-y-2">
               {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (

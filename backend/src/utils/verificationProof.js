@@ -23,22 +23,6 @@ export const createVerificationProof = ({ employeeId, type, confidence = 0, meth
   return `${payload}.${sign(payload)}`;
 };
 
-// The head-turn check asked before an attendance selfie: which way the employee must turn
-// ('left' or 'right' of the on-screen preview), chosen here at random so it cannot be known
-// ahead, and a signed token that carries it back with the photos. Read it with
-// readVerificationProof(token, { employeeId, type: 'liveness' }).
-const LIVENESS_TTL_SECONDS = 10 * 60;
-export const createLivenessChallenge = ({ employeeId }) => {
-  const direction = crypto.randomInt(2) === 0 ? 'left' : 'right';
-  const payload = Buffer.from(JSON.stringify({
-    employeeId,
-    type: 'liveness',
-    direction,
-    exp: Math.floor(Date.now() / 1000) + LIVENESS_TTL_SECONDS
-  })).toString('base64url');
-  return { direction, token: `${payload}.${sign(payload)}` };
-};
-
 // Returns the proof's contents when it is authentic, unexpired, and issued for this
 // employee and verification type; otherwise null.
 export const readVerificationProof = (proof, { employeeId, type }) => {

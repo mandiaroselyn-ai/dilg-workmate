@@ -1,12 +1,11 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Camera, Check, Loader2, X } from 'lucide-react';
+import { Camera, Check, Loader2, X } from 'lucide-react';
 
-// A selfie camera that finds the face as other apps do: the oval turns green when one face is
-// centred, near enough, lit, and looking straight, and the selfie is taken by itself. Then an
-// arrow asks for a head turn, and that photo is taken by itself too once the head has turned.
-// The server checks both photos again (backend utils/punchLiveness.js and faceController).
-// Face finding runs on the phone with the small face-api models in public/models; without
-// them (an old phone, or no internet the first time), the button takes each photo instead.
+// A selfie camera that finds the face as other apps do: it says what to fix, the oval turns
+// green when one face is centred, near enough, lit, and looking straight, and the selfie is
+// taken by itself. Face finding runs on the phone with the small face-api models in
+// public/models; without them (an old phone, or no internet the first time), the button
+// takes the selfie instead.
 
 // The face finder is loaded once, the first time the camera opens.
 let detectorPromise = null;
@@ -30,24 +29,21 @@ const loadFaceDetector = () => {
   return detectorPromise;
 };
 
-// How far the face is turned, from its 68 landmarks, as the server reads it (headTurnOf in
-// backend services/faceMatchingService.js): where the nose tip sits between the two sides of
-// the jaw. The preview and the saved photos are mirrored, so the camera's reading is flipped.
-const mirroredTurnOf = positions => {
+// How far the face is turned to one side, from -1 to 1, from its 68 landmarks: where the nose
+// tip sits between the two sides of the jaw (0 is straight on).
+const turnOf = positions => {
   const [jawStart, jawEnd, noseTip] = [positions?.[0], positions?.[16], positions?.[30]];
   if (![jawStart, jawEnd, noseTip].every(point => Number.isFinite(point?.x))) return 0;
   const toLeft = noseTip.x - Math.min(jawStart.x, jawEnd.x);
   const toRight = Math.max(jawStart.x, jawEnd.x) - noseTip.x;
   const width = toLeft + toRight;
-  return width > 0 ? -(toLeft - toRight) / width : 0;
+  return width > 0 ? (toLeft - toRight) / width : 0;
 };
 
 // The oval, in a 300 x 400 frame (the preview is 3:4).
 const OVAL = { cx: 150, cy: 185, rx: 95, ry: 125 };
 // Looking straight: the turn reading within this.
 const STRAIGHT_TURN = 0.15;
-// The head turn taken: this much toward the arrow (a little more than the server's 0.25).
-const TURN_NEEDED = 0.32;
 // How long the face must stay right before the selfie is taken.
 const HOLD_MS = 700;
 const DETECT_EVERY_MS = 120;
@@ -63,47 +59,33 @@ const HINTS = {
   center: 'Center your face in the oval',
   straight: 'Look straight at the camera',
   hold: 'Hold still...',
-  preparing: 'Preparing the head turn...',
-  lostWhileTurning: 'Not too far. Keep your face in view',
-  manualSelfie: 'Center your face, then tap the button',
+  manual: 'Center your face, then tap the button',
   done: 'Done'
 };
 
-// `direction`: the side to turn ('left' or 'right' of the preview), or null while
-// `directionReady` is false; when it is ready but null (no internet), only the selfie is taken.
-// `onDone({ selfie, turnPhoto })` gets the photos (JPEG data URLs, mirrored as seen);
+// `onDone({ selfie })` gets the selfie (a JPEG data URL, mirrored as the preview shows it);
 // `onError(message)` is called when the camera cannot start.
-export default function LiveFaceCamera({ direction = null, directionReady = true, onDone, onCancel, onError, label = 'Selfie' }) {
+export default function LiveFaceCamera({ onDone, onCancel, onError, label = 'Selfie' }) {
   const maskId = useId().replace(/:/g, '');
   const wrapperRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const faceapiRef = useRef(null);
-  const phaseRef = useRef('align');
-  const selfieRef = useRef(null);
-  const baseTurnRef = useRef(0);
+  const doneRef = useRef(false);
   const goodSinceRef = useRef(0);
-  const turnHitsRef = useRef(0);
   const brightnessRef = useRef({ at: 0, value: 255 });
-  const directionRef = useRef({ direction, directionReady });
-  directionRef.current = { direction, directionReady };
   const [cameraReady, setCameraReady] = useState(false);
   const [detector, setDetector] = useState('loading'); // 'loading' | 'ready' | 'failed'
-  const [phase, setPhase] = useState('align'); // 'align' | 'turn' | 'done'
+  const [done, setDone] = useState(false);
   const [hint, setHint] = useState(HINTS.starting);
   const [tone, setTone] = useState('idle'); // 'idle' | 'adjust' | 'good'
   const [progress, setProgress] = useState(0);
 
-  const setPhaseBoth = next => {
-    phaseRef.current = next;
-    setPhase(next);
-  };
-
-  // The live picture as a JPEG at most `maxSide` pixels, mirrored as the preview shows it.
-  const takeFrame = maxSide => {
+  // The live picture as a JPEG at most 1280 pixels, mirrored as the preview shows it.
+  const takeFrame = () => {
     const video = videoRef.current;
     if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) return null;
-    const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
@@ -136,41 +118,19 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
     return value;
   };
 
-  const finish = (selfie, turnPhoto) => {
-    if (phaseRef.current === 'done') return;
-    setPhaseBoth('done');
+  const takeSelfie = () => {
+    if (doneRef.current) return;
+    const selfie = takeFrame();
+    if (!selfie) return;
+    doneRef.current = true;
+    setDone(true);
     setTone('good');
     setProgress(100);
     setHint(HINTS.done);
-    onDone?.({ selfie, turnPhoto });
+    onDone?.({ selfie });
   };
 
-  // After the selfie: the head turn, or done when there is no side to turn to.
-  const afterSelfie = selfie => {
-    selfieRef.current = selfie;
-    goodSinceRef.current = 0;
-    turnHitsRef.current = 0;
-    const { direction: side, directionReady: ready } = directionRef.current;
-    if (ready && !side) {
-      finish(selfie, null);
-      return;
-    }
-    setPhaseBoth('turn');
-    setProgress(0);
-  };
-
-  // The button: takes the photo of the step showing (when face finding is off or struggling).
-  const takeByHand = () => {
-    if (phaseRef.current === 'align') {
-      const selfie = takeFrame(1280);
-      if (selfie) afterSelfie(selfie);
-    } else if (phaseRef.current === 'turn' && directionRef.current.direction) {
-      const turnPhoto = takeFrame(640);
-      if (turnPhoto) finish(selfieRef.current, turnPhoto);
-    }
-  };
-
-  // The camera.
+  // The camera, and the face finder.
   useEffect(() => {
     let cancelled = false;
     navigator.mediaDevices.getUserMedia({
@@ -205,7 +165,7 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
         setDetector('ready');
       })
       .catch(error => {
-        console.warn('Face detection is not available; photos are taken with the button.', error);
+        console.warn('Face detection is not available; the selfie is taken with the button.', error);
         if (!cancelled) setDetector('failed');
       });
     return () => {
@@ -232,7 +192,7 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
     const check = async () => {
       const video = videoRef.current;
       const wrapper = wrapperRef.current;
-      if (stopped || phaseRef.current === 'done') return;
+      if (stopped || doneRef.current) return;
       if (!video?.videoWidth || !wrapper) {
         timer = window.setTimeout(check, DETECT_EVERY_MS);
         return;
@@ -243,73 +203,46 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
       } catch (error) {
         console.warn('Face detection failed on this frame:', error);
       }
-      if (stopped || phaseRef.current === 'done') return;
+      if (stopped || doneRef.current) return;
 
-      const phaseNow = phaseRef.current;
-      const { direction: side, directionReady: ready } = directionRef.current;
-      if (phaseNow === 'turn' && !side) {
-        // The side to turn is still coming from the server, or there is none (no internet).
-        if (ready) finish(selfieRef.current, null);
-        else show(HINTS.preparing, 'idle');
-      } else if (faces.length !== 1) {
+      if (faces.length !== 1) {
         goodSinceRef.current = 0;
-        turnHitsRef.current = 0;
-        if (phaseNow === 'turn') show(faces.length ? HINTS.manyFaces : HINTS.lostWhileTurning, 'adjust');
-        else show(faces.length ? HINTS.manyFaces : HINTS.noFace, faces.length ? 'adjust' : 'idle');
+        show(faces.length ? HINTS.manyFaces : HINTS.noFace, faces.length ? 'adjust' : 'idle');
       } else {
+        // Where the face is on screen, next to the oval (the preview fills its 3:4 frame and is
+        // mirrored).
         const [face] = faces;
-        const turn = mirroredTurnOf(face.landmarks?.positions);
-        if (phaseNow === 'turn') {
-          const toward = side === 'left' ? baseTurnRef.current - turn : turn - baseTurnRef.current;
-          const share = Math.max(0, Math.min(1, toward / TURN_NEEDED));
-          turnHitsRef.current = toward >= TURN_NEEDED ? turnHitsRef.current + 1 : 0;
-          if (turnHitsRef.current >= 2) {
-            const turnPhoto = takeFrame(640);
-            if (turnPhoto) {
-              finish(selfieRef.current, turnPhoto);
-              return;
-            }
-          }
-          show(`Slowly turn your head to the ${side}`, share > 0.6 ? 'good' : 'adjust', Math.round(share * 100));
+        const { clientWidth: width, clientHeight: height } = wrapper;
+        const scale = Math.max(width / video.videoWidth, height / video.videoHeight);
+        const offsetX = (width - video.videoWidth * scale) / 2;
+        const offsetY = (height - video.videoHeight * scale) / 2;
+        const box = face.detection.box;
+        const centerX = width - (offsetX + (box.x + box.width / 2) * scale);
+        const centerY = offsetY + (box.y + box.height / 2) * scale;
+        const ovalX = (OVAL.cx / 300) * width;
+        const ovalY = (OVAL.cy / 400) * height;
+        const ovalRx = (OVAL.rx / 300) * width;
+        const ovalRy = (OVAL.ry / 400) * height;
+        const offCenter = ((centerX - ovalX) / ovalRx) ** 2 + ((centerY - ovalY) / ovalRy) ** 2;
+        const size = (box.width * scale) / (2 * ovalRx);
+        const problem = brightness() < 50 ? HINTS.dark
+          : size < 0.5 ? HINTS.far
+            : size > 1.15 ? HINTS.near
+              : offCenter > 0.25 ? HINTS.center
+                : Math.abs(turnOf(face.landmarks?.positions)) > STRAIGHT_TURN ? HINTS.straight
+                  : '';
+        if (problem) {
+          goodSinceRef.current = 0;
+          show(problem, 'adjust');
         } else {
-          // Where the face is on screen, next to the oval (the preview fills its 3:4 frame and
-          // is mirrored).
-          const { clientWidth: width, clientHeight: height } = wrapper;
-          const scale = Math.max(width / video.videoWidth, height / video.videoHeight);
-          const offsetX = (width - video.videoWidth * scale) / 2;
-          const offsetY = (height - video.videoHeight * scale) / 2;
-          const box = face.detection.box;
-          const centerX = width - (offsetX + (box.x + box.width / 2) * scale);
-          const centerY = offsetY + (box.y + box.height / 2) * scale;
-          const ovalX = (OVAL.cx / 300) * width;
-          const ovalY = (OVAL.cy / 400) * height;
-          const ovalRx = (OVAL.rx / 300) * width;
-          const ovalRy = (OVAL.ry / 400) * height;
-          const offCenter = ((centerX - ovalX) / ovalRx) ** 2 + ((centerY - ovalY) / ovalRy) ** 2;
-          const size = (box.width * scale) / (2 * ovalRx);
-          const problem = brightness() < 50 ? HINTS.dark
-            : size < 0.5 ? HINTS.far
-              : size > 1.15 ? HINTS.near
-                : offCenter > 0.25 ? HINTS.center
-                  : Math.abs(turn) > STRAIGHT_TURN ? HINTS.straight
-                    : '';
-          if (problem) {
-            goodSinceRef.current = 0;
-            show(problem, 'adjust');
-          } else {
-            const now = Date.now();
-            if (!goodSinceRef.current) goodSinceRef.current = now;
-            const held = now - goodSinceRef.current;
-            if (held >= HOLD_MS) {
-              const selfie = takeFrame(1280);
-              if (selfie) {
-                baseTurnRef.current = turn;
-                afterSelfie(selfie);
-              }
-            } else {
-              show(HINTS.hold, 'good', Math.round((held / HOLD_MS) * 100));
-            }
+          const now = Date.now();
+          if (!goodSinceRef.current) goodSinceRef.current = now;
+          const held = now - goodSinceRef.current;
+          if (held >= HOLD_MS) {
+            takeSelfie();
+            return;
           }
+          show(HINTS.hold, 'good', Math.round((held / HOLD_MS) * 100));
         }
       }
       timer = window.setTimeout(check, DETECT_EVERY_MS);
@@ -321,26 +254,17 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
     };
   }, [cameraReady, detector]);
 
-  // Waiting for the head turn's side when the server has none to give (no internet): the
-  // selfie alone is used. (While face finding runs, its loop does this too.)
-  useEffect(() => {
-    if (phase === 'turn' && directionReady && !direction) finish(selfieRef.current, null);
-  }, [phase, direction, directionReady]);
-
   // Words shown before face finding runs, or when it cannot.
   useEffect(() => {
-    if (!cameraReady) return;
+    if (!cameraReady || done) return;
     if (detector === 'loading') setHint(HINTS.loading);
     if (detector === 'failed') {
       setTone('idle');
-      setHint(phase === 'turn'
-        ? (direction ? `Turn your head a little to the ${direction}, then tap the button` : HINTS.preparing)
-        : HINTS.manualSelfie);
+      setHint(HINTS.manual);
     }
-  }, [cameraReady, detector, phase, direction]);
+  }, [cameraReady, detector, done]);
 
   const ovalColor = tone === 'good' ? '#22c55e' : tone === 'adjust' ? '#f59e0b' : '#ffffff';
-  const turnSide = phase === 'turn' ? direction : null;
 
   return (
     <div className="mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
@@ -349,15 +273,13 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
           <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
           {label}
         </span>
-        <span className="text-[10px] font-semibold text-slate-400">
-          {phase === 'turn' ? 'Now the head turn' : phase === 'done' ? 'Done' : 'Selfie first'}
-        </span>
+        <span className="text-[10px] font-semibold text-slate-400">{done ? 'Done' : 'Live camera'}</span>
       </div>
 
       <div ref={wrapperRef} className="relative aspect-[3/4] w-full overflow-hidden bg-slate-900">
         <video ref={videoRef} autoPlay playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
 
-        {/* The oval, with the rest of the picture dimmed; its border fills as the step completes. */}
+        {/* The oval, with the rest of the picture dimmed; its border fills while holding still. */}
         <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 300 400" preserveAspectRatio="none" aria-hidden="true">
           <defs>
             <mask id={maskId}>
@@ -383,38 +305,29 @@ export default function LiveFaceCamera({ direction = null, directionReady = true
           <span className={`flex items-center gap-2 rounded-full px-4 py-2 text-center text-xs font-black shadow-lg backdrop-blur-sm ${
             tone === 'good' ? 'bg-emerald-500/90 text-white' : tone === 'adjust' ? 'bg-amber-400/95 text-slate-950' : 'bg-slate-950/75 text-white'
           }`}>
-            {phase === 'done' ? <Check className="h-4 w-4" /> : (!cameraReady || detector === 'loading') ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {done ? <Check className="h-4 w-4" /> : (!cameraReady || detector === 'loading') ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {hint}
           </span>
         </div>
-
-        {/* The side to turn to. */}
-        {turnSide && (
-          <div className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${turnSide === 'left' ? 'left-2' : 'right-2'}`}>
-            <div className="flex h-16 w-16 animate-pulse items-center justify-center rounded-full bg-amber-400 text-slate-950 shadow-xl">
-              {turnSide === 'left' ? <ArrowLeft className="h-9 w-9" /> : <ArrowRight className="h-9 w-9" />}
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="flex items-center justify-center gap-6 px-4 py-3">
         <button
           type="button"
-          onClick={takeByHand}
-          disabled={!cameraReady || phase === 'done' || (phase === 'turn' && !direction)}
-          aria-label={phase === 'turn' ? 'Take the head-turn photo' : 'Take the selfie'}
-          title={detector === 'ready' ? 'The photo is taken by itself; tap if it does not' : 'Take the photo'}
-          className={`flex h-14 w-14 items-center justify-center rounded-full border-4 border-white text-white shadow-lg transition hover:scale-105 disabled:opacity-40 ${phase === 'turn' ? 'bg-amber-500' : 'bg-blue-600'}`}
+          onClick={takeSelfie}
+          disabled={!cameraReady || done}
+          aria-label="Take the selfie"
+          title={detector === 'ready' ? 'The selfie is taken by itself; tap if it is not' : 'Take the selfie'}
+          className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg transition hover:scale-105 disabled:opacity-40"
         >
-          {phase === 'turn' ? (direction === 'left' ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />) : <Camera className="h-5 w-5" />}
+          <Camera className="h-5 w-5" />
         </button>
         <button type="button" onClick={onCancel} className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/10">
           <X className="h-3.5 w-3.5" /> Cancel
         </button>
       </div>
       <p className="px-4 pb-3 text-center text-[10px] font-semibold text-slate-400">
-        {detector === 'ready' ? 'The photos are taken by themselves. Tap the button only if they are not.' : 'Good light. No cap, sunglasses, or face mask.'}
+        {detector === 'ready' ? 'The selfie is taken by itself. Tap the button only if it is not.' : 'Good light. No cap, sunglasses, or face mask.'}
       </p>
     </div>
   );

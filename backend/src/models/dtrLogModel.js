@@ -33,9 +33,7 @@ const lunchFields = prefix => ({
   [`${prefix}FingerprintVerified`]: { type: Boolean, default: false },
   [`${prefix}FingerprintMethod`]: { type: String, enum: ['', 'browser', 'phone-app'], default: '' },
   [`${prefix}FaceVerified`]: { type: Boolean, default: false },
-  [`${prefix}FaceMatchDistance`]: { type: Number, default: null },
-  // Whether the selfie passed the head-turn check (see utils/punchLiveness.js).
-  [`${prefix}LivenessVerified`]: { type: Boolean, default: false }
+  [`${prefix}FaceMatchDistance`]: { type: Number, default: null }
 });
 
 const DtrLogSchema = new mongoose.Schema({
@@ -125,7 +123,6 @@ const DtrLogSchema = new mongoose.Schema({
   timeOutFingerprintMethod: { type: String, enum: ['', 'browser', 'phone-app'], default: '' },
   timeOutFaceVerified: { type: Boolean, default: false },
   timeOutFaceMatchDistance: { type: Number, default: null },
-  timeOutLivenessVerified: { type: Boolean, default: false },
   // The noon break (CSC Form 48's A.M. departure and P.M. arrival), each made like a Time Out:
   // when, where, its selfie, and the checks of that selfie and of the fingerprint.
   ...lunchFields('lunchOut'),
@@ -465,7 +462,6 @@ export const DtrLog = {
         activeLog.timeOutFingerprintMethod = verification.fingerprintMethod || '';
         activeLog.timeOutFaceVerified = verification.faceVerified === true;
         activeLog.timeOutFaceMatchDistance = verification.faceMatchDistance ?? null;
-        activeLog.timeOutLivenessVerified = verification.livenessVerified === true;
       }
       await activeLog.save();
       const obj = activeLog.toObject();
@@ -496,7 +492,6 @@ export const DtrLog = {
           [`${which}FingerprintMethod`]: verification.fingerprintMethod || '',
           [`${which}FaceVerified`]: verification.faceVerified === true,
           [`${which}FaceMatchDistance`]: verification.faceMatchDistance ?? null,
-          [`${which}LivenessVerified`]: verification.livenessVerified === true,
           ...alsoSet
         }
       },

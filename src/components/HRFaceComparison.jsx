@@ -97,7 +97,7 @@ export default function HRFaceComparison({
             : 'No successful face match is recorded for this attendance entry.'}
         </p>
         <p className="mt-1 text-[11px] font-semibold text-amber-800">
-          Attendance face matching runs on the server against the HR-approved enrollment selfie. The head-turn check is shown with the record.
+          Attendance face matching runs on the server against the HR-approved enrollment selfie. It is not a liveness or anti-spoof check.
         </p>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">

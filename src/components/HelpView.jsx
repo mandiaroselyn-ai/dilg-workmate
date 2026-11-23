@@ -296,7 +296,6 @@ export default function HelpView({ user }) {
             <li>Your name, employee ID, position, office, email, and mobile number.</li>
             <li>Your government ID photos, the type and number of that ID, and your enrollment selfie, which HR reviews. The server compares the face on your ID with your selfie to help HR. Only HR sees the ID number.</li>
             <li>Your Time In, Lunch, and Time Out selfies, which are compared with your enrollment selfie.</li>
-            <li>A second photo with your head turned, taken with each selfie to show it is live. It is checked and not kept.</li>
             <li>Your location at Time In and Time Out, and while your shift is open.</li>
             <li>Your leave and travel requests and their attachments.</li>
           </ul>

@@ -602,8 +602,7 @@ export const User = {
           biometricEnrollmentReviewedBy: '',
           biometricEnrollmentReviewNote: '',
           biometricReenrollRequested: false,
-          // The selfie passed the head turn (see faceController.submitBiometricEnrollment).
-          faceLivenessStatus: 'head-turn-passed',
+          faceLivenessStatus: 'not-configured',
           dilgIdMatchConfidence: null,
           dilgIdVerifiedAt: null,
           dilgIdVerifiedBy: '',

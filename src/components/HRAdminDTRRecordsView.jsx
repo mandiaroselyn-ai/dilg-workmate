@@ -342,32 +342,26 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
         })()}
         <span>Attendance Status: <b>{selected.status}</b></span>
         <span>Record Status: <b>{hasSelfie(selected.record) && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
-        <span>Head turn (liveness): <b>{selected.record.faceLivenessVerified ? 'Passed' : selected.record.faceLivenessProvider === 'not-checked-offline' ? 'Not checked (made without internet)' : 'Not performed'}</b></span>
         <span>Face match: <b>{selected.record.faceVerified ? `Matched · distance ${Number(selected.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
         <span>Fingerprint: <b>{describeFingerprintCheck(selected.record)}</b></span>
         {selected.record.timeOut && (
           <>
             <span>Time Out face match: <b>{selected.record.timeOutFaceVerified ? `Matched · distance ${Number(selected.record.timeOutFaceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
-            <span>Time Out head turn: <b>{selected.record.timeOutLivenessVerified ? 'Passed' : 'Not performed'}</b></span>
             <span>Time Out fingerprint: <b>{describeFingerprintCheck({ fingerprintVerified: selected.record.timeOutFingerprintVerified, fingerprintMethod: selected.record.timeOutFingerprintMethod })}</b></span>
           </>
         )}
         {LUNCH_PUNCHES.filter(({ field }) => selected.record[field]).map(({ field, label }) => (
           <React.Fragment key={field}>
             <span>{label} face match: <b>{selected.record[`${field}FaceVerified`] ? `Matched · distance ${Number(selected.record[`${field}FaceMatchDistance`] || 0).toFixed(3)}` : 'Not performed'}</b></span>
-            <span>{label} head turn: <b>{selected.record[`${field}LivenessVerified`] ? 'Passed' : 'Not performed'}</b></span>
             <span>{label} fingerprint: <b>{describeFingerprintCheck({ fingerprintVerified: selected.record[`${field}FingerprintVerified`], fingerprintMethod: selected.record[`${field}FingerprintMethod`] })}</b></span>
           </React.Fragment>
         ))}
         <span>Face-match time: <b>{selected.record.faceVerifiedAt ? new Date(selected.record.faceVerifiedAt).toLocaleString() : 'Not available'}</b></span>
-        <span className="col-span-2 text-amber-800">A face match compares image similarity. The head turn shows the face turned the way the app asked, which a printed photo cannot do; it does not stop a video played back on another screen.</span>
+        <span className="col-span-2 text-amber-800">A face match compares image similarity only. It is not a liveness or anti-spoof check and does not prove the photo was captured live.</span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <span className={`rounded-full px-2 py-1 font-bold ${selected.record.assignmentMatch ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
           <CheckCircle2 className="inline h-3 w-3" /> GPS Verification
-        </span>
-        <span className={`rounded-full px-2 py-1 font-bold ${selected.record.faceLivenessVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-          <CheckCircle2 className="inline h-3 w-3" /> {selected.record.faceLivenessVerified ? 'Head turn checked' : 'No head-turn check'}
         </span>
         <span className={`rounded-full px-2 py-1 font-bold ${selected.record.fingerprintVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
           <CheckCircle2 className="inline h-3 w-3" /> Fingerprint

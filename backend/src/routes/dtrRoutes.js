@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, getRecordSelfie, checkGeofenceStatus, resolveGeofenceAssignment, getLivenessChallenge } from '../controllers/dtrController.js';
+import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, getRecordSelfie, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
 import { authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -32,12 +32,11 @@ router.post('/action', (req, res) => {
   return handler(req, res);
 });
 // Reads: the live map and place names are HR's; a record's selfie is HR's or, for their
-// own records, the employee's; the head-turn check before a selfie is the employee's.
+// own records, the employee's.
 const readHandlers = {
   'location-live': { roles: ['hr_admin'], handler: getActiveLocationTracking },
   'place-name': { roles: ['hr_admin'], handler: getPlaceName },
-  'record-selfie': { roles: ['hr_admin', 'employee'], handler: getRecordSelfie },
-  'liveness-challenge': { roles: ['employee'], handler: getLivenessChallenge }
+  'record-selfie': { roles: ['hr_admin', 'employee'], handler: getRecordSelfie }
 };
 router.get('/action', (req, res) => {
   const read = readHandlers[req.query.action];

@@ -5,8 +5,7 @@ import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn } from '../../../shared/tr
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
-import { createLivenessChallenge, readVerificationProof } from '../utils/verificationProof.js';
-import { checkPunchLiveness, LIVENESS_NOT_CHECKED_OFFLINE, LIVENESS_PROVIDER } from '../utils/punchLiveness.js';
+import { readVerificationProof } from '../utils/verificationProof.js';
 import { checkOfflineTimeIn, checkOfflineTimeOut, checkSignedOfflineTimeOut } from '../utils/offlineTimeIn.js';
 import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
@@ -129,23 +128,6 @@ export const getRecordSelfie = async (req, res) => {
   }
 };
 
-// The head-turn check for an employee's next attendance selfie: which way to turn, and the
-// signed token that goes back with the photos (see utils/punchLiveness.js).
-export const getLivenessChallenge = (req, res) => {
-  res.set('Cache-Control', 'no-store, private');
-  res.status(200).json({ success: true, ...createLivenessChallenge({ employeeId: req.user.employeeId }) });
-};
-
-// The head-turn check of an online punch (see utils/punchLiveness.js), with a refusal noted in
-// the employee's verification history. Returns the check's result.
-const checkLivenessFor = async ({ liveness, employeeId, selfieFace, punch }) => {
-  const result = await checkPunchLiveness({ liveness, employeeId, selfieFace, punch });
-  if (result.audit) {
-    await User.addFaceVerificationAudit(employeeId, { outcome: result.audit, provider: LIVENESS_PROVIDER });
-  }
-  return result;
-};
-
 // Checks who made an employee's Time Out, the same way as a Time In: the Time Out selfie
 // (compared with the HR-approved enrollment selfie) and the fingerprint. A Time Out made
 // online that fails a check is refused, so the employee can retry. One saved without
@@ -228,15 +210,6 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline, punc
     }
   }
 
-  // Online, the selfie must also pass the head-turn check. One saved without internet could
-  // not ask for it, so HR sees that it was not checked.
-  let livenessVerified = false;
-  if (!offline && faceMatch?.matched) {
-    const live = await checkLivenessFor({ liveness: record.liveness, employeeId: user.employeeId, selfieFace: faceMatch.face, punch });
-    if (live.error) return refuse(live.statusCode, live.error);
-    livenessVerified = true;
-  }
-
   // Each fingerprint check can be used for only one Time In, Lunch Out, Lunch In, or Time Out.
   if (proof && !(await User.consumeVerificationProof(user._id, proof.jti))) {
     const refusal = failCheck(409, 'This fingerprint verification was already used. Verify your fingerprint again.', `The fingerprint check sent with this ${punch} was already used.`);
@@ -250,8 +223,7 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline, punc
       fingerprintVerified: Boolean(proof) || signed?.registeredKeyMatched === true,
       fingerprintMethod: proof ? (proof.method === 'phone-app' ? 'phone-app' : 'browser') : signed ? 'phone-app' : '',
       faceVerified: faceMatch?.matched === true,
-      faceMatchDistance: faceMatch?.distance ?? null,
-      livenessVerified
+      faceMatchDistance: faceMatch?.distance ?? null
     }
   };
 };
@@ -278,8 +250,7 @@ export const clockInOut = async (req, res) => {
       // of it (see utils/offlineTimeIn.js) instead of a fingerprint proof from this server.
       const offlineProof = record.offlineTimeIn;
       delete record.offlineTimeIn;
-      // The head-turn photo and its token, checked below and not saved with the record.
-      const { liveness } = record;
+      // A head-turn photo sent by an older version of the app is not used.
       delete record.liveness;
       // The DTR date and Time In come from the server clock, not the phone's clock, except
       // for an offline Time In (set below, once its fingerprint signature is checked).
@@ -480,14 +451,6 @@ export const clockInOut = async (req, res) => {
           }
         }
       }
-      // Online, the selfie must also pass the head-turn check. An offline Time In could not ask
-      // for it, so HR sees that it was not checked.
-      let livenessChange = 0;
-      if (!offline) {
-        const live = await checkLivenessFor({ liveness, employeeId: record.employeeId, selfieFace: faceMatch?.face, punch: 'Time In' });
-        if (live.error) return res.status(live.statusCode).json({ success: false, error: live.error });
-        livenessChange = live.change;
-      }
       // Each fingerprint verification can be used for only one Time In (an offline Time In
       // was checked for this above).
       if (!offline && !(await User.consumeVerificationProof(user._id, fingerprintProof.jti))) {
@@ -502,12 +465,10 @@ export const clockInOut = async (req, res) => {
         faceMatchConfidence: null,
         faceMatchDistance: faceMatch?.distance ?? null,
         faceVerifiedAt: faceVerified ? new Date() : null,
-        // The head-turn check; faceLivenessConfidence is how far the head turned (see
-        // headTurnOf in services/faceMatchingService.js).
-        faceLivenessVerified: !offline,
-        faceLivenessConfidence: livenessChange,
+        faceLivenessVerified: false,
+        faceLivenessConfidence: 0,
         faceVerificationProvider: 'local-face-api-v1',
-        faceLivenessProvider: offline ? LIVENESS_NOT_CHECKED_OFFLINE : LIVENESS_PROVIDER,
+        faceLivenessProvider: 'not-used',
         // Which registered fingerprint this Time In matched (offline Time Ins are only made
         // in the phone app).
         fingerprintMethod: offline || fingerprintProof.method === 'phone-app' ? 'phone-app' : 'browser',
