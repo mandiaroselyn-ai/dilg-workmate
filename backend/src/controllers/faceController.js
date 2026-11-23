@@ -2,6 +2,7 @@ import { Announcement } from '../models/announcementModel.js';
 import { User } from '../models/User.js';
 import { createFaceDescriptor } from '../services/faceMatchingService.js';
 import { hasRequiredEnrollmentImages } from '../utils/biometricEnrollment.js';
+import { pendingFingerprints } from '../utils/passwordSecurity.js';
 
 const enrollmentStatus = user => ({
   biometricEnrollmentStatus: user.biometricEnrollmentStatus || 'not-submitted',
@@ -14,7 +15,8 @@ const enrollmentStatus = user => ({
   biometricEnrollmentReviewNote: user.biometricEnrollmentReviewNote || '',
   faceLivenessStatus: 'not-configured',
   hasBrowserFingerprint: Boolean(user.webauthnCredentialId && user.webauthnPublicKey),
-  hasPhoneFingerprint: Boolean(user.nativeBiometricPublicKey)
+  hasPhoneFingerprint: Boolean(user.nativeBiometricPublicKey),
+  ...pendingFingerprints(user)
 });
 
 const isSupportedImage = value => typeof value === 'string'
@@ -88,7 +90,7 @@ export const submitBiometricEnrollment = async (req, res) => {
       notificationWarning,
       notice: isDemoEnrollment
         ? 'DEMO ONLY: sample ID images and your selfie were saved for HR review. HR may approve this enrollment for attendance matching tests only; this is not identity verification.'
-        : 'Your ID and selfie were saved for HR review. After HR approves enrollment, attendance selfies will be matched on this server. This does not check liveness.'
+        : 'Your ID and selfie were saved for HR review. After HR approves enrollment, attendance selfies will be matched on this server, each with a head turn.'
     });
   } catch (error) {
     console.error('Biometric enrollment submission failed:', error);
@@ -166,7 +168,7 @@ export const reviewBiometricEnrollment = async (req, res) => {
         message: approved
           ? updated.biometricEnrollmentIsDemo
             ? 'HR approved your DEMO enrollment. Attendance selfies will be compared with the enrollment selfie for testing only; the sample ID does not verify identity.'
-            : 'HR approved your ID and face enrollment. Attendance selfies will now be compared with the approved enrollment selfie. Liveness is not checked.'
+            : 'HR approved your ID and face enrollment. Attendance selfies will now be compared with the approved enrollment selfie, and each needs a head turn.'
           : `HR did not approve your ID and selfie submission. Reason: ${note.trim()} You may upload corrected images in Profile > Biometric Enrollment.`,
         type: 'biometric_enrollment',
         view: 'profile',

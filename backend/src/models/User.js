@@ -124,6 +124,12 @@ const UserSchema = new mongoose.Schema({
   nativeBiometricChallengeExpiry: { type: Date, default: null },
   // Set when the employee asked to register this phone's fingerprint in place of the old one.
   nativeBiometricChallengeReplacesKey: { type: Boolean, default: false },
+  // A phone or browser fingerprint registered in place of the one already registered waits
+  // here until HR approves it; until then the old one stays in use. The browser one is
+  // { id, publicKey, counter, transports, requestedAt }.
+  nativeBiometricPendingKey: { type: String, default: '' },
+  nativeBiometricPendingAt: { type: Date, default: null },
+  webauthnPendingCredential: { type: mongoose.Schema.Types.Mixed, default: null },
   webauthnChallenge: { type: String, default: '' },
   webauthnChallengeExpiry: { type: Date, default: null },
   resetToken: { type: String, default: '' },
@@ -698,6 +704,96 @@ export const User = {
       },
       { new: true, writeConcern: { w: 'majority' } }
     );
+  },
+
+  // Keeps a phone fingerprint key registered in place of the old one until HR approves it.
+  requestNativeBiometricReplacement: async (userId, challenge, publicKey) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId, nativeBiometricChallenge: challenge, nativeBiometricChallengeExpiry: { $gt: new Date() } },
+      {
+        $set: {
+          nativeBiometricPendingKey: publicKey,
+          nativeBiometricPendingAt: new Date(),
+          nativeBiometricChallenge: '',
+          nativeBiometricChallengeExpiry: null,
+          nativeBiometricChallengeReplacesKey: false
+        },
+        $push: { faceVerificationAudit: fingerprintRegisteredEvent('phone-app-fingerprint-change-requested', 'workmate-phone-app') }
+      },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  // Keeps a browser fingerprint (passkey) registered in place of the old one until HR approves it.
+  requestWebAuthnReplacement: async (userId, credential) => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId)) return null;
+    return MongoUser.findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          webauthnPendingCredential: {
+            id: credential.id,
+            publicKey: credential.publicKey,
+            counter: credential.counter,
+            transports: credential.transports || [],
+            requestedAt: new Date()
+          }
+        },
+        $push: { faceVerificationAudit: fingerprintRegisteredEvent('browser-fingerprint-change-requested', 'browser-passkey') }
+      },
+      { new: true, writeConcern: { w: 'majority' } }
+    );
+  },
+
+  // HR's decision on the fingerprint waiting for approval (`method`: 'phone-app' or 'browser').
+  // 'approve' puts it in place of the old one; 'reject' drops it. Null when none is waiting.
+  reviewPendingFingerprint: async (userId, method, decision, reviewer = '') => {
+    ensureConnected();
+    if (!mongoose.isValidObjectId(userId) || !['approve', 'reject'].includes(decision)) return null;
+    const approve = decision === 'approve';
+    const audit = { $each: [{ timestamp: new Date(), outcome: `${method}-fingerprint-change-${approve ? 'approved' : 'rejected'}`, provider: 'manual-hr-review', reviewedBy: reviewer }], $slice: -50 };
+    if (method === 'phone-app') {
+      const user = await MongoUser.findOne({ _id: userId, nativeBiometricPendingKey: { $nin: ['', null] } }).select('nativeBiometricPendingKey').lean();
+      if (!user) return null;
+      return MongoUser.findOneAndUpdate(
+        { _id: userId, nativeBiometricPendingKey: user.nativeBiometricPendingKey },
+        {
+          $set: {
+            ...(approve ? { nativeBiometricPublicKey: user.nativeBiometricPendingKey, nativeBiometricRegisteredAt: new Date() } : {}),
+            nativeBiometricPendingKey: '',
+            nativeBiometricPendingAt: null
+          },
+          $push: { faceVerificationAudit: audit }
+        },
+        { new: true, writeConcern: { w: 'majority' } }
+      );
+    }
+    if (method === 'browser') {
+      const user = await MongoUser.findOne({ _id: userId, 'webauthnPendingCredential.id': { $exists: true } }).select('webauthnPendingCredential').lean();
+      const pending = user?.webauthnPendingCredential;
+      if (!pending?.id || !pending.publicKey) return null;
+      return MongoUser.findOneAndUpdate(
+        { _id: userId, 'webauthnPendingCredential.id': pending.id },
+        {
+          $set: {
+            ...(approve ? {
+              webauthnCredentialId: pending.id,
+              webauthnPublicKey: pending.publicKey,
+              webauthnCounter: pending.counter || 0,
+              webauthnTransports: pending.transports || [],
+              webauthnRegisteredAt: new Date()
+            } : {}),
+            webauthnPendingCredential: null
+          },
+          $push: { faceVerificationAudit: audit }
+        },
+        { new: true, writeConcern: { w: 'majority' } }
+      );
+    }
+    return null;
   },
 
   saveNativeBiometricChallenge: async (userId, challenge, expiry, replacesKey = false) => {

@@ -60,8 +60,14 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   const [registeringType, setRegisteringType] = useState(null);
   const [fingerprintRegistered, setFingerprintRegistered] = useState(false);
   const [fingerprintRegistrationError, setFingerprintRegistrationError] = useState('');
+  // Set when a new phone or browser fingerprint was sent to HR for approval.
+  const [fingerprintPendingNotice, setFingerprintPendingNotice] = useState('');
   const registrationAbortRef = useRef(null);
   const [confirmingNewPhone, setConfirmingNewPhone] = useState(false);
+  // The phone's own biometric: Face ID on an iPhone, the fingerprint on other phones.
+  const isIOS = /iPad|iPhone|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const BiometricIcon = isIOS ? ScanFace : Fingerprint;
+  const biometricLabel = isIOS ? 'Face ID' : 'Fingerprint';
   // Registered on this visit, or already registered on the server.
   const hasRegisteredFingerprint = fingerprintRegistered || Boolean(user?.hasBrowserFingerprint) || Boolean(user?.hasPhoneFingerprint);
   const videoRef = useRef(null);
@@ -90,8 +96,51 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     }
   };
 
+  // Safari on an iPhone opens Face ID only right after the tap; waiting for the server first
+  // makes it cancel the prompt. So in a browser the registration challenge is asked ahead,
+  // while the Register button shows, and kept here as { options, at } (or { failed }).
+  // Whether the browser has the phone's own biometric is checked ahead too.
+  const preparedRegistrationRef = useRef(null);
+  const platformAuthenticatorRef = useRef(null);
+  const fetchRegistrationOptions = async () => {
+    const optionsResponse = await apiFetch('/api/biometric/action?action=register-options', { method: 'POST' });
+    const options = await parseApiResponse(optionsResponse, 'Fingerprint registration options');
+    if (!optionsResponse.ok || !options.challenge || !options.user?.id) {
+      throw new Error(options?.error || 'Unable to start fingerprint registration.');
+    }
+    return options;
+  };
+  // The server keeps a challenge for 10 minutes, so one older than 8 is not used.
+  const PREPARED_CHALLENGE_MAX_AGE_MS = 8 * 60 * 1000;
+  const prepareRegistrationOptions = () => {
+    if (preparedRegistrationRef.current) return;
+    const entry = { options: null, at: 0, failed: false };
+    preparedRegistrationRef.current = entry;
+    fetchRegistrationOptions()
+      .then(options => Object.assign(entry, { options, at: Date.now() }))
+      .catch(() => { entry.failed = true; });
+  };
+  // The prepared challenge when it is ready and fresh (each is used once), or null.
+  const takePreparedRegistrationOptions = () => {
+    const entry = preparedRegistrationRef.current;
+    if (!entry || (!entry.options && !entry.failed)) return null;
+    preparedRegistrationRef.current = null;
+    return entry.options && Date.now() - entry.at < PREPARED_CHALLENGE_MAX_AGE_MS ? entry.options : null;
+  };
+  const showsRegisterButton = !hasRegisteredFingerprint || confirmingNewPhone;
+  useEffect(() => {
+    if (hasNativeBiometricBridge() || !window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials?.create) return;
+    if (platformAuthenticatorRef.current === null && window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then(available => { platformAuthenticatorRef.current = available; })
+        .catch(() => {});
+    }
+    if (showsRegisterButton && !registeringFingerprint && navigator.onLine) prepareRegistrationOptions();
+  }, [showsRegisterButton, registeringFingerprint]);
+
   const handleRegisterFingerprint = async (type = 'fingerprint') => {
     setFingerprintRegistrationError('');
+    setFingerprintPendingNotice('');
     if (registrationAbortRef.current || registeringFingerprint) {
       setFingerprintRegistrationError(PROMPT_STILL_OPEN_MESSAGE);
       return;
@@ -117,6 +166,12 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
           body: JSON.stringify({ challenge: options.challenge, signature: assertion.signature, publicKey: assertion.publicKey })
         });
         const verification = await parseApiResponse(verifyResponse, 'Phone fingerprint registration');
+        if (verification?.pending) {
+          setFingerprintPendingNotice(verification.error);
+          setConfirmingNewPhone(false);
+          refreshStatus();
+          return;
+        }
         if (!verifyResponse.ok || !verification.success) {
           throw new Error(verification?.error || 'Phone fingerprint registration failed.');
         }
@@ -140,16 +195,12 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     let promptTimer = null;
     setRegisteringFingerprint(true);
     try {
-      if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-        const isAvailable = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        if (!isAvailable) throw new Error('This device does not have an available fingerprint or other platform biometric authenticator.');
+      if (platformAuthenticatorRef.current === false) {
+        throw new Error('This device does not have an available fingerprint or other platform biometric authenticator.');
       }
-
-      const optionsResponse = await apiFetch('/api/biometric/action?action=register-options', { method: 'POST' });
-      const options = await parseApiResponse(optionsResponse, 'Fingerprint registration options');
-      if (!optionsResponse.ok || !options.challenge || !options.user?.id) {
-        throw new Error(options?.error || 'Unable to start fingerprint registration.');
-      }
+      // The challenge asked ahead of the tap, so nothing is awaited before the prompt opens;
+      // without one ready, it is asked now.
+      const options = takePreparedRegistrationOptions() || await fetchRegistrationOptions();
 
       const publicKey = {
         ...options,
@@ -181,6 +232,12 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         body: JSON.stringify({ ...credentialToJson(credential), challenge: options.challenge })
       });
       const verification = await parseApiResponse(verifyResponse, 'Fingerprint registration');
+      if (verification?.pending) {
+        setFingerprintPendingNotice(verification.error);
+        setConfirmingNewPhone(false);
+        refreshStatus();
+        return;
+      }
       if (!verifyResponse.ok || !verification.success) {
         throw new Error(verification?.error || 'Fingerprint registration could not be verified.');
       }
@@ -192,7 +249,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       window.clearTimeout(promptTimer);
       registrationAbortRef.current = null;
       setFingerprintRegistrationError(registrationError?.name === 'InvalidStateError'
-        ? 'This phone is already registered. Go to Attendance and tap Use Fingerprint for Time In.'
+        ? 'This phone is already registered. Go to Attendance and tap Verify Fingerprint for Time In.'
         : describeFingerprintError(registrationError, abortReason));
     } finally {
       setRegisteringFingerprint(false);
@@ -497,20 +554,20 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         </div>
         {statusError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{statusError}</p>}
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Fingerprint option */}
-          <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+        {/* One option: the phone opens its own fingerprint (or Face ID on an iPhone) prompt. */}
+        <div className="mt-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 sm:max-w-md">
             <div className="flex items-start gap-3 text-blue-950">
-              {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <Fingerprint className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
+              {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <BiometricIcon className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />}
               <div>
-                <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Fingerprint registered ✓' : 'Fingerprint'}</p>
-                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">This will replace the previously registered phone.</p>}
+                <p className="text-sm font-black">{hasRegisteredFingerprint ? `${biometricLabel} registered ✓` : biometricLabel}</p>
+                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">HR must approve the new phone. Until then, the one registered before stays in use.</p>}
               </div>
             </div>
             {!hasRegisteredFingerprint || confirmingNewPhone ? (
               <div className="flex gap-2">
                 <button type="button" onClick={() => handleRegisterFingerprint('fingerprint')} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
-                  <Fingerprint className="h-4 w-4" /> {registeringType === 'fingerprint' ? 'Waiting...' : 'Register Fingerprint'}
+                  <BiometricIcon className="h-4 w-4" /> {registeringType ? 'Waiting...' : `Register ${biometricLabel}`}
                 </button>
                 {confirmingNewPhone && !registeringFingerprint && (
                   <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-xs font-black text-blue-800">Cancel</button>
@@ -522,33 +579,13 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
               </button>
             )}
           </div>
-
-          {/* Face ID option */}
-          <div className="flex flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4">
-            <div className="flex items-start gap-3 text-indigo-950">
-              {hasRegisteredFingerprint ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /> : <ScanFace className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />}
-              <div>
-                <p className="text-sm font-black">{hasRegisteredFingerprint ? 'Face ID registered ✓' : 'Face ID'}</p>
-                {confirmingNewPhone && <p className="mt-2 text-xs font-bold text-amber-800">This will replace the previously registered phone.</p>}
-              </div>
-            </div>
-            {!hasRegisteredFingerprint || confirmingNewPhone ? (
-              <div className="flex gap-2">
-                <button type="button" onClick={() => handleRegisterFingerprint('faceid')} disabled={registeringFingerprint} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-700 px-3 py-2.5 text-xs font-black text-white disabled:cursor-wait disabled:opacity-60">
-                  <ScanFace className="h-4 w-4" /> {registeringType === 'faceid' ? 'Waiting...' : 'Register Face ID'}
-                </button>
-                {confirmingNewPhone && !registeringFingerprint && (
-                  <button type="button" onClick={() => setConfirmingNewPhone(false)} className="rounded-lg border border-indigo-200 bg-white px-3 py-2.5 text-xs font-black text-indigo-800">Cancel</button>
-                )}
-              </div>
-            ) : (
-              <button type="button" onClick={() => setConfirmingNewPhone(true)} className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-[11px] font-black text-indigo-800">
-                Changed phones?
-              </button>
-            )}
-          </div>
         </div>
         {fingerprintRegistrationError && <p role="alert" className="mt-2 text-xs font-semibold text-rose-700">{fingerprintRegistrationError}</p>}
+        {(fingerprintPendingNotice || user?.phoneFingerprintPendingAt || user?.browserFingerprintPendingAt) && (
+          <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            {fingerprintPendingNotice || 'Your new phone is waiting for HR approval. Until HR approves it, use the phone you registered before.'}
+          </p>
+        )}
 
         {status === 'pending' && (
           <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
@@ -574,7 +611,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
             <CheckCircle2 className="h-5 w-5 shrink-0" />
             <p>{user.biometricEnrollmentIsDemo
               ? 'DEMO ONLY: HR approved the sample ID submission for testing. Attendance selfies will be compared with this enrollment selfie, but the sample ID does not verify identity.'
-              : 'HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie; liveness is not checked.'}</p>
+              : 'HR approved the submitted ID and enrollment selfie. Attendance selfies will be compared with this enrollment selfie, and each needs a head turn.'}</p>
           </div>
         )}
         {status === 'rejected' && (
@@ -586,7 +623,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         {success && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm font-semibold ${successIsWarning ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{success}</p>}
 
         <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <p className="font-black">Face matching starts after HR approval; liveness detection is not enabled.</p>
+          <p className="font-black">Face matching starts after HR approval. At attendance you also turn your head when asked.</p>
           <p className="mt-1">The server checks whether your attendance selfie matches this enrollment selfie before saving Time In. It cannot tell whether a photo is live or detect a printed-photo or screen replay.</p>
         </div>
         {user.biometricEnrollmentSubmittedAt && (
@@ -684,7 +721,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
         </>
       )}
 
-      <p className="text-xs text-slate-500">Your ID images and enrollment selfie are stored in the restricted HR record. After HR approval, the server automatically compares attendance selfies with your enrollment selfie. This does not check liveness. Do not submit images belonging to another person.</p>
+      <p className="text-xs text-slate-500">Your ID images and enrollment selfie are stored in the restricted HR record. After HR approval, the server automatically compares attendance selfies with your enrollment selfie, and checks the head turn you make after each one. Do not submit images belonging to another person.</p>
     </div>
   );
 }

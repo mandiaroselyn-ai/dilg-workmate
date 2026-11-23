@@ -41,6 +41,9 @@ export const toSafeUser = (user) => {
     nativeBiometricChallenge,
     nativeBiometricChallengeExpiry,
     nativeBiometricChallengeReplacesKey,
+    nativeBiometricPendingKey,
+    nativeBiometricPendingAt,
+    webauthnPendingCredential,
     ...safeUser
   } = plainUser;
   return {
@@ -48,9 +51,17 @@ export const toSafeUser = (user) => {
     hasPassword: Boolean(password),
     // Whether a fingerprint is registered for Time In (browser passkey or phone app).
     hasBrowserFingerprint: Boolean(webauthnCredentialId && webauthnPublicKey),
-    hasPhoneFingerprint: Boolean(nativeBiometricPublicKey)
+    hasPhoneFingerprint: Boolean(nativeBiometricPublicKey),
+    ...pendingFingerprints({ nativeBiometricPendingKey, nativeBiometricPendingAt, webauthnPendingCredential })
   };
 };
+
+// When a new phone or browser fingerprint was registered in place of the old one and is
+// waiting for HR to approve it (null when none is waiting).
+export const pendingFingerprints = user => ({
+  phoneFingerprintPendingAt: user?.nativeBiometricPendingKey ? user.nativeBiometricPendingAt || new Date(0) : null,
+  browserFingerprintPendingAt: user?.webauthnPendingCredential?.id ? user.webauthnPendingCredential.requestedAt || new Date(0) : null
+});
 
 // The requester's details sent with each request. Supervisors see every request, so this
 // is only what reviewing a request and filling its official form need: no home address,

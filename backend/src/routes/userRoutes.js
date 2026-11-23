@@ -48,6 +48,7 @@ import {
   createNativeBiometricOptions,
   verifyNativeBiometric
 } from '../controllers/nativeBiometricController.js';
+import { reviewFingerprintDevice } from '../controllers/fingerprintDeviceController.js';
 
 const router = express.Router();
 
@@ -95,6 +96,8 @@ router.post('/biometric/authenticate/verify', verifyAuthentication);
 router.post('/biometric/native/options', createNativeBiometricOptions);
 router.post('/biometric/native/verify', verifyNativeBiometric);
 router.post('/biometric/action', (req, res) => {
+  // HR approves or rejects a new phone or browser fingerprint an employee registered.
+  if (req.query.action === 'review-device') return requireAdmin(req, res, () => reviewFingerprintDevice(req, res));
   const actions = {
     'register-options': createRegistrationOptions,
     'register-verify': verifyRegistration,

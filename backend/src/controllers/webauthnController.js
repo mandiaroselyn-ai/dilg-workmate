@@ -8,6 +8,9 @@ import { User } from '../models/User.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { createVerificationProof } from '../utils/verificationProof.js';
 import { getFrontendOrigin, getRequestOrigin } from '../utils/frontendOrigin.js';
+import { notifyHrOfFingerprintChange } from './nativeBiometricController.js';
+
+export const BROWSER_FINGERPRINT_SENT_MESSAGE = 'This fingerprint was sent to HR for approval, since another one is already registered. You can use it for attendance once HR approves it; until then, use the one you registered before.';
 
 const getOrigin = req => getRequestOrigin(req) || getFrontendOrigin(req);
 const getRpId = req => {
@@ -76,12 +79,22 @@ export const verifyRegistration = async (req, res) => {
     if (!verification.verified) return res.status(400).json({ success: false, error: 'WebAuthn registration was not verified.' });
 
     const credential = verification.registrationInfo.credential;
-    const savedCredential = await User.saveWebAuthnCredential(user._id, {
+    const newCredential = {
       id: credential.id,
       publicKey: toBase64Url(credential.publicKey),
       counter: credential.counter,
       transports: registeredTransports(credential.transports)
-    });
+    };
+    // The first browser fingerprint is registered right away; one in place of it waits for HR.
+    if (user.webauthnCredentialId && user.webauthnCredentialId !== credential.id) {
+      // HR hears once for each new passkey, not again when the employee registers it twice.
+      const alreadyWaiting = user.webauthnPendingCredential?.id === credential.id;
+      const requested = await User.requestWebAuthnReplacement(user._id, newCredential);
+      if (!requested) throw new Error('Could not save the new passkey for HR approval.');
+      if (!alreadyWaiting) await notifyHrOfFingerprintChange(user, 'browser fingerprint');
+      return res.status(202).json({ success: false, pending: true, error: BROWSER_FINGERPRINT_SENT_MESSAGE });
+    }
+    const savedCredential = await User.saveWebAuthnCredential(user._id, newCredential);
     if (!savedCredential) throw new Error('Could not save the passkey credential.');
     res.status(201).json({ success: true, credentialId: credential.id });
   } catch (error) {

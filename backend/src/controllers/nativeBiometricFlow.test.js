@@ -6,6 +6,7 @@ import test from 'node:test';
 // fingerprint-protected key kept on the phone.
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'native-flow-test-secret';
 const { User } = await import('../models/User.js');
+const { Announcement } = await import('../models/announcementModel.js');
 const { createNativeBiometricOptions, verifyNativeBiometric } = await import('./nativeBiometricController.js');
 const { readVerificationProof } = await import('../utils/verificationProof.js');
 
@@ -35,7 +36,19 @@ const useEmployeeStore = t => {
     return Object.assign(employee, { nativeBiometricPublicKey: publicKey });
   });
   replace('consumeNativeBiometricChallenge', async (_id, challenge) => (liveChallenge(challenge) ? clearChallenge() : null));
-  t.after(() => Object.assign(User, originals));
+  replace('requestNativeBiometricReplacement', async (_id, challenge, publicKey) => {
+    if (!liveChallenge(challenge)) return null;
+    clearChallenge();
+    return Object.assign(employee, { nativeBiometricPendingKey: publicKey, nativeBiometricPendingAt: new Date() });
+  });
+  // What HR is told, instead of saving notifications in MongoDB.
+  employee.hrNotices = [];
+  const createNotification = Announcement.createNotification;
+  Announcement.createNotification = async notice => { employee.hrNotices.push(notice); return notice; };
+  t.after(() => {
+    Object.assign(User, originals);
+    Announcement.createNotification = createNotification;
+  });
   return employee;
 };
 
@@ -68,7 +81,7 @@ test('the app registers the phone fingerprint on first use and accepts it afterw
   assert.equal(employee.nativeBiometricPublicKey, phone.publicKey);
 });
 
-test('a changed phone key is explained and can be registered again by the employee', async t => {
+test('a new phone waits for HR approval, and the registered phone keeps working until then', async t => {
   const employee = useEmployeeStore(t);
   const oldPhone = createPhoneKey();
   const newPhone = createPhoneKey();
@@ -77,12 +90,31 @@ test('a changed phone key is explained and can be registered again by the employ
   const changed = await verifyWith(employee, newPhone);
   assert.equal(changed.statusCode, 409);
   assert.equal(changed.body.code, 'phone-key-changed');
+  assert.match(changed.body.error, /HR for approval/);
   assert.equal(employee.nativeBiometricPublicKey, oldPhone.publicKey);
 
-  const reRegistered = await verifyWith(employee, newPhone, { replaceRegisteredKey: true });
-  assert.equal(reRegistered.statusCode, 200, JSON.stringify(reRegistered.body));
-  assert.equal(employee.nativeBiometricPublicKey, newPhone.publicKey);
+  // "Register This Phone" sends it to HR instead of registering it.
+  const sent = await verifyWith(employee, newPhone, { replaceRegisteredKey: true });
+  assert.equal(sent.statusCode, 202, JSON.stringify(sent.body));
+  assert.equal(sent.body.pending, true);
+  assert.equal(sent.body.verificationProof, undefined);
+  assert.equal(employee.nativeBiometricPublicKey, oldPhone.publicKey);
+  assert.equal(employee.nativeBiometricPendingKey, newPhone.publicKey);
+  assert.equal(employee.hrNotices.length, 1);
+  assert.equal(employee.hrNotices[0].recipientRole, 'hr_admin');
+  // Tapping it again does not tell HR twice.
+  assert.equal((await verifyWith(employee, newPhone, { replaceRegisteredKey: true })).statusCode, 202);
+  assert.equal(employee.hrNotices.length, 1);
+
+  const waiting = await verifyWith(employee, newPhone);
+  assert.equal(waiting.statusCode, 409);
+  assert.equal(waiting.body.code, 'phone-key-pending');
+  assert.equal((await verifyWith(employee, oldPhone)).statusCode, 200);
+
+  // HR approves it (User.reviewPendingFingerprint): from then on only the new phone works.
+  Object.assign(employee, { nativeBiometricPublicKey: employee.nativeBiometricPendingKey, nativeBiometricPendingKey: '' });
   assert.equal((await verifyWith(employee, newPhone)).statusCode, 200);
+  assert.equal((await verifyWith(employee, oldPhone)).statusCode, 409);
 });
 
 test('a signature that does not match the phone key is rejected', async t => {

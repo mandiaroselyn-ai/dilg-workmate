@@ -168,6 +168,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   const [enrollmentImagesReloadKey, setEnrollmentImagesReloadKey] = useState(0);
   const [biometricReviewNote, setBiometricReviewNote] = useState('');
   const [biometricReviewLoading, setBiometricReviewLoading] = useState(false);
+  const [deviceReviewLoading, setDeviceReviewLoading] = useState(false);
   const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [accountStatusUpdating, setAccountStatusUpdating] = useState(false);
@@ -309,13 +310,40 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
           : employee
       ));
       const reviewMessage = data.notificationWarning || (decision === 'approve'
-        ? 'HR review approved. Attendance selfies will now be compared with the approved enrollment selfie. Liveness is not checked.'
+        ? 'HR review approved. Attendance selfies will now be compared with the approved enrollment selfie, and each needs a head turn.'
         : 'Enrollment rejected. The employee was notified to correct and resubmit.');
       notify(reviewMessage, Boolean(data.notificationWarning));
     } catch (error) {
       notify(error.message || 'Unable to save HR review.', true);
     } finally {
       setBiometricReviewLoading(false);
+    }
+  };
+
+  // Approves or rejects a new phone or browser fingerprint (`method`: 'phone-app' or 'browser')
+  // the employee registered in place of the old one. Until HR approves it, the old one stays in use.
+  const handleFingerprintDeviceReview = async (method, decision) => {
+    if (!selectedEmployee?._id) return;
+    if (decision === 'approve' && !window.confirm('Approve this new device? From now on only it is accepted for this employee\'s fingerprint. Approve only if the employee told you they changed phones or reinstalled WorkMate.')) return;
+    setDeviceReviewLoading(true);
+    try {
+      const response = await apiFetch('/api/biometric/action?action=review-device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: String(selectedEmployee._id), method, decision })
+      });
+      const data = await parseApiResponse(response, 'Fingerprint device review');
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save the review.');
+      onEmployeesChange?.(previous => previous.map(employee => (
+        employeeKey(employee) === employeeKey(selectedEmployee) ? { ...employee, ...data.employee } : employee
+      )));
+      notify(decision === 'approve'
+        ? 'New device approved. The employee was notified and can use it for attendance now.'
+        : 'New device rejected. The employee keeps using the one registered before and was notified.');
+    } catch (error) {
+      notify(error.message || 'Unable to save the review.', true);
+    } finally {
+      setDeviceReviewLoading(false);
     }
   };
 
@@ -888,7 +916,7 @@ This cannot be undone.`
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched, and each needs a head turn.</p>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
                 selectedEmployee.biometricEnrollmentStatus === 'rejected'
@@ -935,6 +963,20 @@ This cannot be undone.`
                   ) : (
                     <p className="mt-1 text-xs font-semibold text-slate-600">Not registered yet. The employee registers it on the Biometric Enrollment page. Time In needs a registered fingerprint.</p>
                   )}
+                  {/* A new phone or browser fingerprint registered in place of the old one. */}
+                  {[
+                    ['phone-app', selectedEmployee.phoneFingerprintPendingAt, 'New phone (WorkMate app)'],
+                    ['browser', selectedEmployee.browserFingerprintPendingAt, 'New browser fingerprint']
+                  ].filter(([, pendingAt]) => pendingAt).map(([method, pendingAt, label]) => (
+                    <div key={method} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                      <p className="text-xs font-black text-amber-900">{label} waiting for your approval · {new Date(pendingAt).toLocaleString()}</p>
+                      <p className="mt-1 text-xs font-semibold text-amber-800">Approve only if the employee told you they changed phones or reinstalled WorkMate. Until you approve it, the one registered before stays in use.</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" onClick={() => handleFingerprintDeviceReview(method, 'approve')} disabled={deviceReviewLoading} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
+                        <button type="button" onClick={() => handleFingerprintDeviceReview(method, 'reject')} disabled={deviceReviewLoading} className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-black text-rose-700 disabled:opacity-50">Reject</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               );
             })()}
@@ -1020,7 +1062,7 @@ This cannot be undone.`
                     {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
                   </button>
                 </div>
-                <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
+                <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies, each with a head turn that a printed photo cannot do. It does not stop a video played back on another screen.</p>
               </div>
             )}
           </section>
@@ -1037,7 +1079,7 @@ This cannot be undone.`
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches and head-turn checks are shown on DTR records.</p>
           {selectedEmployee.faceVerificationAudit?.length ? (
             <div className="mt-3 space-y-2">
               {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
@@ -1225,6 +1267,9 @@ This cannot be undone.`
                           </span>
                           {employee.biometricEnrollmentStatus === 'pending' && (
                             <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">Biometric review</span>
+                          )}
+                          {(employee.phoneFingerprintPendingAt || employee.browserFingerprintPendingAt) && (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">New device to approve</span>
                           )}
                         </div>
                         {/* One line under the badge; employment status only when it is not the usual ACTIVE. */}

@@ -35,13 +35,18 @@ test('removes authentication and biometric secrets from API user objects', () =>
     webauthnChallenges: [{ challenge: 'private-pending-challenge' }],
     nativeBiometricPublicKey: 'native-public-key',
     nativeBiometricChallenge: 'active-native-challenge',
-    nativeBiometricChallengeExpiry: new Date()
+    nativeBiometricChallengeExpiry: new Date(),
+    nativeBiometricPendingKey: 'new-phone-public-key',
+    nativeBiometricPendingAt: new Date('2026-11-24T01:00:00Z'),
+    webauthnPendingCredential: { id: 'new-passkey', publicKey: 'new-passkey-public-key', requestedAt: new Date('2026-11-24T02:00:00Z') }
   });
 
   assert.equal('faceEnrollmentDescriptor' in safeUser, false);
   assert.equal('webauthnChallenges' in safeUser, false);
   assert.equal('nativeBiometricPublicKey' in safeUser, false);
   assert.equal('nativeBiometricChallenge' in safeUser, false);
+  assert.equal('nativeBiometricPendingKey' in safeUser, false);
+  assert.equal('webauthnPendingCredential' in safeUser, false);
   assert.deepEqual(safeUser, {
     email: 'employee@example.com',
     biometricEnrollmentStatus: 'pending',
@@ -51,6 +56,9 @@ test('removes authentication and biometric secrets from API user objects', () =>
     hasPassword: true,
     // Only yes/no flags about registered fingerprints are shared, never keys.
     hasBrowserFingerprint: false,
-    hasPhoneFingerprint: true
+    hasPhoneFingerprint: true,
+    // A new phone or browser fingerprint waiting for HR: only when it was registered.
+    phoneFingerprintPendingAt: new Date('2026-11-24T01:00:00Z'),
+    browserFingerprintPendingAt: new Date('2026-11-24T02:00:00Z')
   });
 });

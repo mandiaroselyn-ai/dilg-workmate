@@ -169,3 +169,28 @@ test('Time In asks employees without a registered fingerprint to enroll first', 
   const result = await call(createAuthenticationOptions, employee);
   assert.equal(result.statusCode, 404);
 });
+
+test('a browser fingerprint from another phone waits for HR approval instead of replacing the registered one', async t => {
+  const employee = useEmployeeStore(t);
+  const { Announcement } = await import('../models/announcementModel.js');
+  const hrNotices = [];
+  t.mock.method(Announcement, 'createNotification', async notice => { hrNotices.push(notice); return notice; });
+  t.mock.method(User, 'requestWebAuthnReplacement', async (_id, credential) => Object.assign(employee, {
+    webauthnPendingCredential: { ...credential, requestedAt: new Date() }
+  }));
+  const registeredPhone = createPhone();
+  await registerPhone(employee, registeredPhone);
+
+  const newPhone = createPhone();
+  const options = await call(createRegistrationOptions, employee);
+  const sent = await call(verifyRegistration, employee, { ...newPhone.register(options.body.challenge), challenge: options.body.challenge });
+  assert.equal(sent.statusCode, 202, JSON.stringify(sent.body));
+  assert.equal(sent.body.pending, true);
+  assert.equal(employee.webauthnCredentialId, registeredPhone.credentialId);
+  assert.equal(employee.webauthnPendingCredential.id, newPhone.credentialId);
+  assert.equal(hrNotices.length, 1);
+
+  // Until HR approves it, Time In still asks for the registered phone's fingerprint.
+  const timeIn = await call(createAuthenticationOptions, employee);
+  assert.deepEqual(timeIn.body.allowCredentials.map(credential => credential.id), [registeredPhone.credentialId]);
+});

@@ -42,7 +42,9 @@ import {
   AlertCircle,
   Utensils,
   LogIn,
-  Plane
+  Plane,
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { assignmentOfShift } from '../utils/shiftAssignment';
@@ -337,6 +339,15 @@ export default function AttendanceView({
   const [cameraError, setCameraError] = useState(null);
   const selfieVideoRef = useRef(null);
   const selfieStreamRef = useRef(null);
+  // The head-turn check (backend utils/punchLiveness.js): when the camera opens, the server
+  // picks which way to turn ({ direction: 'left' | 'right', token }). The selfie is taken
+  // first (`pendingFrontSelfie`), then a second photo with the head turned toward the arrow
+  // (`livenessSelfie`). Without internet there is no check, and the selfie is taken alone.
+  const [livenessChallenge, setLivenessChallenge] = useState(null);
+  const livenessRequestRef = useRef(null);
+  const [pendingFrontSelfie, setPendingFrontSelfie] = useState(null);
+  const [livenessSelfie, setLivenessSelfie] = useState(null);
+  const [selfieCapturing, setSelfieCapturing] = useState(false);
 
   // Fingerprint States
   const [fingerprintScanning, setFingerprintScanning] = useState(false);
@@ -349,6 +360,12 @@ export default function AttendanceView({
   const webAuthnAbortRef = useRef(null);
   // Each fingerprint attempt gets a number; results from an older attempt are ignored.
   const fingerprintAttemptRef = useRef(0);
+  // Safari on an iPhone opens Face ID only right after the tap; waiting for the server first
+  // makes it cancel the prompt. So in a browser, the server's challenge is asked ahead (once
+  // the selfie is done) and kept here as { options, at } (or { failed }), and the tap opens
+  // the prompt at once. Whether the browser has the phone's own biometric is checked ahead too.
+  const preparedWebAuthnRef = useRef(null);
+  const platformAuthenticatorRef = useRef(null);
   const [fingerprintError, setFingerprintError] = useState(null);
   // True when the WorkMate app's fingerprint key no longer matches the registered one.
   const [phoneKeyChanged, setPhoneKeyChanged] = useState(false);
@@ -444,12 +461,29 @@ export default function AttendanceView({
     }
   }, [selfieCameraActive]);
 
+  // Asks the server which way to turn for the head-turn check; null without internet.
+  const requestLivenessChallenge = () => apiFetch('/api/dtr/action?action=liveness-challenge', { cache: 'no-store', signal: timeoutSignal(10000) })
+    .then(async response => {
+      const data = await response.json().catch(() => ({}));
+      return response.ok && typeof data.token === 'string' && ['left', 'right'].includes(data.direction)
+        ? { token: data.token, direction: data.direction }
+        : null;
+    })
+    .catch(() => null);
+
   const startSelfieCamera = async () => {
     setCameraError(null);
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera access requires HTTPS or localhost. Open this app using a secure connection and allow camera permission.');
       return;
     }
+    setPendingFrontSelfie(null);
+    setLivenessChallenge(null);
+    const request = requestLivenessChallenge();
+    livenessRequestRef.current = request;
+    request.then(challenge => {
+      if (livenessRequestRef.current === request) setLivenessChallenge(challenge);
+    });
     try {
       stopSelfieCamera();
       selfieStreamRef.current = await navigator.mediaDevices.getUserMedia({
@@ -467,37 +501,83 @@ export default function AttendanceView({
     }
   };
 
-  const captureAttendanceSelfie = () => {
+  // The live preview as a JPEG at most `maxSide` pixels wide or tall, or null (with the reason
+  // shown) when there is no picture yet.
+  const captureCameraFrame = maxSide => {
     const video = selfieVideoRef.current;
     if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
       setCameraError('Wait for the live camera preview, then capture your selfie.');
-      return;
+      return null;
     }
-    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+    const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     const context = canvas.getContext('2d');
     if (!context) {
       setCameraError('Unable to process the camera photo. Please try again.');
-      return;
+      return null;
     }
-    // Saved as the mirror image the employee saw in the preview.
+    // Saved as the mirror image the employee saw in the preview, so the head turn's side is
+    // the side the on-screen arrow points to.
     context.translate(canvas.width, 0);
     context.scale(-1, 1);
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    setCapturedSelfie(canvas.toDataURL('image/jpeg', 0.85));
+    return canvas.toDataURL('image/jpeg', 0.85);
+  };
+
+  const finishSelfie = (selfie, turnPhoto) => {
+    setCapturedSelfie(selfie);
+    setLivenessSelfie(turnPhoto);
+    setPendingFrontSelfie(null);
     setCameraError(null);
     handleResetFingerprint();
     stopSelfieCamera();
   };
 
+  // The first tap takes the selfie. With internet, the arrow then shows which way to turn, and
+  // the second tap takes the head-turn photo (smaller, as it is only checked, not kept).
+  const captureAttendanceSelfie = async () => {
+    if (pendingFrontSelfie) {
+      const turnPhoto = captureCameraFrame(640);
+      if (turnPhoto) finishSelfie(pendingFrontSelfie, turnPhoto);
+      return;
+    }
+    const selfie = captureCameraFrame(1280);
+    if (!selfie) return;
+    setSelfieCapturing(true);
+    const challenge = livenessChallenge || await livenessRequestRef.current;
+    setSelfieCapturing(false);
+    if (!challenge) {
+      finishSelfie(selfie, null);
+      return;
+    }
+    setLivenessChallenge(challenge);
+    setPendingFrontSelfie(selfie);
+    setCameraError(null);
+  };
+
+  const cancelSelfieCamera = () => {
+    setPendingFrontSelfie(null);
+    stopSelfieCamera();
+  };
+
   const handleResetSelfie = () => {
     setCapturedSelfie(null);
+    setPendingFrontSelfie(null);
     stopSelfieCamera();
     handleResetFingerprint();
     setCameraError(null);
   };
+
+  // A selfie used for a punch (or retaken) takes its head-turn photo with it.
+  useEffect(() => {
+    if (!capturedSelfie) setLivenessSelfie(null);
+  }, [capturedSelfie]);
+  // The head-turn photo and its token, sent with an online punch (null without one).
+  const punchLiveness = () => (livenessSelfie && livenessChallenge?.token
+    ? { token: livenessChallenge.token, selfie: livenessSelfie }
+    : null);
 
   useEffect(() => {
     const handleMobileLocationResult = (event) => {
@@ -667,18 +747,9 @@ export default function AttendanceView({
         return;
       }
 
-      const optionsResponse = await apiFetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
-      if (optionsResponse.status === 404) {
-        throw new Error('Fingerprint verification is not set up on this device. Use the mobile app for phone fingerprint or complete biometric enrollment in your browser first.');
-      }
-      if (optionsResponse.status === 401) {
-        throw new Error('Your session has expired or is no longer valid. Sign in again before verifying your fingerprint.');
-      }
-      if (!optionsResponse.ok) throw new Error('Unable to start fingerprint verification. Please try again.');
-      const options = await optionsResponse.json();
-      if (!options.challenge) {
-        throw new Error('Unable to start fingerprint verification. Please try again.');
-      }
+      // The challenge asked ahead of the tap, so nothing is awaited before the prompt opens;
+      // without one ready, it is asked now.
+      const options = takePreparedWebAuthnOptions() || await fetchWebAuthnOptions();
 
       const publicKey = {
         ...options,
@@ -687,11 +758,8 @@ export default function AttendanceView({
         challenge: fromBase64Url(options.challenge),
         allowCredentials: (options.allowCredentials || []).map(item => ({ ...item, id: fromBase64Url(item.id) }))
       };
-      if (window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-        const hasPlatformAuthenticator = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-        if (!hasPlatformAuthenticator) {
-          throw new Error('This browser cannot access the phone fingerprint sensor. Open this site in Chrome or Safari on a phone with screen lock and biometrics enabled.');
-        }
+      if (platformAuthenticatorRef.current === false) {
+        throw new Error('This browser cannot access the phone fingerprint sensor. Open this site in Chrome or Safari on a phone with screen lock and biometrics enabled.');
       }
       if (!isCurrentAttempt()) return;
       // The prompt can be cancelled by Take Again, and is abandoned if it never opens
@@ -749,6 +817,40 @@ export default function AttendanceView({
       setPhoneKeyChanged(error?.phoneKeyChanged === true);
       setFingerprintError(describeTimeInFingerprintError(error, abortReason));
     }
+  };
+
+  // The server's fingerprint challenge for this browser, or an error that says what to do.
+  const fetchWebAuthnOptions = async () => {
+    const optionsResponse = await apiFetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
+    if (optionsResponse.status === 404) {
+      throw new Error('Fingerprint verification is not set up on this device. Use the mobile app for phone fingerprint or complete biometric enrollment in your browser first.');
+    }
+    if (optionsResponse.status === 401) {
+      throw new Error('Your session has expired or is no longer valid. Sign in again before verifying your fingerprint.');
+    }
+    if (!optionsResponse.ok) throw new Error('Unable to start fingerprint verification. Please try again.');
+    const options = await optionsResponse.json();
+    if (!options.challenge) throw new Error('Unable to start fingerprint verification. Please try again.');
+    return options;
+  };
+
+  // Asks the browser's fingerprint challenge ahead of the tap (see preparedWebAuthnRef). The
+  // server keeps a challenge for 10 minutes, so one older than 8 is not used.
+  const PREPARED_CHALLENGE_MAX_AGE_MS = 8 * 60 * 1000;
+  const prepareWebAuthnOptions = () => {
+    if (preparedWebAuthnRef.current) return;
+    const entry = { options: null, at: 0, failed: false };
+    preparedWebAuthnRef.current = entry;
+    fetchWebAuthnOptions()
+      .then(options => Object.assign(entry, { options, at: Date.now() }))
+      .catch(() => { entry.failed = true; });
+  };
+  // The prepared challenge when it is ready and fresh (each is used once), or null.
+  const takePreparedWebAuthnOptions = () => {
+    const entry = preparedWebAuthnRef.current;
+    if (!entry || (!entry.options && !entry.failed)) return null;
+    preparedWebAuthnRef.current = null;
+    return entry.options && Date.now() - entry.at < PREPARED_CHALLENGE_MAX_AGE_MS ? entry.options : null;
   };
 
   // Clears the fingerprint step (Take Again, a new selfie, or Reset). Any prompt that is
@@ -1002,6 +1104,19 @@ export default function AttendanceView({
     next?.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
   }, [gpsStepDone, selfieStepDone, biometricStepDone]);
 
+  // In a browser, gets the fingerprint (Face ID) prompt ready before the tap: whether the phone's
+  // own biometric is there, and, once the selfie is done, the server's challenge (see
+  // preparedWebAuthnRef), so the prompt opens right away on an iPhone.
+  useEffect(() => {
+    if (hasNativeBridge || !hasSecureWebAuthn) return;
+    if (platformAuthenticatorRef.current === null && window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then(available => { platformAuthenticatorRef.current = available; })
+        .catch(() => {});
+    }
+    if (selfieStepDone && !fingerprintVerified && !fingerprintScanning && navigator.onLine) prepareWebAuthnOptions();
+  }, [selfieStepDone, fingerprintVerified, fingerprintScanning]);
+
   // After a punch is saved the steps start again from GPS, so the next punch (Lunch Out,
   // Lunch In, or Time Out) is checked where the employee is then.
   const resetGpsStep = () => {
@@ -1009,22 +1124,17 @@ export default function AttendanceView({
     setGpsChecked(false);
   };
 
-  const autoClockInRef = useRef(false);
-
   const executeClockIn = async () => {
     if (fieldBlockedToday && assignmentMode === 'field') {
       setLocationError(FIELD_ON_TRAVEL_ERROR);
-      autoClockInRef.current = false;
       return;
     }
     if (assignmentMode === 'wfh' && !user?.approvedWfhLocation?.approvedAt) {
       setLocationError('HR/Admin must set an approved WFH location before Time In.');
-      autoClockInRef.current = false;
       return;
     }
     if (!navigator.geolocation || !siteLocation) {
       setLocationError(siteLocationError || 'Wait for the selected assignment site to finish locating before Time In.');
-      autoClockInRef.current = false;
       return;
     }
 
@@ -1047,20 +1157,17 @@ export default function AttendanceView({
 
         if (!Number.isFinite(accuracy) || accuracy > GPS_ACCURACY_REQUIRED_METERS) {
           setLocationError(`GPS accuracy is still ${Number.isFinite(accuracy) ? `${Math.round(accuracy)}m` : 'unavailable'} after trying for a while. Move outdoors or near a window and tap Time In again; ${GPS_ACCURACY_REQUIRED_METERS}m or better is needed.`);
-          autoClockInRef.current = false;
           return;
         }
         setLocationError('');
 
         if (verdict !== 'In Range') {
           setLocationError(`Time In blocked: your GPS location is outside ${siteLocation.label}. Move to the assigned address and verify GPS again.`);
-          autoClockInRef.current = false;
           return;
         }
 
         if (!capturedSelfie) {
-          setCameraError('Take or choose an ordinary selfie before Time In. This photo is not a liveness check.');
-          autoClockInRef.current = false;
+          setCameraError('Take a selfie before Time In.');
           return;
         }
 
@@ -1086,7 +1193,8 @@ export default function AttendanceView({
             user?.email || '',
             assignmentSite,
             accuracy,
-            offlineProof
+            offlineProof,
+            offlineProof ? null : punchLiveness()
           )).then(saved => showPunchReceipt('timeIn', saved));
           resetGpsStep();
           setCapturedSelfie(null);
@@ -1095,7 +1203,6 @@ export default function AttendanceView({
           setFingerprintProgress(0);
           setOfflineTimeIn(false);
         };
-        autoClockInRef.current = false;
         if (!offlineTimeIn) {
           timeIn(null);
           return;
@@ -1125,7 +1232,6 @@ export default function AttendanceView({
         setLocationError(error.code === 1
           ? 'GPS permission is required before Time In. Allow location access in your browser settings.'
           : 'GPS could not get a fix. Turn on Location Services, then retry. If this page is open inside Messenger, open it in Chrome.');
-        autoClockInRef.current = false;
       });
   };
 
@@ -1195,7 +1301,8 @@ export default function AttendanceView({
           ...fix,
           selfie: capturedSelfie,
           fingerprintProof,
-          offlineTimeOut: offlineTimeOutProof
+          offlineTimeOut: offlineTimeOutProof,
+          liveness: offlineTimeOutProof ? null : punchLiveness()
         })).then(saved => showPunchReceipt('timeOut', saved));
         resetGpsStep();
         setCapturedSelfie(null);
@@ -1251,7 +1358,7 @@ export default function AttendanceView({
     locatePunch(punch).then(fix => {
       if (!fix) return;
       setLunchSaving(true);
-      onLunch(action, { ...fix, selfie: capturedSelfie, fingerprintProof })
+      onLunch(action, { ...fix, selfie: capturedSelfie, fingerprintProof, liveness: punchLiveness() })
         .then(record => {
           resetGpsStep();
           setCapturedSelfie(null);
@@ -1262,20 +1369,6 @@ export default function AttendanceView({
         .finally(() => setLunchSaving(false));
     });
   };
-
-  useEffect(() => {
-    if (isCurrentlyActive || isDoneForToday) {
-      return;
-    }
-
-    if (!capturedSelfie || !fingerprintVerified || !geofenceStatus.inRange || autoClockInRef.current) {
-      return;
-    }
-
-    autoClockInRef.current = true;
-    setLocationError('Auto clock-in triggered: employee entered the assigned geofence.');
-    executeClockIn();
-  }, [isCurrentlyActive, isDoneForToday, capturedSelfie, fingerprintVerified, geofenceStatus.inRange]);
 
   // Filter logs logic
   const normalize = (value) => (value ?? '').toString().trim().toLowerCase();
@@ -1681,7 +1774,9 @@ export default function AttendanceView({
                           <img src={capturedSelfie} alt="Attendance selfie photo" className="mx-auto max-h-64 rounded-xl object-contain" />
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs font-bold text-slate-600">
-                              The server will compare this selfie with your HR-approved biometric enrollment selfie before saving {punchLabel}. This is not a liveness check.
+                              {livenessSelfie
+                                ? `Selfie and head turn taken. The server compares this selfie with your HR-approved enrollment selfie and checks your head turn before saving ${punchLabel}.`
+                                : `No internet: taken without the head-turn check. The server compares this selfie with your HR-approved enrollment selfie when it is sent.`}
                             </p>
                             <button type="button" onClick={handleResetSelfie} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
                               Take Again
@@ -1695,7 +1790,7 @@ export default function AttendanceView({
                               <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
                               Camera preview
                             </span>
-                            <span className="text-[10px] font-semibold text-slate-400">Live selfie</span>
+                            <span className="text-[10px] font-semibold text-slate-400">{pendingFrontSelfie ? 'Now turn your head' : 'Live selfie'}</span>
                           </div>
                           <div className="relative mx-auto aspect-square sm:aspect-[3/4] w-full overflow-hidden bg-slate-900">
                             <video
@@ -1707,8 +1802,16 @@ export default function AttendanceView({
                             />
                             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                               <div className="h-[62%] w-[58%] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_999px_rgba(2,6,23,0.48)]" />
-                              <span className="absolute bottom-5 rounded-full bg-slate-950/70 px-3 py-1.5 text-[10px] font-bold text-white backdrop-blur-sm">
-                                Center your face in the frame
+                              {/* The head-turn check: the arrow shows the side to turn toward. */}
+                              {pendingFrontSelfie && livenessChallenge && (
+                                <div className={`absolute top-1/2 -translate-y-1/2 ${livenessChallenge.direction === 'left' ? 'left-3' : 'right-3'} flex h-14 w-14 items-center justify-center rounded-full bg-amber-400 text-slate-950 shadow-lg animate-pulse`}>
+                                  {livenessChallenge.direction === 'left' ? <ArrowLeft className="h-8 w-8" /> : <ArrowRight className="h-8 w-8" />}
+                                </div>
+                              )}
+                              <span className="absolute bottom-5 mx-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-center text-[10px] font-bold text-white backdrop-blur-sm">
+                                {pendingFrontSelfie
+                                  ? 'Turn your head a little toward the arrow, then tap the button'
+                                  : 'Center your face in the frame'}
                               </span>
                             </div>
                           </div>
@@ -1716,14 +1819,17 @@ export default function AttendanceView({
                             <button
                               type="button"
                               onClick={captureAttendanceSelfie}
-                              aria-label="Capture selfie"
-                              className="flex h-14 w-14 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-lg transition hover:scale-105 hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300"
+                              disabled={selfieCapturing}
+                              aria-label={pendingFrontSelfie ? 'Capture head turn' : 'Capture selfie'}
+                              className={`flex h-14 w-14 items-center justify-center rounded-full border-4 border-white text-white shadow-lg transition hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300 disabled:opacity-60 ${pendingFrontSelfie ? 'bg-amber-500 hover:bg-amber-400' : 'bg-blue-600 hover:bg-blue-500'}`}
                             >
-                              <Camera className="h-5 w-5" />
+                              {pendingFrontSelfie
+                                ? (livenessChallenge?.direction === 'left' ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />)
+                                : <Camera className={`h-5 w-5 ${selfieCapturing ? 'animate-pulse' : ''}`} />}
                             </button>
                             <button
                               type="button"
-                              onClick={stopSelfieCamera}
+                              onClick={cancelSelfieCamera}
                               className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/10"
                             >
                               Cancel
@@ -1848,29 +1954,16 @@ export default function AttendanceView({
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center gap-4 w-full">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">{selfieStepDone ? 'Choose your biometric' : 'Take your selfie first'}</p>
-                          <div className="flex gap-3 w-full">
-                            {/* Fingerprint */}
-                            <button
-                              onClick={handleStartFingerprintScan}
-                              disabled={!selfieStepDone}
-                              className="flex-1 flex flex-col items-center justify-center gap-2 py-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-blue-500 text-blue-400 hover:text-cyan-400 transition-all cursor-pointer group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-700 disabled:hover:text-blue-400"
-                              title="Use Fingerprint"
-                            >
-                              <Fingerprint className="w-8 h-8 group-hover:animate-pulse" />
-                              <span className="text-[10px] font-black uppercase tracking-wider">Fingerprint</span>
-                            </button>
-                            {/* Face ID */}
-                            <button
-                              onClick={handleStartFingerprintScan}
-                              disabled={!selfieStepDone}
-                              className="flex-1 flex flex-col items-center justify-center gap-2 py-4 rounded-xl bg-slate-900 border border-slate-700 hover:border-indigo-500 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-700 disabled:hover:text-indigo-400"
-                              title="Use Face ID"
-                            >
-                              <ScanFace className="w-8 h-8 group-hover:animate-pulse" />
-                              <span className="text-[10px] font-black uppercase tracking-wider">Face ID</span>
-                            </button>
-                          </div>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">{selfieStepDone ? `Tap to use your ${biometricLabel}` : 'Take your selfie first'}</p>
+                          {/* One button: the phone opens its own fingerprint (or Face ID on an iPhone) prompt. */}
+                          <button
+                            onClick={handleStartFingerprintScan}
+                            disabled={!selfieStepDone}
+                            className="w-full max-w-[260px] flex flex-col items-center justify-center gap-2 py-5 rounded-xl bg-slate-900 border border-slate-700 hover:border-blue-500 text-blue-400 hover:text-cyan-400 transition-all cursor-pointer group disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-slate-700 disabled:hover:text-blue-400"
+                          >
+                            <BiometricIcon className="w-10 h-10 group-hover:animate-pulse" />
+                            <span className="text-[11px] font-black uppercase tracking-wider">Verify {biometricLabel}</span>
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1890,7 +1983,7 @@ export default function AttendanceView({
                     >
                       Register This Phone
                     </button>
-                    <p className="mt-1 text-[10px] font-semibold text-blue-900">Only do this on your own phone. HR will see that your phone fingerprint was registered again.</p>
+                    <p className="mt-1 text-[10px] font-semibold text-blue-900">Only do this on your own phone. HR must approve this phone before you can use it for attendance.</p>
                   </div>
                 )}
               </div>

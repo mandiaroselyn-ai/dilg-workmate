@@ -5,7 +5,14 @@ import { PNG } from 'pngjs';
 
 const require = createRequire(import.meta.url);
 const FACE_DESCRIPTOR_LENGTH = 128;
-export const FACE_MATCH_DISTANCE_THRESHOLD = 0.6;
+// A selfie matches the enrollment selfie at this distance or closer. face-api's usual 0.6 lets
+// some look-alikes pass, so it is tightened a little; HR sees each punch's distance in DTR
+// Records, so it can be tightened further once real punches show how close staff selfies are.
+export const FACE_MATCH_DISTANCE_THRESHOLD = 0.55;
+// The head-turn check before a selfie (see checkHeadTurn): the second photo must be the same
+// face as the selfie, turned the way the server asked by at least this much (see headTurnOf).
+export const HEAD_TURN_SAME_FACE_THRESHOLD = 0.6;
+export const HEAD_TURN_MIN_CHANGE = 0.25;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 4_000_000;
 const MODEL_DIRECTORY = path.resolve(
@@ -134,8 +141,26 @@ const decodeImage = (dataUrl, tf) => {
   return tf.tensor3d(rgb, [height, width, 3], 'int32');
 };
 
+// How far a face is turned, from -1 to 1, from its 68 face-api landmarks: where the nose tip
+// (point 30) sits between the two sides of the jaw (points 0 and 16) in the image. 0 is
+// straight on; below 0 the nose points toward the image's left, above 0 toward its right. A
+// flat photo tilted in front of the camera keeps about the same value, since tilting squeezes
+// both sides alike; a real head turning changes it.
+export const headTurnOf = positions => {
+  const [jawStart, jawEnd, noseTip] = [positions?.[0], positions?.[16], positions?.[30]];
+  if (![jawStart, jawEnd, noseTip].every(point => Number.isFinite(point?.x))) return 0;
+  const toLeft = noseTip.x - Math.min(jawStart.x, jawEnd.x);
+  const toRight = Math.max(jawStart.x, jawEnd.x) - noseTip.x;
+  const width = toLeft + toRight;
+  return width > 0 ? (toLeft - toRight) / width : 0;
+};
+
 // mirrored: reads the image flipped left to right.
-export const createFaceDescriptor = async (dataUrl, { mirrored = false } = {}) => {
+export const createFaceDescriptor = async (dataUrl, options) => (await analyzeFace(dataUrl, options)).descriptor;
+
+// The one face in a selfie: its descriptor (for matching) and how far it is turned (headTurnOf).
+// mirrored: reads the image flipped left to right.
+export const analyzeFace = async (dataUrl, { mirrored = false } = {}) => {
   if (typeof dataUrl !== 'string') {
     throw new FaceImageError('A selfie image is required.');
   }
@@ -165,7 +190,10 @@ export const createFaceDescriptor = async (dataUrl, { mirrored = false } = {}) =
     if (detections.length !== 1) {
       throw new FaceImageError('More than one face was detected. Retake the selfie with only the employee in frame.');
     }
-    return Array.from(detections[0].descriptor);
+    return {
+      descriptor: Array.from(detections[0].descriptor),
+      turn: headTurnOf(detections[0].landmarks?.positions)
+    };
   } catch (error) {
     if (error instanceof FaceImageError) throw error;
     console.error('Local face image processing failed:', error);
@@ -175,20 +203,42 @@ export const createFaceDescriptor = async (dataUrl, { mirrored = false } = {}) =
   }
 };
 
+// Compares an attendance selfie with the enrollment selfie. The result also has `face`, the
+// selfie's own analysis (see analyzeFace), for the head-turn check.
 export const compareEnrollmentToAttendance = async (enrollmentDescriptor, attendanceImage) => {
   if (!isValidFaceDescriptor(enrollmentDescriptor)) {
     throw new FaceMatchingServiceError('No approved biometric face template is available. Please contact HR to complete or repeat enrollment.');
   }
-  const result = compareFaceDescriptors(enrollmentDescriptor, await createFaceDescriptor(attendanceImage));
+  const face = await analyzeFace(attendanceImage);
+  const result = { ...compareFaceDescriptors(enrollmentDescriptor, face.descriptor), face };
   if (result.matched) return result;
   // Selfies are saved as the mirror image the employee saw on screen, but enrollment
   // selfies saved before that were not, so a selfie that does not match is also compared
   // flipped back.
   try {
     const mirrored = compareFaceDescriptors(enrollmentDescriptor, await createFaceDescriptor(attendanceImage, { mirrored: true }));
-    return mirrored.distance < result.distance ? mirrored : result;
+    return mirrored.distance < result.distance ? { ...mirrored, face } : result;
   } catch (error) {
     if (error instanceof FaceImageError) return result;
     throw error;
   }
 };
+
+// Whether a head turn (`turnFace`, from the photo taken right after the selfie) shows the same
+// face as the selfie (`selfieFace`), turned toward `direction` ('left' or 'right' of the saved
+// image, which is the mirror image the employee saw, so the side the on-screen arrow points
+// to) by at least HEAD_TURN_MIN_CHANGE. Returns { passed, reason, change, sameFaceDistance }.
+export const judgeHeadTurn = ({ selfieFace, turnFace, direction }) => {
+  const sameFaceDistance = compareFaceDescriptors(selfieFace.descriptor, turnFace.descriptor).distance;
+  const change = turnFace.turn - selfieFace.turn;
+  if (sameFaceDistance > HEAD_TURN_SAME_FACE_THRESHOLD) return { passed: false, reason: 'different-face', change, sameFaceDistance };
+  const towardAsked = direction === 'left' ? -change : change;
+  if (towardAsked < HEAD_TURN_MIN_CHANGE) return { passed: false, reason: 'no-turn', change, sameFaceDistance };
+  return { passed: true, reason: '', change, sameFaceDistance };
+};
+
+// Checks the head-turn photo against the selfie's analysis (see judgeHeadTurn). A photo with
+// no single clear face throws FaceImageError.
+export const checkHeadTurn = async ({ selfieFace, turnImage, direction }) => (
+  judgeHeadTurn({ selfieFace, turnFace: await analyzeFace(turnImage), direction })
+);

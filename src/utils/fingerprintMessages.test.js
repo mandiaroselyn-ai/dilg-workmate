@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { describeFingerprintCheck, describeFingerprintError, describeTimeInFingerprintError, registeredFingerprints } from './fingerprintMessages.js';
+import { BROWSER_FINGERPRINT_CAUTION, describeFingerprintCheck, describeFingerprintError, describeTimeInFingerprintError, registeredFingerprints, usedBrowserFingerprint } from './fingerprintMessages.js';
 
 const domError = (name, message) => Object.assign(new Error(message), { name });
 
@@ -32,10 +32,17 @@ test('lists the fingerprints HR sees on an employee record', () => {
 });
 
 test('describes how a Time In fingerprint was checked', () => {
-  assert.equal(describeFingerprintCheck({ fingerprintVerified: true, fingerprintMethod: 'browser' }), 'Matched registered fingerprint (Chrome / browser)');
+  // A browser also takes the phone's PIN or pattern, so HR is told to check the selfie.
+  assert.equal(describeFingerprintCheck({ fingerprintVerified: true, fingerprintMethod: 'browser' }), `Matched registered fingerprint (Chrome / browser). ${BROWSER_FINGERPRINT_CAUTION}`);
   assert.equal(describeFingerprintCheck({ fingerprintVerified: true, fingerprintMethod: 'phone-app' }), 'Matched registered fingerprint (WorkMate phone app)');
   assert.equal(describeFingerprintCheck({ fingerprintVerified: true }), 'Matched registered fingerprint');
   assert.equal(describeFingerprintCheck({ fingerprintVerified: false, fingerprintMethod: 'browser' }), 'Not verified');
+});
+
+test('flags a record when any punch used a browser fingerprint', () => {
+  assert.equal(usedBrowserFingerprint({ fingerprintMethod: 'phone-app', timeOutFingerprintMethod: 'phone-app' }), false);
+  assert.equal(usedBrowserFingerprint({ fingerprintMethod: 'phone-app', lunchInFingerprintMethod: 'browser' }), true);
+  assert.equal(usedBrowserFingerprint(null), false);
 });
 
 test('Time In tells an employee on another phone how to register it', () => {
