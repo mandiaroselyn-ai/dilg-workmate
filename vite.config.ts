@@ -22,7 +22,8 @@ export default defineConfig(() => {
         filename: 'sw.js',
         registerType: 'autoUpdate',
         injectManifest: {
-          globPatterns: ['**/*.{js,css,html,png,svg}'],
+          // The small face models (public/models) too, so the selfie camera finds faces offline.
+          globPatterns: ['**/*.{js,css,html,png,svg}', 'models/*.{json,bin}'],
         },
         manifest: {
           name: 'DILG WorkMate',

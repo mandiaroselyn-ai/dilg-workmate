@@ -3,6 +3,7 @@ import { AlertTriangle, Camera, CheckCircle2, Clock3, FileCheck2, Fingerprint, R
 import { encodeFaceImage, resizeFaceImage } from '../utils/faceImage';
 import { apiFetch, parseApiResponse } from '../utils/api';
 import { scrollIntoContentView } from '../utils/scroll';
+import LiveFaceCamera from './LiveFaceCamera';
 import { hasNativeBiometricBridge, requestNativeBiometricSignature } from '../utils/nativeBiometricBridge.js';
 import { describeFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 import { ENROLLMENT_ID_TYPES, enrollmentIdType, normalizeEnrollmentIdNumber } from '../../shared/enrollmentIds.js';
@@ -52,6 +53,13 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
   // The second photo, with the head turned a little to one side, which the server checks is
   // the same face turned (a flat photo held up to the camera cannot do it).
   const [selfieTurnImage, setSelfieTurnImage] = useState('');
+  // The live face camera (LiveFaceCamera) for the selfie and head turn, and the side it asks to
+  // turn to (the server takes either side for enrollment). In the phone app, if the live camera
+  // cannot start, the phone's own camera is used instead, once for each photo.
+  const [faceCameraOpen, setFaceCameraOpen] = useState(false);
+  const [faceCameraDirection, setFaceCameraDirection] = useState('left');
+  const [nativeSelfieFallback, setNativeSelfieFallback] = useState(false);
+  const [selfieCameraError, setSelfieCameraError] = useState('');
   const selectedIdType = enrollmentIdType(idType);
   // An ID with all its details on one side or page needs no photo of its back.
   const backNeeded = selectedIdType ? selectedIdType.backNeeded : true;
@@ -296,7 +304,8 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
     setCameraActive(false);
   };
 
-  const startCamera = async (target = 'selfie') => {
+  // The rear camera, for a photo of the ID (`target`: 'id-front' or 'id-back').
+  const startCamera = async target => {
     setCameraError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraError('Live camera preview needs HTTPS or localhost. On a phone, use the device-camera option.');
@@ -307,7 +316,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       streamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-          facingMode: target === 'selfie' || target === 'selfie-turn' ? 'user' : 'environment',
+          facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 960 }
         }
@@ -327,8 +336,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setCameraError('Wait until the camera preview is ready, then capture again.');
       return;
     }
-    // The head-turn photo is only checked, not kept, so it is smaller.
-    const maxSide = cameraTarget === 'selfie-turn' ? 640 : 1280;
+    const maxSide = 1280;
     const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
@@ -338,11 +346,6 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setCameraError('Unable to process this image.');
       return;
     }
-    // A selfie is saved as the mirror image the employee saw in the preview; ID photos are not.
-    if (cameraTarget === 'selfie' || cameraTarget === 'selfie-turn') {
-      context.translate(canvas.width, 0);
-      context.scale(-1, 1);
-    }
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     try {
       const image = encodeFaceImage(canvas, maxSide, 0.78);
@@ -350,32 +353,51 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       setCameraError('');
       setError('');
       setSuccess('');
-      if (cameraTarget === 'selfie') {
-        // The camera stays open for the head-turn photo.
-        setSelfieImage(image);
-        setSelfieTurnImage('');
-        setCameraTarget('selfie-turn');
-        return;
-      }
       if (cameraTarget === 'id-front') setDilgIdImage(image);
       else if (cameraTarget === 'id-back') setDilgIdBackImage(image);
-      else if (cameraTarget === 'selfie-turn') setSelfieTurnImage(image);
       stopCamera();
     } catch (imageError) {
       setCameraError(imageError.message || 'Unable to prepare this camera image.');
     }
   };
 
-  // The app's WebView has no live camera preview, so it opens the phone's own front camera,
-  // once for the selfie and once more for the head turn.
+  // The live face camera takes the selfie and the head turn by itself. Where it could not start
+  // in the phone app, the phone's own front camera is opened, once for each photo.
   const openSelfieCamera = (target = 'selfie') => {
+    setSelfieCameraError('');
     const input = target === 'selfie-turn' ? selfieTurnInputRef.current : selfieInputRef.current;
-    if (window.ReactNativeWebView && input) {
+    if (nativeSelfieFallback && window.ReactNativeWebView && input) {
       input.setAttribute('capture', 'user');
       input.click();
       return;
     }
-    startCamera(target);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setSelfieCameraError('Live camera preview needs HTTPS. Open the official WorkMate site or app.');
+      return;
+    }
+    stopCamera();
+    setFaceCameraDirection(Math.random() < 0.5 ? 'left' : 'right');
+    setFaceCameraOpen(true);
+  };
+
+  const handleFaceCameraDone = ({ selfie, turnPhoto }) => {
+    setSelfieImage(selfie);
+    setSelfieTurnImage(turnPhoto || '');
+    setFaceCameraOpen(false);
+    automaticSubmissionStartedRef.current = false;
+    setSelfieCameraError('');
+    setError('');
+    setSuccess('');
+  };
+
+  const handleFaceCameraError = message => {
+    setFaceCameraOpen(false);
+    if (window.ReactNativeWebView) {
+      setNativeSelfieFallback(true);
+      setSelfieCameraError('The live camera could not start in this app. Tap Open Camera to use the phone\'s camera instead.');
+    } else {
+      setSelfieCameraError(message);
+    }
   };
 
   const handleImageSelection = async (event, target) => {
@@ -713,42 +735,29 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                 <li>Stand in good light, facing a window or a light.</li>
                 <li>No cap, sunglasses, or face mask.</li>
                 <li>Hold the phone at arm's length so your face fills the oval.</li>
-                <li>Then take a second photo with your head turned a little to one side.</li>
+                <li>The camera takes your selfie by itself, then asks you to turn your head toward an arrow.</li>
               </ul>
               <input ref={selfieInputRef} type="file" accept="image/*" className="sr-only" disabled={submitting} onChange={event => handleImageSelection(event, 'selfie')} />
               <input ref={selfieTurnInputRef} type="file" accept="image/*" className="sr-only" disabled={submitting} onChange={event => handleImageSelection(event, 'selfie-turn')} />
-              {!cameraActive ? (
+              {faceCameraOpen ? (
+                <div className="mt-4">
+                  <LiveFaceCamera
+                    label="Enrollment selfie"
+                    direction={faceCameraDirection}
+                    onDone={handleFaceCameraDone}
+                    onCancel={() => setFaceCameraOpen(false)}
+                    onError={handleFaceCameraError}
+                  />
+                </div>
+              ) : !cameraActive ? (
                 <div className="mt-4">
                   <button type="button" onClick={() => openSelfieCamera()} disabled={submitting} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-black text-blue-800 disabled:opacity-50">
                     <Camera className="h-4 w-4" /> {selfieImage ? 'Retake Selfie' : 'Open Camera'}
                   </button>
                 </div>
-              ) : cameraTarget === 'selfie' || cameraTarget === 'selfie-turn' ? (
-                <div className="mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 shadow-lg">
-                  <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
-                    <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white">
-                      <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                      Camera Preview
-                    </span>
-                    <span className="text-[10px] font-semibold text-slate-400">{cameraTarget === 'selfie-turn' ? 'Head turn' : 'Enrollment selfie'}</span>
-                  </div>
-                  <div className="relative aspect-square sm:aspect-[3/4] overflow-hidden bg-slate-900">
-                    <video ref={videoRef} autoPlay playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
-                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                      <div className="h-[60%] w-[55%] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_9999px_rgba(2,6,23,0.48)]" />
-                      <span className="absolute bottom-4 mx-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-center text-[10px] font-bold text-white backdrop-blur-sm">
-                        {cameraTarget === 'selfie-turn' ? 'Now turn your head a little to one side, then tap Capture' : 'Center your face in the frame'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 px-3 py-3">
-                    <button type="button" onClick={captureImage} disabled={submitting} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">{cameraTarget === 'selfie-turn' ? 'Capture Head Turn' : 'Capture Selfie'}</button>
-                    <button type="button" onClick={stopCamera} disabled={submitting} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"><X className="h-3 w-3" /> Cancel</button>
-                  </div>
-                </div>
               ) : null}
-              {cameraError && (cameraTarget === 'selfie' || cameraTarget === 'selfie-turn') && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{cameraError}</p>}
-              {selfieImage && !cameraActive && (
+              {selfieCameraError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-700">{selfieCameraError}</p>}
+              {selfieImage && !cameraActive && !faceCameraOpen && (
                 <div className="mt-4 space-y-2">
                   <img src={selfieImage} alt="Enrollment selfie preview" className="max-h-48 w-full rounded-xl border border-slate-200 object-contain" />
                   {selfieTurnImage ? (

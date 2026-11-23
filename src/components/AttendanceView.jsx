@@ -10,6 +10,7 @@ import { hasSelfie, isLate, markDtrDay } from '../utils/hrAttendance';
 import { clockMinutes, daySchedule, durationText, isFixedHoursDay, isRestDate, missingLunchLog, OFFICE_HOURS, officeRangeText, officeTimeText, punchStanding, tardinessText, usesLunchLogs, workdayEnd } from '../utils/dtrDay';
 import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
+import LiveFaceCamera from './LiveFaceCamera';
 import PunchReceipt from './PunchReceipt';
 
 import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
@@ -337,17 +338,14 @@ export default function AttendanceView({
   const [capturedSelfie, setCapturedSelfie] = useState(null);
   const [selfieCameraActive, setSelfieCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-  const selfieVideoRef = useRef(null);
-  const selfieStreamRef = useRef(null);
   // The head-turn check (backend utils/punchLiveness.js): when the camera opens, the server
-  // picks which way to turn ({ direction: 'left' | 'right', token }). The selfie is taken
-  // first (`pendingFrontSelfie`), then a second photo with the head turned toward the arrow
-  // (`livenessSelfie`). Without internet there is no check, and the selfie is taken alone.
+  // picks which way to turn ({ direction: 'left' | 'right', token }); `livenessReady` is set
+  // once it answered (null without internet). The camera (LiveFaceCamera) takes the selfie,
+  // then the photo with the head turned toward the arrow (`livenessSelfie`).
   const [livenessChallenge, setLivenessChallenge] = useState(null);
+  const [livenessReady, setLivenessReady] = useState(false);
   const livenessRequestRef = useRef(null);
-  const [pendingFrontSelfie, setPendingFrontSelfie] = useState(null);
   const [livenessSelfie, setLivenessSelfie] = useState(null);
-  const [selfieCapturing, setSelfieCapturing] = useState(false);
 
   // Fingerprint States
   const [fingerprintScanning, setFingerprintScanning] = useState(false);
@@ -441,25 +439,7 @@ export default function AttendanceView({
     }
   });
 
-  const stopSelfieCamera = () => {
-    selfieStreamRef.current?.getTracks().forEach(track => track.stop());
-    selfieStreamRef.current = null;
-    setSelfieCameraActive(false);
-  };
-
-  useEffect(() => () => {
-    selfieStreamRef.current?.getTracks().forEach(track => track.stop());
-  }, []);
-
-  useEffect(() => {
-    if (selfieCameraActive && selfieVideoRef.current && selfieStreamRef.current) {
-      selfieVideoRef.current.srcObject = selfieStreamRef.current;
-      selfieVideoRef.current.play().catch(error => {
-        console.error('Unable to start attendance selfie preview:', error);
-        setCameraError('Camera preview could not start. Check browser camera permission and try again.');
-      });
-    }
-  }, [selfieCameraActive]);
+  const stopSelfieCamera = () => setSelfieCameraActive(false);
 
   // Asks the server which way to turn for the head-turn check; null without internet.
   const requestLivenessChallenge = () => apiFetch('/api/dtr/action?action=liveness-challenge', { cache: 'no-store', signal: timeoutSignal(10000) })
@@ -471,100 +451,35 @@ export default function AttendanceView({
     })
     .catch(() => null);
 
-  const startSelfieCamera = async () => {
+  const startSelfieCamera = () => {
     setCameraError(null);
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
       setCameraError('Camera access requires HTTPS or localhost. Open this app using a secure connection and allow camera permission.');
       return;
     }
-    setPendingFrontSelfie(null);
     setLivenessChallenge(null);
+    setLivenessReady(false);
     const request = requestLivenessChallenge();
     livenessRequestRef.current = request;
     request.then(challenge => {
-      if (livenessRequestRef.current === request) setLivenessChallenge(challenge);
+      if (livenessRequestRef.current !== request) return;
+      setLivenessChallenge(challenge);
+      setLivenessReady(true);
     });
-    try {
-      stopSelfieCamera();
-      selfieStreamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 960 } }
-      });
-      setSelfieCameraActive(true);
-    } catch (error) {
-      console.error('Unable to access the attendance selfie camera:', error);
-      setCameraError(error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError'
-        ? 'Allow camera access in your browser settings, then try again.'
-        : error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError'
-          ? 'No camera was found on this device.'
-          : `Unable to start camera: ${error.message || 'camera unavailable'}`);
-    }
+    setSelfieCameraActive(true);
   };
 
-  // The live preview as a JPEG at most `maxSide` pixels wide or tall, or null (with the reason
-  // shown) when there is no picture yet.
-  const captureCameraFrame = maxSide => {
-    const video = selfieVideoRef.current;
-    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth) {
-      setCameraError('Wait for the live camera preview, then capture your selfie.');
-      return null;
-    }
-    const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
-    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
-    const context = canvas.getContext('2d');
-    if (!context) {
-      setCameraError('Unable to process the camera photo. Please try again.');
-      return null;
-    }
-    // Saved as the mirror image the employee saw in the preview, so the head turn's side is
-    // the side the on-screen arrow points to.
-    context.translate(canvas.width, 0);
-    context.scale(-1, 1);
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.85);
-  };
-
-  const finishSelfie = (selfie, turnPhoto) => {
+  // The camera's selfie and head-turn photo (null without internet).
+  const finishSelfie = ({ selfie, turnPhoto }) => {
     setCapturedSelfie(selfie);
     setLivenessSelfie(turnPhoto);
-    setPendingFrontSelfie(null);
     setCameraError(null);
     handleResetFingerprint();
     stopSelfieCamera();
   };
 
-  // The first tap takes the selfie. With internet, the arrow then shows which way to turn, and
-  // the second tap takes the head-turn photo (smaller, as it is only checked, not kept).
-  const captureAttendanceSelfie = async () => {
-    if (pendingFrontSelfie) {
-      const turnPhoto = captureCameraFrame(640);
-      if (turnPhoto) finishSelfie(pendingFrontSelfie, turnPhoto);
-      return;
-    }
-    const selfie = captureCameraFrame(1280);
-    if (!selfie) return;
-    setSelfieCapturing(true);
-    const challenge = livenessChallenge || await livenessRequestRef.current;
-    setSelfieCapturing(false);
-    if (!challenge) {
-      finishSelfie(selfie, null);
-      return;
-    }
-    setLivenessChallenge(challenge);
-    setPendingFrontSelfie(selfie);
-    setCameraError(null);
-  };
-
-  const cancelSelfieCamera = () => {
-    setPendingFrontSelfie(null);
-    stopSelfieCamera();
-  };
-
   const handleResetSelfie = () => {
     setCapturedSelfie(null);
-    setPendingFrontSelfie(null);
     stopSelfieCamera();
     handleResetFingerprint();
     setCameraError(null);
@@ -1784,58 +1699,17 @@ export default function AttendanceView({
                           </div>
                         </div>
                       ) : selfieCameraActive ? (
-                        <div className="mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
-                          <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                            <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wider text-white">
-                              <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-                              Camera preview
-                            </span>
-                            <span className="text-[10px] font-semibold text-slate-400">{pendingFrontSelfie ? 'Now turn your head' : 'Live selfie'}</span>
-                          </div>
-                          <div className="relative mx-auto aspect-square sm:aspect-[3/4] w-full overflow-hidden bg-slate-900">
-                            <video
-                              ref={selfieVideoRef}
-                              autoPlay
-                              playsInline
-                              muted
-                              className="h-full w-full scale-x-[-1] object-cover"
-                            />
-                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                              <div className="h-[62%] w-[58%] rounded-[50%] border-2 border-white/90 shadow-[0_0_0_999px_rgba(2,6,23,0.48)]" />
-                              {/* The head-turn check: the arrow shows the side to turn toward. */}
-                              {pendingFrontSelfie && livenessChallenge && (
-                                <div className={`absolute top-1/2 -translate-y-1/2 ${livenessChallenge.direction === 'left' ? 'left-3' : 'right-3'} flex h-14 w-14 items-center justify-center rounded-full bg-amber-400 text-slate-950 shadow-lg animate-pulse`}>
-                                  {livenessChallenge.direction === 'left' ? <ArrowLeft className="h-8 w-8" /> : <ArrowRight className="h-8 w-8" />}
-                                </div>
-                              )}
-                              <span className="absolute bottom-5 mx-3 rounded-full bg-slate-950/70 px-3 py-1.5 text-center text-[10px] font-bold text-white backdrop-blur-sm">
-                                {pendingFrontSelfie
-                                  ? 'Turn your head a little toward the arrow, then tap the button'
-                                  : 'Center your face in the frame'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-center gap-7 px-4 py-2.5">
-                            <button
-                              type="button"
-                              onClick={captureAttendanceSelfie}
-                              disabled={selfieCapturing}
-                              aria-label={pendingFrontSelfie ? 'Capture head turn' : 'Capture selfie'}
-                              className={`flex h-14 w-14 items-center justify-center rounded-full border-4 border-white text-white shadow-lg transition hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300 disabled:opacity-60 ${pendingFrontSelfie ? 'bg-amber-500 hover:bg-amber-400' : 'bg-blue-600 hover:bg-blue-500'}`}
-                            >
-                              {pendingFrontSelfie
-                                ? (livenessChallenge?.direction === 'left' ? <ArrowLeft className="h-5 w-5" /> : <ArrowRight className="h-5 w-5" />)
-                                : <Camera className={`h-5 w-5 ${selfieCapturing ? 'animate-pulse' : ''}`} />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelSelfieCamera}
-                              className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-white/10"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
+                        <LiveFaceCamera
+                          label="Attendance selfie"
+                          direction={livenessChallenge?.direction || null}
+                          directionReady={livenessReady}
+                          onDone={finishSelfie}
+                          onCancel={stopSelfieCamera}
+                          onError={message => {
+                            setCameraError(message);
+                            stopSelfieCamera();
+                          }}
+                        />
                       ) : (
                         <div className="flex min-h-[210px] flex-col items-center justify-center px-2 py-5 text-center">
                           <div className="relative mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-200">
