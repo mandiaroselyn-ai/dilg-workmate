@@ -49,7 +49,7 @@ export const submitBiometricEnrollment = async (req, res) => {
     }
     const idNumber = normalizeEnrollmentIdNumber(req.body?.idNumber);
     if (!idNumber) {
-      return res.status(400).json({ success: false, error: 'Enter the ID number as printed on your ID (letters, numbers, and dashes).' });
+      return res.status(400).json({ success: false, error: 'Enter your ID number (letters, numbers, and dashes).' });
     }
     // The back is asked only of an ID that has details on it.
     const dilgIdBackImage = isSupportedImage(req.body?.dilgIdBackImage) ? req.body.dilgIdBackImage : '';

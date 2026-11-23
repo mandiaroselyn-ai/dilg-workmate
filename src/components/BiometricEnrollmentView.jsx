@@ -431,7 +431,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
       return;
     }
     if (!normalizeEnrollmentIdNumber(idNumber)) {
-      setError('Enter the ID number as printed on your ID (letters, numbers, and dashes).');
+      setError('Enter your ID number (letters, numbers, and dashes).');
       return;
     }
     if (!idImagesReady || !selfieImage) {
@@ -691,7 +691,6 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                   disabled={submitting}
                   maxLength={40}
                   autoComplete="off"
-                  placeholder="As printed on the ID"
                   className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-sm font-semibold uppercase text-slate-800 disabled:opacity-50"
                 />
               </label>
@@ -711,7 +710,7 @@ export default function BiometricEnrollmentView({ user, onSubmitEnrollment, onRe
                 <Camera className="h-5 w-5 text-blue-700" />
                 <h3 className="font-black text-slate-900">02 · Capture Face Selfie</h3>
               </div>
-              <p className="mt-2 text-xs text-slate-600">Every Time In selfie is matched with this one, so take it well:</p>
+              <p className="mt-2 text-xs text-slate-600">For a good selfie:</p>
               <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-slate-600">
                 <li>Stand in good light, facing a window or a light.</li>
                 <li>No cap, sunglasses, or face mask.</li>
