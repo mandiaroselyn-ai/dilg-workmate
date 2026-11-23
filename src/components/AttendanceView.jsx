@@ -948,7 +948,8 @@ export default function AttendanceView({
 
   const mapFocus = hasGpsPosition ? coordinates : assignedCoords || coordinates;
   const embedZoom = 17;
-  const mapEmbedUrl = `https://maps.google.com/maps?q=${mapFocus.lat},${mapFocus.lon}&z=${embedZoom}&output=embed`;
+  // Satellite view (t=k), so the employee sees the actual rooftops, trees, and roads around the pin.
+  const mapEmbedUrl = `https://maps.google.com/maps?q=${mapFocus.lat},${mapFocus.lon}&t=k&z=${embedZoom}&output=embed`;
   const googleMapsUrl = hasGpsPosition && assignedCoords
     ? `https://www.google.com/maps/dir/?api=1&origin=${coordinates.lat},${coordinates.lon}&destination=${assignedCoords.lat},${assignedCoords.lon}`
     : `https://www.google.com/maps/search/?api=1&query=${mapFocus.lat},${mapFocus.lon}`;
