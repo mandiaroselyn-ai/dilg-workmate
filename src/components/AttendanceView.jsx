@@ -979,19 +979,7 @@ export default function AttendanceView({
   const gpsStepDone = formStepDone && isWithinAssignment;
   const selfieStepDone = gpsStepDone && Boolean(capturedSelfie);
   const biometricStepDone = selfieStepDone && (fingerprintVerified || offlineTimeIn || unverifiedOfflineTimeOut);
-  const stepPunchLabel = !isCurrentlyActive ? 'Time In' : isOnLunch ? 'Lunch In' : canLunchOut ? 'Lunch / Time Out' : 'Time Out';
-  const attendanceSteps = [
-    { label: 'Details', done: formStepDone },
-    { label: 'GPS', done: gpsStepDone },
-    { label: 'Selfie', done: selfieStepDone },
-    { label: biometricLabel, done: biometricStepDone },
-    { label: stepPunchLabel, done: false }
-  ];
-  const currentStepIndex = attendanceSteps.findIndex(step => !step.done);
-  const nextStepText = !formStepDone ? `Step 1, fill in your details. ${formStepIssue}`
-    : !gpsStepDone ? 'Step 2, verify your GPS at the assigned area.'
-      : !selfieStepDone ? 'Step 3, take your selfie.'
-        : `Step 4, verify your ${biometricLabel}.`;
+  const stepPunchLabel = !isCurrentlyActive ? 'Time In' : isOnLunch ? 'Lunch In' : canLunchOut ? 'Lunch Out or Time Out' : 'Time Out';
   // Which punch buttons show once the steps are done: only the ones that can be made now.
   const showTimeInButton = !isCurrentlyActive && !isDoneForToday;
   const showLunchOutButton = canLunchOut && fingerprintVerified;
@@ -1408,27 +1396,6 @@ export default function AttendanceView({
               </span>
             </div>
 
-            {/* The attendance steps, done in order. */}
-            {!isDoneForToday && (
-              <ol aria-label="Attendance steps" className="grid grid-cols-5 gap-1.5 rounded-xl border border-slate-200 bg-slate-50/60 px-2 py-3">
-                {attendanceSteps.map((step, index) => {
-                  const current = index === currentStepIndex;
-                  return (
-                    <li key={index} aria-current={current ? 'step' : undefined} className="flex flex-col items-center gap-1 text-center">
-                      <span className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-black ${
-                        step.done ? 'bg-emerald-600 text-white' : current ? 'bg-[#1e40af] text-white ring-4 ring-blue-100' : 'bg-slate-200 text-slate-500'
-                      }`}>
-                        {step.done ? <Check className="h-3.5 w-3.5" /> : index + 1}
-                      </span>
-                      <span className={`text-[10px] font-bold leading-tight ${step.done ? 'text-emerald-700' : current ? 'text-[#1e40af]' : 'text-slate-500'}`}>
-                        {step.label}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-
             {/* On official travel today: no Time In needed, and no field attendance. */}
             {travelOrderToday && (
               <div role="status" className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -1626,18 +1593,18 @@ export default function AttendanceView({
               </div>
             </div>
 
-            {/* Step 2: GPS at the assigned area, checked before the selfie and fingerprint. */}
+            {/* GPS at the assigned area, checked before the selfie and fingerprint. */}
             {!isDoneForToday && (
               <div className={`mt-4 rounded-2xl border p-4 sm:p-5 space-y-3 shadow-sm ${gpsStepDone ? 'border-emerald-200 bg-emerald-50/40' : 'border-blue-200 bg-white'}`}>
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                     <MapPin className="w-4 h-4 text-[#1e40af]" />
-                    Step 2 · Verify GPS Location
+                    Verify GPS Location
                   </span>
                   {gpsStepDone ? (
                     <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">✓ IN RANGE</span>
                   ) : !formStepDone ? (
-                    <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-black border border-slate-200">FINISH STEP 1</span>
+                    <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-black border border-slate-200">FILL IN THE FORM FIRST</span>
                   ) : hasGpsPosition ? (
                     <span className="text-[10px] text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full font-black border border-rose-200">OUT OF RANGE</span>
                   ) : (
@@ -1646,7 +1613,7 @@ export default function AttendanceView({
                 </div>
                 <p className={`text-[11px] font-semibold leading-relaxed ${gpsStepDone ? 'text-emerald-800' : hasGpsPosition && formStepDone ? 'text-rose-700' : 'text-slate-600'}`}>
                   {!formStepDone
-                    ? `Finish Step 1 first. ${formStepIssue}`
+                    ? formStepIssue
                     : gpsLoading
                       ? 'Getting your location. Stay outdoors or near a window.'
                       : !hasGpsPosition
@@ -1688,12 +1655,12 @@ export default function AttendanceView({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                         <Camera className="w-4 h-4 text-[#1e40af]" />
-                        Step 3 · Attendance Selfie Photo
+                        Attendance Selfie Photo
                       </span>
                       {capturedSelfie ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">SELFIE ATTACHED</span>
                       ) : !gpsStepDone ? (
-                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-black border border-slate-200">FINISH STEP 2</span>
+                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-black border border-slate-200">VERIFY GPS FIRST</span>
                       ) : (
                         <span className="text-[10px] text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full font-black border border-amber-200 animate-pulse">
                           REQUIRED
@@ -1770,7 +1737,7 @@ export default function AttendanceView({
                           </div>
                           <p className="text-sm font-black text-slate-800">{gpsStepDone ? 'Ready for your selfie' : 'Verify your GPS first'}</p>
                           <p className="mt-1.5 max-w-[230px] text-[11px] leading-relaxed text-slate-500">
-                            {gpsStepDone ? 'Center your face when the live preview opens.' : 'The camera opens once Step 2 shows you are within the assigned area.'}
+                            {gpsStepDone ? 'Center your face when the live preview opens.' : 'The camera opens once your GPS shows you are within the assigned area.'}
                           </p>
                           <button
                             type="button"
@@ -1794,7 +1761,7 @@ export default function AttendanceView({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                         <BiometricIcon className="w-4 h-4 text-[#1e40af]" />
-                        {hasNativeBridge ? `Step 4 · Phone ${biometricLabel} Verification` : `Step 4 · ${biometricLabel} Verification`}
+                        {hasNativeBridge ? `Phone ${biometricLabel} Verification` : `${biometricLabel} Verification`}
                       </span>
                       {fingerprintVerified ? (
                         <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full font-black border border-emerald-200">
@@ -1805,7 +1772,7 @@ export default function AttendanceView({
                           OFFLINE
                         </span>
                       ) : !selfieStepDone ? (
-                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-black border border-slate-200">FINISH STEP 3</span>
+                        <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full font-black border border-slate-200">TAKE SELFIE FIRST</span>
                       ) : (
                         <span className="text-[10px] text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full font-black border border-amber-200 animate-pulse">
                           REQUIRED
@@ -1880,7 +1847,7 @@ export default function AttendanceView({
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center gap-4 w-full">
-                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">{selfieStepDone ? 'Choose your biometric' : 'Take your selfie first (Step 3)'}</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">{selfieStepDone ? 'Choose your biometric' : 'Take your selfie first'}</p>
                           <div className="flex gap-3 w-full">
                             {/* Fingerprint */}
                             <button
@@ -1968,7 +1935,7 @@ export default function AttendanceView({
                 )}
               </div>
 
-              {/* Step 5: the punch buttons, shown once Steps 1 to 4 are done, and only the ones
+              {/* The punch buttons, shown once the form, GPS, selfie, and fingerprint are done, and only the ones
                   that can be made now, in the order of CSC Form 48: A.M. arrival (Time In), A.M.
                   departure (Lunch Out), P.M. arrival (Lunch In), P.M. departure (Time Out). */}
               {!isDoneForToday && (biometricStepDone ? (
@@ -2023,8 +1990,7 @@ export default function AttendanceView({
                 </div>
               ) : (
                 <div ref={punchStepRef} className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center">
-                  <p className="text-xs font-black text-slate-600">The {punchLabel} button shows here once Steps 1 to 4 are done.</p>
-                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500">Next: {nextStepText}</p>
+                  <p className="text-xs font-black text-slate-600">The {punchLabel} button shows here once all the checks below are done.</p>
                 </div>
               ))}
             </div>
@@ -2043,8 +2009,31 @@ export default function AttendanceView({
               </p>
             )}
 
+            {/* Validation helper label */}
+            {!isDoneForToday && (
+              <div className="text-[10px] font-bold text-slate-500 flex flex-wrap gap-2 items-center justify-end">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${hasGpsPosition ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
+                  {hasGpsPosition ? '✓ GPS Located' : '✗ GPS Not Checked'}
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${isWithinAssignment ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100'}`}>
+                  {isWithinAssignment ? '✓' : '✗'} Assigned Location Match
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${capturedSelfie ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
+                  {capturedSelfie ? '✓ Selfie Recorded' : '✗ Selfie Required'}
+                </span>
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${fingerprintVerified ? 'text-emerald-700 bg-emerald-50' : offlineTimeIn || unverifiedOfflineTimeOut ? 'text-amber-700 bg-amber-50' : 'text-slate-400 bg-slate-100 animate-pulse'}`}>
+                  {fingerprintVerified
+                    ? `✓ ${biometricLabel} Authenticated${verifiedTimeText ? ` · ${verifiedTimeText}` : ''}`
+                    : offlineTimeIn
+                      ? `${biometricLabel} at ${offlinePunchLabel} (offline)`
+                      : unverifiedOfflineTimeOut
+                        ? `No ${biometricLabel} (offline): HR reviews`
+                        : `✗ ${biometricLabel} Required`}
+                </span>
+              </div>
+            )}
             {/* Why the last Time In or Time Out did not go through, shown beside the buttons. A
-                GPS problem before Step 2 is done is shown in Step 2 instead. */}
+                GPS problem before the GPS check passes is shown in the GPS box instead. */}
             {(((gpsStepDone || isDoneForToday) && locationError) || cameraError) && (
               <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                 {((gpsStepDone || isDoneForToday) && locationError) || cameraError}
@@ -2123,7 +2112,7 @@ export default function AttendanceView({
                   {gpsAccuracy === null
                     ? 'GPS accuracy is unavailable.'
                     : `Current GPS accuracy is ±${Math.round(gpsAccuracy)}m; 50m or better is required.`}
-                  {' '}Tap Refresh GPS in Step 2 to verify before Time In.
+                  {' '}Refresh GPS to verify before Time In.
                 </p>
               </div>
             ) : null}
