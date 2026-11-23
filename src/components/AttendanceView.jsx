@@ -1648,10 +1648,7 @@ export default function AttendanceView({
                       {capturedSelfie ? (
                         <div className="space-y-3">
                           <img src={capturedSelfie} alt="Attendance selfie photo" className="mx-auto max-h-64 rounded-xl object-contain" />
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-bold text-slate-600">
-                              The server compares this selfie with your HR-approved enrollment selfie before saving {punchLabel}.
-                            </p>
+                          <div className="flex justify-center">
                             <button type="button" onClick={handleResetSelfie} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
                               Take Again
                             </button>

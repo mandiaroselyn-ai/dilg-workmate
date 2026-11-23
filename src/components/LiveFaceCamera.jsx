@@ -326,9 +326,6 @@ export default function LiveFaceCamera({ onDone, onCancel, onError, label = 'Sel
           <X className="h-3.5 w-3.5" /> Cancel
         </button>
       </div>
-      <p className="px-4 pb-3 text-center text-[10px] font-semibold text-slate-400">
-        {detector === 'ready' ? 'The selfie is taken by itself. Tap the button only if it is not.' : 'Good light. No cap, sunglasses, or face mask.'}
-      </p>
     </div>
   );
 }
