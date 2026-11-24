@@ -59,7 +59,10 @@ export default function HRAdminDashboard({
   const notYetIn = countStatus(NOT_YET_IN);
   const leaveRequests = employeeRequests.filter(request => request.type === 'Leave Request');
   const travelRequests = employeeRequests.filter(request => request.type === 'Travel Order');
+  // The records that need HR, plus the employees with no Time In today (Absent, after the latest
+  // on-time arrival), as Attendance's DTR Issues lists them.
   const dtrIssues = employeeHistory.filter(record => dtrIssue(record, today));
+  const dtrIssueCount = dtrIssues.length + absent;
   const geofenceAlerts = employeeHistory.filter(record => record.date === today && record.gpsStatus && !/in range/i.test(record.gpsStatus));
   const pendingLeave = leaveRequests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status)).length;
   const pendingTravel = travelRequests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status)).length;
@@ -145,7 +148,7 @@ export default function HRAdminDashboard({
         <MetricCard icon={Clock3} label="Late Today" value={late} detail={`${totalEmployees ? ((late / totalEmployees) * 100).toFixed(1) : '0.0'}% of employees`} action="View Late" color="bg-amber-50 text-amber-600" onClick={() => onOpenTab('dtr')} />
         <MetricCard icon={CalendarDays} label="On Leave" value={onLeave} detail="Employees currently on approved leave" action="View Leaves" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('requests')} />
         <MetricCard icon={Plane} label="On Official Travel" value={onTravel} detail="Employees assigned outside office" action="View Travels" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('requests')} />
-        <MetricCard icon={AlertCircle} label="DTR Issues" value={dtrIssues.length} detail="Missing or incomplete attendance logs" action="Review DTR" color="bg-amber-50 text-amber-600" onClick={() => onOpenTab('dtr')} />
+        <MetricCard icon={AlertCircle} label="DTR Issues" value={dtrIssueCount} detail="Missing or incomplete attendance logs" action="Review DTR" color="bg-amber-50 text-amber-600" onClick={() => onOpenTab('dtr')} />
         <MetricCard icon={MapPin} label="Geofence Alerts" value={geofenceAlerts.length} detail="Employees outside assigned location" action="View Alerts" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
       </div>
 
