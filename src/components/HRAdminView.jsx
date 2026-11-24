@@ -455,6 +455,7 @@ export default function HRAdminView({
         requests={requests}
         holidays={holidays}
         reportGeneratedBy={user?.name || ''}
+        dtrSubmissions={dtrSubmissions}
         onOpenRecord={focusOn => openAttendanceTab('dtr_records', focusOn)}
         onOpenRequest={onOpenRequest}
       />}

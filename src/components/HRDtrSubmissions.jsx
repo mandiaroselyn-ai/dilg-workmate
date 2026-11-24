@@ -15,10 +15,11 @@ const tone = { Verified: 'bg-emerald-50 text-emerald-700', Submitted: 'bg-blue-5
 
 // HR's view of a month's DTRs signed through WorkMate: who has signed and submitted theirs, who
 // the Supervisor verified, and who has not submitted yet. The signed DTR itself is in each
-// employee's documents (Employee Management).
-export default function HRDtrSubmissions({ employees = [], submissions = [] }) {
+// employee's documents (Employee Management). `initialMonth` (YYYY-MM) is the month it starts
+// at; the month before this one when not given.
+export default function HRDtrSubmissions({ employees = [], submissions = [], initialMonth = '' }) {
   const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(lastEndedMonth);
+  const [month, setMonth] = useState(() => initialMonth || lastEndedMonth());
   const staff = activeEmployees(employees);
   const rows = staff.map(employee => ({
     employee,
@@ -44,6 +45,7 @@ export default function HRDtrSubmissions({ employees = [], submissions = [] }) {
           <label className="text-[11px] font-black text-slate-600">Month
             <input type="month" value={month} max={lastEndedMonth()} onChange={event => event.target.value && setMonth(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
           </label>
+          {month > lastEndedMonth() && <p className="text-xs font-semibold text-amber-800">This month has not ended yet, so its DTRs cannot be signed and submitted yet.</p>}
           <ul className="space-y-1.5">
             {rows.map(({ employee, submission }) => (
               <li key={employee.employeeId || employee.email} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2 text-xs">

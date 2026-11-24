@@ -6,8 +6,10 @@ import {
   AlarmClockCheck,
   CalendarDays,
   CheckCircle2,
+  Download,
   FileText,
   Plane,
+  Printer,
   Search,
   ShieldCheck,
   Users
@@ -17,8 +19,13 @@ import { dtrEntry } from '../utils/dtrMonth';
 import { absentDays, activeEmployees, employeeDayStatus, hasSelfie, isBeforeLatestArrival, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { employeeKey } from '../utils/reports';
+import { downloadBytes } from '../utils/documentFiles';
+import { dtrStatusText } from '../utils/dtrSubmission';
+import { dtrSubmissionFor, makeEmployeeDtr } from '../utils/employeeDtr';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 import HRReportsView from './HRReportsView';
+import HRDtrSubmissions from './HRDtrSubmissions';
+import DocumentViewer from './DocumentViewer';
 
 // Minutes as the DTR table shows them, such as "7 min" or "1h 05m".
 const minutesCell = minutes => (minutes ? durationText(minutes) : '—');
@@ -100,7 +107,7 @@ const ShowMore = ({ shown, total, onMore }) => (total > shown ? (
   </button>
 ) : null);
 
-export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], holidays = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reportGeneratedBy = '', onOpenRecord, onOpenRequest }) {
+export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], holidays = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reportGeneratedBy = '', dtrSubmissions = [], onOpenRecord, onOpenRequest }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [shownCount, setShownCount] = useState(PAGE_SIZE);
@@ -160,6 +167,31 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     setEmployeeFilter('');
     setShownCount(PAGE_SIZE);
   };
+
+  // The chosen employee's DTR (CSC Form No. 48) for the chosen month, to view, print, or download.
+  const [dtrViewer, setDtrViewer] = useState(null); // { key, title, load }
+  const [dtrBusy, setDtrBusy] = useState(false);
+  const [dtrError, setDtrError] = useState('');
+  const dtrEmployee = employeeFilter ? employees.find(employee => employeeKey(employee) === employeeFilter) || null : null;
+  const dtrMonthLoaded = !attendanceFrom || monthFilter >= attendanceFrom.slice(0, 7) || loadedAttendanceMonths.includes(monthFilter);
+  const dtrSubmission = dtrEmployee && monthFilter ? dtrSubmissionFor(dtrSubmissions, dtrEmployee, monthFilter) : null;
+  const makeDtr = () => makeEmployeeDtr({ employee: dtrEmployee, month: monthFilter, attendance: attendanceHistory, requests: allRequests, submission: dtrSubmission });
+  const viewDtr = () => setDtrViewer({ key: Date.now(), title: `DTR · ${dtrEmployee?.name || 'Employee'} · ${monthFilter}`, load: makeDtr });
+  const downloadDtr = async () => {
+    setDtrBusy(true);
+    setDtrError('');
+    try {
+      const file = await makeDtr();
+      await downloadBytes(file.bytes, file.fileName, file.fileType);
+    } catch (errorValue) {
+      setDtrError(errorValue.message || 'Unable to prepare the DTR. Please try again.');
+    } finally {
+      setDtrBusy(false);
+    }
+  };
+  // The Signed DTRs list follows the office and employee filters.
+  const signedDtrEmployees = employees.filter(employee => (!officeFilter || employee.office === officeFilter)
+    && (!employeeFilter || employeeKey(employee) === employeeFilter));
 
   const leaveApplications = requests.filter((request) => request.type === 'Leave Request' && !UNSUBMITTED.includes(request.status));
   const approvedLeaves = leaveApplications.filter((request) => request.status === 'Approved');
@@ -278,12 +310,13 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     .filter(({ date, employee }) => !normalizedQuery
       || [employee.name, employee.employeeId, employee.office, date, new Date(date).toLocaleString('en-US', { month: 'long' })]
         .some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
-  // Absent days per employee, most first.
-  const absenceTotals = Object.values(absenceRows.reduce((totals, { employee }) => {
+  // Absent days per employee (half days count 0.5), most first.
+  const absenceTotals = Object.values(absenceRows.reduce((totals, { employee, days }) => {
     const key = employeeKey(employee) || employee.name;
-    totals[key] = { employee, days: (totals[key]?.days || 0) + 1 };
+    totals[key] = { employee, days: (totals[key]?.days || 0) + days };
     return totals;
   }, {})).sort((a, b) => b.days - a.days);
+  const absenceDayTotal = absenceRows.reduce((total, row) => total + row.days, 0);
 
 
   const tabs = [
@@ -509,6 +542,34 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">{normalizedQuery ? `${dtrTable.length} of ${attendanceHistory.length}` : attendanceHistory.length} total records</span>
           </div>
 
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-black text-slate-800">Print DTR (CSC Form No. 48)</p>
+            {dtrEmployee && monthFilter ? (
+              <>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600">{dtrEmployee.name || 'Employee'} · {new Date(`${monthFilter}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</span>
+                  <button type="button" onClick={viewDtr} disabled={!dtrMonthLoaded} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-black text-slate-700 hover:border-blue-300 disabled:opacity-50"><Printer className="h-3.5 w-3.5" />View and print</button>
+                  <button type="button" onClick={downloadDtr} disabled={!dtrMonthLoaded || dtrBusy} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-black text-slate-700 hover:border-blue-300 disabled:opacity-50"><Download className="h-3.5 w-3.5" />{dtrBusy ? 'Preparing...' : 'Download'}</button>
+                </div>
+                {dtrMonthLoaded ? (
+                  <p className="mt-1.5 text-[11px] font-semibold text-slate-500">{dtrSubmission ? `Signed DTR: ${dtrStatusText(dtrSubmission)}.` : 'Not signed and submitted through WorkMate yet.'}</p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] font-semibold text-amber-800">
+                    This month's attendance is not loaded yet.{' '}
+                    {onLoadAttendanceMonth && <button type="button" onClick={() => onLoadAttendanceMonth(monthFilter)} className="font-black text-blue-700 underline">Load {monthFilter}</button>}
+                  </p>
+                )}
+                {dtrError && <p role="alert" className="mt-1.5 text-[11px] font-semibold text-rose-700">{dtrError}</p>}
+              </>
+            ) : (
+              <p className="mt-1 text-[11px] font-semibold text-slate-500">Choose a month and an employee above to view, print, or download their DTR.</p>
+            )}
+          </div>
+
+          <div className="mb-4">
+            <HRDtrSubmissions key={monthFilter} employees={signedDtrEmployees} submissions={dtrSubmissions} initialMonth={monthFilter} />
+          </div>
+
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
               <thead>
@@ -571,6 +632,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             </table>
           </div>
           <ShowMore shown={shownCount} total={dtrTable.length} onMore={showMore} />
+          {dtrViewer && <DocumentViewer key={dtrViewer.key} title={dtrViewer.title} load={dtrViewer.load} onClose={() => setDtrViewer(null)} />}
         </section>
       )}
 
@@ -688,9 +750,9 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             <div>
               <p className="text-xs font-black uppercase tracking-[0.25em] text-rose-600">Absence Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Absent Days</h3>
-              <p className="mt-1 text-xs text-slate-500">Working days with no Time In, and no approved leave or Travel Order. Counted from the first day attendance was recorded in WorkMate and from each employee's hiring, in the months loaded on this page.</p>
+              <p className="mt-1 text-xs text-slate-500">Working days with no Time In, and half days missed (a Time In from noon on, or a Time Out by 1:00 PM), with no approved leave or Travel Order. Counted from the first day attendance was recorded in WorkMate and from each employee's hiring, in the months loaded on this page.</p>
             </div>
-            <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">{absenceRows.length} day{absenceRows.length === 1 ? '' : 's'}</span>
+            <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">{absenceDayTotal} day{absenceDayTotal === 1 ? '' : 's'}</span>
           </div>
           {absenceTotals.length > 0 && (
             <div className="mb-4 flex flex-wrap gap-2">
@@ -707,22 +769,28 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Employee</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Employee ID</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Office</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Absent</th>
                 </tr>
               </thead>
               <tbody>
                 {absenceRows.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan="5" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
                       No absent days found.
                     </td>
                   </tr>
                 ) : (
-                  absenceRows.slice(0, shownCount).map(({ date, employee }) => (
-                    <tr key={`${employeeKey(employee)}-${date}`} className="border-b border-slate-100 last:border-none">
+                  absenceRows.slice(0, shownCount).map(({ date, employee, half, record }) => (
+                    <tr key={`${employeeKey(employee)}-${date}`} {...clickableRow(record?.id && onOpenRecord ? () => onOpenRecord({ recordId: record.id, date }) : null)}>
                       <td className="whitespace-nowrap px-3 py-3 text-slate-600">{date}</td>
                       <td className="px-3 py-3 font-bold text-slate-800">{employee.name || 'Unnamed employee'}</td>
                       <td className="px-3 py-3 text-slate-600">{employee.employeeId || '—'}</td>
                       <td className="px-3 py-3 text-slate-600">{employee.office || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${half ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
+                          {half ? `${half} (half day)` : 'Whole day'}
+                        </span>
+                      </td>
                     </tr>
                   ))
                 )}

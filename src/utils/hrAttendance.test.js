@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   absentDays,
+  missedHalfOf,
   activeEmployees,
   monitoringStatus,
   countsInDtr,
@@ -268,4 +269,26 @@ test('absent days start when the office began using WorkMate, and skip leave, tr
   const monday = absentDays({ employees: [ana], records, requests, from: '2026-11-01', today: '2026-11-23', minutes: 10 * 60 });
   assert.equal(monday.some(day => ['2026-11-21', '2026-11-22'].includes(day.date)), false);
   assert.deepEqual(absentDays({ employees: [ana], records: [], today: '2026-11-20', minutes: 600 }), []);
+});
+
+test('a missed half day is an absence of half a day, unless a leave or Travel Order covers it', () => {
+  assert.equal(missedHalfOf({ timeIn: '12:40 PM', timeOut: '05:00 PM' }), 'Morning');
+  assert.equal(missedHalfOf({ date: '2026-11-20', timeIn: '07:55 AM', timeOut: '12:05 PM' }), 'Afternoon');
+  assert.equal(missedHalfOf({ date: '2026-11-20', timeIn: '07:55 AM', lunchOut: '12:00 PM', timeOut: '12:10 PM' }), 'Afternoon');
+  // A whole day, or one with a lunch log missing but a Time Out in the afternoon, is not.
+  assert.equal(missedHalfOf({ date: '2026-11-20', timeIn: '07:55 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '05:00 PM' }), '');
+  assert.equal(missedHalfOf({ date: '2026-11-20', timeIn: '07:55 AM', timeOut: '05:00 PM' }), '');
+  assert.equal(missedHalfOf({ date: '2026-11-20', timeIn: '07:55 AM' }), '');
+
+  const ana = { employeeId: 'E1', name: 'Ana Reyes', accountStatus: 'Active' };
+  const records = [
+    { employeeId: 'E1', date: '2026-11-16', timeIn: '07:55 AM', timeOut: '05:00 PM' },
+    { employeeId: 'E1', date: '2026-11-17', timeIn: '12:40 PM', timeOut: '05:00 PM' },
+    { employeeId: 'E1', date: '2026-11-18', timeIn: '07:50 AM', timeOut: '12:00 PM' }
+  ];
+  const leave = { type: 'Leave Request', status: 'Approved', employeeId: 'E1', startDate: '2026-11-18', endDate: '2026-11-18' };
+  const halves = requests => absentDays({ employees: [ana], records, requests, today: '2026-11-18', minutes: 10 * 60 })
+    .map(day => `${day.date} ${day.days} ${day.half}`.trim());
+  assert.deepEqual(halves([]), ['2026-11-18 0.5 Afternoon', '2026-11-17 0.5 Morning']);
+  assert.deepEqual(halves([leave]), ['2026-11-17 0.5 Morning']);
 });

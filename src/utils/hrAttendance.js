@@ -1,5 +1,5 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
-import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
+import { clockMinutes, dtrDayLogs, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
 import { travelOrderCovers } from '../../shared/travelStatus.js';
 import { holidaysFor } from '../../shared/phHolidays.js';
 import { isFixedHoursDay, OFFICE_HOURS } from '../../shared/officeHours.js';
@@ -236,8 +236,24 @@ const firstWorkDayOf = employee => {
   return created && !Number.isNaN(created.getTime()) ? getManilaDateString(created) : '';
 };
 
+// The half of a working day a record shows the employee missed, which the DTR leaves out of its
+// undertime ("a leave or an absence", see dtrDayLogs): 'Morning' for a Time In from noon on,
+// 'Afternoon' for a Time Out by 1:00 PM with no Lunch In (a morning-only day). '' otherwise. A
+// day with a missing lunch log but a Time Out in the afternoon is a DTR issue for HR to correct,
+// not an absence.
+export const missedHalfOf = record => {
+  if (!record?.timeIn) return '';
+  const logs = dtrDayLogs(record);
+  if (!logs.amArrival && logs.pmArrival) return 'Morning';
+  const out = clockMinutes(record.timeOut);
+  if (logs.amArrival && out !== null && !record.lunchIn && out <= OFFICE_HOURS.pmStart) return 'Afternoon';
+  return '';
+};
+
 // Every day an active employee was Absent (a working day with no Time In and no approved leave
-// or Travel Order, see employeeDayStatus), as [{ date, employee }]. Days are counted from the
+// or Travel Order, see employeeDayStatus), as [{ date, employee, days: 1, half: '' }], and every
+// half day they missed (see missedHalfOf) without an approved leave or Travel Order that day,
+// as { ..., days: 0.5, half: 'Morning' | 'Afternoon', record }. Days are counted from the
 // latest of `from` (the first loaded day), the first day anyone's attendance was recorded in
 // WorkMate (so the days before the office used it are not absences), and the employee's own
 // first day; up to yesterday, or today once its latest on-time arrival (`minutes` after
@@ -253,9 +269,18 @@ export const absentDays = ({ employees = [], records = [], requests = [], holida
   for (const employee of activeEmployees(employees)) {
     const first = [start, firstWorkDayOf(employee)].filter(Boolean).sort().pop();
     for (let date = first; date <= last; date = nextDay(date)) {
-      if (employeeDayStatus(employee, { records: ownRecords, requests: ownRequests, date, holidays, today }).status === 'Absent') {
-        days.push({ date, employee });
+      const { status, record } = employeeDayStatus(employee, { records: ownRecords, requests: ownRequests, date, holidays, today });
+      if (status === 'Absent') {
+        days.push({ date, employee, days: 1, half: '' });
+        continue;
       }
+      // A half day missed on a working day, without a leave or Travel Order that covers it.
+      const half = (status === 'Present' || status === 'Late') && !isRestDate(date, holidaysFor(holidays, employee)) ? missedHalfOf(record) : '';
+      const covered = half && ownRequests.some(request => /approved/i.test(request?.status || '')
+        && ['Leave Request', 'Travel Order'].includes(request.type)
+        && requestCoversDate(request, date)
+        && (matchesAttendanceEmployee(request, employee) || travelOrderCovers(request, employee)));
+      if (half && !covered) days.push({ date, employee, days: 0.5, half, record });
     }
   }
   return days.sort((a, b) => b.date.localeCompare(a.date) || String(a.employee.name || '').localeCompare(String(b.employee.name || '')));

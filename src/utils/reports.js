@@ -227,28 +227,33 @@ const travelReport = ({ requests, employees, filters }) => {
 const absenceReport = ({ records, requests, employees, holidays, filters, from, today, minutes }) => {
   const rows = absentDays({ employees, records, requests, holidays, from, today, minutes })
     .filter(({ date, employee }) => isFor(employee, employee, filters, employees) && overlaps(date, date, filters.from, filters.to))
-    .map(({ date, employee }) => ({
+    .map(({ date, employee, days, half }) => ({
       sortDate: date,
       date,
       employee: employee.name || 'Unnamed employee',
       employeeId: employee.employeeId || '',
       office: employee.office || '',
-      note: 'No Time In, and no approved leave or Travel Order'
+      days,
+      note: half
+        ? `${half} missed (${half === 'Morning' ? 'Time In from noon on' : 'Time Out by 1:00 PM'}), with no approved leave or Travel Order`
+        : 'No Time In, and no approved leave or Travel Order'
     }))
     .sort(byDateThenName);
   return {
     title: 'Absence Report',
-    note: 'Working days (not Saturdays, Sundays, or holidays) with no Time In and no approved leave or Travel Order, counted from the first day attendance was recorded in WorkMate and from each employee\'s hiring. Days before the loaded months are not included.',
+    note: 'Working days (not Saturdays, Sundays, or holidays) with no Time In and no approved leave or Travel Order, and half days missed (a Time In from noon on, or a Time Out by 1:00 PM) without one, counted from the first day attendance was recorded in WorkMate and from each employee\'s hiring. Days before the loaded months are not included.',
     columns: [
       { key: 'date', label: 'Date' },
       { key: 'employee', label: 'Employee' },
       { key: 'employeeId', label: 'Employee ID' },
       { key: 'office', label: 'Office' },
+      { key: 'days', label: 'Days' },
       { key: 'note', label: 'Remarks' }
     ],
     rows,
     summary: [
-      { label: 'Absent days', value: rows.length },
+      { label: 'Absent days', value: rows.reduce((total, row) => total + row.days, 0) },
+      { label: 'Half days', value: rows.filter(row => row.days === 0.5).length },
       { label: 'Employees', value: new Set(rows.map(row => row.employeeId || row.employee)).size }
     ]
   };
