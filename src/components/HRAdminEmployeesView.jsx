@@ -19,7 +19,6 @@ import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES, PROVINCE_LGU, lguOfStati
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import HRLeaveCreditsCard from './HRLeaveCreditsCard';
-import HRServiceRecordCard from './HRServiceRecordCard';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, nameFromParts, profileFieldValues } from '../../shared/profileFields';
@@ -990,8 +989,6 @@ This enrollment used the sample ID the app used to offer for testing, which does
           )}
 
           <HRLeaveCreditsCard key={`credits-${employeeKey(selectedEmployee)}`} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
-
-          <HRServiceRecordCard key={`service-record-${employeeKey(selectedEmployee)}`} employee={selectedEmployee} currentUser={currentUser} onEmployeesChange={onEmployeesChange} onNotify={notify} />
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">

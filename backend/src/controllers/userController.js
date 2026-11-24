@@ -34,7 +34,6 @@ import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 import { KEEP_ACCOUNT_WITH_RECORDS, carryRecordsOrWarn, hasOwnRecords } from '../services/employeeIdentity.js';
 import { normalizeSeparation } from '../../../shared/separation.js';
-import { normalizeServiceRecord } from '../../../shared/serviceRecord.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -428,20 +427,6 @@ export const updateEmployee = async (req, res) => {
   } catch (error) {
     console.error('Unable to update employee account:', error);
     res.status(500).json({ success: false, error: 'Unable to update employee account.' });
-  }
-};
-
-// Saves an employee's Service Record lines, which HR enters from the appointments and other papers
-// on file (shared/serviceRecord.js). The whole list is sent each time, oldest line first.
-export const updateServiceRecord = async (req, res) => {
-  try {
-    const { value, error } = normalizeServiceRecord(req.body?.lines);
-    if (error) return res.status(400).json({ success: false, error });
-    const updated = await User.setServiceRecord(req.params.identifier, value);
-    if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
-    res.status(200).json({ success: true, employee: employeeResponse(updated) });
-  } catch (error) {
-    sendServerError(res, error);
   }
 };
 

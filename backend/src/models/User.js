@@ -39,10 +39,6 @@ const UserSchema = new mongoose.Schema({
   // that day they still count in the DTR, absences, and leave credits.
   separationDate: { type: String, default: '' },
   separationReason: { type: String, default: '' },
-  // The employee's Service Record, as HR keeps it: each appointment or change with its inclusive
-  // dates, designation, status, annual salary, office, station, branch, leave without pay, and
-  // separation (shared/serviceRecord.js).
-  serviceRecord: { type: [mongoose.Schema.Types.Mixed], default: [] },
   assignedStation: { type: String, default: '' },
   assignedLGU: { type: String, default: '' },
   // The rest of the profile, listed in shared/profileFields.js. The name parts go on
@@ -960,25 +956,6 @@ export const User = {
     }
     await user.save();
     return user.toObject();
-  },
-
-  // Replaces an employee's Service Record lines (already checked, see shared/serviceRecord.js).
-  setServiceRecord: async (identifier, lines) => {
-    ensureConnected();
-    const value = identifier?.toString().trim();
-    if (!value) return null;
-    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-    const employee = await MongoUser.findOne({
-      $and: [
-        { $or: [{ email: emailPattern }, { employeeId: value }] },
-        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
-      ]
-    });
-    if (!employee) return null;
-    employee.serviceRecord = lines;
-    employee.markModified('serviceRecord');
-    await employee.save();
-    return employee.toObject();
   },
 
   // Sets an employee's leave balances (HR adjustment) and records the change.
