@@ -86,3 +86,11 @@ test('an HR/Admin account takes HR 1\'s step or HR 2\'s, chosen when it is made'
   // A Supervisor takes no HR step.
   assert.equal('hrTask' in normalizeStaffInput({ ...account, accessLevel: 'supervisor', hrTask: 'pre-approval' }).value, false);
 });
+
+test('a staff account\'s full name follows its name parts, the saved ones with those sent', () => {
+  const previous = { name: 'Ivan Reyes', firstName: 'Ivan', lastName: 'Reyes', office: 'Office of the Provincial Director' };
+  const { value } = normalizeStaffInput({ middleName: 'Santos' }, { partial: true, previous });
+  assert.equal(value.name, 'Ivan Santos Reyes');
+  // An account without name parts keeps the name sent.
+  assert.equal(normalizeStaffInput({ name: 'Old Account' }, { partial: true, previous: { office: previous.office } }).value.name, 'Old Account');
+});

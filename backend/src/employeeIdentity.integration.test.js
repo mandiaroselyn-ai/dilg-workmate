@@ -115,3 +115,50 @@ test('when the records cannot be moved, the account stays saved and HR is told h
   assert.equal(response.body.employee.employeeId, 'DILG-0042');
   assert.equal(response.body.recordsWarning, RECORDS_NOT_MOVED);
 });
+
+test('an employee\'s full name follows the name parts they save on their Profile, and their records follow it', async t => {
+  t.mock.method(User, 'findByEmail', async () => roselyn);
+  const update = t.mock.method(User, 'update', async data => ({ ...roselyn, ...data }));
+  const moves = mockMoves(t);
+  const response = await request(app)
+    .post('/api/user')
+    .set('Authorization', `Bearer ${createAuthToken(roselyn)}`)
+    .send({ name: 'Roselyn Mandia', firstName: 'Roselyn', middleName: 'Mendoza', lastName: 'Mandia' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(update.mock.calls[0].arguments[0].name, 'Roselyn Mendoza Mandia');
+  assert.deepEqual(moves.dtr.mock.calls[0].arguments[1], { name: 'Roselyn Mendoza Mandia' });
+});
+
+test('HR\'s saved name parts make the full name', async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findAccount', async () => roselyn);
+  const update = t.mock.method(User, 'updateEmployee', async (_id, data) => ({ ...roselyn, ...data }));
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  mockMoves(t);
+  const response = await request(app)
+    .patch(`/api/employees/${roselyn.employeeId}`)
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ ...roselyn, name: 'Roselyn Mandia', firstName: 'Roselyn', lastName: 'Mandia-Reyes', employmentStatus: 'ACTIVE' });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  assert.equal(update.mock.calls[0].arguments[1].name, 'Roselyn Mandia-Reyes');
+});
+
+test('an account with records is kept Inactive instead of deleted; one without records is deleted', async t => {
+  const inactive = { ...roselyn, accountStatus: 'Inactive' };
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findAccount', async () => inactive);
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  const remove = t.mock.method(User, 'deleteEmployee', async () => ({ deleted: inactive }));
+  t.mock.method(DtrLog, 'hasOwnRecords', async () => true);
+  t.mock.method(Leave, 'hasOwnRecords', async () => false);
+  t.mock.method(DtrSubmission, 'hasOwnRecords', async () => false);
+  const kept = await request(app).delete(`/api/employees/${roselyn.employeeId}`).set('Authorization', `Bearer ${createAuthToken(hr)}`);
+  assert.equal(kept.status, 409);
+  assert.match(kept.body.error, /Keep the account Inactive instead/);
+  assert.equal(remove.mock.callCount(), 0);
+
+  DtrLog.hasOwnRecords.mock.mockImplementation(async () => false);
+  const deleted = await request(app).delete(`/api/employees/${roselyn.employeeId}`).set('Authorization', `Bearer ${createAuthToken(hr)}`);
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  assert.equal(remove.mock.callCount(), 1);
+});

@@ -543,8 +543,13 @@ export const User = {
     });
     if (!employee) return null;
 
-    const nextEmail = employeeData.email?.toString().trim().toLowerCase();
-    const nextEmployeeId = employeeData.employeeId?.toString().trim();
+    // Only a new email or Employee ID is checked against the other accounts. One kept as it is
+    // stays, so an account made long ago that shares the old default ID (DILG-2026-7689) can
+    // still be edited; HR gives it its own ID when they choose to (its records move with it).
+    const changedEmail = employeeData.email?.toString().trim().toLowerCase();
+    const changedEmployeeId = employeeData.employeeId?.toString().trim();
+    const nextEmail = changedEmail && changedEmail !== (employee.email || '').toLowerCase() ? changedEmail : '';
+    const nextEmployeeId = changedEmployeeId && changedEmployeeId !== employee.employeeId ? changedEmployeeId : '';
     if (nextEmail || nextEmployeeId) {
       const duplicateConditions = [];
       if (nextEmail) {

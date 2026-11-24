@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { attendanceWindowStart, getManilaDateString, isRealDate } from '../../../shared/localDate.js';
 import { DEFAULT_REGION, MOBILE_NUMBER_ERROR, isSignUpApproval, missingApprovalDetails, officeError } from '../../../shared/dilgAssignments.js';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, NAME_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, earnsLeaveCredits, readProfileFields } from '../../../shared/profileFields.js';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, NAME_FIELDS, NAME_PART_KEYS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, earnsLeaveCredits, nameFromParts, readProfileFields } from '../../../shared/profileFields.js';
 import { LEAVE_CREDITS_HR_ONLY, canChangeLeaveCredits } from '../../../shared/hrSteps.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import {
@@ -32,7 +32,7 @@ import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/aut
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
-import { carryRecordsOrWarn } from '../services/employeeIdentity.js';
+import { KEEP_ACCOUNT_WITH_RECORDS, carryRecordsOrWarn, hasOwnRecords } from '../services/employeeIdentity.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -99,6 +99,10 @@ export const updateUserProfile = async (req, res) => {
       : [...PERSONAL_FIELDS, ...GOVERNMENT_ID_FIELDS]);
     if (details.error) return res.status(400).json({ success: false, error: details.error });
     Object.assign(profileData, details.value);
+    // The full name follows the name parts, as saved with the ones sent now (see nameFromParts).
+    const savedParts = Object.fromEntries(NAME_PART_KEYS.map(key => [key, req.user[key] || '']));
+    const partsName = nameFromParts({ ...savedParts, ...Object.fromEntries(NAME_PART_KEYS.filter(key => profileData[key] !== undefined).map(key => [key, profileData[key]])) });
+    if (partsName) profileData.name = partsName;
     // Only a new photo is checked; the app re-sends the current photo with every profile save.
     if (profileData.profilePicture !== undefined
       && profileData.profilePicture !== req.user.profilePicture
@@ -269,6 +273,8 @@ const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
   const details = readProfileFields(body, [...NAME_FIELDS, ...EMPLOYMENT_FIELDS]);
   if (details.error) return { error: details.error };
   Object.assign(employee, details.value);
+  // The full name follows the name parts HR saved (see nameFromParts).
+  employee.name = nameFromParts(employee) || employee.name;
   if (body.approvedWfhLocation !== undefined) {
     try {
       employee.approvedWfhLocation = normalizeApprovedWfhLocation(body.approvedWfhLocation, reviewer);
@@ -672,6 +678,13 @@ export const enterStartingBalances = async (req, res) => {
 
 export const deleteEmployee = async (req, res) => {
   try {
+    // Only an account with no records is deleted (for example, a sign-up made by mistake); an
+    // employee who left is kept Inactive, so their DTR and leave history stay in HR's pages.
+    const account = await User.findAccount(req.params.identifier);
+    const active = account && (account.accountStatus || 'Active').toString().toLowerCase() === 'active';
+    if (account && !active && await hasOwnRecords(account)) {
+      return res.status(409).json({ success: false, error: KEEP_ACCOUNT_WITH_RECORDS });
+    }
     const result = await User.deleteEmployee(req.params.identifier);
     if (!result) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     if (result.active) {

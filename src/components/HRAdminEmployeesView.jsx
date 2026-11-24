@@ -21,7 +21,7 @@ import HREmployeeDocuments from './HREmployeeDocuments';
 import HRLeaveCreditsCard from './HRLeaveCreditsCard';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
-import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, profileFieldValues } from '../../shared/profileFields';
+import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, nameFromParts, profileFieldValues } from '../../shared/profileFields';
 import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
 
@@ -435,11 +435,9 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     const existingEmployee = editingId
       ? employeeAccounts.find(employee => employeeKey(employee) === editingId)
       : null;
-    // Attendance records are matched by the full name, so an edit keeps it unless HR
-    // changed the name parts.
-    const original = existingEmployee ? normalizeEmployee(existingEmployee) : null;
-    const nameChanged = !original || ['firstName', 'middleName', 'lastName', 'suffix'].some(key => (form[key] || '').trim() !== (original[key] || '').trim());
-    const fullName = nameChanged || !existingEmployee.name ? fullNameOf(form) : existingEmployee.name;
+    // The full name follows the name parts (nameFromParts, as the server saves it); the server
+    // moves the employee's earlier records when it changes.
+    const fullName = nameFromParts(form) || existingEmployee?.name || fullNameOf(form);
     // Left blank on a new account, the server assigns one (DILG-2026-123456).
     const employeeId = form.employeeId.trim();
     const normalized = {
@@ -598,14 +596,17 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
 
   const handleAccountStatus = accountStatus => updateAccountStatus(selectedEmployee, accountStatus);
 
-  // Deletes an account that is not Active. Attendance and request records are kept.
+  // Deletes an account that is not Active and has no records (the server refuses one with
+  // attendance or requests: an employee who left stays Inactive, so HR can still see their DTR).
   const handleDeleteEmployee = async () => {
     if (!selectedEmployee) return;
     const name = employeeName(selectedEmployee);
     const confirmed = window.confirm(
       `Delete ${name}'s account permanently?
 
-They will no longer be able to log in, and their ID photos and enrollment selfie will be removed. Their attendance and leave/travel records are kept.
+They will no longer be able to log in, and their ID photos and enrollment selfie will be removed.
+
+Only an account with no attendance or requests can be deleted, such as a sign-up made by mistake. For an employee who left, keep the account Inactive instead, so their DTR and leave history stay in HR's pages and reports.
 
 This cannot be undone.`
     );
@@ -622,7 +623,7 @@ This cannot be undone.`
       onEmployeesChange?.(previous => previous.filter(employee => employeeKey(employee) !== key));
       setSelectedId(null);
       setScreen('list');
-      notify(`${name}'s account was deleted. Their attendance and request records were kept.`);
+      notify(`${name}'s account was deleted.`);
     } catch (error) {
       notify(error.message || 'Unable to delete the employee account.', true);
     } finally {
@@ -900,7 +901,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
             {promotion ? (
               <form onSubmit={promoteEmployee} className="mt-2 space-y-2">
                 <p className="text-xs font-semibold text-slate-700">
-                  Make {employeeName(selectedEmployee)} a {promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor'}? They will log in with that role, and their attendance and leave records are kept.
+                  Make {employeeName(selectedEmployee)} a {promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor'}? They will log in with that role. Their attendance and leave records stay saved, but HR's attendance pages, DTR, and reports list employees only, so those records will no longer show there. Print or download their DTRs first if HR needs them.
                 </p>
                 {promotion.accessLevel === 'hr_admin' && (
                   <label className="block text-xs font-black uppercase text-slate-500">Your current password (required for HR/Admin)
@@ -921,7 +922,8 @@ This enrollment used the sample ID the app used to offer for testing, which does
             )}
           </div>
 
-          <HRResetPasswordCard key={employeeKey(selectedEmployee)} account={selectedEmployee} />
+          {/* Each card has its own key: two siblings with the same key get duplicated or dropped by React. */}
+          <HRResetPasswordCard key={`password-${employeeKey(selectedEmployee)}`} account={selectedEmployee} />
 
           {accountStatusOf(selectedEmployee) === 'pending' && (
             <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
@@ -947,7 +949,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
             </div>
           )}
 
-          <HRLeaveCreditsCard key={employeeKey(selectedEmployee)} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
+          <HRLeaveCreditsCard key={`credits-${employeeKey(selectedEmployee)}`} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1200,7 +1202,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
         </section>
 
         <HREmployeeDocuments
-          key={employeeKey(selectedEmployee)}
+          key={`documents-${employeeKey(selectedEmployee)}`}
           employee={selectedEmployee}
           dtrSubmissions={dtrSubmissions}
           requests={requests}

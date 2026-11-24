@@ -27,8 +27,8 @@ export const earnsLeaveCredits = person => !NO_LEAVE_CREDIT_ENGAGEMENTS.includes
 
 // The person fills these in and keeps them up to date on their own profile, as an employee
 // fills in their own CSC Personal Data Sheet. HR sees them but changes only the name (see
-// NAME_FIELDS). The name parts go on official forms such as CSC Form No. 6. The full name
-// stays as typed, because attendance records are matched by it.
+// NAME_FIELDS). The name parts go on official forms such as CSC Form No. 6, and the full name
+// follows them (see nameFromParts); when it changes, the server moves the person's records to it.
 export const PERSONAL_FIELDS = [
   { key: 'firstName', label: 'First Name', max: 80 },
   { key: 'middleName', label: 'Middle Name', max: 80 },
@@ -89,6 +89,13 @@ export const SELF_EMPLOYMENT_FIELDS = EMPLOYMENT_FIELDS.filter(field => field.ke
 // The full name as shown and as attendance records are matched: the name parts and suffix.
 export const fullNameOf = person => [person?.firstName, person?.middleName, person?.lastName, person?.suffix]
   .map(part => (part || '').trim()).filter(Boolean).join(' ');
+
+// The full name the name parts give, once there is a first and a last name ('' until then). CSC
+// Form 6 prints the name parts and the DTR and every list print the full name, so the full name
+// follows the parts and the two never differ (an account made before the parts were kept has
+// only a full name, which stays as it is until its parts are filled in).
+export const nameFromParts = person => (String(person?.firstName || '').trim() && String(person?.lastName || '').trim() ? fullNameOf(person) : '');
+export const NAME_PART_KEYS = ['firstName', 'middleName', 'lastName', 'suffix'];
 
 const DEFAULT_LIMIT = 250;
 

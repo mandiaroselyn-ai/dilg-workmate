@@ -61,13 +61,33 @@ export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmploy
   };
 
   const last = (employee?.leaveCreditHistory || []).at(-1);
+  // Contract of service and job order workers earn no leave credits: their card says so. A
+  // balance saved for one (from before the Status of Appointment said so) is shown for HR 2 to
+  // clear, which is all the server lets HR 2 do with it.
+  const earns = earnsLeaveCredits(employee);
+  const leftoverBalance = !earns && (credits.vacationLeaveCredits > 0 || credits.sickLeaveCredits > 0);
+
+  if (!earns && !leftoverBalance) {
+    return (
+      <section className={`${className} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm`}>
+        <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Leave Credits</h3>
+        <p className="mt-1 text-xs font-semibold text-slate-600">
+          {employee?.appointmentStatus || 'Contract of service and job order'} workers do not earn leave credits: no vacation, sick, special privilege, or wellness leave. Their days off follow their contract.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className={`${className} rounded-2xl border border-slate-200 bg-white p-4 shadow-sm`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Leave Credits</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Approved vacation, forced, and sick leave is deducted automatically. Adjust here to match the official leave card.</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            {earns
+              ? 'Approved vacation, forced, and sick leave is deducted automatically. Adjust here to match the official leave card.'
+              : `${employee?.appointmentStatus || 'Contract of service and job order'} workers do not earn leave credits, so the balance below should be cleared to 0.`}
+          </p>
         </div>
         {!creditForm && canEdit && (
           <button type="button" onClick={startCreditAdjustment} className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">Adjust</button>

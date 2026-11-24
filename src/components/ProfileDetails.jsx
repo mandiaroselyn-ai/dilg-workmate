@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS } from '../../shared/profileFields';
+import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, nameFromParts } from '../../shared/profileFields';
 import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES, POSITION_TITLE_GROUPS } from '../../shared/dilgAssignments';
 import AddressPicker from './AddressPicker';
 
@@ -177,8 +177,14 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
     ? <ProfileFieldInput key={item.key} item={item} value={value} onChange={onChange} />
     : <Row key={item.key} label={item.label} value={item.type === 'date' ? formatProfileDate(value) : value} wide={item.wide} />);
 
+  // The full name follows the first, middle, and last name and suffix once there is a first and a
+  // last name (see nameFromParts), so it cannot differ from the name CSC Form 6 prints. An account
+  // made before the name parts were kept edits its full name until those are filled in.
+  const partsName = nameFromParts({ ...person, ...form });
   const personal = [
-    { key: 'name', label: 'Full Name', required: true, max: 160, wide: true },
+    partsName
+      ? { key: 'name', label: editing ? 'Full Name (follows the name below)' : 'Full Name', readOnly: true, derive: () => partsName, wide: true }
+      : { key: 'name', label: 'Full Name', required: true, max: 160, wide: true },
     ...PERSONAL_FIELDS.filter(item => !EMERGENCY_KEYS.includes(item.key)),
     { key: 'phoneNumber', label: 'Mobile Number', type: 'tel', required: true, placeholder: '09XX XXX XXXX' },
     // The login email is changed only by HR.

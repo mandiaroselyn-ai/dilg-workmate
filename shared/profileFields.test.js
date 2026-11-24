@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { APPOINTMENT_STATUS_OPTIONS, EMPLOYMENT_FIELDS, earnsLeaveCredits, readProfileFields } from './profileFields.js';
+import { APPOINTMENT_STATUS_OPTIONS, EMPLOYMENT_FIELDS, earnsLeaveCredits, nameFromParts, readProfileFields } from './profileFields.js';
 
 test('the status of appointment is one of the CSC statuses DILG issues, or a contract of service or job order', () => {
   assert.deepEqual(APPOINTMENT_STATUS_OPTIONS, [
@@ -20,4 +20,12 @@ test('contract of service and job order workers earn no leave credits; everyone 
     assert.equal(earnsLeaveCredits({ appointmentStatus }), true, appointmentStatus);
   }
   assert.equal(earnsLeaveCredits({}), true);
+});
+
+test('the full name follows the name parts once there is a first and a last name', () => {
+  assert.equal(nameFromParts({ firstName: 'Roselyn', middleName: 'Mendoza', lastName: 'Mandia' }), 'Roselyn Mendoza Mandia');
+  assert.equal(nameFromParts({ firstName: ' Pedro ', lastName: 'Penduko', suffix: 'Jr.' }), 'Pedro Penduko Jr.');
+  // An account made before the parts were kept keeps its typed full name.
+  assert.equal(nameFromParts({ name: 'Juan Dela Cruz' }), '');
+  assert.equal(nameFromParts({ firstName: 'Juan', lastName: '' }), '');
 });

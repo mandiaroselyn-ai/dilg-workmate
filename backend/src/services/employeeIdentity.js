@@ -32,6 +32,18 @@ export const carryRecordsToNewIdentity = async (before, after) => {
   return counts.reduce((total, count) => total + (Number(count) || 0), 0);
 };
 
+// True when the account has any attendance record, request (filed, or on another's Travel Order),
+// or signed DTR. HR's pages and reports show only the records of current employee accounts, so
+// deleting such an account would hide its DTR and leave history; it is kept Inactive instead.
+export const hasOwnRecords = async account => {
+  const owner = { employeeId: clean(account?.employeeId), email: clean(account?.email).toLowerCase(), name: clean(account?.name) };
+  if (!owner.employeeId && !owner.email) return false;
+  const found = await Promise.all([DtrLog.hasOwnRecords(owner), Leave.hasOwnRecords(owner), DtrSubmission.hasOwnRecords(owner)]);
+  return found.some(Boolean);
+};
+
+export const KEEP_ACCOUNT_WITH_RECORDS = 'This employee has attendance or request records, so the account cannot be deleted: their DTR and leave history would no longer show in HR\'s pages and reports. Keep the account Inactive instead; it cannot log in, and their records stay.';
+
 // What to tell HR or the employee when the account was saved but its records could not be moved.
 // Saving again changes nothing (the account already has the new name or ID), so moving them is
 // retried by changing it back, saving, and changing it again.
