@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   activeEmployees,
+  monitoringStatus,
   countsInDtr,
   dtrIssue,
   dtrRecordStatus,
@@ -233,4 +234,15 @@ test('an employee a Travel Order includes is On Travel on its days, not absent',
   assert.equal(employeeDayStatus(maria, { requests: [order], date: '2026-11-11' }).status, 'On Travel');
   assert.equal(employeeDayStatus(maria, { requests: [{ ...order, status: 'Pending' }], date: '2026-11-11' }).status, 'Absent');
   assert.equal(employeeDayStatus({ employeeId: 'E8', name: 'Pedro Cruz' }, { requests: [order], date: '2026-11-11' }).status, 'Absent');
+});
+
+test('before the latest on-time arrival, HR sees Not Yet In instead of Absent', () => {
+  // Monday 2026-11-23: 7:00 AM. Tuesday 2026-11-24 (flexitime): 9:00 AM.
+  assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 6 * 60 + 50), 'Not Yet In');
+  assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 7 * 60 + 5), 'Absent');
+  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 8 * 60 + 30), 'Not Yet In');
+  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 9 * 60), 'Absent');
+  // An earlier day, or another status, is as it was.
+  assert.equal(monitoringStatus('Absent', '2026-11-20', '2026-11-24', 8 * 60), 'Absent');
+  assert.equal(monitoringStatus('Late', '2026-11-24', '2026-11-24', 8 * 60), 'Late');
 });

@@ -120,6 +120,21 @@ export default function HRAdminView({
     setActiveTab(sectionTabs[section] || 'dashboard');
   }, [section]);
 
+  // From Attendance: what DTR Records shows first (a record, or a date and status). Employees
+  // opens through the app's menu, as from the dashboard, so the menu shows where HR is.
+  const [dtrRecordsFocus, setDtrRecordsFocus] = useState(null);
+  const openAttendanceTab = (tab, focusOn = null) => {
+    if (tab === 'directory') {
+      onViewChange?.('hr_employees');
+      return;
+    }
+    setDtrRecordsFocus(tab === 'dtr_records' && focusOn ? { ...focusOn, at: Date.now() } : null);
+    setActiveTab(tab);
+  };
+  React.useEffect(() => {
+    if (activeTab !== 'dtr_records') setDtrRecordsFocus(null);
+  }, [activeTab]);
+
   const triggerToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => {
@@ -397,10 +412,11 @@ export default function HRAdminView({
         attendanceFrom={attendanceFrom}
         requests={requests}
         holidays={holidays}
-        onOpenTab={setActiveTab}
+        onOpenTab={openAttendanceTab}
       />}
 
       {activeTab === 'dtr_records' && <HRAdminDTRRecordsView
+        focus={dtrRecordsFocus}
         dtrSubmissions={dtrSubmissions}
         employees={employees}
         attendanceHistory={attendanceHistory}

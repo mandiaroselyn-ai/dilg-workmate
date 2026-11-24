@@ -2,6 +2,7 @@ import { matchesAttendanceEmployee } from './attendanceIdentity.js';
 import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
 import { travelOrderCovers } from '../../shared/travelStatus.js';
 import { holidaysFor } from '../../shared/phHolidays.js';
+import { isFixedHoursDay, OFFICE_HOURS } from '../../shared/officeHours.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -83,6 +84,17 @@ const isRejectedOffline = record => record?.offlineTimeIn?.decision === 'rejecte
 
 // True when HR set the employee's Employment Status to ON LEAVE.
 export const hasOnLeaveStatus = employee => (employee?.employmentStatus || '').toString().trim().toUpperCase() === 'ON LEAVE';
+
+// Shown on HR's monitoring instead of Absent while it is still early: no Time In yet is not an
+// absence before the latest on-time arrival of the day (7:00 AM on a Monday, 9:00 AM on the
+// flexitime days, see shared/officeHours.js).
+export const NOT_YET_IN = 'Not Yet In';
+export const isBeforeLatestArrival = (date, minutes) => minutes < (isFixedHoursDay(date) ? OFFICE_HOURS.amStart : OFFICE_HOURS.flexLatestStart);
+// An employee's status on `date` for HR's monitoring at `minutes` after midnight today: Absent
+// is Not Yet In on `today` before the latest on-time arrival.
+export const monitoringStatus = (status, date, today, minutes) => (
+  status === 'Absent' && date === today && isBeforeLatestArrival(date, minutes) ? NOT_YET_IN : status
+);
 
 // An employee's attendance on `date`: Present, Late, On Leave, On Travel, Rest Day (a Saturday,
 // Sunday, or a holiday of the employee's with none of those; a town's holiday is only its offices'), or Absent. On Leave is an approved leave

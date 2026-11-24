@@ -162,7 +162,11 @@ const DtrLogSchema = new mongoose.Schema({
   currentGpsStatus: { type: String },
   currentDistanceMeters: { type: Number },
   currentWithinGeofence: { type: Boolean },
-  currentAccuracy: { type: Number }
+  currentAccuracy: { type: Number },
+  // Since when the live GPS has been outside the assigned area (null while inside), and when HR
+  // was told the employee had been outside for a while (see dtrController.updateLocationTracking).
+  outsideSince: { type: Date, default: null },
+  outsideAlertSentAt: { type: Date, default: null }
 }, { timestamps: true });
 
 const MongoDtrLog = mongoose.models.DtrLog || mongoose.model('DtrLog', DtrLogSchema);
@@ -544,6 +548,14 @@ export const DtrLog = {
       activeLog.currentDistanceMeters = locationData.distanceFromAssignment;
       activeLog.currentWithinGeofence = Boolean(locationData.withinGeofence);
       activeLog.currentAccuracy = locationData.accuracy;
+      // How long the employee has been outside their area, for HR's alert. Back inside, the
+      // next time outside starts a new count and a new alert.
+      if (newLocationRecord.withinGeofence) {
+        activeLog.outsideSince = null;
+        activeLog.outsideAlertSentAt = null;
+      } else if (!activeLog.outsideSince) {
+        activeLog.outsideSince = newLocationRecord.timestamp;
+      }
 
       // Calculate distance traveled (basic haversine distance)
       if (previousPoint) {
@@ -609,6 +621,17 @@ export const DtrLog = {
       return obj;
     }
     return null;
+  },
+
+  // Notes that HR was told the employee of open shift `customId` has been outside their area
+  // since `outsideSince`; false when another update already did (so HR is told once).
+  markOutsideAlertSent: async (customId, outsideSince) => {
+    ensureConnected();
+    const updated = await MongoDtrLog.findOneAndUpdate(
+      { customId, outsideSince, outsideAlertSentAt: null },
+      { $set: { outsideAlertSentAt: new Date() } }
+    );
+    return Boolean(updated);
   },
 
   // Get location history for an active DTR log
@@ -780,6 +803,9 @@ export const liveLocationFromLog = (log, now = new Date()) => {
     lastGpsAgeSeconds: Math.max(0, Math.round((now.getTime() - lastGpsAt.getTime()) / 1000)),
     // When the employee left their assigned area, while they are still outside it.
     leftAreaAt: !inside && lastEvent?.eventType === 'exit' ? new Date(lastEvent.timestamp).toISOString() : null,
+    // Since when the live GPS has been outside the area (null while inside), for HR's list of
+    // employees outside their area for a while.
+    outsideSince: !inside && log.outsideSince ? new Date(log.outsideSince).toISOString() : null,
     // Where the employee was when they timed in, which Time In checked against the area.
     timeInGps: {
       latitude: log.latitude,

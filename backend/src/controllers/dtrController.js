@@ -6,6 +6,7 @@ import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
+import { MISMATCH_ALERT_COUNT, mismatchesOn, shouldAlertOutside } from '../../../shared/attendanceAlerts.js';
 import { checkOfflineTimeIn, checkOfflineTimeOut, checkSignedOfflineTimeOut } from '../utils/offlineTimeIn.js';
 import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
@@ -128,6 +129,45 @@ export const getRecordSelfie = async (req, res) => {
   }
 };
 
+// Notes an attendance selfie that did not match in the employee's verification history, and
+// tells HR when it is the MISMATCH_ALERT_COUNT-th today: someone may be trying to punch for
+// them, or their enrollment selfie needs taking again (HR's Ask to Re-enroll).
+const noteFaceMismatch = async employee => {
+  const updated = await User.addFaceVerificationAudit(employee.employeeId, {
+    timestamp: new Date(),
+    outcome: 'attendance-face-mismatch',
+    provider: 'local-face-api-v1'
+  });
+  if (mismatchesOn(updated?.faceVerificationAudit, getManilaDateString()) !== MISMATCH_ALERT_COUNT) return;
+  try {
+    await Announcement.createNotification({
+      title: 'Repeated Selfie Mismatch',
+      message: `${employee.name || employee.employeeId || 'An employee'}'s attendance selfie did not match their enrollment selfie ${MISMATCH_ALERT_COUNT} times today. Someone else may be trying to punch for them, or their looks changed and they need to re-enroll (Employees > Ask to Re-enroll).`,
+      type: 'attendance',
+      recipientRole: 'hr_admin'
+    });
+  } catch (error) {
+    console.error('Unable to notify HR about repeated selfie mismatches:', error);
+  }
+};
+
+// Tells HR that the employee of open shift `log` has been outside their assigned area for a
+// while (see shared/attendanceAlerts.js).
+const notifyHrOutsideArea = async log => {
+  const since = new Date(log.outsideSince);
+  const minutes = Math.round((Date.now() - since.getTime()) / 60000);
+  try {
+    await Announcement.createNotification({
+      title: 'Employee Outside Assigned Area',
+      message: `${log.employeeName || log.employeeId || 'An employee'} has been outside their assigned area (${log.location || 'assigned site'}) since ${formatManilaClockTime(since)}, about ${minutes} minutes, during their shift. See GPS & Geofence in Attendance.`,
+      type: 'attendance',
+      recipientRole: 'hr_admin'
+    });
+  } catch (error) {
+    console.error('Unable to notify HR about an employee outside their area:', error);
+  }
+};
+
 // Checks who made an employee's Time Out, the same way as a Time In: the Time Out selfie
 // (compared with the HR-approved enrollment selfie) and the fingerprint. A Time Out made
 // online that fails a check is refused, so the employee can retry. One saved without
@@ -198,10 +238,7 @@ const checkTimeOutIdentity = async ({ record, user, offline, signedOffline, punc
         if (refusal) return refusal;
       }
       if (faceMatch && !faceMatch.matched) {
-        await User.addFaceVerificationAudit(user.employeeId, {
-          outcome: 'attendance-face-mismatch',
-          provider: 'local-face-api-v1'
-        });
+        await noteFaceMismatch(user);
         const refusal = failCheck(403,
           `Your ${punch} selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.`,
           `The ${punch} selfie did not match the HR-approved enrollment selfie.`);
@@ -440,10 +477,7 @@ export const clockInOut = async (req, res) => {
           offline.reviewReasons.push(`The selfie could not be compared with the enrollment selfie: ${error.message}`);
         }
         if (faceMatch && !faceMatch.matched) {
-          await User.addFaceVerificationAudit(record.employeeId, {
-            outcome: 'attendance-face-mismatch',
-            provider: 'local-face-api-v1'
-          });
+          await noteFaceMismatch(user);
           if (failCheck(403,
             'Your attendance selfie did not match the HR-approved enrollment selfie. Retake the selfie with your face clearly visible and try again.',
             'The selfie did not match the HR-approved enrollment selfie.')) {
@@ -689,6 +723,10 @@ export const updateLocationTracking = async (req, res) => {
 
     if (!updated) {
       return res.status(404).json({ success: false, error: 'No active DTR log found for this employee' });
+    }
+    // HR hears once when someone on duty has been outside their area for a while.
+    if (shouldAlertOutside(updated) && await DtrLog.markOutsideAlertSent(updated.customId, updated.outsideSince)) {
+      await notifyHrOutsideArea(updated);
     }
 
     res.status(200).json({

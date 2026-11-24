@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -269,7 +269,7 @@ const offlineRowLabels = record => [
 ].filter(Boolean);
 
 // `canChangeCredits`: whether this HR account (HR 2) charges and credits leave.
-export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack }) {
+export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
@@ -293,17 +293,41 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
       status
     };
   });
-  const dates = [...new Set(records.map(row => row.record.date).filter(Boolean))];
+  // A date picked from Attendance is listed even without records.
+  const dates = [...new Set([...records.map(row => row.record.date), dateFilter !== 'All Dates' ? dateFilter : null].filter(Boolean))];
   const offices = [...new Set(records.map(row => row.office).filter(Boolean))];
+  // The statuses, and the records waiting for HR: any DTR issue, an offline Time In or Time Out
+  // to decide, or a fingerprint checked in a browser (where a PIN can stand in for it).
+  const matchesStatus = row => (statusFilter === 'All Statuses' ? true
+    : statusFilter === 'Needs Review' ? Boolean(dtrIssue(row.record, today))
+      : statusFilter === 'Offline for Review' ? isOfflineReviewPending(row.record) || isOfflineTimeOutPending(row.record)
+        : statusFilter === 'Browser fingerprint' ? usedBrowserFingerprint(row.record)
+          : row.status === statusFilter);
   const filtered = records.filter(row => (
     (dateFilter === 'All Dates' || row.record.date === dateFilter)
     && (officeFilter === 'All Offices' || row.office === officeFilter)
-    && (statusFilter === 'All Statuses' || row.status === statusFilter)
+    && matchesStatus(row)
     && `${row.name} ${row.employeeId} ${row.office}`.toLowerCase().includes(search.toLowerCase())
   ));
   const complete = records.filter(row => row.status === 'Complete').length;
   const incomplete = records.filter(row => row.status === 'Incomplete').length;
   const forReview = records.filter(row => dtrIssue(row.record, today)).length;
+
+  // Opened from Attendance: shows that record (opened, and scrolled to), or that date and
+  // status, with the other filters cleared.
+  const listRef = useRef(null);
+  useEffect(() => {
+    if (!focus) return;
+    setSearch('');
+    setOfficeFilter('All Offices');
+    setDateFilter(focus.date || 'All Dates');
+    setStatusFilter(focus.status || 'All Statuses');
+    if (focus.recordId) setSelectedId(focus.recordId);
+    window.requestAnimationFrame(() => {
+      const target = (focus.recordId && document.getElementById(`dtr-record-${focus.recordId}`)) || listRef.current;
+      target?.scrollIntoView({ block: 'start' });
+    });
+  }, [focus]);
 
   // Shown right under the record that was opened.
   const renderDetails = selected => (
@@ -475,17 +499,17 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
           <option>All Offices</option>{offices.map(office => <option key={office}>{office}</option>)}
         </select>
         <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
-          <option>All Statuses</option><option>On Duty</option><option>Complete</option><option>Late</option><option>Incomplete</option>
+          <option>All Statuses</option><option>On Duty</option><option>Complete</option><option>Late</option><option>Incomplete</option><option>Needs Review</option><option>Offline for Review</option><option>Browser fingerprint</option>
         </select>
       </div>
-      <section>
+      <section ref={listRef} className="scroll-mt-4">
         <h3 className="mb-3 text-sm font-black text-slate-900">DTR Records</h3>
         {filtered.length ? (
           <div className="space-y-3">
             {filtered.map(row => {
               const isOpen = row.id === selectedId;
               return (
-                <article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <article key={row.id} id={`dtr-record-${row.id}`} className={`scroll-mt-4 rounded-2xl border bg-white p-4 shadow-sm ${isOpen ? 'border-blue-300' : 'border-slate-200'}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-black text-slate-800">{row.name}</p>
