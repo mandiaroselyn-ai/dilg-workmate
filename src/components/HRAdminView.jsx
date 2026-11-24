@@ -429,6 +429,7 @@ export default function HRAdminView({
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         reviewerName={user?.name || 'HR/Admin'}
         onSaveRecord={onUpdateAttendance ? update => onUpdateAttendance([update]) : undefined}
+        onSaveRecords={onUpdateAttendance}
         holidays={holidays}
         onHolidaysChange={onHolidaysChange}
         overtimeOrders={overtimeOrders}

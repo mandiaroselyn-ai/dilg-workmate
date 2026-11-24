@@ -5,6 +5,7 @@ import { holidaysFor } from '../../shared/phHolidays.js';
 import { isFixedHoursDay, OFFICE_HOURS, workdayEnd } from '../../shared/officeHours.js';
 import { getManilaDateString } from '../../shared/localDate.js';
 import { employeesInServiceSince } from '../../shared/separation.js';
+import { usedBrowserFingerprint } from './fingerprintMessages.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -188,6 +189,19 @@ export const dtrIssue = (record, today) => {
   if (!record.timeOut) return record.date && record.date < today ? 'Missing Time Out' : null;
   return missingLunchLog(record);
 };
+
+// A record HR can verify together with others (Verify all shown in DTR Records): saved, not
+// verified by HR yet, timed out, counted in the DTR, not set Absent, with no DTR issue (see
+// dtrIssue), its Time In selfie matched to the enrollment selfie (or its offline Time In
+// approved by HR), and no fingerprint checked in a browser, where a phone PIN can stand in for
+// it. HR opens the others one at a time.
+export const canVerifyInBulk = (record, today) => Boolean(record?.id && record.timeIn && record.timeOut)
+  && !record.verificationAudit?.verifiedAt
+  && !isRejectedOffline(record)
+  && !/absent/i.test(record.status || '')
+  && !dtrIssue(record, today)
+  && (record.faceVerified === true || record.offlineTimeIn?.decision === 'approved')
+  && !usedBrowserFingerprint(record);
 
 // Time between Time In and Time Out, such as "8h 05m", or '' until both are recorded.
 // A Time Out earlier than the Time In is past midnight, since a record keeps its Time In

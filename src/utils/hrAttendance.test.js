@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   absentDays,
   activeEmployees,
+  canVerifyInBulk,
   monitoringStatus,
   dayEndText,
   countsInDtr,
@@ -148,6 +149,28 @@ test('flags records missing verification', () => {
   assert.equal(dtrIssue({ ...complete, fingerprintVerified: false }, today), 'Missing Biometric Verification');
   assert.equal(dtrIssue({ date: today, status: 'Absent' }, today), null);
   assert.equal(dtrRecordStatus({ ...complete, late: true }, today), 'Late');
+});
+
+test('Verify all shown takes only clean records not yet verified', () => {
+  const clean = { id: 'D1', date: '2026-09-28', timeIn: '08:00 AM', timeOut: '05:00 PM', hasSelfie: true, fingerprintVerified: true, fingerprintMethod: 'phone-app', faceVerified: true };
+  assert.equal(canVerifyInBulk(clean, today), true);
+  // Already verified, not saved, or today's shift still open.
+  assert.equal(canVerifyInBulk({ ...clean, verificationAudit: { verifiedBy: 'HR', verifiedAt: '2026-09-29T01:00:00Z' } }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, id: '' }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, date: today, timeOut: null }, today), false);
+  // A DTR issue, a selfie not matched, a browser fingerprint, or a record set Absent.
+  assert.equal(canVerifyInBulk({ ...clean, hasSelfie: false }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, fingerprintVerified: false }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, faceVerified: false }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, fingerprintMethod: 'browser' }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, timeOutFingerprintMethod: 'browser' }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, status: 'Absent' }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, date: '2026-11-24', lunchOut: null, lunchIn: null }, '2026-11-25'), false);
+  // An offline Time In: waiting for HR or rejected is left out; one HR approved is taken.
+  const offline = { recordedAt: '2026-09-28T00:00:00Z', reviewReasons: ['The selfie did not match.'] };
+  assert.equal(canVerifyInBulk({ ...clean, faceVerified: false, offlineTimeIn: { ...offline, decision: '' } }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, faceVerified: false, offlineTimeIn: { ...offline, decision: 'rejected' } }, today), false);
+  assert.equal(canVerifyInBulk({ ...clean, faceVerified: false, offlineTimeIn: { ...offline, decision: 'approved' } }, today), true);
 });
 
 test('an offline Time In that failed a check counts in the DTR only once HR approves it', () => {

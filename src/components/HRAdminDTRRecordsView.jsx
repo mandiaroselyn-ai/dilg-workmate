@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { dtrIssue, dtrStatusOf, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { canVerifyInBulk, dtrIssue, dtrStatusOf, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import { durationText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
 import { dayEntry } from '../utils/dtrMonth';
@@ -267,15 +267,20 @@ const offlineRowLabels = record => [
   record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
 ].filter(Boolean);
 
+const recordCount = count => `${count} record${count === 1 ? '' : 's'}`;
+const isVerified = record => Boolean(record?.verificationAudit?.verifiedAt);
+
 // HR 1's DTR desk. Leave credits (their start and the monthly crediting and charging) are HR 2's,
-// on its Leave Credits page.
-export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
+// on its Leave Credits page. `onSaveRecord` saves one record's update, `onSaveRecords` several.
+export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('All Months');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedId, setSelectedId] = useState(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkResult, setBulkResult] = useState({ text: '', error: false });
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const today = getManilaDateString();
   // Only records that belong to current employee accounts.
@@ -310,6 +315,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
     : statusFilter === 'Needs Review' ? Boolean(dtrIssue(row.record, today))
       : statusFilter === 'Offline for Review' ? isOfflineReviewPending(row.record) || isOfflineTimeOutPending(row.record)
         : statusFilter === 'Browser fingerprint' ? usedBrowserFingerprint(row.record)
+          : statusFilter === 'Not Verified' ? Boolean(row.record.id) && !isVerified(row.record)
           // Late lists every late record, an incomplete one too.
           : statusFilter === 'Late' ? row.status === 'Late' || row.lateToo
             : row.status === statusFilter);
@@ -322,6 +328,34 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
   const complete = monthRecords.filter(row => row.status === 'Complete').length;
   const incomplete = monthRecords.filter(row => row.status === 'Incomplete').length;
   const forReview = monthRecords.filter(row => dtrIssue(row.record, today)).length;
+
+  // Verify all shown: the records listed that HR has not verified yet (not today's open shifts,
+  // nor an offline Time In HR rejected), of which those that passed every check (see
+  // canVerifyInBulk) are verified together; HR opens the rest one at a time.
+  const notVerified = filtered.filter(row => row.record.id && !isVerified(row.record)
+    && row.status !== 'On Duty' && row.record.offlineTimeIn?.decision !== 'rejected');
+  const verifiable = notVerified.filter(row => canVerifyInBulk(row.record, today));
+  const needsLook = notVerified.length - verifiable.length;
+  const verifyAllShown = async () => {
+    const count = verifiable.length;
+    if (!count || !onSaveRecords) return;
+    const left = needsLook ? ` ${recordCount(needsLook)} that need a look are left for you to open one at a time.` : '';
+    if (!window.confirm(`Mark ${recordCount(count)} shown as verified by HR? Each passed every check (complete logs, selfie matched, fingerprint on the registered phone).${left}`)) return;
+    setBulkSaving(true);
+    setBulkResult({ text: '', error: false });
+    const verifiedAt = new Date().toISOString();
+    try {
+      await onSaveRecords(verifiable.map(row => ({
+        id: row.record.id,
+        verificationAudit: { ...(row.record.verificationAudit || {}), verifiedBy: reviewerName, verifiedAt }
+      })));
+      setBulkResult({ text: `${recordCount(count)} marked verified by HR.`, error: false });
+    } catch (saveError) {
+      setBulkResult({ text: saveError.message || 'Unable to verify these records.', error: true });
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   // Opened from Attendance: shows that record (opened, and scrolled to), or that date and
   // status, with the other filters cleared.
@@ -494,9 +528,26 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
           <option>All Offices</option>{offices.map(office => <option key={office}>{office}</option>)}
         </select>
         <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
-          <option>All Statuses</option><option>On Duty</option><option>Complete</option><option>Late</option><option>Incomplete</option><option>Needs Review</option><option>Offline for Review</option><option>Browser fingerprint</option>
+          <option>All Statuses</option><option>On Duty</option><option>Complete</option><option>Late</option><option>Incomplete</option><option>Needs Review</option><option>Offline for Review</option><option>Browser fingerprint</option><option>Not Verified</option>
         </select>
       </div>
+      {onSaveRecords && notVerified.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <div className="min-w-0 flex-1 text-xs font-semibold text-emerald-900">
+            <p>{verifiable.length ? `${recordCount(verifiable.length)} shown passed every check and can be verified together.` : 'None of the records shown can be verified together.'}</p>
+            {needsLook > 0 && (
+              <p className="mt-1 text-amber-800">
+                {recordCount(needsLook)} not yet verified need you to open them first.{' '}
+                {statusFilter !== 'Not Verified' && <button type="button" onClick={() => setStatusFilter('Not Verified')} className="font-black text-blue-700 underline">Show not verified</button>}
+              </p>
+            )}
+          </div>
+          <button type="button" onClick={verifyAllShown} disabled={!verifiable.length || bulkSaving} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
+            <CheckCircle2 className="h-3.5 w-3.5" />{bulkSaving ? 'Verifying...' : `Verify all shown (${verifiable.length})`}
+          </button>
+        </div>
+      )}
+      {bulkResult.text && <p role={bulkResult.error ? 'alert' : 'status'} className={`text-xs font-bold ${bulkResult.error ? 'text-rose-700' : 'text-emerald-700'}`}>{bulkResult.text}</p>}
       <section ref={listRef} className="scroll-mt-4">
         <h3 className="mb-3 text-sm font-black text-slate-900">DTR Records</h3>
         {filtered.length ? (
