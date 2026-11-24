@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { getManilaDateString } from '../../shared/localDate';
+import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import {
   Activity,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { durationText } from '../utils/dtrDay';
 import { dtrEntry } from '../utils/dtrMonth';
-import { activeEmployees, employeeDayStatus, hasSelfie, recordsForEmployees } from '../utils/hrAttendance';
+import { activeEmployees, employeeDayStatus, hasSelfie, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 import HRReportsView from './HRReportsView';
 
@@ -34,6 +34,36 @@ const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
   </div>
 );
 
+// A record's status as the DTR counts it: an offline Time In or Time Out still waiting for HR,
+// one HR rejected (left out of the DTR), Absent, or Late or Present by the DTR's own rule (a late
+// Time In, or back from lunch after 1:00 PM).
+const recordStatusOf = record => (isOfflineReviewPending(record) || isOfflineTimeOutPending(record) ? 'For HR review'
+  : record.offlineTimeIn?.decision === 'rejected' ? 'Rejected (not in DTR)'
+    : /absent/i.test(record.status || '') ? 'Absent'
+      : isLate(record) ? 'Late' : 'Present');
+const RECORD_STATUS_TONES = {
+  'For HR review': 'bg-violet-50 text-violet-700',
+  'Rejected (not in DTR)': 'bg-rose-50 text-rose-700',
+  Absent: 'bg-rose-50 text-rose-700',
+  Late: 'bg-amber-50 text-amber-700',
+  Present: 'bg-emerald-50 text-emerald-700'
+};
+// The requests still waiting for a decision, under each of the names they go by.
+const PENDING_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval'];
+const requestStatusTone = status => (/^approved/i.test(status) ? 'bg-emerald-50 text-emerald-700'
+  : /rejected|disapproved|cancelled|returned/i.test(status) ? 'bg-rose-50 text-rose-700'
+    : 'bg-amber-50 text-amber-700');
+// "2026-11-24", or "2026-11-24 – 2026-11-26" for more than one day.
+const dateRange = (start, end) => (!start ? '—' : !end || end === start ? start : `${start} – ${end}`);
+// Rows that open what they show: a DTR record, or a leave or travel request.
+const clickableRow = onOpen => (onOpen ? {
+  role: 'button',
+  tabIndex: 0,
+  onClick: onOpen,
+  onKeyDown: event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen(); } },
+  className: 'cursor-pointer border-b border-slate-100 last:border-none hover:bg-indigo-50/60'
+} : { className: 'border-b border-slate-100 last:border-none' });
+
 // Long tables show this many rows at a time.
 const PAGE_SIZE = 50;
 
@@ -43,7 +73,7 @@ const ShowMore = ({ shown, total, onMore }) => (total > shown ? (
   </button>
 ) : null);
 
-export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], holidays = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reportGeneratedBy = '' }) {
+export default function HRAdminRecordsView({ employees = [], attendanceHistory: allAttendance = [], requests: allRequests = [], holidays = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reportGeneratedBy = '', onOpenRecord, onOpenRequest }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const [shownCount, setShownCount] = useState(PAGE_SIZE);
@@ -66,18 +96,24 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   const staff = activeEmployees(employees);
   const attendanceHistory = recordsForEmployees(allAttendance, employees);
   const requests = recordsForEmployees(allRequests, employees);
-  const todayStatuses = staff.map(employee => employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays, today }).status);
+  // Before 7:00 AM on a Monday or 9:00 AM on the flexitime days, no Time In yet is Not Yet In.
+  const nowMinutes = getManilaMinutesOfDay();
+  const todayStatuses = staff.map(employee => monitoringStatus(
+    employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays, today }).status,
+    today, today, nowMinutes
+  ));
   const lateCount = todayStatuses.filter(status => status === 'Late').length;
   const presentCount = lateCount + todayStatuses.filter(status => status === 'Present').length;
   const absentCount = todayStatuses.filter(status => status === 'Absent').length;
+  const notYetInCount = todayStatuses.filter(status => status === NOT_YET_IN).length;
 
   const leaveApplications = requests.filter((request) => request.type === 'Leave Request');
   const approvedLeaves = leaveApplications.filter((request) => request.status === 'Approved');
-  const pendingLeaves = leaveApplications.filter((request) => ['Pending', 'For Pre-approval'].includes(request.status));
+  const pendingLeaves = leaveApplications.filter((request) => PENDING_STATUSES.includes(request.status));
 
   const travelOrders = requests.filter((request) => request.type === 'Travel Order');
   const approvedTravel = travelOrders.filter((request) => request.status === 'Approved');
-  const pendingTravel = travelOrders.filter((request) => ['Pending', 'For Pre-approval'].includes(request.status));
+  const pendingTravel = travelOrders.filter((request) => PENDING_STATUSES.includes(request.status));
 
   const verifiedDtr = attendanceHistory.filter((record) => hasSelfie(record) && record.fingerprintVerified).length;
   const totalEmployees = staff.length;
@@ -99,12 +135,12 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           const dtr = dtrEntry(record);
           return {
             id: record.id || record.employeeId || record.employeeName,
+            recordId: record.id || '',
             employee: record.employeeName || 'Unassigned Employee',
             date: record.date || today,
-            status: record.status || 'Present',
+            status: recordStatusOf(record),
             timeIn: record.timeIn || '—',
             timeOut: record.timeOut || '—',
-            late: record.late || /late/i.test(record.status || '') ? 'Late' : 'On Time',
             lateTime: minutesCell(dtr?.late),
             undertime: minutesCell(dtr?.early),
             deduction: dtr?.undertime ? `${minutesToLeaveDays(dtr.undertime).toFixed(3)} day` : '—',
@@ -122,15 +158,18 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           const rowDate = request.date || request.createdAt || today;
           return (
             !normalizedQuery ||
-            [employeeName, rowDate, request.status, request.leaveType, new Date(rowDate).toLocaleString('en-US', { month: 'long' })]
+            [employeeName, rowDate, request.startDate, request.endDate, request.status, request.leaveType, new Date(request.startDate || rowDate).toLocaleString('en-US', { month: 'long' })]
               .some((value) => String(value).toLowerCase().includes(normalizedQuery))
           );
         })
         .map((request) => ({
           id: request.id || 'N/A',
+          requestId: request.id || '',
           employee: request.employeeName || 'Unknown Employee',
           type: request.leaveType || 'Leave',
-          date: request.date || request.createdAt || today,
+          dates: dateRange(request.startDate, request.endDate),
+          days: request.workingDays || request.numberOfDays || '—',
+          filed: String(request.date || request.createdAt || '').slice(0, 10) || '—',
           status: request.status || 'Pending'
         })),
     [leaveApplications, normalizedQuery, today]
@@ -144,15 +183,18 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           const rowDate = request.date || request.createdAt || today;
           return (
             !normalizedQuery ||
-            [employeeName, rowDate, request.status, request.purpose, new Date(rowDate).toLocaleString('en-US', { month: 'long' })]
+            [employeeName, rowDate, request.startDate, request.endDate, request.status, request.purpose, request.travelActivity, request.travelVenue, request.destination, new Date(request.startDate || rowDate).toLocaleString('en-US', { month: 'long' })]
               .some((value) => String(value).toLowerCase().includes(normalizedQuery))
           );
         })
         .map((request) => ({
           id: request.id || 'N/A',
+          requestId: request.id || '',
           employee: request.employeeName || 'Unknown Employee',
-          purpose: request.purpose || 'Official Travel',
-          date: request.date || request.createdAt || today,
+          // Newer Travel Orders keep it as the activity; older ones as the purpose.
+          purpose: request.travelActivity || request.purpose || 'Official Travel',
+          destination: request.travelVenue || request.destination || '—',
+          dates: dateRange(request.startDate, request.endDate),
           status: request.status || 'Pending'
         })),
     [travelOrders, normalizedQuery, today]
@@ -244,14 +286,14 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   </thead>
                   <tbody>
                     {dtrTable.slice(0, 8).map((row) => (
-                      <tr key={row.id} className="border-b border-slate-100 last:border-none">
+                      <tr key={row.id} {...clickableRow(row.recordId && onOpenRecord ? () => onOpenRecord({ recordId: row.recordId, date: row.date }) : null)}>
                         <td className="px-3 py-3 font-bold text-slate-800">{row.employee}</td>
                         <td className="px-3 py-3 text-slate-600">{row.date}</td>
                         <td className="px-3 py-3 text-slate-600">{row.timeIn}</td>
                         <td className="px-3 py-3 text-slate-600">{row.timeOut}</td>
                         <td className="px-3 py-3">
-                          <span className={`rounded-full px-2 py-1 text-xs font-black ${row.status === 'Absent' ? 'bg-rose-50 text-rose-700' : row.late === 'Late' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                            {row.status === 'Absent' ? 'Absent' : row.late === 'Late' ? 'Late' : 'Present'}
+                          <span className={`rounded-full px-2 py-1 text-xs font-black ${RECORD_STATUS_TONES[row.status]}`}>
+                            {row.status}
                           </span>
                         </td>
                       </tr>
@@ -280,6 +322,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <div className="flex items-center justify-between"><span className="text-slate-600">Present</span><strong className="text-slate-900">{presentCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Late / Tardy</span><strong className="text-slate-900">{lateCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Absent</span><strong className="text-slate-900">{absentCount}</strong></div>
+                  {notYetInCount > 0 && <div className="flex items-center justify-between"><span className="text-slate-600">Not yet in</span><strong className="text-slate-900">{notYetInCount}</strong></div>}
                   <div className="flex items-center justify-between"><span className="text-slate-600">Employees</span><strong className="text-slate-900">{totalEmployees}</strong></div>
                 </div>
               </div>
@@ -381,13 +424,13 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   </tr>
                 ) : (
                   dtrTable.slice(0, shownCount).map((record) => (
-                    <tr key={record.id || `${record.employee}-${record.date}`} className="border-b border-slate-100 last:border-none">
+                    <tr key={record.id || `${record.employee}-${record.date}`} {...clickableRow(record.recordId && onOpenRecord ? () => onOpenRecord({ recordId: record.recordId, date: record.date }) : null)}>
                       <td className="px-3 py-3 font-bold text-slate-800">{record.employee}</td>
                       <td className="px-3 py-3 text-slate-600">{record.date}</td>
                       <td className="px-3 py-3 text-slate-600">{record.timeIn}</td>
                       <td className="px-3 py-3 text-slate-600">{record.timeOut}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-black ${record.status === 'Absent' ? 'bg-rose-50 text-rose-700' : record.status === 'Late' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${RECORD_STATUS_TONES[record.status]}`}>
                           {record.status}
                         </span>
                       </td>
@@ -421,26 +464,30 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Request ID</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Employee</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Type</th>
-                  <th className="px-3 py-2 font-black uppercase tracking-wide">Date</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Inclusive Dates</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Days</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Filed</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {leaveRows.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan="7" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
                       No matching leave records found.
                     </td>
                   </tr>
                 ) : (
                   leaveRows.slice(0, shownCount).map((record) => (
-                    <tr key={record.id} className="border-b border-slate-100 last:border-none">
+                    <tr key={record.id} {...clickableRow(record.requestId && onOpenRequest ? () => onOpenRequest(record.requestId) : null)}>
                       <td className="px-3 py-3 font-bold text-slate-800">{record.id}</td>
                       <td className="px-3 py-3 text-slate-700">{record.employee}</td>
                       <td className="px-3 py-3 text-slate-600">{record.type}</td>
-                      <td className="px-3 py-3 text-slate-600">{record.date}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.dates}</td>
+                      <td className="px-3 py-3 text-slate-600">{record.days}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.filed}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-black ${record.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${requestStatusTone(record.status)}`}>
                           {record.status}
                         </span>
                       </td>
@@ -469,27 +516,29 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Request ID</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Employee</th>
-                  <th className="px-3 py-2 font-black uppercase tracking-wide">Purpose</th>
-                  <th className="px-3 py-2 font-black uppercase tracking-wide">Date</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Purpose / Activity</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Destination</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Travel Dates</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {travelRows.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan="6" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
                       No matching travel records found.
                     </td>
                   </tr>
                 ) : (
                   travelRows.slice(0, shownCount).map((record) => (
-                    <tr key={record.id} className="border-b border-slate-100 last:border-none">
+                    <tr key={record.id} {...clickableRow(record.requestId && onOpenRequest ? () => onOpenRequest(record.requestId) : null)}>
                       <td className="px-3 py-3 font-bold text-slate-800">{record.id}</td>
                       <td className="px-3 py-3 text-slate-700">{record.employee}</td>
                       <td className="px-3 py-3 text-slate-600">{record.purpose}</td>
-                      <td className="px-3 py-3 text-slate-600">{record.date}</td>
+                      <td className="px-3 py-3 text-slate-600">{record.destination}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.dates}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-black ${record.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${requestStatusTone(record.status)}`}>
                           {record.status}
                         </span>
                       </td>

@@ -83,7 +83,9 @@ export default function HRAdminView({
   onUpdateEvent,
   onDeleteEvent,
   // From a notification's button: the employee or request to open first.
-  focus = null
+  focus = null,
+  // Opens a leave or travel request in Request Management (from Records), as a notification does.
+  onOpenRequest
 }) {
   const sectionTabs = {
     hr_dashboard: 'dashboard',
@@ -453,6 +455,8 @@ export default function HRAdminView({
         requests={requests}
         holidays={holidays}
         reportGeneratedBy={user?.name || ''}
+        onOpenRecord={focusOn => openAttendanceTab('dtr_records', focusOn)}
+        onOpenRequest={onOpenRequest}
       />}
 
       {activeTab === 'requests' && <div className="hr-admin-requests-screen"><HRAdminRequestsView

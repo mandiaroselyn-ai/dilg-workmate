@@ -1796,6 +1796,7 @@ export default function App() {
             <HRAdminView
               key={viewVisit}
               section={currentView}
+              onOpenRequest={requestId => openNotificationActionTarget({ action: 'review_request', targetId: requestId })}
               user={user}
               employees={employees}
               dtrSubmissions={dtrSubmissions}
