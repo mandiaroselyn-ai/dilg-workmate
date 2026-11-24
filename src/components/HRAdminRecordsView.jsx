@@ -66,7 +66,11 @@ const RECORD_STATUS_TONES = {
   Present: 'bg-emerald-50 text-emerald-700'
 };
 const recordStatusTone = status => RECORD_STATUS_TONES[status] || 'bg-orange-50 text-orange-800';
-const LATE_TOO_CHIP = 'ml-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700';
+// The status chips of a DTR row: each stays on one line, and they wrap below each other, apart,
+// when the column is narrow.
+const STATUS_CHIPS = 'flex flex-wrap items-center gap-1';
+const STATUS_CHIP = 'whitespace-nowrap rounded-full px-2 py-1 text-xs font-black';
+const LATE_TOO_CHIP = `${STATUS_CHIP} bg-amber-50 text-amber-700`;
 // The requests still waiting for a decision, under each of the names they go by.
 const PENDING_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor'];
 const requestStatusTone = status => (/^approved/i.test(status) ? 'bg-emerald-50 text-emerald-700'
@@ -479,17 +483,19 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                     {dtrTable.slice(0, 8).map((row) => (
                       <tr key={row.id} {...clickableRow(row.recordId && onOpenRecord ? () => onOpenRecord({ recordId: row.recordId, date: row.date }) : null)}>
                         <td className="px-3 py-3 font-bold text-slate-800">{row.employee}</td>
-                        <td className="px-3 py-3 text-slate-600">{row.date}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.date}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.timeIn}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.lunchOut}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.lunchIn}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.timeOut}</td>
                         <td className="px-3 py-3">
-                          <span className={`rounded-full px-2 py-1 text-xs font-black ${recordStatusTone(row.status)}`}>
-                            {row.status}
-                          </span>
-                          {row.lateToo && <span className={LATE_TOO_CHIP}>Late</span>}
-                          {row.review && <span title={[row.review.label, row.review.detail].filter(Boolean).join('. ')} className="ml-1 rounded-full bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700">{/^Corrected/.test(row.review.label) ? 'Corrected' : 'HR reviewed'}</span>}
+                          <div className={STATUS_CHIPS}>
+                            <span className={`${STATUS_CHIP} ${recordStatusTone(row.status)}`}>
+                              {row.status}
+                            </span>
+                            {row.lateToo && <span className={LATE_TOO_CHIP}>Late</span>}
+                            {row.review && <span title={[row.review.label, row.review.detail].filter(Boolean).join('. ')} className="whitespace-nowrap rounded-full bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700">{/^Corrected/.test(row.review.label) ? 'Corrected' : 'HR reviewed'}</span>}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -624,10 +630,12 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                       <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.timeOut}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.hours}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-black ${recordStatusTone(record.status)}`}>
-                          {record.status}
-                        </span>
-                        {record.lateToo && <span className={LATE_TOO_CHIP}>Late</span>}
+                        <div className={STATUS_CHIPS}>
+                          <span className={`${STATUS_CHIP} ${recordStatusTone(record.status)}`}>
+                            {record.status}
+                          </span>
+                          {record.lateToo && <span className={LATE_TOO_CHIP}>Late</span>}
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-slate-600">{record.lateTime}</td>
                       <td className="px-3 py-3 text-slate-600">{record.undertime}</td>
