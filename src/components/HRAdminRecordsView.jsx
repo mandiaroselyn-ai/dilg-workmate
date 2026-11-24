@@ -250,13 +250,14 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
       attendanceHistory
         .filter((record) => passesFilters(record, [record.date]))
         .filter((record) => {
+          if (!normalizedQuery) return true;
           const employeeName = record.employeeName || 'Unassigned Employee';
           const rowDate = record.date || today;
-          return (
-            !normalizedQuery ||
-            [employeeName, rowDate, record.status, record.timeIn, record.timeOut, new Date(rowDate).toLocaleString('en-US', { month: 'long' })]
-              .some((value) => String(value).toLowerCase().includes(normalizedQuery))
-          );
+          // The status as the table shows it (such as Missing Time Out, with Late too), not the
+          // one saved at Time In.
+          const status = recordStatusOf(record, today);
+          return [employeeName, rowDate, status, isLateToo(record, status) ? 'Late' : '', record.timeIn, record.timeOut, new Date(rowDate).toLocaleString('en-US', { month: 'long' })]
+            .some((value) => String(value).toLowerCase().includes(normalizedQuery));
         })
         .map((record) => {
           // As the DTR counts them (none for a record the DTR leaves out).
@@ -452,8 +453,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             <StatCard icon={Plane} label="Travel Orders" value={`${approvedTravel.length}/${shownTravel.length}`} hint={`Approved / filed${periodText}`} accentClass="bg-blue-50 text-blue-600" />
           </div>
 
+          {/* min-w-0 keeps each column within the screen: the DTR table scrolls inside its card
+              instead of widening the page on a phone. */}
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
@@ -509,7 +512,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
               )}
             </section>
 
-            <aside className="space-y-5">
+            <aside className="min-w-0 space-y-5">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
