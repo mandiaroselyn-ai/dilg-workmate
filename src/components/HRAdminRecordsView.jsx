@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { durationText } from '../utils/dtrDay';
 import { dtrEntry } from '../utils/dtrMonth';
-import { absentDays, activeEmployees, employeeDayStatus, hasSelfie, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { absentDays, activeEmployees, employeeDayStatus, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { employeeKey } from '../utils/reports';
 import { downloadBytes } from '../utils/documentFiles';
@@ -229,7 +229,6 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   const periodText = monthFilter ? ` in ${new Date(`${monthFilter}-01T00:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' })}` : '';
   const missingDocsCount = shownTravel.map(request => travelDocumentStatus(request, today)).filter(status => status?.over && status.missing.length).length;
 
-  const verifiedDtr = attendanceHistory.filter((record) => passesFilters(record, [record.date]) && hasSelfie(record) && record.fingerprintVerified).length;
   const totalEmployees = shownStaff.length;
 
   const dtrTable = useMemo(
@@ -449,9 +448,6 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                     <p className="text-xs text-slate-500">Attendance compliance log</p>
                   </div>
                 </div>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
-                  {verifiedDtr} with selfie + fingerprint
-                </span>
               </div>
 
               <div className="overflow-x-auto">
