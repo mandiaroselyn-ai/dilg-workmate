@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { durationText } from '../utils/dtrDay';
 import { dtrEntry } from '../utils/dtrMonth';
-import { absentDays, activeEmployees, employeeDayStatus, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { absentDays, activeEmployees, employeeDayStatus, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { employeeKey } from '../utils/reports';
 import { downloadBytes } from '../utils/documentFiles';
@@ -44,19 +44,29 @@ const StatCard = ({ icon: Icon, label, value, hint, accentClass }) => (
 );
 
 // A record's status as the DTR counts it: an offline Time In or Time Out still waiting for HR,
-// one HR rejected (left out of the DTR), Absent, or Late or Present by the DTR's own rule (a late
-// Time In, or back from lunch after 1:00 PM).
-const recordStatusOf = record => (isOfflineReviewPending(record) || isOfflineTimeOutPending(record) ? 'For HR review'
-  : record.offlineTimeIn?.decision === 'rejected' ? 'Rejected (not in DTR)'
-    : /absent/i.test(record.status || '') ? 'Absent'
-      : isLate(record) ? 'Late' : 'Present');
+// one HR rejected (left out of the DTR), Absent, On Duty (open today), the log it lacks (Missing
+// Time Out, Missing Lunch Out, or Missing Lunch In, see missingDtrLog), or else Late or Present by
+// the DTR's own rule (a late Time In, or back from lunch after 1:00 PM). A record is Present only
+// when its logs are complete.
+const recordStatusOf = (record, today) => {
+  if (isOfflineReviewPending(record) || isOfflineTimeOutPending(record)) return 'For HR review';
+  if (record.offlineTimeIn?.decision === 'rejected') return 'Rejected (not in DTR)';
+  if (/absent/i.test(record.status || '')) return 'Absent';
+  if (record.timeIn && !record.timeOut && record.date === today) return 'On Duty';
+  return missingDtrLog(record) || (isLate(record) ? 'Late' : 'Present');
+};
+// An open or incomplete record that is late too, which its status alone does not say.
+const isLateToo = (record, status) => (status === 'On Duty' || /^Missing/.test(status)) && isLate(record);
 const RECORD_STATUS_TONES = {
   'For HR review': 'bg-violet-50 text-violet-700',
   'Rejected (not in DTR)': 'bg-rose-50 text-rose-700',
   Absent: 'bg-rose-50 text-rose-700',
+  'On Duty': 'bg-blue-50 text-blue-700',
   Late: 'bg-amber-50 text-amber-700',
   Present: 'bg-emerald-50 text-emerald-700'
 };
+const recordStatusTone = status => RECORD_STATUS_TONES[status] || 'bg-orange-50 text-orange-800';
+const LATE_TOO_CHIP = 'ml-1 rounded-full bg-amber-50 px-2 py-1 text-xs font-black text-amber-700';
 // The requests still waiting for a decision, under each of the names they go by.
 const PENDING_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor'];
 const requestStatusTone = status => (/^approved/i.test(status) ? 'bg-emerald-50 text-emerald-700'
@@ -247,12 +257,14 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
         .map((record) => {
           // As the DTR counts them (none for a record the DTR leaves out).
           const dtr = dtrEntry(record);
+          const status = recordStatusOf(record, today);
           return {
             id: record.id || record.employeeId || record.employeeName,
             recordId: record.id || '',
             employee: record.employeeName || 'Unassigned Employee',
             date: record.date || today,
-            status: recordStatusOf(record),
+            status,
+            lateToo: isLateToo(record, status),
             // The day's four logs, in the order of CS Form 48 ('—' for a day without a lunch log,
             // such as a half day).
             timeIn: record.timeIn || '—',
@@ -473,9 +485,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                         <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.lunchIn}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-slate-600">{row.timeOut}</td>
                         <td className="px-3 py-3">
-                          <span className={`rounded-full px-2 py-1 text-xs font-black ${RECORD_STATUS_TONES[row.status]}`}>
+                          <span className={`rounded-full px-2 py-1 text-xs font-black ${recordStatusTone(row.status)}`}>
                             {row.status}
                           </span>
+                          {row.lateToo && <span className={LATE_TOO_CHIP}>Late</span>}
                           {row.review && <span title={[row.review.label, row.review.detail].filter(Boolean).join('. ')} className="ml-1 rounded-full bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700">{/^Corrected/.test(row.review.label) ? 'Corrected' : 'HR reviewed'}</span>}
                         </td>
                       </tr>
@@ -611,9 +624,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                       <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.timeOut}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-slate-600">{record.hours}</td>
                       <td className="px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-black ${RECORD_STATUS_TONES[record.status]}`}>
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${recordStatusTone(record.status)}`}>
                           {record.status}
                         </span>
+                        {record.lateToo && <span className={LATE_TOO_CHIP}>Late</span>}
                       </td>
                       <td className="px-3 py-3 text-slate-600">{record.lateTime}</td>
                       <td className="px-3 py-3 text-slate-600">{record.undertime}</td>

@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
-import { hasSelfie, isLate, markDtrDay, requestCoversDate } from '../utils/hrAttendance';
+import { hasSelfie, isLate, markDtrDay, missingDtrLog, requestCoversDate } from '../utils/hrAttendance';
 import { clockMinutes, clockText, daySchedule, dtrDayLogs, durationText, logsSchedule, isFixedHoursDay, isRestDate, missingLunchLog, OFFICE_HOURS, officeRangeText, officeTimeText, punchStanding, tardinessText, usesLunchLogs, workdayEnd } from '../utils/dtrDay';
 import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
@@ -103,6 +103,24 @@ const offlineStatuses = log => [
 const lateLabel = log => {
   const minutes = usesLunchLogs(log) ? tardinessText(log) : '';
   return minutes ? `Late · ${minutes}` : 'Late';
+};
+
+// A history record's status as its DTR has it: Absent (set by HR), On Duty while today's shift
+// is open, the log it lacks (Missing Time Out, Lunch Out, or Lunch In, with Late when it is late
+// too), or else Late or Present. A day is Present only when its logs are complete.
+const HISTORY_STATUS_TONES = {
+  present: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+  late: 'bg-amber-50 text-amber-700 border border-amber-100',
+  missing: 'bg-orange-50 text-orange-800 border border-orange-100',
+  onDuty: 'bg-blue-50 text-blue-700 border border-blue-100',
+  absent: 'bg-rose-50 text-rose-700 border border-rose-100'
+};
+const historyStatusOf = (log, today) => {
+  if (/absent/i.test(log.status || '')) return { text: log.status, tone: HISTORY_STATUS_TONES.absent };
+  if (log.timeIn && !log.timeOut && log.date === today) return { text: 'On Duty', tone: HISTORY_STATUS_TONES.onDuty };
+  const missing = missingDtrLog(log);
+  if (missing) return { text: isLate(log) ? `${missing} · Late` : missing, tone: HISTORY_STATUS_TONES.missing };
+  return isLate(log) ? { text: lateLabel(log), tone: HISTORY_STATUS_TONES.late } : { text: 'Present', tone: HISTORY_STATUS_TONES.present };
 };
 
 export default function AttendanceView({
@@ -2451,11 +2469,8 @@ export default function AttendanceView({
                     <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400 font-bold">Date Logged</p>
                     <p className="text-sm font-extrabold text-slate-900">{log.date}</p>
                   </div>
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                    isLate(log) ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                      : log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
-                  }`}>
-                    {isLate(log) ? lateLabel(log) : log.status}
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${historyStatusOf(log, today).tone}`}>
+                    {historyStatusOf(log, today).text}
                   </span>
                 </div>
 
@@ -2645,11 +2660,8 @@ export default function AttendanceView({
                       )}
                     </td>
                     <td className="p-3 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold ${
-                        isLate(log) ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                          : log.status === 'Present' ? 'bg-emerald-50 text-emerald-700 border border-emerald-110' : 'bg-red-50 text-red-700 border border-red-110'
-                      }`}>
-                        {isLate(log) ? lateLabel(log) : log.status}
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold ${historyStatusOf(log, today).tone}`}>
+                        {historyStatusOf(log, today).text}
                       </span>
                       {offlineStatuses(log).map(status => (
                         <span key={status} className="mt-1 block text-[9px] font-semibold text-amber-700">{status}</span>
