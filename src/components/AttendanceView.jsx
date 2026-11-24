@@ -48,7 +48,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { assignmentOfShift } from '../utils/shiftAssignment';
+import { assignmentOfShift, homeOfficeOf } from '../utils/shiftAssignment';
 import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn, travelOrderCovers } from '../../shared/travelStatus';
 
 // A Travel Order's dates as shown: "Nov 10" or "Nov 10 – Nov 12".
@@ -134,12 +134,17 @@ export default function AttendanceView({
   onLunch,
   onUpdateUser
 }) {
-  // Input states with Philippine defaults from mockup
-  const [selectedMuni, setSelectedMuni] = useState('Boac');
-  const [barangayLgu, setBarangayLgu] = useState('Tanza');
+  // The assignment starts at the employee's own office (see homeOfficeOf) when it is known, so
+  // an office worker does not change it each morning; Field and Work From Home are chosen when
+  // they apply. Without a known office it starts on Field.
+  const startingOffice = homeOfficeOf(user);
+  const [selectedMuni, setSelectedMuni] = useState(startingOffice?.municipality || 'Boac');
+  const [barangayLgu, setBarangayLgu] = useState(startingOffice?.barangay || 'Tanza');
   const [assignedTask, setAssignedTask] = useState('Barangay Monitoring and LGU Coordination');
-  const [assignmentMode, setAssignmentMode] = useState('field');
-  const [selectedOfficeId, setSelectedOfficeId] = useState('provincial');
+  const [assignmentMode, setAssignmentMode] = useState(startingOffice ? 'office' : 'field');
+  const [selectedOfficeId, setSelectedOfficeId] = useState(startingOffice?.id || 'provincial');
+  // Whether the start at the employee's office was applied (at once, or when the profile loads).
+  const homeOfficeAppliedRef = useRef(Boolean(startingOffice));
   const [wfhStreet, setWfhStreet] = useState('');
   const [wfhLandmark, setWfhLandmark] = useState('');
   
@@ -170,7 +175,9 @@ export default function AttendanceView({
 
   const buildAssignmentSite = () => {
     if (assignmentMode === 'office') {
-      return { mode: 'office', municipality: selectedMuni, officeId: selectedOfficeId };
+      // The office's own town (the town chosen for Work From Home can differ).
+      const office = MARINDUQUE_OFFICES.find(item => item.id === selectedOfficeId);
+      return { mode: 'office', municipality: office?.municipality || selectedMuni, officeId: selectedOfficeId };
     }
     if (assignmentMode === 'wfh') {
       const approvedLocation = user?.approvedWfhLocation?.approvedAt
@@ -329,6 +336,17 @@ export default function AttendanceView({
       setWfhLandmark(shiftAssignment.landmark);
     }
   }, [shiftAssignmentKey, user]);
+  // When the profile (with the employee's office) loads after the page opened, the page moves to
+  // their office once, before any Time In; a choice made after that is kept.
+  const homeOffice = homeOfficeOf(user);
+  useEffect(() => {
+    if (homeOfficeAppliedRef.current || !homeOffice || isCurrentlyActive) return;
+    homeOfficeAppliedRef.current = true;
+    setAssignmentMode('office');
+    setSelectedOfficeId(homeOffice.id);
+    setSelectedMuni(homeOffice.municipality);
+    setBarangayLgu(homeOffice.barangay);
+  }, [homeOffice?.id, isCurrentlyActive]);
   // The noon break of a shift that started this morning (CSC Form 48's A.M. departure and
   // P.M. arrival): Lunch Out, then Lunch In. An afternoon-only shift has none.
   const timeInMinutes = clockMinutes(todayRecord?.timeIn);
@@ -953,8 +971,9 @@ export default function AttendanceView({
   const isOfficeMode = assignmentMode === 'office';
   const isWfhMode = assignmentMode === 'wfh';
   const requiresGps = true;
-  const effectiveMuni = selectedMuni;
   const selectedOffice = MARINDUQUE_OFFICES.find(office => office.id === selectedOfficeId);
+  // An office is in its own town (the town chosen for Field or Work From Home can differ).
+  const effectiveMuni = isOfficeMode ? selectedOffice?.municipality || selectedMuni : selectedMuni;
   const effectiveBarangay = isOfficeMode
     ? selectedOffice?.barangay || ''
     : barangayLgu;
@@ -2507,13 +2526,14 @@ export default function AttendanceView({
                       </div>
                       <div className="rounded-2xl bg-slate-50 p-3">
                         <p className="text-[9px] uppercase tracking-[0.2em] text-slate-400">Lunch In</p>
-                        <p className="font-semibold text-slate-800 mt-1">{log.lunchIn || (log.lunchOut && !log.timeOut ? 'AT LUNCH' : '—')}</p>
+                        <p className="font-semibold text-slate-800 mt-1">{log.lunchIn || (log.lunchOut && !log.timeOut && log.date === today ? 'AT LUNCH' : '—')}</p>
                       </div>
                     </>
                   )}
                   <div className="rounded-2xl bg-slate-50 p-3">
                     <p className="text-[9px] uppercase tracking-[0.2em] text-slate-400">Time Out</p>
-                    <p className="font-semibold text-slate-800 mt-1">{log.timeOut || 'ON DUTY'}</p>
+                    {/* On duty only while today's shift is open; an earlier day without one is Missing Time Out (its status). */}
+                    <p className="font-semibold text-slate-800 mt-1">{log.timeOut || (log.date === today ? 'ON DUTY' : '—')}</p>
                   </div>
                 </div>
 
@@ -2610,7 +2630,7 @@ export default function AttendanceView({
                       </span>
                       {(log.lunchOut || log.lunchIn) && (
                         <span className="mt-1.5 block text-[9px] font-bold text-sky-700 whitespace-nowrap">
-                          Lunch {log.lunchOut || '—'} – {log.lunchIn || (log.timeOut ? '—' : 'now')}
+                          Lunch {log.lunchOut || '—'} – {log.lunchIn || (log.timeOut || log.date !== today ? '—' : 'now')}
                         </span>
                       )}
                     </td>
@@ -2619,10 +2639,13 @@ export default function AttendanceView({
                         <span className="bg-amber-50 text-[#b45309] border border-amber-100 px-2 py-1 rounded font-mono font-bold">
                           {log.timeOut}
                         </span>
-                      ) : (
+                      ) : log.date === today ? (
                         <span className="text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded font-bold animate-pulse block max-w-max mx-auto text-[10px] tracking-wide">
                           ON DUTY
                         </span>
+                      ) : (
+                        // An earlier day without a Time Out: its status says Missing Time Out.
+                        <span className="text-slate-400">—</span>
                       )}
                     </td>
                     <td className="p-3 text-center">

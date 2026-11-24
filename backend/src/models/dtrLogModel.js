@@ -413,9 +413,13 @@ export const DtrLog = {
     return log ? toListLog(log) : null;
   },
 
-  findActiveByEmployee: async (employeeId, date) => {
+  // The employee's open shift (see openShiftFilter), newest first. With `sameDateOnly`, only one
+  // dated `date`: a Time In checks its own day, so a shift from yesterday that was never timed
+  // out (left for HR to correct) does not stop today's Time In for 18 hours.
+  findActiveByEmployee: async (employeeId, date, { sameDateOnly = false } = {}) => {
     ensureConnected();
-    return MongoDtrLog.findOne(openShiftFilter(employeeId, date)).sort({ createdAt: -1 });
+    const filter = sameDateOnly && date ? { timeOut: null, employeeId, date } : openShiftFilter(employeeId, date);
+    return MongoDtrLog.findOne(filter).sort({ createdAt: -1 });
   },
 
   // True when the employee already has an attendance record dated `date`.

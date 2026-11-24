@@ -1,4 +1,21 @@
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations.js';
+import { DILG_OFFICE_GROUPS } from '../../shared/dilgAssignments.js';
+
+const PROVINCIAL_SECTIONS = DILG_OFFICE_GROUPS.find(group => group.label === 'Provincial Office')?.offices || [];
+
+// The DILG office an employee reports to, from MARINDUQUE_OFFICES: the assigned station HR set,
+// else their MLGOO office's town hall ("Office of the MLGOO - Gasan"), else the Provincial Office
+// for its sections (in the Capitol in Boac). Null when it cannot be told. The attendance page
+// starts on it, so an office worker does not have to change the assignment each morning.
+export const homeOfficeOf = person => {
+  const station = MARINDUQUE_OFFICES.find(office => office.name === person?.assignedStation);
+  if (station) return station;
+  const office = String(person?.office || '').trim();
+  const mlgoo = /Office of the MLGOO - (.+)$/.exec(office);
+  if (mlgoo) return MARINDUQUE_OFFICES.find(item => item.id !== 'provincial' && item.municipality === mlgoo[1].trim()) || null;
+  if (PROVINCIAL_SECTIONS.includes(office) || /provincial/i.test(office)) return MARINDUQUE_OFFICES.find(item => item.id === 'provincial') || null;
+  return null;
+};
 
 // The attendance page's assignment choice (Field, Work From Home, or Office, with its town,
 // barangay, office, or address) for an open shift, from `site`, the area saved with its Time

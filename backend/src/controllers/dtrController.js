@@ -428,7 +428,9 @@ export const clockInOut = async (req, res) => {
         return res.status(400).json({ success: false, error: 'Fingerprint does not match registered fingerprint.' });
       }
 
-      const existingLog = await DtrLog.findActiveByEmployee(record.employeeId, record.date);
+      // Only today's open shift stops a Time In: yesterday's, never timed out, stays open for HR
+      // to correct (Missing Time Out) and does not keep the employee from timing in today.
+      const existingLog = await DtrLog.findActiveByEmployee(record.employeeId, record.date, { sameDateOnly: true });
       if (existingLog) {
         return res.status(409).json({ success: false, error: 'Employee already has an active attendance record for this date.' });
       }

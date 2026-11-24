@@ -153,6 +153,27 @@ test('a second Time In on a day that was already timed out is refused', async t 
   assert.equal(DtrLog.create.mock.callCount(), 0);
 });
 
+test('a shift from yesterday that was never timed out does not stop today\'s Time In', async t => {
+  const send = signIn(t);
+  // Timed in at 6:42 PM yesterday and never timed out: still within 18 hours this morning.
+  const yesterday = { id: 'att-0', employeeId: employee.employeeId, date: '2026-11-18', timeIn: '06:42 PM', timeOut: null };
+  DtrLog.findActiveByEmployee.mock.mockImplementation(async (employeeId, date, { sameDateOnly = false } = {}) => (
+    sameDateOnly && date !== yesterday.date ? null : yesterday
+  ));
+  const fingerprintProof = createVerificationProof({ employeeId: employee.employeeId, type: 'fingerprint', method: 'phone-app' });
+  const response = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
+  // It goes on to the other checks (here, the face match) instead of "already has an active record".
+  assert.doesNotMatch(response.body.error || '', /already has an active attendance record/);
+  assert.match(response.body.error, /cannot be used for face matching/);
+  assert.deepEqual(DtrLog.findActiveByEmployee.mock.calls[0].arguments[2], { sameDateOnly: true });
+
+  // Today's own open shift still stops a second Time In.
+  DtrLog.findActiveByEmployee.mock.mockImplementation(async () => ({ ...yesterday, date: 'today' }));
+  const again = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
+  assert.equal(again.status, 409);
+  assert.match(again.body.error, /already has an active attendance record/);
+});
+
 test('a field Time In on a day of an approved Travel Order is refused, but an office one is not', async t => {
   const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   const travel = { id: 'TO-7', type: 'Travel Order', status: 'Approved', startDate: today, endDate: today };
