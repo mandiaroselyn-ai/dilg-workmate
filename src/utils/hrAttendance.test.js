@@ -7,8 +7,11 @@ import {
   countsInDtr,
   dtrIssue,
   dtrRecordStatus,
+  dtrStatusOf,
   dtrTimeOut,
   employeeDayStatus,
+  geofenceStateOf,
+  liveLocationFor,
   isOfflineReviewPending,
   isOfflineTimeOutPending,
   mergeAttendanceMonth,
@@ -72,6 +75,50 @@ test('an employee HR set to ON LEAVE is on leave from today on, not absent', () 
   const month = monthAttendanceSummary(onLeave, { records: [], requests: [], today });
   assert.equal(month.leave, 1);
   assert.equal(month.absent, 20);
+});
+
+test('a day is Present in the month only when its logs are complete; one still lacking a log is Incomplete', () => {
+  // Tuesday Sep 29, 2026. Sep 1 to 28 have no records (absent), except these.
+  const own = extra => ({ employeeId: roselyn.employeeId, employeeName: 'Roselyn Mandia', ...extra });
+  const records = [
+    own({ date: '2026-09-21', timeIn: '07:00 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '04:00 PM' }), // complete
+    own({ date: '2026-09-22', timeIn: '07:00 AM' }), // no Time Out
+    own({ date: '2026-09-23', timeIn: '09:30 AM', late: true }), // late, no Time Out
+    own({ date: today, timeIn: '08:00 AM' }) // open today: still on duty
+  ];
+  const month = monthAttendanceSummary(roselyn, { records, requests: [], today });
+  assert.equal(month.present, 2);
+  assert.equal(month.incomplete, 2);
+  assert.equal(month.late, 0);
+  // They came in on those days, so the rate counts them as attended.
+  assert.equal(month.absent, 17);
+  assert.equal(month.rate, Math.round((4 / 21) * 100));
+});
+
+test('a record\'s status says the log it lacks, and Late when it is late too', () => {
+  const day = '2026-09-28';
+  assert.deepEqual(dtrStatusOf({ date: day, timeIn: '09:30 AM', late: true }, today), { status: 'Incomplete', label: 'Missing Time Out', lateToo: true });
+  assert.deepEqual(dtrStatusOf({ date: day, timeIn: '07:00 AM' }, today), { status: 'Incomplete', label: 'Missing Time Out', lateToo: false });
+  assert.deepEqual(dtrStatusOf({ date: today, timeIn: '09:30 AM', late: true }, today), { status: 'On Duty', label: 'On Duty', lateToo: true });
+  assert.deepEqual(dtrStatusOf({ date: day, timeIn: '09:30 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '06:30 PM', late: true }, today), { status: 'Late', label: 'Late', lateToo: false });
+  assert.deepEqual(dtrStatusOf({ date: day, timeIn: '07:00 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '04:00 PM' }, today), { status: 'Complete', label: 'Complete', lateToo: false });
+});
+
+test('HR\'s geofence counts use today\'s live GPS, or the Time In GPS without it', () => {
+  const live = [
+    { employeeId: rimhelyn.employeeId, date: '2026-09-28', gpsStatus: 'Out of Range' }, // yesterday's shift, never timed out
+    { employeeId: roselyn.employeeId, date: today, gpsStatus: 'Out of Range' }
+  ];
+  assert.equal(liveLocationFor(live, rimhelyn, today), null);
+  assert.equal(liveLocationFor(live, roselyn, today), live[1]);
+  const inRange = { date: today, timeIn: '08:00 AM', gpsStatus: 'In Range' };
+  assert.equal(geofenceStateOf(null, null), 'Not Timed In');
+  assert.equal(geofenceStateOf({ ...inRange, timeOut: '04:00 PM' }, null), 'Timed Out');
+  assert.equal(geofenceStateOf(inRange, null), 'Inside Assigned Area');
+  // Timed in inside the area, and the phone is now outside it.
+  assert.equal(geofenceStateOf(inRange, live[1]), 'Outside Geofence');
+  assert.equal(geofenceStateOf(inRange, { ...live[1], onLunch: true }), 'On Lunch');
+  assert.equal(geofenceStateOf({ ...inRange, gpsStatus: 'Out of Range' }, { ...live[1], gpsStatus: 'In Range' }), 'Inside Assigned Area');
 });
 
 test('a leave without an end date covers its start date only', () => {
@@ -148,12 +195,12 @@ test('the month so far counts each day once, by where the employee worked', () =
   ];
   const requests = [{ type: 'Travel Order', status: 'Approved', employeeId: rimhelyn.employeeId, employeeName: 'Rimhelyn', startDate: '2026-10-07' }];
   assert.deepEqual(monthAttendanceSummary(rimhelyn, { records, requests, today: '2026-10-08' }), {
-    present: 1, wfh: 1, field: 2, late: 1, leave: 1, absent: 0, rate: 100
+    present: 1, wfh: 1, field: 2, late: 1, incomplete: 0, leave: 1, absent: 0, rate: 100
   });
 
   // Without the travel order, the 7th is absent; today is still not counted.
   assert.deepEqual(monthAttendanceSummary(rimhelyn, { records, requests: [], today: '2026-10-08' }), {
-    present: 1, wfh: 1, field: 2, late: 1, leave: 0, absent: 1, rate: 83
+    present: 1, wfh: 1, field: 2, late: 1, incomplete: 0, leave: 0, absent: 1, rate: 83
   });
 
   // No records at all: every past workday is absent, and the first morning has no rate yet.

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { GEOFENCE_METERS } from '../../shared/assignmentGeofence';
-import { activeEmployees, dtrIssue, employeeDayStatus, hasSelfie, isBeforeLatestArrival, missingDtrLog, monitoringStatus, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
+import { activeEmployees, dtrIssue, employeeDayStatus, geofenceStateOf, hasSelfie, isBeforeLatestArrival, liveLocationFor, missingDtrLog, monitoringStatus, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
 import { apiFetch } from '../utils/api';
 import { scrollIntoContentView } from '../utils/scroll';
 
@@ -239,14 +239,11 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
   // still open, but the employee has not timed in today.
   const locationRows = staff.map(employee => {
     const attendanceRecord = records.find(item => matchesAttendanceEmployee(item, employee));
-    const liveRecord = liveLocations.find(item => item.date === today && matchesAttendanceEmployee(item, employee));
+    const liveRecord = liveLocationFor(liveLocations, employee, today);
     const record = liveRecord || attendanceRecord;
     // An open shift shows where the phone last was, however long ago it sent its GPS. Out for
     // lunch (a Lunch Out without a Lunch In), the employee is not counted outside their area.
-    const gpsState = !record ? 'Not Timed In'
-      : !liveRecord && attendanceRecord?.timeOut ? 'Timed Out'
-        : liveRecord?.onLunch ? 'On Lunch'
-          : /in range/i.test(record.gpsStatus || '') ? 'Inside Assigned Area' : 'Outside Geofence';
+    const gpsState = geofenceStateOf(attendanceRecord, liveRecord);
     const gpsAgeSeconds = liveRecord ? Number(liveRecord.lastGpsAgeSeconds) + Math.max(0, now - liveFetchedAt) / 1000 : null;
     return {
       employee,

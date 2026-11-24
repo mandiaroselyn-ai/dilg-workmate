@@ -345,6 +345,8 @@ export default function DashboardView({
                     { key: 'WFH', value: summary.wfh, color: '#2563eb' },
                     { key: 'Field Work', value: summary.field, color: '#f97316' },
                     { key: 'Late', value: summary.late, color: '#f59e0b' },
+                    // Came in, but the DTR still lacks a Time Out, Lunch Out, or Lunch In.
+                    { key: 'Incomplete', value: summary.incomplete, color: '#db2777' },
                     { key: 'On Leave / Travel', value: summary.leave, color: '#8b5cf6' },
                     { key: 'Absent', value: summary.absent, color: '#ef4444' }
                   ];

@@ -1352,8 +1352,10 @@ export default function AttendanceView({
                           task.toLowerCase().includes(searchQuery.toLowerCase());
     
     if (selectedFilter === 'all') return matchesSearch;
-    if (selectedFilter === 'active') return matchesSearch && !log.timeOut;
-    if (selectedFilter === 'completed') return matchesSearch && log.timeOut;
+    // Active is today's open shift; an earlier day without a Time Out is Missing Time Out, not
+    // active. Completed is a day whose logs are all in. Days still missing a log are under All.
+    if (selectedFilter === 'active') return matchesSearch && Boolean(log.timeIn) && !log.timeOut && log.date === today;
+    if (selectedFilter === 'completed') return matchesSearch && Boolean(log.timeIn && log.timeOut) && !missingDtrLog(log);
     return matchesSearch;
   });
 

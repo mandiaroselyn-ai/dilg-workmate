@@ -2,7 +2,7 @@ import { minutesToLeaveDays } from '../../shared/leaveConversion.js';
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
 import { durationText } from './dtrDay.js';
 import { dtrEntry } from './dtrMonth.js';
-import { absentDays, dtrRecordStatus, totalHoursWorked } from './hrAttendance.js';
+import { absentDays, dtrStatusOf, totalHoursWorked } from './hrAttendance.js';
 import { travelDayCount } from './travelDuration.js';
 
 // HR's reports: attendance, leave, and travel orders, filtered by employee, date range,
@@ -70,6 +70,7 @@ const attendanceReport = ({ records, employees, filters, today }) => {
       && overlaps(record.date, record.date, filters.from, filters.to))
     .map(({ record, account }) => {
       const dtr = dtrEntry(record) || NO_DTR_TIME;
+      const { status, label, lateToo } = dtrStatusOf(record, today);
       return {
         sortDate: record.date || '',
         date: record.date || '',
@@ -86,11 +87,16 @@ const attendanceReport = ({ records, employees, filters, today }) => {
         undertime: minutesCell(dtr.early),
         deduction: dtr.undertime ? minutesToLeaveDays(dtr.undertime).toFixed(3) : '',
         overtime: minutesCell(dtr.overtime),
-        status: dtrRecordStatus(record, today),
+        // `status` is what the filter and counts go by; `statusText` is what the report shows: the
+        // log an incomplete record lacks, and Late when it is late too.
+        status,
+        lateToo,
+        statusText: lateToo ? `${label}, Late` : label,
         location: record.location || ''
       };
     })
-    .filter(row => !filters.status || row.status === filters.status)
+    // Late lists every late record, an incomplete or open one too.
+    .filter(row => !filters.status || row.status === filters.status || (filters.status === 'Late' && row.lateToo))
     .sort(byDateThenName);
   return {
     title: 'Attendance Report',
@@ -109,14 +115,14 @@ const attendanceReport = ({ records, employees, filters, today }) => {
       { key: 'undertime', label: 'Undertime' },
       { key: 'deduction', label: 'Deduction (day)' },
       { key: 'overtime', label: 'Overtime' },
-      { key: 'status', label: 'Status' },
+      { key: 'statusText', label: 'Status' },
       { key: 'location', label: 'Location' }
     ],
     rows,
     summary: [
       { label: 'Records', value: rows.length },
       { label: 'Employees', value: new Set(rows.map(row => row.employeeId || row.employee)).size },
-      ...ATTENDANCE_STATUSES.map(status => ({ label: status, value: countOf(rows, status) })),
+      ...ATTENDANCE_STATUSES.map(status => ({ label: status, value: status === 'Late' ? rows.filter(row => row.status === 'Late' || row.lateToo).length : countOf(rows, status) })),
       { label: 'Total late', value: durationText(totalOf(rows, 'late')) },
       { label: 'Total undertime', value: durationText(totalOf(rows, 'early')) },
       { label: 'Total deduction', value: `${deductionDays(rows).toFixed(3)} day` },

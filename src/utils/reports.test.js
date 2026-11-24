@@ -40,6 +40,21 @@ test('the attendance report lists current employees\' records with their DTR sta
   assert.equal(valueOf(report, 'Late'), 1);
 });
 
+test('the attendance report says which log a record lacks, and keeps Late on an incomplete late record', () => {
+  const lateNoTimeOut = { id: 'a5', employeeId: 'E1', employeeName: 'Juan Dela Cruz', date: '2026-10-07', timeIn: '09:30 AM', timeOut: null, late: true };
+  const report = buildReport({ type: 'attendance', records: [...records, lateNoTimeOut], employees, today: '2026-10-14' });
+  const shown = Object.fromEntries(report.rows.map(row => [row.date + ' ' + row.employee, row.statusText]));
+  assert.equal(shown['2026-10-07 Juan Dela Cruz'], 'Missing Time Out, Late');
+  assert.equal(shown['2026-10-06 Maria Santos'], 'Missing Time Out');
+  assert.equal(shown['2026-10-06 Juan Dela Cruz'], 'Late');
+  assert.equal(report.columns.find(column => column.label === 'Status').key, 'statusText');
+  // Late counts and lists every late record; Incomplete every incomplete one.
+  assert.equal(valueOf(report, 'Late'), 2);
+  assert.equal(valueOf(report, 'Incomplete'), 2);
+  const lateOnly = buildReport({ type: 'attendance', records: [...records, lateNoTimeOut], employees, today: '2026-10-14', filters: { status: 'Late' } });
+  assert.deepEqual(lateOnly.rows.map(row => row.date), ['2026-10-07', '2026-10-06']);
+});
+
 test('the attendance report shows each day\'s late, undertime, deduction, and overtime', () => {
   const overtimeOrders = [{ orderNumber: 'OO 14', startDate: '2026-10-28', endDate: '2026-10-28', startTime: '17:00', endTime: '18:30', employeeIds: ['E1'] }];
   const report = buildReport({

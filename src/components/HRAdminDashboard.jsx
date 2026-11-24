@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import {
   AlertCircle,
@@ -13,7 +13,13 @@ import {
   Users,
   XCircle
 } from 'lucide-react';
-import { activeEmployees, dtrIssue, employeeDayStatus, monitoringStatus, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
+import { activeEmployees, dtrIssue, employeeDayStatus, geofenceStateOf, liveLocationFor, monitoringStatus, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
+import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { apiFetch } from '../utils/api';
+
+// The live GPS of open shifts refreshes every 30 seconds while the page is on screen, as on
+// Attendance's GPS & Geofence.
+const LIVE_REFRESH_MS = 30000;
 
 const MetricCard = ({ icon: Icon, label, value, detail, action, color, onClick }) => (
   <article className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
@@ -36,6 +42,29 @@ export default function HRAdminDashboard({
   onOpenTab
 }) {
   const [showAllActivities, setShowAllActivities] = useState(false);
+  // The live GPS of today's open shifts, for Geofence Alerts. Until it loads, or when it cannot,
+  // each employee is counted from the GPS taken at their Time In, as Attendance does.
+  const [liveLocations, setLiveLocations] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      if (document.hidden) return;
+      apiFetch('/api/dtr/action?action=location-live')
+        .then(async response => {
+          const result = await response.json().catch(() => ({}));
+          if (!cancelled && response.ok && result.success && Array.isArray(result.locations)) setLiveLocations(result.locations);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const timer = window.setInterval(refresh, LIVE_REFRESH_MS);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
   const today = getManilaDateString();
   // Only current, active employee accounts and their own records and requests are counted.
   const staff = activeEmployees(employees);
@@ -63,7 +92,13 @@ export default function HRAdminDashboard({
   // on-time arrival), as Attendance's DTR Issues lists them.
   const dtrIssues = employeeHistory.filter(record => dtrIssue(record, today));
   const dtrIssueCount = dtrIssues.length + absent;
-  const geofenceAlerts = employeeHistory.filter(record => record.date === today && record.gpsStatus && !/in range/i.test(record.gpsStatus));
+  // Employees outside their assigned area now, by the live GPS of their open shift, as
+  // Attendance's Geofence Status counts them (not those out for lunch or already timed out).
+  const todayRecords = employeeHistory.filter(record => record.date === today);
+  const geofenceAlerts = staff.filter(employee => geofenceStateOf(
+    todayRecords.find(record => matchesAttendanceEmployee(record, employee)),
+    liveLocationFor(liveLocations, employee, today)
+  ) === 'Outside Geofence');
   const pendingLeave = leaveRequests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status)).length;
   const pendingTravel = travelRequests.filter(request => ['Pending', 'For Pre-approval'].includes(request.status)).length;
   const returned = employeeRequests.filter(request => request.status === 'Returned' || request.status === 'Rejected').length;

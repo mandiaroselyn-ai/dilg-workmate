@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { dtrIssue, dtrRecordStatus, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { dtrIssue, dtrStatusOf, hasSelfie, isOfflineReviewPending, isOfflineTimeOutPending, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import { durationText, punchStanding, usesLunchLogs } from '../utils/dtrDay';
 import { dayEntry } from '../utils/dtrMonth';
@@ -282,7 +282,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
   // Only records that belong to current employee accounts.
   const records = recordsForEmployees(attendanceHistory, employees).map((record, index) => {
     const employee = findEmployee(record);
-    const status = dtrRecordStatus(record, today);
+    const { status, label, lateToo } = dtrStatusOf(record, today);
     return {
       record,
       employee,
@@ -290,7 +290,9 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
       name: employee?.name || record.employeeName || 'Registered employee',
       employeeId: employee?.employeeId || record.employeeId || 'Not assigned',
       office: employee?.office || record.employeeOffice || 'Office not assigned',
-      status
+      status,
+      label,
+      lateToo
     };
   });
   // A date picked from Attendance is listed even without records.
@@ -302,7 +304,9 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
     : statusFilter === 'Needs Review' ? Boolean(dtrIssue(row.record, today))
       : statusFilter === 'Offline for Review' ? isOfflineReviewPending(row.record) || isOfflineTimeOutPending(row.record)
         : statusFilter === 'Browser fingerprint' ? usedBrowserFingerprint(row.record)
-          : row.status === statusFilter);
+          // Late lists every late record, an incomplete one too.
+          : statusFilter === 'Late' ? row.status === 'Late' || row.lateToo
+            : row.status === statusFilter);
   const filtered = records.filter(row => (
     (dateFilter === 'All Dates' || row.record.date === dateFilter)
     && (officeFilter === 'All Offices' || row.office === officeFilter)
@@ -364,7 +368,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
             </>
           );
         })()}
-        <span>Attendance Status: <b>{selected.status}</b></span>
+        <span>Attendance Status: <b>{selected.label}{selected.lateToo ? ' · Late' : ''}</b></span>
         <span>Record Status: <b>{hasSelfie(selected.record) && selected.record.fingerprintVerified ? 'Fingerprint matched; selfie attached' : 'For Review'}</b></span>
         <span>Face match: <b>{selected.record.faceVerified ? `Matched · distance ${Number(selected.record.faceMatchDistance || 0).toFixed(3)}` : 'Not performed'}</b></span>
         <span>Fingerprint: <b>{describeFingerprintCheck(selected.record)}</b></span>
@@ -518,8 +522,11 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
                       <p className="text-xs text-slate-500">Date: {row.record.date || '-'}</p>
                       {offlineRowLabels(row.record).map(label => <p key={label} className="mt-1 text-xs font-black text-amber-700">{label}</p>)}
                     </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
-                      {row.status === 'Incomplete' ? missingDtrLog(row.record) : row.status}
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <span className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ${row.status === 'Complete' ? 'bg-emerald-50 text-emerald-700' : row.status === 'On Duty' ? 'bg-blue-50 text-blue-700' : row.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {row.label}
+                      </span>
+                      {row.lateToo && <span className="whitespace-nowrap rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700">Late</span>}
                     </span>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-500">

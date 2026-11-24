@@ -125,13 +125,16 @@ export const employeeDayStatus = (employee, { records = [], requests = [], date,
 };
 
 // An employee's attendance this month up to `today` (YYYY-MM-DD), one count per day:
-// Present (office), WFH, Field Work, Late, On Leave/Travel (approved), or Absent. Each
+// Present (office), WFH, Field Work, Late, Incomplete, On Leave/Travel (approved), or Absent.
+// Incomplete is a day the employee came in but whose DTR still lacks a log (Time Out, Lunch Out,
+// or Lunch In; not while today's shift is open), so only a complete day is Present. Each
 // Monday to Friday counts, except HR's holidays; a rest day counts only when the employee
 // timed in. Today counts once the employee has timed in or is on leave, not while the day has
-// not started. The rate is the days attended out of the days the employee was expected at work.
+// not started. The rate is the days attended (incomplete ones too, as the employee came in) out
+// of the days the employee was expected at work.
 export const monthAttendanceSummary = (employee, { records = [], requests = [], today, holidays = [] }) => {
   const lastDay = Number(today.slice(8, 10));
-  const counts = { present: 0, wfh: 0, field: 0, late: 0, leave: 0, absent: 0 };
+  const counts = { present: 0, wfh: 0, field: 0, late: 0, incomplete: 0, leave: 0, absent: 0 };
   for (let day = 1; day <= lastDay; day += 1) {
     const date = `${today.slice(0, 8)}${String(day).padStart(2, '0')}`;
     const { status, record } = employeeDayStatus(employee, { records, requests, date, holidays, today });
@@ -140,6 +143,8 @@ export const monthAttendanceSummary = (employee, { records = [], requests = [], 
       if (date !== today) counts.absent += 1;
     } else if (status === 'On Leave' || status === 'On Travel') {
       if (!isRestDate(date, holidaysFor(holidays, employee))) counts.leave += 1;
+    } else if (record && !(date === today && !record.timeOut) && missingDtrLog(record)) {
+      counts.incomplete += 1;
     } else if (status === 'Late') {
       counts.late += 1;
     } else {
@@ -147,7 +152,7 @@ export const monthAttendanceSummary = (employee, { records = [], requests = [], 
       counts[dutyType === 'wfh' ? 'wfh' : dutyType === 'field' ? 'field' : 'present'] += 1;
     }
   }
-  const attended = counts.present + counts.wfh + counts.field + counts.late;
+  const attended = counts.present + counts.wfh + counts.field + counts.late + counts.incomplete;
   const expected = attended + counts.absent;
   return { ...counts, rate: expected ? Math.round((attended / expected) * 100) : null };
 };
@@ -200,6 +205,37 @@ export const dtrRecordStatus = (record, today) => {
 export const missingDtrLog = record => (!record?.timeIn ? 'Missing Time In'
   : !record.timeOut ? 'Missing Time Out'
     : missingLunchLog(record) || '');
+
+// How a record reads in the DTR lists and reports: its `status` (see dtrRecordStatus), the
+// `label` to show (the log an Incomplete record lacks, such as Missing Time Out), and `lateToo`
+// when an open or incomplete record is late as well, which its status alone does not say.
+export const dtrStatusOf = (record, today) => {
+  const status = dtrRecordStatus(record, today);
+  return {
+    status,
+    label: status === 'Incomplete' ? missingDtrLog(record) : status,
+    lateToo: (status === 'Incomplete' || status === 'On Duty') && isLate(record)
+  };
+};
+
+// The live GPS of an employee's open shift from today (`today`, YYYY-MM-DD), from HR's live
+// locations, or null. A shift from an earlier day that was never timed out is still open, but
+// the employee has not timed in today.
+export const liveLocationFor = (liveLocations = [], employee, today) => (
+  liveLocations.find(item => item.date === today && matchesAttendanceEmployee(item, employee)) || null
+);
+
+// Where an employee is today, for HR's geofence counts: 'Not Timed In', 'Timed Out', 'On Lunch'
+// (a Lunch Out without a Lunch In), 'Inside Assigned Area', or 'Outside Geofence', from today's
+// attendance record and the live GPS of their open shift (see liveLocationFor), which is the
+// Time In GPS until the phone sends another.
+export const geofenceStateOf = (attendanceRecord, liveRecord) => {
+  const record = liveRecord || attendanceRecord;
+  if (!record) return 'Not Timed In';
+  if (!liveRecord && attendanceRecord?.timeOut) return 'Timed Out';
+  if (liveRecord?.onLunch) return 'On Lunch';
+  return /in range/i.test(record.gpsStatus || '') ? 'Inside Assigned Area' : 'Outside Geofence';
+};
 
 // HR's attendance holds the records from `windowStart` (the first day of the previous
 // month) on, plus the earlier months HR loaded (`loadedMonths`, a Set of "YYYY-MM").
