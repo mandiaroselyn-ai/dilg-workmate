@@ -1,7 +1,7 @@
 import { minutesToLeaveDays } from '../../shared/leaveConversion.js';
 import { earnsLeaveCredits } from '../../shared/profileFields.js';
 import { countsInDtr, dtrTimeOut } from './hrAttendance.js';
-import { dtrDayLogs, dtrEarlyMinutes, dtrLateMinutes, dtrOvertime, dtrUndertimeMinutes, isRestDay, usesLunchLogs } from './dtrDay.js';
+import { dtrDayLogs, dtrEarlyMinutes, dtrLateMinutes, dtrOvertime, dtrTimesLateAndEarly, dtrUndertimeMinutes, isRestDay, usesLunchLogs } from './dtrDay.js';
 
 // One month of a Daily Time Record (CSC Form No. 48), as dtrForm.js prints it: each day's four
 // cells and minutes of tardiness, undertime, and overtime, and the month's totals. Tardiness
@@ -58,7 +58,9 @@ function undertimeMins(timeIn, timeOut) {
 // `late` (tardiness) and `early` (undertime) together, and `overtime` and `noOrder` (see
 // dtrOvertime) are apart from them. A record with Lunch Out and Lunch In shows its own four
 // logs, with tardiness and undertime against the office hours, and so does an older record of a
-// half day the employee missed (see dtrDayLogs). A rest day has neither.
+// half day the employee missed (see dtrDayLogs). A rest day has neither. `lateTimes` and
+// `earlyTimes` are how many times the day was late and undertime (see dtrTimesLateAndEarly); a
+// record from before lunch logs is one time each at most.
 export function dayEntry(rec) {
   const logs = dtrDayLogs(rec);
   const cell = value => fmt(parseTime(value));
@@ -66,14 +68,14 @@ export function dayEntry(rec) {
     ? { amArr: cell(logs.amArrival), amDep: cell(logs.amDeparture), pmArr: cell(logs.pmArrival), pmDep: cell(logs.pmDeparture) }
     : dtrTimes(rec.timeIn, rec.timeOut);
   const day = { ...cells, ...dtrOvertime(logs, rec) };
-  if (isRestDay(rec)) return { ...day, undertime: 0, late: 0, early: 0 };
+  if (isRestDay(rec)) return { ...day, undertime: 0, late: 0, early: 0, lateTimes: 0, earlyTimes: 0 };
   if (!usesLunchLogs(rec) && !logs.missedHalf) {
     // These count the hours worked, so the time late is at most the day's undertime.
     const undertime = undertimeMins(rec.timeIn, rec.timeOut);
     const late = Math.min(undertime, dtrLateMinutes(logs, rec.date));
-    return { ...day, undertime, late, early: undertime - late };
+    return { ...day, undertime, late, early: undertime - late, lateTimes: Number(late > 0), earlyTimes: Number(undertime - late > 0) };
   }
-  return { ...day, undertime: dtrUndertimeMinutes(logs, rec.date), late: dtrLateMinutes(logs, rec.date), early: dtrEarlyMinutes(logs, rec.date) };
+  return { ...day, undertime: dtrUndertimeMinutes(logs, rec.date), late: dtrLateMinutes(logs, rec.date), early: dtrEarlyMinutes(logs, rec.date), ...dtrTimesLateAndEarly(logs, rec.date) };
 }
 
 // A record's day as the DTR shows it, or null when the DTR leaves it out (see dtrRecordsByDay).

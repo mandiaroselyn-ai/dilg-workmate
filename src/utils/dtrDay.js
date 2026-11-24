@@ -83,6 +83,18 @@ export const dtrEarlyMinutes = (logs, date) => {
   return minutesEarly(logs.amDeparture, OFFICE_HOURS.noon) + minutesEarly(logs.pmDeparture, end)
     + (logs.missedHalf === 'Afternoon' ? end - OFFICE_HOURS.pmStart : 0);
 };
+// How many times the four logs of `date` were late and undertime, as the CSC counts them for
+// habitual tardiness (CSC MC No. 04, s. 1991) and undertime (CSC MC No. 16, s. 2010): a late
+// morning arrival (or a missed morning) and a late return after 1:00 PM are a time late each, and
+// leaving before noon and leaving before the day's end (or a missed afternoon) a time undertime each.
+export const dtrTimesLateAndEarly = (logs, date) => {
+  const { noon, pmStart } = OFFICE_HOURS;
+  const { lateAfter, end } = logsSchedule(logs, date);
+  return {
+    lateTimes: Number(minutesLate(logs.amArrival, lateAfter) > 0 || logs.missedHalf === 'Morning') + Number(minutesLate(logs.pmArrival, pmStart) > 0),
+    earlyTimes: Number(minutesEarly(logs.amDeparture, noon) > 0) + Number(minutesEarly(logs.pmDeparture, end) > 0 || logs.missedHalf === 'Afternoon')
+  };
+};
 export const dtrUndertimeMinutes = (logs, date) => dtrLateMinutes(logs, date) + dtrEarlyMinutes(logs, date);
 
 // The spans of a day's work in minutes, without its break: the employee's own Lunch Out to Lunch

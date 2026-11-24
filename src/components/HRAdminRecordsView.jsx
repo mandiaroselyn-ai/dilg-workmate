@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import {
-  Activity,
   AlarmClockCheck,
   CalendarDays,
   CheckCircle2,
@@ -22,6 +21,7 @@ import { employeeKey } from '../utils/reports';
 import { downloadBytes } from '../utils/documentFiles';
 import { dtrStatusText } from '../utils/dtrSubmission';
 import { dtrSubmissionFor, makeEmployeeDtr } from '../utils/employeeDtr';
+import { HABITUAL_RULES, habitualAttendance } from '../utils/habitualAttendance';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 import HRReportsView from './HRReportsView';
 import HRDtrSubmissions from './HRDtrSubmissions';
@@ -98,6 +98,26 @@ const companionsOf = request => (request.companions || [])
   .filter(Boolean)
   .join(', ');
 
+// Whether each employee on an approved Travel Order (the filer and those included) attached their
+// Post Activity Report or Certificate of Appearance (shared/travelDocuments.js), as { submitted,
+// total, missing: [names], over } (`over` once the travel has ended before `today`). Null for a
+// Travel Order not approved.
+const sameText = (a, b) => Boolean(a) && String(a).trim().toLowerCase() === String(b || '').trim().toLowerCase();
+const travelDocumentStatus = (request, today) => {
+  if (request.status !== 'Approved') return null;
+  const people = [
+    { employeeId: request.employeeId, name: request.employeeName },
+    ...(request.companions || []).map(companion => ({ employeeId: companion?.employeeId, name: companion?.name || companion?.employeeName }))
+  ].filter(person => person.employeeId || person.name);
+  const documents = request.travelDocuments || [];
+  const hasFiled = person => documents.some(item => (person.employeeId && item?.uploadedByEmployeeId
+    ? sameText(item.uploadedByEmployeeId, person.employeeId)
+    : sameText(item?.uploadedBy, person.name)));
+  const missing = people.filter(person => !hasFiled(person)).map(person => person.name || person.employeeId);
+  return { submitted: people.length - missing.length, total: people.length, missing, over: (request.endDate || request.startDate || '') < today };
+};
+const monthShort = month => new Date(`${month}-01T00:00:00`).toLocaleString('en-US', { month: 'short' });
+
 // Long tables show this many rows at a time.
 const PAGE_SIZE = 50;
 
@@ -115,6 +135,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   const [monthFilter, setMonthFilter] = useState('');
   const [officeFilter, setOfficeFilter] = useState('');
   const [employeeFilter, setEmployeeFilter] = useState('');
+  // Travel Orders: only those still missing a report or certificate after the travel.
+  const [missingDocsOnly, setMissingDocsOnly] = useState(false);
   const openTab = tab => {
     setActiveTab(tab);
     setShownCount(PAGE_SIZE);
@@ -136,7 +158,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   const requests = recordsForEmployees(allRequests, employees);
   // Before 7:00 AM on a Monday or 9:00 AM on the flexitime days, no Time In yet is Not Yet In.
   const nowMinutes = getManilaMinutesOfDay();
-  const todayStatuses = staff.map(employee => monitoringStatus(
+  // The employees the office and employee filters choose.
+  const inFilters = employee => (!officeFilter || employee.office === officeFilter) && (!employeeFilter || employeeKey(employee) === employeeFilter);
+  const shownStaff = staff.filter(inFilters);
+  const todayStatuses = shownStaff.map(employee => monitoringStatus(
     employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays, today }).status,
     today, today, nowMinutes
   ));
@@ -190,19 +215,22 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     }
   };
   // The Signed DTRs list follows the office and employee filters.
-  const signedDtrEmployees = employees.filter(employee => (!officeFilter || employee.office === officeFilter)
-    && (!employeeFilter || employeeKey(employee) === employeeFilter));
+  const signedDtrEmployees = employees.filter(inFilters);
 
   const leaveApplications = requests.filter((request) => request.type === 'Leave Request' && !UNSUBMITTED.includes(request.status));
-  const approvedLeaves = leaveApplications.filter((request) => request.status === 'Approved');
-  const pendingLeaves = leaveApplications.filter((request) => PENDING_STATUSES.includes(request.status));
-
   const travelOrders = requests.filter((request) => request.type === 'Travel Order' && !UNSUBMITTED.includes(request.status));
-  const approvedTravel = travelOrders.filter((request) => request.status === 'Approved');
-  const pendingTravel = travelOrders.filter((request) => PENDING_STATUSES.includes(request.status));
+  // The Overview counts the ones in the chosen month, office, and employee.
+  const inPeriod = request => passesFilters(request, [request.startDate, request.endDate]);
+  const shownLeaves = leaveApplications.filter(inPeriod);
+  const approvedLeaves = shownLeaves.filter((request) => request.status === 'Approved');
+  const pendingLeaves = shownLeaves.filter((request) => PENDING_STATUSES.includes(request.status));
+  const shownTravel = travelOrders.filter(inPeriod);
+  const approvedTravel = shownTravel.filter((request) => request.status === 'Approved');
+  const periodText = monthFilter ? ` in ${new Date(`${monthFilter}-01T00:00:00`).toLocaleString('en-US', { month: 'long', year: 'numeric' })}` : '';
+  const missingDocsCount = shownTravel.map(request => travelDocumentStatus(request, today)).filter(status => status?.over && status.missing.length).length;
 
-  const verifiedDtr = attendanceHistory.filter((record) => hasSelfie(record) && record.fingerprintVerified).length;
-  const totalEmployees = staff.length;
+  const verifiedDtr = attendanceHistory.filter((record) => passesFilters(record, [record.date]) && hasSelfie(record) && record.fingerprintVerified).length;
+  const totalEmployees = shownStaff.length;
 
   const dtrTable = useMemo(
     () =>
@@ -294,9 +322,11 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           destination: request.travelVenue || request.destination || '—',
           companions: companionsOf(request) || '—',
           dates: dateRange(request.startDate, request.endDate),
-          status: request.status || 'Pending'
-        })),
-    [travelOrders, normalizedQuery, today, monthFilter, officeFilter, employeeFilter, employees]
+          status: request.status || 'Pending',
+          documents: travelDocumentStatus(request, today)
+        }))
+        .filter(row => !missingDocsOnly || (row.documents?.over && row.documents.missing.length)),
+    [travelOrders, normalizedQuery, today, monthFilter, officeFilter, employeeFilter, employees, missingDocsOnly]
   );
 
   // Every working day an employee was absent (see absentDays), newest first: today once its office
@@ -319,12 +349,26 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   }, {})).sort((a, b) => b.days - a.days);
 
 
+  // Habitual tardiness, undertime, and absenteeism (CSC) in the chosen month's year, or this year,
+  // for the employees the filters choose. Counted only while the tab is open.
+  const habitualYear = (monthFilter || today).slice(0, 4);
+  const habitualRows = useMemo(
+    () => (activeTab === 'habitual'
+      ? habitualAttendance({ employees: employees.filter(inFilters), records: attendanceHistory, absences: allAbsences, year: habitualYear, today })
+      : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeTab, employees, allAttendance, allAbsences, habitualYear, today, officeFilter, employeeFilter]
+  ).filter(row => !normalizedQuery
+    || [row.employee.name, row.employee.office, row.rule.label, row.status].some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
+  const habitualCount = habitualRows.filter(row => row.status === 'Habitual').length;
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'dtr', label: 'DTR' },
     { id: 'leaves', label: 'Leaves' },
     { id: 'travel', label: 'Travel Orders' },
     { id: 'absences', label: 'Absences' },
+    { id: 'habitual', label: 'Habitual' },
     { id: 'reports', label: 'Reports' }
   ];
 
@@ -387,10 +431,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
       {activeTab === 'overview' && (
         <>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard icon={CheckCircle2} label="Presents" value={presentCount} hint="Employees with valid attendance" accentClass="bg-emerald-50 text-emerald-600" />
-            <StatCard icon={AlarmClockCheck} label="Late / Tardiness" value={lateCount} hint="Detected late and tardy entries" accentClass="bg-amber-50 text-amber-600" />
-            <StatCard icon={CalendarDays} label="Leave Records" value={`${approvedLeaves.length}/${leaveApplications.length}`} hint="Approved / total applications" accentClass="bg-violet-50 text-violet-600" />
-            <StatCard icon={Plane} label="Travel Orders" value={`${approvedTravel.length}/${travelOrders.length}`} hint="Approved / total orders" accentClass="bg-blue-50 text-blue-600" />
+            <StatCard icon={CheckCircle2} label="Present Today" value={presentCount} hint="Timed in today, on time or late" accentClass="bg-emerald-50 text-emerald-600" />
+            <StatCard icon={AlarmClockCheck} label="Late Today" value={lateCount} hint="Late Time In, or back late from lunch, today" accentClass="bg-amber-50 text-amber-600" />
+            <StatCard icon={CalendarDays} label="Leave Applications" value={`${approvedLeaves.length}/${shownLeaves.length}`} hint={`Approved / filed${periodText}`} accentClass="bg-violet-50 text-violet-600" />
+            <StatCard icon={Plane} label="Travel Orders" value={`${approvedTravel.length}/${shownTravel.length}`} hint={`Approved / filed${periodText}`} accentClass="bg-blue-50 text-blue-600" />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -406,7 +450,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   </div>
                 </div>
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
-                  {verifiedDtr} verified
+                  {verifiedDtr} with selfie + fingerprint
                 </span>
               </div>
 
@@ -457,7 +501,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                     <Users className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black text-slate-900">Attendance Status</h3>
+                    <h3 className="text-lg font-black text-slate-900">Today's Attendance</h3>
                   </div>
                 </div>
                 <div className="mt-5 space-y-3 text-sm">
@@ -479,56 +523,18 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   </div>
                 </div>
                 <div className="mt-5 space-y-3 text-sm">
-                  <div className="flex items-center justify-between"><span className="text-slate-600">Applications</span><strong className="text-slate-900">{leaveApplications.length}</strong></div>
+                  {periodText && <p className="text-xs font-semibold text-slate-500">Filed{periodText}</p>}
+                  <div className="flex items-center justify-between"><span className="text-slate-600">Applications</span><strong className="text-slate-900">{shownLeaves.length}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Approved Leave</span><strong className="text-slate-900">{approvedLeaves.length}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Pending Leave</span><strong className="text-slate-900">{pendingLeaves.length}</strong></div>
-                  <div className="flex items-center justify-between"><span className="text-slate-600">Travel Orders</span><strong className="text-slate-900">{travelOrders.length}</strong></div>
+                  <div className="flex items-center justify-between"><span className="text-slate-600">Travel Orders</span><strong className="text-slate-900">{shownTravel.length}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Approved Travel</span><strong className="text-slate-900">{approvedTravel.length}</strong></div>
+                  {missingDocsCount > 0 && <button type="button" onClick={() => { setMissingDocsOnly(true); openTab('travel'); }} className="flex w-full items-center justify-between text-left"><span className="text-amber-700">Missing report or certificate</span><strong className="text-amber-700">{missingDocsCount}</strong></button>}
                 </div>
               </div>
             </aside>
           </div>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
-                <Activity className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-900">Record Status Overview</h3>
-                <p className="text-xs text-slate-500">Live summary of attendance, leave, and official travel records.</p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  <span className="text-base font-black text-emerald-700">Presents</span>
-                </div>
-                <p className="mt-3 text-2xl font-black text-slate-900">{presentCount}</p>
-                <p className="text-xs text-slate-600">Validated attendance today</p>
-              </div>
-
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-center gap-3">
-                  <AlarmClockCheck className="h-5 w-5 text-amber-600" />
-                  <span className="text-base font-black text-amber-700">Late / Tardy</span>
-                </div>
-                <p className="mt-3 text-2xl font-black text-slate-900">{lateCount}</p>
-                <p className="text-xs text-slate-600">Attendance issues needing follow-up</p>
-              </div>
-
-              <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
-                <div className="flex items-center gap-3">
-                  <CalendarDays className="h-5 w-5 text-violet-600" />
-                  <span className="text-base font-black text-violet-700">Leave & Travel</span>
-                </div>
-                <p className="mt-3 text-2xl font-black text-slate-900">{approvedLeaves.length + approvedTravel.length}</p>
-                <p className="text-xs text-slate-600">Approved entries in the system</p>
-              </div>
-            </div>
-          </section>
         </>
       )}
 
@@ -698,7 +704,14 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
               <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-600">Travel Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Travel Order Records</h3>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{normalizedQuery ? `${travelRows.length} of ${travelOrders.length}` : travelOrders.length} total</span>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{normalizedQuery || missingDocsOnly ? `${travelRows.length} of ${travelOrders.length}` : travelOrders.length} total</span>
+          </div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs text-slate-500">Each employee on an approved Travel Order attaches a Post Activity Report or a Certificate of Appearance after the travel (COA Circular No. 2012-001).</p>
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <input type="checkbox" checked={missingDocsOnly} onChange={event => { setMissingDocsOnly(event.target.checked); setShownCount(PAGE_SIZE); }} className="h-3.5 w-3.5 accent-blue-700" />
+              Missing a report or certificate ({missingDocsCount})
+            </label>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
@@ -711,12 +724,13 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Also Included</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Travel Dates</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Status</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Report / Certificate</th>
                 </tr>
               </thead>
               <tbody>
                 {travelRows.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan="8" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
                       No matching travel records found.
                     </td>
                   </tr>
@@ -733,6 +747,19 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                         <span className={`rounded-full px-2 py-1 text-xs font-black ${requestStatusTone(record.status)}`}>
                           {record.status}
                         </span>
+                      </td>
+                      <td className="min-w-[10rem] px-3 py-3">
+                        {!record.documents ? <span className="text-slate-400">—</span>
+                          : !record.documents.missing.length ? (
+                            <span className="whitespace-nowrap rounded-full bg-emerald-50 px-2 py-1 text-xs font-black text-emerald-700">Submitted ({record.documents.submitted}/{record.documents.total})</span>
+                          ) : (
+                            <>
+                              <span className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-black ${record.documents.over ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {record.documents.over ? 'Missing' : 'After the travel'} ({record.documents.submitted}/{record.documents.total})
+                              </span>
+                              <span className="mt-1 block text-[10px] text-slate-500">Not yet: {record.documents.missing.join(', ')}</span>
+                            </>
+                          )}
                       </td>
                     </tr>
                   ))
@@ -792,6 +819,68 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             </table>
           </div>
           <ShowMore shown={shownCount} total={absenceRows.length} onMore={showMore} />
+        </section>
+      )}
+
+      {activeTab === 'habitual' && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-600">CSC Attendance Rules · {habitualYear}</p>
+              <h3 className="mt-2 text-xl font-black text-slate-900">Habitual Tardiness, Undertime, and Absenteeism</h3>
+              <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                {HABITUAL_RULES.map(rule => <li key={rule.id}><b className="text-slate-700">{rule.label}:</b> {rule.rule} ({rule.source})</li>)}
+              </ul>
+              <p className="mt-2 text-xs text-slate-500">Each late arrival (in the morning, or back after 1:00 PM) and each early departure (before noon, or before the day's end) is one time; a missed morning is tardiness and a missed afternoon undertime (CSC MC No. 17, s. 2010). Watch: a month that met the count, or close to it this month. Only the months loaded on this page are counted; choose a month above for another year.</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">{habitualCount} habitual</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Employee</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Office</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Rule</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Each Month</th>
+                  <th className="px-3 py-2 font-black uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {habitualRows.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                      No employee is near a CSC limit in {habitualYear}.
+                    </td>
+                  </tr>
+                ) : (
+                  habitualRows.slice(0, shownCount).map(row => (
+                    <tr key={`${employeeKey(row.employee)}-${row.rule.id}`} {...clickableRow(() => { setEmployeeFilter(employeeKey(row.employee)); openTab(row.rule.id === 'absences' ? 'absences' : 'dtr'); })}>
+                      <td className="px-3 py-3 font-bold text-slate-800">{row.employee.name || employeeKey(row.employee)}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.employee.office || '—'}</td>
+                      <td className="px-3 py-3 text-slate-700">{row.rule.label}</td>
+                      <td className="px-3 py-3">
+                        <span className="flex flex-wrap gap-1">
+                          {row.months.map(item => (
+                            <span key={item.month} title={`${item.count} ${row.rule.unit}`} className={`rounded-full px-2 py-0.5 text-[10px] font-black ${item.meets ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                              {monthShort(item.month)} · {item.count}
+                            </span>
+                          ))}
+                        </span>
+                      </td>
+                      <td className="min-w-[9rem] px-3 py-3">
+                        <span className={`rounded-full px-2 py-1 text-xs font-black ${row.status === 'Habitual' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>{row.status}</span>
+                        <span className="mt-1 block text-[10px] text-slate-500">
+                          {row.monthsMet} of {row.rule.months} months met{row.thisMonth ? ` · this month: ${row.thisMonth} ${row.rule.unit}` : ''}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <ShowMore shown={shownCount} total={habitualRows.length} onMore={showMore} />
         </section>
       )}
 
