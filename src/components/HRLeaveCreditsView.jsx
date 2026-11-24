@@ -98,7 +98,7 @@ export default function HRLeaveCreditsView({ user = {}, employees = [], attendan
                 </button>
                 {isOpen && (
                   <div className="px-3 pb-3">
-                    <HRLeaveCreditsCard key={key} employee={employee} canEdit={canEdit} onEmployeesChange={onEmployeesChange} onNotify={notify} className="" />
+                    <HRLeaveCreditsCard key={key} employee={employee} canEdit={canEdit} onEmployeesChange={onEmployeesChange} onNotify={notify} className="" requests={requests} holidays={holidays} />
                   </div>
                 )}
               </li>

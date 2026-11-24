@@ -2,6 +2,7 @@ import { User } from '../models/User.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { noticeEmployee } from '../services/employeeNotices.js';
+import { carryRecordsOrWarn } from '../services/employeeIdentity.js';
 import { toSafeUser } from '../utils/passwordSecurity.js';
 import {
   ACCESS_LEVELS,
@@ -92,9 +93,12 @@ export const updateStaff = async (req, res) => {
         return res.status(409).json({ success: false, error: 'An account already uses this employee ID.' });
       }
     }
+    const before = { employeeId: target.employeeId, email: target.email, name: target.name };
     target.set(value);
     await target.save();
-    res.status(200).json({ success: true, account: staffResponse(target.toObject()) });
+    // A new name or Employee ID: the records from when they were an employee go with it.
+    const recordsWarning = await carryRecordsOrWarn(before, target);
+    res.status(200).json({ success: true, account: staffResponse(target.toObject()), ...(recordsWarning ? { recordsWarning } : {}) });
   } catch (error) {
     sendServerError(res, error);
   }

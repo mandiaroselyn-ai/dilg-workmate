@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
 import { isConnected } from '../config/db.js';
+import { ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // An employee's DTR (CSC Form No. 48) for one month, signed through WorkMate: the employee
 // certifies it ("I CERTIFY on my honor...") and the Supervisor, as the In-charge, verifies it
@@ -68,6 +69,15 @@ export const dtrContentHash = (records = [], month) => {
 };
 
 export const DtrSubmission = {
+  // Moves one account's signed DTRs (see utils/recordOwner.js) to its new Employee ID or name.
+  reassignOwner: async (owner, changes) => {
+    ensureConnected();
+    const filter = ownRecordsFilter(owner);
+    const set = ownerChanges(changes);
+    if (!filter || !Object.keys(set).length) return 0;
+    return (await MongoDtrSubmission.updateMany(filter, { $set: set })).modifiedCount || 0;
+  },
+
   // An employee's submissions, newest month first.
   findForEmployee: async employeeId => {
     ensureConnected();

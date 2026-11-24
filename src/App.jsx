@@ -223,6 +223,9 @@ export default function App() {
   // Load persistent database dataset from Real Express Server on launch. When the app was
   // opened without internet, it loads again once the connection is back.
   const [stateLoadAttempt, setStateLoadAttempt] = useState(0);
+  // Loads everything again in the background (for example, after an employee's earlier records
+  // moved to their new name or Employee ID on the server).
+  const reloadAppData = useCallback(() => setStateLoadAttempt(attempt => attempt + 1), []);
   useEffect(() => {
     if (!authToken || !activeRole) {
       setLoading(false);
@@ -842,6 +845,9 @@ export default function App() {
         throw new Error(data?.error || 'MongoDB save failed.');
       }
       setUser(data.user);
+      // A new name: the server moved the person's earlier records to it, so they load again.
+      if (String(data.user.name || '').trim() !== String(user?.name || '').trim()) reloadAppData();
+      if (data.recordsWarning) window.alert(data.recordsWarning);
       return true;
     } catch (error) {
       console.error('User update failed:', error);
@@ -1796,6 +1802,7 @@ export default function App() {
             <HRAdminView
               key={viewVisit}
               section={currentView}
+              onReloadData={reloadAppData}
               onOpenRequest={requestId => openNotificationActionTarget({ action: 'review_request', targetId: requestId })}
               user={user}
               employees={employees}

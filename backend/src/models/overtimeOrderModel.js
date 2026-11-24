@@ -32,6 +32,13 @@ const toClient = item => ({
 });
 
 export const OvertimeOrder = {
+  // Puts an employee's new Employee ID in the office orders that name their old one.
+  replaceEmployeeId: async (fromId, toId) => {
+    ensureConnected();
+    if (!fromId || !toId || fromId === toId) return 0;
+    return (await MongoOvertimeOrder.updateMany({ employeeIds: fromId }, { $set: { 'employeeIds.$': toId } })).modifiedCount || 0;
+  },
+
   // Every order, latest first.
   findAll: async () => {
     ensureConnected();

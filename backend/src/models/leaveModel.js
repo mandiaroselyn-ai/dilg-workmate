@@ -5,6 +5,7 @@ import { createRecordId } from '../utils/recordId.js';
 import { User } from './User.js';
 import { pickReviewUpdate } from '../utils/requestFields.js';
 import { stampOf } from '../utils/updateStamp.js';
+import { exactTextPattern, ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // The requests one person sees: an employee's own, or all of them for HR and supervisors.
 // Returns null for an employee with neither an employee ID nor an email.
@@ -93,6 +94,31 @@ function ensureConnected() {
 }
 
 export const Leave = {
+  // Moves one account's requests (see utils/recordOwner.js), and its place among a Travel
+  // Order's companions, to its new Employee ID or name (`changes`: { employeeId, name }). Returns
+  // how many requests changed.
+  reassignOwner: async (owner, changes) => {
+    ensureConnected();
+    const filter = ownRecordsFilter(owner);
+    const set = ownerChanges(changes);
+    if (!filter || !Object.keys(set).length) return 0;
+    const own = await MongoRequest.updateMany(filter, { $set: set });
+    let companions = { modifiedCount: 0 };
+    if (owner.employeeId) {
+      const companionSet = {
+        ...(changes.employeeId ? { 'companions.$[companion].employeeId': changes.employeeId } : {}),
+        ...(changes.name ? { 'companions.$[companion].name': changes.name } : {})
+      };
+      const match = { 'companion.employeeId': owner.employeeId, ...(owner.name ? { 'companion.name': exactTextPattern(owner.name) } : {}) };
+      companions = await MongoRequest.updateMany(
+        { companions: { $elemMatch: { employeeId: owner.employeeId, ...(owner.name ? { name: exactTextPattern(owner.name) } : {}) } } },
+        { $set: companionSet },
+        { arrayFilters: [match] }
+      );
+    }
+    return (own.modifiedCount || 0) + (companions.modifiedCount || 0);
+  },
+
   // Changes whenever a request this person sees is filed, reviewed, or withdrawn.
   updateStamp: async (user) => {
     ensureConnected();

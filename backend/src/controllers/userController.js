@@ -32,6 +32,7 @@ import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/aut
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
+import { carryRecordsOrWarn } from '../services/employeeIdentity.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -111,7 +112,9 @@ export const updateUserProfile = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Signature image must be a PNG or JPG under 300 KB.' });
     }
     const updated = await User.update(profileData);
-    res.status(200).json({ success: true, user: toSafeUser(updated) });
+    // A new name: the person's earlier records go with it.
+    const recordsWarning = await carryRecordsOrWarn(req.user, updated);
+    res.status(200).json({ success: true, user: toSafeUser(updated), ...(recordsWarning ? { recordsWarning } : {}) });
   } catch (error) {
     sendServerError(res, error);
   }
@@ -393,6 +396,8 @@ export const updateEmployee = async (req, res) => {
       return res.status(409).json({ success: false, error: 'An employee already uses this email address or employee ID.' });
     }
     if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    // A new name or Employee ID: the employee's earlier records go with it.
+    const recordsWarning = await carryRecordsOrWarn(before, updated);
     // HR can also approve an account by saving it as Active from the edit form.
     const approvalNotice = isAccountApproval(before, employee.accountStatus) ? await announceAccountApproved(updated) : undefined;
     // An active employee hears what HR changed in their record, since they can no longer
@@ -405,7 +410,7 @@ export const updateEmployee = async (req, res) => {
         view: 'profile'
       });
     }
-    res.status(200).json({ success: true, employee: employeeResponse(updated), ...(approvalNotice ? { approvalNotice } : {}) });
+    res.status(200).json({ success: true, employee: employeeResponse(updated), ...(approvalNotice ? { approvalNotice } : {}), ...(recordsWarning ? { recordsWarning } : {}) });
   } catch (error) {
     console.error('Unable to update employee account:', error);
     res.status(500).json({ success: false, error: 'Unable to update employee account.' });

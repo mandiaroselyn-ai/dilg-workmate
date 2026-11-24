@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
 import { clockTextMinutes, isLateLunchIn, isLateTimeText } from '../utils/attendanceTime.js';
+import { ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // A Time In or Time Out made in the phone app without internet and sent later.
 const OfflineEntrySchema = new mongoose.Schema({
@@ -245,6 +246,16 @@ const findListLogs = async match => {
 };
 
 export const DtrLog = {
+  // Moves one account's attendance records (see utils/recordOwner.js) to its new Employee ID or
+  // name (`changes`: { employeeId, name }). Returns how many changed.
+  reassignOwner: async (owner, changes) => {
+    ensureConnected();
+    const filter = ownRecordsFilter(owner);
+    const set = ownerChanges(changes);
+    if (!filter || !Object.keys(set).length) return 0;
+    return (await MongoDtrLog.updateMany(filter, { $set: set })).modifiedCount || 0;
+  },
+
   // Changes on every Time In (a new record), Lunch Out, Lunch In, and Time Out (a record
   // closed). The location updates sent every minute during a shift are left out, so HR's
   // attendance list is not downloaded again for each of them.

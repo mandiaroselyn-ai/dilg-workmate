@@ -154,10 +154,11 @@ export default function HRStaffAccountsView({ currentUser = {}, onToast }) {
       const before = nameParts(editing.account);
       const renamed = NAME_KEYS.some(key => (editing.fields[key] || '').trim() !== (before[key] || '').trim());
       const fields = { ...editing.fields, name: renamed || !editing.account.name ? fullNameOf(editing.fields) : editing.account.name };
-      const { account } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(editing.account))}`, 'PATCH', fields);
+      const { account, recordsWarning } = await sendStaffRequest(`/api/staff/${encodeURIComponent(identifierOf(editing.account))}`, 'PATCH', fields);
       replaceAccount(account);
       setEditing(null);
-      onToast?.('Account details saved.');
+      // Shown when their earlier records could not be moved to a new name or Employee ID.
+      onToast?.(recordsWarning || 'Account details saved.');
     } catch (saveError) {
       setError(saveError.message);
     } finally {

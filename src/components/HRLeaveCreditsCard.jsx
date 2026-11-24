@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { getManilaDateString } from '../../shared/localDate';
+import { YEARLY_LEAVES, yearlyLeaveLeft } from '../../shared/yearlyLeave';
+import { earnsLeaveCredits } from '../../shared/profileFields';
+import { recordsForEmployees } from '../utils/hrAttendance';
+import { holidaysFor } from '../../shared/phHolidays';
 
 export const employeeKey = (employee = {}) =>
   String(employee._id || employee.employeeId || employee.email || employee.id || '').trim().toLowerCase();
@@ -13,10 +18,18 @@ const creditsOf = employee => ({
 // card. Approved leave is deducted by the system. `canEdit`: only HR 2 adjusts them
 // (shared/hrSteps.js); other HR accounts only see them. `onNotify(message, isError)` shows the
 // result. Give each employee their own key, so a half-filled adjustment does not carry over.
-export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmployeesChange, onNotify, className = 'mt-5' }) {
+// With `requests` (everyone's, or the employee's) and `holidays`, it also shows what is left this
+// year of the Special Privilege Leave and Wellness Leave, as the employee's own Dashboard does.
+export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmployeesChange, onNotify, className = 'mt-5', requests = null, holidays = [] }) {
   const [creditForm, setCreditForm] = useState(null); // { vacationLeaveCredits, sickLeaveCredits, reason } while editing
   const [creditSaving, setCreditSaving] = useState(false);
   const credits = creditsOf(employee);
+  const year = Number(getManilaDateString().slice(0, 4));
+  const ownRequests = Array.isArray(requests) ? recordsForEmployees(requests, [employee]) : null;
+  const yearlyLeft = ownRequests && earnsLeaveCredits(employee)
+    // Counted with the employee's own holidays (a town's holiday is only its offices'), as their Dashboard does.
+    ? Object.entries(YEARLY_LEAVES).map(([type, rule]) => ({ type, days: rule.days, left: yearlyLeaveLeft(ownRequests, type, year, holidaysFor(holidays, employee)) }))
+    : [];
 
   const startCreditAdjustment = () => {
     setCreditForm({ vacationLeaveCredits: String(credits.vacationLeaveCredits), sickLeaveCredits: String(credits.sickLeaveCredits), reason: '' });
@@ -87,6 +100,17 @@ export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmploy
               <p className="mt-1 text-xl font-black text-slate-900">{days} <span className="text-xs font-bold text-slate-500">days</span></p>
             </div>
           ))}
+        </div>
+      )}
+      {yearlyLeft.length > 0 && (
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {yearlyLeft.map(({ type, days, left }) => (
+            <div key={type} className="rounded-xl border border-slate-100 bg-white p-3">
+              <p className="text-xs font-black uppercase text-slate-500">{type}</p>
+              <p className="mt-1 text-lg font-black text-slate-900">{left} <span className="text-xs font-bold text-slate-500">of {days} days left in {year}</span></p>
+            </div>
+          ))}
+          <p className="col-span-2 text-[11px] font-semibold text-slate-500">Given yearly and not carried over; not charged to vacation or sick leave. Leave filed and not yet decided counts too.</p>
         </div>
       )}
       {last && (

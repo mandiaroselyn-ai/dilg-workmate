@@ -145,7 +145,9 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
-export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
+// `onRecordsChanged`: reloads the attendance and requests, after an employee's earlier records
+// moved to a new name or Employee ID on the server.
+export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth, onRecordsChanged, holidays = [] }) {
   // Leave credits are HR 2's to change (shared/hrSteps.js); HR 1 and an HR account without an HR step only see them.
   const canEditCredits = canChangeLeaveCredits(currentUser);
   // A notification's button opens this employee's profile first.
@@ -190,13 +192,17 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   const pendingCount = employeeAccounts.filter((emp) => accountStatusOf(emp) === 'pending').length;
   const pendingBiometricCount = employeeAccounts.filter(emp => emp.biometricEnrollmentStatus === 'pending').length;
 
+  // Whether an account is in a status filter: Inactive takes in suspended ones too.
+  const inStatus = (employee, filter) => {
+    const status = accountStatusOf(employee);
+    return filter === 'All' || (filter === 'Inactive' ? /inactive|suspended/.test(status) : status === filter.toLowerCase());
+  };
+  const statusCount = filter => employeeAccounts.filter(employee => inStatus(employee, filter)).length;
   const filteredEmployees = useMemo(() => {
     const q = query.toLowerCase();
     return employeeAccounts.filter((employee) => {
       const name = employeeName(employee).toLowerCase();
-      const status = accountStatusOf(employee);
-      const matchesStatus = statusFilter === 'All'
-        || (statusFilter === 'Inactive' ? /inactive|suspended/.test(status) : status === statusFilter.toLowerCase());
+      const matchesStatus = inStatus(employee, statusFilter);
       const matchesText = !q || `${name} ${employee.email || ''} ${employee.role || ''} ${employee.employeeId || ''}`.toLowerCase().includes(q);
       const matchesBiometricReview = !showBiometricPending || employee.biometricEnrollmentStatus === 'pending';
       const matchesOffice = !officeFilter || employee.office === officeFilter;
@@ -487,6 +493,13 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
       }
 
       const savedEmployee = data.employee;
+      // A new name or Employee ID: the server moved the employee's earlier records to it, so
+      // the pages load them again.
+      const identityChanged = Boolean(existingEmployee) && (
+        String(existingEmployee.employeeId || '') !== String(savedEmployee.employeeId || '')
+        || String(existingEmployee.name || '').trim() !== String(savedEmployee.name || '').trim()
+      );
+      if (identityChanged) onRecordsChanged?.();
       if (editingId) {
         onEmployeesChange?.(previous => previous.map(employee =>
           employeeKey(employee) === editingId ? { ...employee, ...savedEmployee } : employee
@@ -511,7 +524,9 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
         notificationFailed = true;
         notify('Employee record saved, but its notification could not be delivered.', true);
       }
-      if (!notificationFailed) {
+      if (data.recordsWarning) {
+        notify(data.recordsWarning, true);
+      } else if (!notificationFailed) {
         const noticeNote = approvalNoticeNote(data.approvalNotice, fullName);
         notify(editingId ? `Employee account updated.${noticeNote ? ` ${noticeNote}` : ''}` : 'Employee account created.');
       }
@@ -932,7 +947,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
             </div>
           )}
 
-          <HRLeaveCreditsCard key={employeeKey(selectedEmployee)} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} />
+          <HRLeaveCreditsCard key={employeeKey(selectedEmployee)} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1198,6 +1213,56 @@ This enrollment used the sample ID the app used to offer for testing, which does
     );
   }
 
+  // Shared by the phone cards and the table.
+  // A detail a sign-up has not filled in yet, said plainly instead of a made-up value.
+  const orNotFilledIn = value => value || <span className="font-semibold text-amber-700">Not filled in</span>;
+  const renderAvatar = employee => (
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-xs font-black text-blue-700">
+      {employee.profilePicture ? (
+        <img src={employee.profilePicture} alt={employeeName(employee)} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+      ) : (
+        initials(employeeName(employee))
+      )}
+    </div>
+  );
+  const renderStatus = employee => (
+    <>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`whitespace-nowrap rounded-full px-2 py-1 text-xs font-black ${statusStyle(employee.accountStatus || 'Pending')}`}>
+          {employee.accountStatus || 'Pending'}
+        </span>
+        {employee.biometricEnrollmentStatus === 'pending' && (
+          <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">Biometric review</span>
+        )}
+        {(employee.phoneFingerprintPendingAt || employee.browserFingerprintPendingAt) && (
+          <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">New device to approve</span>
+        )}
+      </div>
+      {/* One line under the badge; employment status only when it is not the usual ACTIVE. */}
+      <span className={`mt-1 block text-xs font-semibold ${employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'text-emerald-700' : 'text-slate-500'}`}>
+        {employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'Fingerprint ✓' : 'No fingerprint'}
+        {employmentNote(employee)}
+      </span>
+    </>
+  );
+  // A sign-up can be approved here once it has what approval needs; otherwise Edit opens to fill
+  // it in, as the server refuses the approval until then.
+  const renderActions = employee => {
+    const pending = accountStatusOf(employee) === 'pending';
+    const missing = pending ? missingApprovalDetails(employee) : [];
+    return (
+      <>
+        {pending && (missing.length ? (
+          <button type="button" onClick={() => openEdit(employee)} title={`Fill in their ${missing.join(', ')} first`} className="whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-black text-amber-800">Fill in details</button>
+        ) : (
+          <button type="button" onClick={() => updateAccountStatus(employee, 'Active', { openProfile: false })} disabled={accountStatusUpdating} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
+        ))}
+        <button type="button" onClick={() => openView(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">View</button>
+        <button type="button" onClick={() => openEdit(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
+      </>
+    );
+  };
+
   return (
     <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
       <header className="space-y-3">
@@ -1224,26 +1289,25 @@ This enrollment used the sample ID the app used to offer for testing, which does
         )}
       </header>
 
-      <div className="flex gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee or email..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm shadow-sm outline-none focus:border-blue-500" />
-        </div>
-        <button
-          type="button"
-          onClick={() => setStatusFilter((current) => STATUS_FILTERS[(STATUS_FILTERS.indexOf(current) + 1) % STATUS_FILTERS.length])}
-          className={`flex h-11 w-11 items-center justify-center rounded-xl border shadow-sm ${statusFilter === 'All' ? 'border-slate-200 bg-white text-slate-600' : 'border-blue-300 bg-blue-50 text-blue-700'}`}
-          title={`Filter employees (showing: ${statusFilter})`}
-        >
-          <Filter className="h-4 w-4" />
-        </button>
+      <div className="relative min-w-0">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search employee or email..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm shadow-sm outline-none focus:border-blue-500" />
       </div>
-      <label className="flex items-center gap-2 text-xs font-black text-slate-600">Office / Department
-        <select value={officeFilter} onChange={event => setOfficeFilter(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500 sm:max-w-sm">
-          <option value="">All offices</option>
-          {employeeOffices.map(office => <option key={office}>{office}</option>)}
-        </select>
-      </label>
+      {/* The account status and the office, each named, with how many are in each status. */}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="flex items-center gap-2 text-xs font-black text-slate-600">
+          <Filter className="h-4 w-4 shrink-0 text-slate-500" />Status
+          <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className={`min-w-0 flex-1 rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm outline-none focus:border-blue-500 ${statusFilter === 'All' ? 'border-slate-200 bg-white text-slate-700' : 'border-blue-300 bg-blue-50 text-blue-800'}`}>
+            {STATUS_FILTERS.map(status => <option key={status} value={status}>{status === 'All' ? 'All statuses' : status} ({statusCount(status)})</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs font-black text-slate-600">Office
+          <select value={officeFilter} onChange={event => setOfficeFilter(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm outline-none focus:border-blue-500">
+            <option value="">All offices</option>
+            {employeeOffices.map(office => <option key={office}>{office}</option>)}
+          </select>
+        </label>
+      </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button
@@ -1288,82 +1352,69 @@ This enrollment used the sample ID the app used to offer for testing, which does
         </button>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500">
-              <tr>
-                <th className="px-3 py-3 font-black uppercase tracking-wide">Name</th>
-                <th className="px-3 py-3 font-black uppercase tracking-wide">Role</th>
-                <th className="px-3 py-3 font-black uppercase tracking-wide">Office</th>
-                <th className="px-3 py-3 font-black uppercase tracking-wide">Status</th>
-                {showStationColumn && <th className="px-3 py-3 font-black uppercase tracking-wide">Assigned Station</th>}
-                <th className="px-3 py-3 font-black uppercase tracking-wide text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={showStationColumn ? 6 : 5} className="px-3 py-8 text-center text-sm font-semibold text-slate-500">No employees found.</td>
-                </tr>
-              ) : (
-                filteredEmployees.map((employee) => {
-                  const key = employeeKey(employee);
-                  return (
-                    <tr key={key} className="border-t border-slate-100">
+      {/* The same employees as cards on a phone, where the table's Status and buttons would be off
+          the screen, and as a table on a wider screen. */}
+      {filteredEmployees.length === 0 ? (
+        <p className="rounded-2xl border border-slate-200 bg-white px-3 py-8 text-center text-sm font-semibold text-slate-500 shadow-sm">No employees found.</p>
+      ) : (
+        <>
+          <ul className="space-y-2 sm:hidden">
+            {filteredEmployees.map(employee => (
+              <li key={employeeKey(employee)} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="flex items-start gap-3">
+                  {renderAvatar(employee)}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-black text-slate-800">{employeeName(employee)}</p>
+                    <p className="truncate text-xs text-slate-500">{employee.email || 'No email'}</p>
+                    <p className="mt-1 text-xs text-slate-700">{orNotFilledIn(employee.role)} · {orNotFilledIn(employee.office)}</p>
+                    {(employee.assignedStation || employee.assignedLGU) && <p className="text-xs text-slate-500">Station: {employee.assignedStation || employee.assignedLGU}</p>}
+                  </div>
+                </div>
+                <div className="mt-2">{renderStatus(employee)}</div>
+                <div className="mt-3 flex flex-wrap gap-2">{renderActions(employee)}</div>
+              </li>
+            ))}
+          </ul>
+          <section className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:block">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th className="px-3 py-3 font-black uppercase tracking-wide">Name</th>
+                    <th className="px-3 py-3 font-black uppercase tracking-wide">Role</th>
+                    <th className="px-3 py-3 font-black uppercase tracking-wide">Office</th>
+                    <th className="px-3 py-3 font-black uppercase tracking-wide">Status</th>
+                    {showStationColumn && <th className="px-3 py-3 font-black uppercase tracking-wide">Assigned Station</th>}
+                    <th className="px-3 py-3 font-black uppercase tracking-wide text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEmployees.map(employee => (
+                    <tr key={employeeKey(employee)} className="border-t border-slate-100">
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-xs font-black text-blue-700">
-                            {employee.profilePicture ? (
-                              <img src={employee.profilePicture} alt={employeeName(employee)} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              initials(employeeName(employee))
-                            )}
-                          </div>
+                          {renderAvatar(employee)}
                           <div>
                             <p className="font-black text-slate-800">{employeeName(employee)}</p>
                             <p className="text-xs text-slate-500">{employee.email || 'No email'}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-3 text-slate-700">{employee.role || 'Employee'}</td>
-                      <td className="px-3 py-3 text-slate-700">{employee.office || 'Administrative Office'}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded-full px-2 py-1 text-xs font-black ${statusStyle(employee.accountStatus || 'Pending')}`}>
-                            {employee.accountStatus || 'Pending'}
-                          </span>
-                          {employee.biometricEnrollmentStatus === 'pending' && (
-                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">Biometric review</span>
-                          )}
-                          {(employee.phoneFingerprintPendingAt || employee.browserFingerprintPendingAt) && (
-                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-800">New device to approve</span>
-                          )}
-                        </div>
-                        {/* One line under the badge; employment status only when it is not the usual ACTIVE. */}
-                        <span className={`mt-1 block text-xs font-semibold ${employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'text-emerald-700' : 'text-slate-500'}`}>
-                          {employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'Fingerprint ✓' : 'No fingerprint'}
-                          {employmentNote(employee)}
-                        </span>
-                      </td>
+                      <td className="px-3 py-3 text-slate-700">{orNotFilledIn(employee.role)}</td>
+                      <td className="px-3 py-3 text-slate-700">{orNotFilledIn(employee.office)}</td>
+                      <td className="px-3 py-3">{renderStatus(employee)}</td>
                       {showStationColumn && <td className="px-3 py-3 text-slate-700">{employee.assignedStation || employee.assignedLGU || '—'}</td>}
                       <td className="px-3 py-3 text-right">
-                        <div className="flex justify-end gap-2">
-                          {accountStatusOf(employee) === 'pending' && (
-                            <button type="button" onClick={() => updateAccountStatus(employee, 'Active', { openProfile: false })} disabled={accountStatusUpdating} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
-                          )}
-                          <button type="button" onClick={() => openView(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">View</button>
-                          <button type="button" onClick={() => openEdit(employee)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-black text-slate-700">Edit</button>
-                        </div>
+                        <div className="flex justify-end gap-2">{renderActions(employee)}</div>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

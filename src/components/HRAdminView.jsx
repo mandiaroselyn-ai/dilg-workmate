@@ -85,7 +85,9 @@ export default function HRAdminView({
   // From a notification's button: the employee or request to open first.
   focus = null,
   // Opens a leave or travel request in Request Management (from Records), as a notification does.
-  onOpenRequest
+  onOpenRequest,
+  // Loads the attendance and requests again (after an employee's records moved to a new name or ID).
+  onReloadData
 }) {
   const sectionTabs = {
     hr_dashboard: 'dashboard',
@@ -383,6 +385,8 @@ export default function HRAdminView({
               attendanceFrom={attendanceFrom}
               loadedAttendanceMonths={loadedAttendanceMonths}
               onLoadAttendanceMonth={onLoadAttendanceMonth}
+              onRecordsChanged={onReloadData}
+              holidays={holidays}
             />
           )}
         </div>

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
+import { ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // A Post Activity Report or Certificate of Appearance an employee attached to an approved Travel
 // Order (shared/travelDocuments.js).
@@ -39,6 +40,17 @@ export const travelDocumentNote = doc => ({
 });
 
 export const TravelDocument = {
+  // Moves the reports and certificates one account uploaded (see utils/recordOwner.js) to its new
+  // Employee ID or name.
+  reassignOwner: async (owner, changes) => {
+    ensureConnected();
+    const fields = { idField: 'uploadedBy.employeeId', emailField: 'uploadedBy.email', nameField: 'uploadedBy.name' };
+    const filter = ownRecordsFilter(owner, fields);
+    const set = ownerChanges(changes, fields);
+    if (!filter || !Object.keys(set).length) return 0;
+    return (await MongoTravelDocument.updateMany(filter, { $set: set })).modifiedCount || 0;
+  },
+
   find: async (ref, documentId) => {
     ensureConnected();
     const found = await MongoTravelDocument.findOne({ ref, documentId });

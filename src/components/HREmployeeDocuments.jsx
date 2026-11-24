@@ -5,6 +5,8 @@ import { dtrStatusText } from '../utils/dtrSubmission';
 import { downloadBytes } from '../utils/documentFiles';
 import { dtrSubmissionFor, makeEmployeeDtr } from '../utils/employeeDtr';
 import { recordsForEmployees } from '../utils/hrAttendance';
+import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
+import { travelOrderCovers } from '../../shared/travelStatus';
 import { travelDurationLabel } from '../utils/travelDuration';
 import AttachmentList from './AttachmentList';
 import CSCForm6Preview from './CSCForm6Preview';
@@ -33,12 +35,14 @@ export default function HREmployeeDocuments({ employee, dtrSubmissions = [], req
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const ownRequests = useMemo(
-    () => recordsForEmployees(requests, [employee])
+  // Their own requests, and the Travel Orders another employee filed that include them.
+  const ownRequests = useMemo(() => {
+    const filed = recordsForEmployees(requests, [employee]);
+    const included = requests.filter(request => !filed.includes(request) && travelOrderCovers(request, employee));
+    return [...filed, ...included]
       .filter(request => !UNSUBMITTED.includes(request.status))
-      .sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || ''))),
-    [requests, employee]
-  );
+      .sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')));
+  }, [requests, employee]);
   const leaves = ownRequests.filter(request => request.type === 'Leave Request');
   const travels = ownRequests.filter(request => request.type === 'Travel Order');
   const ownAttendance = useMemo(() => recordsForEmployees(attendanceHistory, [employee]), [attendanceHistory, employee]);
@@ -137,7 +141,12 @@ export default function HREmployeeDocuments({ employee, dtrSubmissions = [], req
                 request={request}
                 icon={Plane}
                 title={`${request.travelActivity || 'Travel order'} · ${request.id}`}
-                meta={[`${request.startDate} to ${request.endDate}`, travelDurationLabel(request), request.travelVenue, `Filed ${request.submissionDate || '-'}`].filter(Boolean).join(' · ')}
+                meta={[
+                  `${request.startDate} to ${request.endDate}`,
+                  travelDurationLabel(request),
+                  request.travelVenue,
+                  matchesAttendanceEmployee(request, employee) ? `Filed ${request.submissionDate || '-'}` : `Included by ${request.employeeName || 'another employee'}`
+                ].filter(Boolean).join(' · ')}
                 formLabel="Travel Order"
               />
             ))}
