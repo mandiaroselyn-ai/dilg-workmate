@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Clock, Eye, MessageSquare, PenLine, RotateCcw } from 'lucide-react';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
-import { dtrFilename, fillDTR } from '../utils/dtrForm';
+import { dtrFilename, dtrInChargeMarks, fillDTR } from '../utils/dtrForm';
 import { dtrSignatures, dtrStatusText } from '../utils/dtrSubmission';
 import { markDtrDay } from '../utils/hrAttendance';
 import { fetchSignedForm, signedNoteText, stampForSigning } from '../utils/signedForms';
@@ -16,9 +16,10 @@ const TABS = [
 const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 // The Supervisor's desk for the DTRs employees signed and submitted through WorkMate: as the
-// In-charge of CSC Form No. 48, the Supervisor opens each one, then verifies it by signing it in
-// Adobe and uploading it, or returns it to the employee with remarks.
-export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm }) {
+// In-charge of CSC Form No. 48, the Supervisor opens each one, then verifies it by signing it with
+// their digital ID (here, or in Adobe and uploading it), or returns it to the employee with
+// remarks. `signatureImage` is the Supervisor's saved signature, shown with their digital signature.
+export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '' }) {
   const [tab, setTab] = useState('Submitted');
   const [viewer, setViewer] = useState(null);
   const [verifying, setVerifying] = useState(null);
@@ -49,10 +50,11 @@ export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, 
     const bytes = await fillDTR(template, employee, year, month, days, { travelOrders, signatures: dtrSignatures(submission) });
     return { fileName: dtrFilename(employee?.name || submission.employeeName, year, month), fileType: 'application/pdf', bytes };
   };
-  // The DTR to sign in Adobe as the In-charge, tagged for the upload.
+  // The DTR to sign as the In-charge, tagged for the upload, with where the signature shows on
+  // its two copies.
   const dtrToSign = async submission => {
     const made = await makeDtr(submission);
-    return { bytes: await stampForSigning(made.bytes, 'dtr-incharge', submission.id), fileName: made.fileName.replace(/\.pdf$/i, '_to_sign.pdf') };
+    return { bytes: await stampForSigning(made.bytes, 'dtr-incharge', submission.id), fileName: made.fileName.replace(/\.pdf$/i, '_to_sign.pdf'), marks: dtrInChargeMarks() };
   };
   const view = submission => setViewer({ key: Date.now(), title: `DTR of ${submission.employeeName} – ${monthText(submission.month)}`, load: () => makeDtr(submission) });
 
@@ -109,11 +111,15 @@ export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, 
             {verifying?.id === submission.id && (
               <div className="mt-3">
                 <SignedFormStep
-                  title="Verify and sign as the In-charge in Adobe"
-                  description="The DTR carries the employee's signature. Check it, sign it with your digital ID as the In-charge, and upload it."
-                  downloadLabel="Download DTR to sign"
-                  submitLabel="Upload Signed DTR & Verify"
-                  onDownload={() => dtrToSign(submission)}
+                  title="Verify and sign as the In-charge"
+                  description="The DTR carries the employee's signature. Check it, then sign it with your digital ID as the In-charge."
+                  signLabel="Sign & Verify the DTR"
+                  digitalSign={{
+                    getForm: () => dtrToSign(submission),
+                    image: signatureImage,
+                    reason: `Verified as to the prescribed office hours (In-charge), DTR ${monthText(submission.month)}`,
+                    location: 'DILG Marinduque'
+                  }}
                   onSubmit={async ({ file }) => {
                     await onUploadSignedForm({ kind: 'dtr-incharge', ref: submission.id, file });
                     setNote({ text: `${submission.employeeName}'s DTR for ${monthText(submission.month)} was verified and signed.`, error: false });

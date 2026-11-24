@@ -290,6 +290,14 @@ const TEMPLATE_IN_CHARGE = 'FADRI';
 const SIGNED_NOTE = { x: 80, y: 116, size: 4.2, maxWidth: 214 };
 const grey = rgb(0.35, 0.35, 0.35);
 
+// Where the In-charge's digital signature shows on each of the page's two copies when they sign in
+// WorkMate (see utils/digitalIdSigning.js): their signature image over the In-charge line, and
+// under the signed note a line saying who signed and when.
+export const dtrInChargeMarks = () => [0, SIGNATURE_COPY_SHIFT].flatMap(shift => [
+  { type: 'signature', center: VERIFIER_SIGNATURE.center + shift, bottom: VERIFIER_SIGNATURE.bottom, width: VERIFIER_SIGNATURE.maxWidth, height: VERIFIER_SIGNATURE.maxHeight, caption: false },
+  { type: 'text', text: 'Verified and digitally signed by {name} as In-charge, {date}, through DILG WorkMate.', x: SIGNED_NOTE.x + shift, y: SIGNED_NOTE.y - 5.5, size: SIGNED_NOTE.size, maxWidth: SIGNED_NOTE.maxWidth }
+]);
+
 // A signature saved as a data: URL (PNG or JPEG), embedded in the PDF, or null.
 const embedSignature = async (pdf, dataUrl) => {
   const match = /^data:image\/(png|jpeg);base64,(.+)$/.exec(String(dataUrl || ''));

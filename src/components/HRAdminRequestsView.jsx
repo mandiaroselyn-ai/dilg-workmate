@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import AttachmentList from './AttachmentList';
 import SignedFormStep from './SignedFormStep';
 import cscForm6Template from '../assets/template/csc-form-6-template.pdf';
-import { fillLeaveForm } from '../utils/leaveForm';
+import { fillLeaveForm, leaveHrMarks } from '../utils/leaveForm';
 import { signedNoteText, stampForSigning } from '../utils/signedForms';
 import { travelDurationLabel } from '../utils/travelDuration';
 import { companionNames } from '../../shared/travelStatus';
@@ -171,17 +171,18 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
   const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee));
   // A certified leave waits for HR 2 to sign its form in Adobe and upload it (shared/hrSteps.js).
   const signing = myStep && needsHrSignedUpload(selected) && selected?.status === FOR_PRE_APPROVAL && Boolean(selected?.creditCertification);
-  // The CSC Form No. 6 with HR 2's certification (7.A) and recommendation (7.B), to sign in Adobe.
+  // The CSC Form No. 6 with HR 2's certification (7.A) and recommendation (7.B), to sign, with
+  // where HR 2's signature shows (at both).
   const formToSign = async () => {
     const template = await (await fetch(cscForm6Template)).arrayBuffer();
     const bytes = await fillLeaveForm(template, selected, selectedEmployee || selected.employee || {});
-    return { bytes: await stampForSigning(bytes, 'leave-hr', selected.id), fileName: `CSC_Form_6_${selected.id}_to_sign.pdf` };
+    return { bytes: await stampForSigning(bytes, 'leave-hr', selected.id), fileName: `CSC_Form_6_${selected.id}_to_sign.pdf`, marks: leaveHrMarks() };
   };
   const uploadSigned = async ({ file }) => {
     const saved = await onUploadSignedForm({ kind: 'leave-hr', ref: selected.id, file, remarks: typedRemarks ? remarks.trim() : '' });
     setSelected(previous => ({ ...previous, ...(saved?.request || {}) }));
     setScreen('dashboard');
-    notify('Signed form uploaded. The leave was sent to the Head (Supervisor) for the decision.');
+    notify('Form signed. The leave was sent to the Head (Supervisor) for the decision.');
   };
   // HR 2 takes the step only after checking every validation item and choosing the recommendation.
   // A leave is certified first; a Travel Order goes straight to the Head.
@@ -230,10 +231,15 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
         {signing && (
           <div className="mt-3">
             <SignedFormStep
-              title="Sign 7.A and 7.B in Adobe"
-              description="The CSC Form No. 6 now has the leave credits you certified and your recommendation. Sign it with your digital ID; the upload sends the leave to the Head."
-              onDownload={formToSign}
-              submitLabel="Upload Signed Form & Send to the Head"
+              title="Sign 7.A and 7.B"
+              description="The CSC Form No. 6 now has the leave credits you certified and your recommendation. Sign it with your digital ID; signing sends the leave to the Head."
+              signLabel="Sign & Send to the Head"
+              digitalSign={{
+                getForm: formToSign,
+                image: user?.signatureImage || '',
+                reason: `Certified leave credits (7.A) and recommendation (7.B), leave ${selected.id}`,
+                location: 'DILG Marinduque'
+              }}
               onSubmit={uploadSigned}
             />
           </div>

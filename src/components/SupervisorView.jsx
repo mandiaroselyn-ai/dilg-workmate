@@ -35,7 +35,7 @@ import SupervisorDtrDesk from './SupervisorDtrDesk';
 import SignedFormStep from './SignedFormStep';
 import cscForm6Template from '../assets/template/csc-form-6-template.pdf';
 import travelOrderTemplate from '../assets/template/travelorder-template.pdf';
-import { fillLeaveForm } from '../utils/leaveForm';
+import { fillLeaveForm, leaveHeadMarks } from '../utils/leaveForm';
 import { fillTravelOrder } from '../utils/travelOrderForm';
 import { fetchSignedForm, signedNoteText, stampForSigning } from '../utils/signedForms';
 
@@ -153,15 +153,17 @@ export default function SupervisorView({
   };
 
   // The form the Head signs: a leave's CSC Form No. 6 as HR 2 signed it (or, for a leave HR sent
-  // before signed uploads began, made now), or the Travel Order made now, with where the Head's
-  // signature goes on it (`spot`, for signing in WorkMate).
-  const formToSign = async request => {
+  // before signed uploads began, made now), or the Travel Order made now, with what the Head's
+  // signature shows on it when they sign in WorkMate (`marks` for a leave's decision, given
+  // `choice` { decision, remarks }; `spot` for a Travel Order).
+  const formToSign = async (request, choice = {}) => {
     const person = getRequester(request) || { name: request.employeeName };
     if (request.type === 'Leave Request') {
+      const marks = leaveHeadMarks({ decision: choice.decision, request, reason: choice.remarks || '' });
       const signedByHr = request.signedForms?.hr ? await fetchSignedForm('leave-hr', request.id) : null;
-      if (signedByHr) return { bytes: signedByHr.bytes, fileName: `CSC_Form_6_${request.id}_to_sign.pdf` };
+      if (signedByHr) return { bytes: signedByHr.bytes, fileName: `CSC_Form_6_${request.id}_to_sign.pdf`, marks };
       const template = await (await fetch(cscForm6Template)).arrayBuffer();
-      return { bytes: await stampForSigning(await fillLeaveForm(template, request, person), 'leave-head', request.id), fileName: `CSC_Form_6_${request.id}_to_sign.pdf` };
+      return { bytes: await stampForSigning(await fillLeaveForm(template, request, person), 'leave-head', request.id), fileName: `CSC_Form_6_${request.id}_to_sign.pdf`, marks };
     }
     const template = await (await fetch(travelOrderTemplate)).arrayBuffer();
     let spot = null;
@@ -228,7 +230,7 @@ export default function SupervisorView({
       </div>
 
       {activeMainTab === 'dtr' ? (
-        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} />
+        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} />
       ) : (<>
       {/* Row 1: Quick Insights Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
@@ -533,23 +535,23 @@ export default function SupervisorView({
                 {awaitsHead(selectedRequest) ? (
                   <SignedFormStep
                     key={selectedRequest.id}
-                    title={selectedRequest.type === 'Leave Request' ? 'Decide and sign 7.C and 7.D in Adobe' : 'Sign the Travel Order'}
+                    title={selectedRequest.type === 'Leave Request' ? 'Decide and sign 7.C or 7.D' : 'Sign the Travel Order'}
                     description={selectedRequest.type === 'Leave Request'
-                      ? (selectedRequest.signedForms?.hr ? 'The form already carries HR 2\'s signature at 7.A and 7.B. Mark your decision at 7.C or 7.D, sign it, and upload it.' : 'Mark your decision at 7.C or 7.D, sign it, and upload it.')
+                      ? `${selectedRequest.signedForms?.hr ? 'The form already carries HR 2\'s signature at 7.A and 7.B. ' : ''}Choose your decision. Signing here writes it on the form with your signature: 7.C, the days with pay and without pay from HR 2's certification; 7.D, your remarks as the reason.`
                       : 'Signing the Travel Order approves it. To disapprove it, use the button below instead.'}
                     decisions={selectedRequest.type === 'Leave Request' ? [{ value: 'Approved', label: 'Approved (7.C)' }, { value: 'Rejected', label: 'Disapproved (7.D)' }] : null}
                     remarksLabel="Approver's Official Remarks"
                     remarksPlaceholder="Recommendations or comments, or the reason for disapproving"
                     remarksRequiredFor="Rejected"
-                    submitLabel={selectedRequest.type === 'Leave Request' ? 'Upload Signed Form & Record Decision' : 'Upload Signed Travel Order & Approve'}
-                    signLabel="Sign & Approve the Travel Order"
-                    digitalSign={selectedRequest.type === 'Travel Order' ? {
-                      getForm: () => formToSign(selectedRequest),
+                    signLabel={selectedRequest.type === 'Leave Request' ? 'Sign & Record Decision' : 'Sign & Approve the Travel Order'}
+                    digitalSign={{
+                      getForm: choice => formToSign(selectedRequest, choice),
                       image: user?.signatureImage || '',
-                      reason: `Approved Travel Order ${selectedRequest.id}`,
+                      reason: ({ decision }) => (selectedRequest.type === 'Leave Request'
+                        ? `${decision === 'Rejected' ? 'Disapproved' : 'Approved'} leave ${selectedRequest.id} (7.C/7.D)`
+                        : `Approved Travel Order ${selectedRequest.id}`),
                       location: 'DILG Marinduque'
-                    } : null}
-                    onDownload={() => formToSign(selectedRequest)}
+                    }}
                     onSubmit={uploadSignedDecision}
                   />
                 ) : (

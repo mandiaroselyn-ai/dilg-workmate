@@ -1,8 +1,8 @@
-// Forms signed in Adobe, then uploaded to WorkMate (until PNPKI certificates are in use).
+// Forms signed with the signer's Adobe digital ID (until PNPKI certificates are in use).
 //
-// WorkMate makes the form (CSC Form No. 6, Travel Order, or DTR), the signer downloads it,
-// signs it in Adobe Acrobat, and uploads it back. WorkMate keeps the uploaded PDF as the
-// official copy that the employee and HR download.
+// WorkMate makes the form (CSC Form No. 6, Travel Order, or DTR), and the signer signs it in
+// WorkMate with the digital ID they made in Adobe (see src/utils/digitalIdSigning.js). WorkMate
+// keeps the signed PDF as the official copy that the employee and HR open.
 
 // What each upload is, who may make it, and how many signatures the file must carry.
 export const SIGNED_FORM_KINDS = {
@@ -25,10 +25,3 @@ export const signedFormMarker = (kind, ref) => `workmate:${kind}:${ref}`;
 export const markerKindOf = kind => (kind === 'leave-head' ? 'leave' : kind === 'leave-hr' ? 'leave' : kind);
 
 export const MAX_SIGNED_PDF_BYTES = 3 * 1024 * 1024;
-
-export const ADOBE_STEPS = [
-  'Download the form.',
-  'Open it in Adobe Acrobat and sign it with your digital ID.',
-  'Save the signed PDF. Do not print it or save it as a new copy.',
-  'Upload the signed PDF here.'
-];

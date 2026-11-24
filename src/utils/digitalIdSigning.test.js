@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import test from 'node:test';
 import forge from 'node-forge';
 import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
 import { DigitalIdError, readDigitalId, rectOfSpot, signPdfWithDigitalId } from './digitalIdSigning.js';
+import { dtrInChargeMarks } from './dtrForm.js';
+import { fillLeaveForm, leaveHeadMarks, leaveHrMarks } from './leaveForm.js';
 import { countSignatures, keepsEarlierBytes, signedPdfProblem } from '../../backend/src/utils/signedPdf.js';
 import { signedFormMarker } from '../../shared/signedForms.js';
 
@@ -87,7 +90,8 @@ test('a form signed in WorkMate carries a valid signature, in its box, that the 
   const fields = reread.catalog.lookup(PDFName.of('AcroForm')).lookup(PDFName.of('Fields')).asArray();
   assert.equal(fields.length, 1);
   const widget = reread.context.lookup(fields[0]);
-  assert.deepEqual(widget.lookup(PDFName.of('Rect')).asArray().map(value => Math.round(value.asNumber())), rect.map(Math.round));
+  // The box, with a point to spare around it.
+  assert.deepEqual(widget.lookup(PDFName.of('Rect')).asArray().map(value => Math.round(value.asNumber())), [rect[0] - 1, rect[1] - 1, rect[2] + 1, rect[3] + 1].map(Math.round));
   assert.equal(reread.getPages()[0].node.lookup(PDFName.of('Annots')).size(), 1);
 });
 
@@ -121,6 +125,70 @@ test('a PDF written with a cross-reference stream is signed with one too', async
   assert.match(Buffer.from(signed.subarray(form.length)).toString('latin1'), /\/Type \/XRef/);
   const reread = await PDFDocument.load(signed);
   assert.equal(reread.catalog.lookup(PDFName.of('AcroForm')).lookup(PDFName.of('Fields')).size(), 1);
+});
+
+const widgetRectOf = async (bytes, index) => {
+  const pdf = await PDFDocument.load(bytes);
+  const fields = pdf.catalog.lookup(PDFName.of('AcroForm')).lookup(PDFName.of('Fields')).asArray();
+  return pdf.context.lookup(fields[index]).lookup(PDFName.of('Rect')).asArray().map(value => value.asNumber());
+};
+const appearanceTextOf = async (bytes, index) => {
+  const pdf = await PDFDocument.load(bytes);
+  const fields = pdf.catalog.lookup(PDFName.of('AcroForm')).lookup(PDFName.of('Fields')).asArray();
+  const ap = pdf.context.lookup(fields[index]).lookup(PDFName.of('AP')).lookup(PDFName.of('N'));
+  return Buffer.from(ap.contents).toString('latin1');
+};
+
+test('a leave is signed by HR 2 at 7.A and 7.B, then the Head writes the decision and signs', async () => {
+  const template = fs.readFileSync(new URL('../assets/template/csc-form-6-template.pdf', import.meta.url));
+  const leave = {
+    id: 'LV-2026-0007', type: 'Leave Request', leaveType: 'Vacation Leave', workingDays: 3, startDate: '2026-12-01', endDate: '2026-12-03',
+    creditCertification: { asOf: '2026-11-25', vacationLeave: { earned: 2, less: 2, balance: 0 }, sickLeave: { earned: 5, less: 0, balance: 5 }, withoutPayDays: 1, certifiedBy: { name: 'JOHN ERICK J. MATINING', position: 'HRMO' } },
+    recommendation: { decision: 'approval', recommendedBy: { name: 'JOHN ERICK J. MATINING', position: 'HRMO' } }
+  };
+  const filled = await fillLeaveForm(template, leave, { name: 'Roselyn Mandia' });
+  const stamped = await PDFDocument.load(filled);
+  stamped.setKeywords([signedFormMarker('leave', leave.id)]);
+  const form = await stamped.save({ useObjectStreams: false });
+
+  const hr = readDigitalId(makeDigitalId('JOHN ERICK J. MATINING', 'a'), 'a');
+  const byHr = await signPdfWithDigitalId(form, { digitalId: hr, marks: leaveHrMarks() });
+  assert.equal(await signedPdfProblem(byHr, { kind: 'leave-hr', ref: leave.id, minSignatures: 1 }), '');
+  // One signature showing at 7.A (left) and 7.B (right).
+  const [hrLeft, , hrRight] = await widgetRectOf(byHr, 0);
+  assert.ok(hrLeft < 145 && hrRight > 490, 'the box spans 7.A and 7.B');
+
+  const head = readDigitalId(makeDigitalId('IVAN STEPHEN F. FADRI', 'b'), 'b');
+  const approved = await signPdfWithDigitalId(byHr, { digitalId: head, marks: leaveHeadMarks({ decision: 'Approved', request: leave }) });
+  assert.equal(await signedPdfProblem(approved, { kind: 'leave-head', ref: leave.id, minSignatures: 2, before: byHr }), '');
+  const [first, second] = checkSignatures(approved);
+  assert.equal(first.endsAt, byHr.length, 'HR 2\'s signature still covers exactly what HR 2 signed');
+  assert.equal(second.endsAt, approved.length);
+  // 7.C: 2 days with pay, 1 without pay.
+  const approvedText = await appearanceTextOf(approved, 1);
+  assert.match(approvedText, /\(2\) Tj/);
+  assert.match(approvedText, /\(1\) Tj/);
+
+  const reason = 'The office needs everyone during the year-end inventory and the barangay assessment week, so please file it after December 15.';
+  const disapproved = await signPdfWithDigitalId(byHr, { digitalId: head, marks: leaveHeadMarks({ decision: 'Rejected', request: leave, reason }) });
+  assert.equal(checkSignatures(disapproved).length, 2);
+  // 7.D: the reason, word by word on its lines, nothing left out.
+  const lines = [...(await appearanceTextOf(disapproved, 1)).matchAll(/\(([^)]*)\) Tj/g)].map(match => match[1]).filter(text => !/^(Digitally signed|Date:)/.test(text));
+  assert.ok(lines.length >= 2 && lines.length <= 3);
+  assert.equal(lines.join(' '), reason);
+});
+
+test('a DTR is signed as the In-charge on both copies', async () => {
+  const template = fs.readFileSync(new URL('../assets/template/dtr-template.pdf', import.meta.url));
+  const stamped = await PDFDocument.load(template);
+  stamped.setKeywords([signedFormMarker('dtr-incharge', 'DTR-1')]);
+  const form = await stamped.save({ useObjectStreams: false });
+  const id = readDigitalId(makeDigitalId('IVAN STEPHEN F. FADRI', 'pw'), 'pw');
+  const signed = await signPdfWithDigitalId(form, { digitalId: id, marks: dtrInChargeMarks() });
+  assert.equal(await signedPdfProblem(signed, { kind: 'dtr-incharge', ref: 'DTR-1', minSignatures: 1 }), '');
+  const [left, , right] = await widgetRectOf(signed, 0);
+  assert.ok(left < 85 && right > 440, 'the box spans both copies');
+  assert.equal((await appearanceTextOf(signed, 0)).match(/Verified and digitally signed by IVAN STEPHEN F\. FADRI as In-charge/g).length, 2);
 });
 
 test('an expired digital ID is refused', () => {

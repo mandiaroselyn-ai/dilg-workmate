@@ -116,47 +116,109 @@ const fieldNames = (context, acroForm) => {
   }));
 };
 
-// The signature's look in its box (`width` x `height`): the signature image above "Digitally signed
-// by NAME" and the date; or, without an image, the name larger.
-const appearanceContent = ({ width, height, font, image, name, date }) => {
-  const line1 = `Digitally signed by ${name}`;
-  const line2 = `Date: ${date}`;
-  const fit = (text, size, max) => {
-    let fitted = size;
-    while (fitted > 3 && font.widthOfTextAtSize(text, fitted) > max) fitted -= 0.25;
-    return fitted;
-  };
-  const textSize = Math.min(fit(line1, image ? 5.5 : 8, width), fit(line2, image ? 5.5 : 7, width));
-  const lines = [line1, line2];
-  const textHeight = textSize * 2.3;
-  const ops = [];
-  if (image) {
-    const room = { width, height: Math.max(4, height - textHeight) };
-    const scale = Math.min(room.width / image.width, room.height / image.height);
-    const drawn = { width: image.width * scale, height: image.height * scale };
-    ops.push('q', `${drawn.width.toFixed(2)} 0 0 ${drawn.height.toFixed(2)} ${((width - drawn.width) / 2).toFixed(2)} ${(textHeight + (room.height - drawn.height) / 2).toFixed(2)} cm`, '/Im1 Do', 'Q');
-  }
-  const top = image ? textHeight - textSize : (height + textHeight) / 2 - textSize;
-  lines.forEach((text, index) => {
-    const x = (width - font.widthOfTextAtSize(text, textSize)) / 2;
-    ops.push('BT', `/F1 ${textSize.toFixed(2)} Tf`, '0 0 0 rg', `${x.toFixed(2)} ${(top - index * textSize * 1.15).toFixed(2)} Td`, `(${pdfText(text)}) Tj`, 'ET');
-  });
-  return ops.join('\n');
+// The largest size, from `size` down to 3 pt, at which `text` fits `maxWidth`.
+const fitSize = (font, text, size, maxWidth = Infinity) => {
+  let fitted = size;
+  while (fitted > 3 && font.widthOfTextAtSize(text, fitted) > maxWidth) fitted -= 0.25;
+  return fitted;
 };
 
-// Signs `pdfBytes` with `digitalId` (see readDigitalId), its visible signature in `rect`
-// ([left, bottom, right, top] in PDF points) on page `pageIndex`. `image` is the signer's
-// signature as a data URL ('' for none). Returns the signed PDF's bytes.
+// What the signature shows on the page, as marks in page points:
+// - { type: 'signature', center, bottom, width, height, caption? }: the signer's signature image,
+//   with "Digitally signed by NAME" and the date under it (`caption`, by default when the box is
+//   at least 20 pt tall; always when there is no image);
+// - { type: 'text', text, x or center, y (baseline), size, maxWidth? }: a line of text, such as a
+//   leave's decision at 7.C, where "{name}" and "{date}" become the signer's name and date;
+// - { type: 'paragraph', text, size, lines: [{ x, y, maxWidth }] }: text written word by word on
+//   those lines, such as 7.D's reason (what does not fit is squeezed onto the last line).
+// Each mark gets its place: left, bottom, right, top.
+const wrapParagraph = (mark, font) => {
+  const size = mark.size || 7;
+  const words = String(mark.text || '').split(/\s+/).filter(Boolean);
+  const lines = mark.lines || [];
+  const out = [];
+  let index = 0;
+  let current = '';
+  for (const word of words) {
+    const joined = current ? `${current} ${word}` : word;
+    if (current && index < lines.length - 1 && font.widthOfTextAtSize(joined, size) > lines[index].maxWidth) {
+      out.push({ type: 'text', text: current, size, ...lines[index] });
+      index += 1;
+      current = word;
+    } else {
+      current = joined;
+    }
+  }
+  if (current && lines[index]) out.push({ type: 'text', text: current, size, ...lines[index] });
+  return out;
+};
+const placeMarks = (marks, font, { name, date }) => marks.flatMap(mark => (mark.type === 'paragraph' ? wrapParagraph(mark, font) : [mark])).map(mark => {
+  if (mark.type === 'text') {
+    const text = String(mark.text || '').replaceAll('{name}', name).replaceAll('{date}', date);
+    const size = fitSize(font, text, mark.size || 7, mark.maxWidth);
+    const width = font.widthOfTextAtSize(text, size);
+    const left = mark.center != null ? mark.center - width / 2 : mark.x;
+    return { ...mark, text, size, left, bottom: mark.y - size * 0.25, right: left + width, top: mark.y + size };
+  }
+  return { ...mark, type: 'signature', left: mark.center - mark.width / 2, right: mark.center + mark.width / 2, top: mark.bottom + mark.height };
+});
+
+// Drawing for one line of text at (x, y).
+const textOps = (text, size, x, y) => ['BT', `/F1 ${size.toFixed(2)} Tf`, '0 0 0 rg', `${x.toFixed(2)} ${y.toFixed(2)} Td`, `(${pdfText(text)}) Tj`, 'ET'];
+
+// Drawing for a signature box `width` x `height` at (x, y): the image above the caption, or the
+// caption alone, centred.
+const signatureOps = ({ x, y, width, height, caption, font, image, name, date }) => {
+  const lines = [`Digitally signed by ${name}`, `Date: ${date}`];
+  const withCaption = caption || !image;
+  const size = withCaption ? Math.min(fitSize(font, lines[0], image ? 5.5 : 8, width), fitSize(font, lines[1], image ? 5.5 : 7, width)) : 0;
+  const captionHeight = withCaption ? size * 2.3 : 0;
+  const ops = [];
+  if (image) {
+    const room = { width, height: Math.max(4, height - captionHeight) };
+    const scale = Math.min(room.width / image.width, room.height / image.height);
+    const drawn = { width: image.width * scale, height: image.height * scale };
+    ops.push('q', `${drawn.width.toFixed(2)} 0 0 ${drawn.height.toFixed(2)} ${(x + (width - drawn.width) / 2).toFixed(2)} ${(y + captionHeight + (room.height - drawn.height) / 2).toFixed(2)} cm`, '/Im1 Do', 'Q');
+  }
+  if (withCaption) {
+    const top = image ? captionHeight - size : (height + captionHeight) / 2 - size;
+    lines.forEach((text, index) => ops.push(...textOps(text, size, x + (width - font.widthOfTextAtSize(text, size)) / 2, y + top - index * size * 1.15)));
+  }
+  return ops;
+};
+
+// The drawing of every mark, relative to `origin` (the box's lower left corner).
+const appearanceContent = (placed, origin, { font, image, name, date }) => placed.flatMap(mark => (mark.type === 'text'
+  ? textOps(mark.text, mark.size, mark.left - origin.x, mark.y - origin.y)
+  : signatureOps({
+    x: mark.left - origin.x,
+    y: mark.bottom - origin.y,
+    width: mark.width,
+    height: mark.height,
+    caption: mark.caption ?? mark.height >= 20,
+    font,
+    image,
+    name,
+    date
+  }))).join('\n');
+
+// Signs `pdfBytes` with `digitalId` (see readDigitalId), on page `pageIndex`. What it shows is
+// `marks` (see placeMarks), or a signature box filling `rect` ([left, bottom, right, top] in PDF
+// points). `image` is the signer's signature as a data URL ('' for none). Returns the signed
+// PDF's bytes.
 export const signPdfWithDigitalId = async (pdfBytes, {
   digitalId,
   pageIndex = 0,
-  rect,
+  rect = null,
+  marks = null,
   image = '',
   reason = '',
   location = '',
   fieldName = 'Signature',
   signedAt = new Date()
 }) => {
+  const shown = marks?.length ? marks : rect ? [{ type: 'signature', center: (rect[0] + rect[2]) / 2, bottom: rect[1], width: rect[2] - rect[0], height: rect[3] - rect[1] }] : null;
+  if (!shown) throw new DigitalIdError('Where the signature goes on the form is missing.');
   const original = new Uint8Array(pdfBytes);
   const pdf = await PDFDocument.load(original, { updateMetadata: false });
   const { context } = pdf;
@@ -210,11 +272,19 @@ export const signPdfWithDigitalId = async (pdfBytes, {
     }
   }
 
-  const [left, bottom, right, top] = rect;
-  const width = right - left;
-  const height = top - bottom;
+  // The signature's box on the page holds every mark, with a point to spare around them.
   const name = digitalId.name || 'the signer';
-  const content = latin1(appearanceContent({ width, height, font, image: embedded, name, date: shownDate(signedAt) }));
+  const date = shownDate(signedAt);
+  const placed = placeMarks(shown, font, { name, date });
+  const box = [
+    Math.min(...placed.map(mark => mark.left)) - 1,
+    Math.min(...placed.map(mark => mark.bottom)) - 1,
+    Math.max(...placed.map(mark => mark.right)) + 1,
+    Math.max(...placed.map(mark => mark.top)) + 1
+  ];
+  const width = box[2] - box[0];
+  const height = box[3] - box[1];
+  const content = latin1(appearanceContent(placed, { x: box[0], y: box[1] }, { font, image: embedded, name, date }));
   const appearanceRef = newRef();
   objects.push({
     ref: appearanceRef,
@@ -241,7 +311,7 @@ export const signPdfWithDigitalId = async (pdfBytes, {
   const widgetRef = newRef();
   objects.push({
     ref: widgetRef,
-    dict: `<< /Type /Annot /Subtype /Widget /FT /Sig /T (${pdfText(uniqueName)}) /V ${signatureRef} /F 132 /Rect [${rect.map(value => value.toFixed(2)).join(' ')}] /P ${page.ref} /AP << /N ${appearanceRef} >> >>`
+    dict: `<< /Type /Annot /Subtype /Widget /FT /Sig /T (${pdfText(uniqueName)}) /V ${signatureRef} /F 132 /Rect [${box.map(value => value.toFixed(2)).join(' ')}] /P ${page.ref} /AP << /N ${appearanceRef} >> >>`
   });
 
   // The page lists the box among its annotations.
@@ -383,3 +453,6 @@ export const signPdfWithDigitalId = async (pdfBytes, {
 // The signature's place for pdf-lib's drawSignature spots ({ center, bottom, width, height }) as
 // a [left, bottom, right, top] rectangle.
 export const rectOfSpot = ({ center, bottom, width, height }) => [center - width / 2, bottom, center + width / 2, bottom + height];
+
+// A form's marks (see placeMarks), from its own `marks` or its one signature `spot`.
+export const marksOfForm = ({ marks, spot }) => (marks?.length ? marks : spot ? [{ type: 'signature', ...spot }] : []);

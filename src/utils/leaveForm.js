@@ -93,6 +93,39 @@ export const LEAVE_FORM_LAYOUT = {
   approverSignature: { center: 309, bottom: 72, width: 150, height: 32 },
 };
 
+// Where digital signatures show on the form when they are made in WorkMate (see
+// utils/digitalIdSigning.js). HR 2's one signature shows at both 7.A and 7.B.
+export const leaveHrMarks = () => [
+  { type: 'signature', ...LEAVE_FORM_LAYOUT.certifierSignature },
+  { type: 'signature', ...LEAVE_FORM_LAYOUT.recommenderSignature }
+];
+
+// The template's 7.C blanks ("_______ days with pay", then "without pay"; x = the blank's centre,
+// y = a little over the line) and 7.D's three lines after "DISAPPROVED DUE TO:".
+const APPROVED_FOR = { center: 103, withPay: 130.6, withoutPay: 120.9 };
+const DISAPPROVED_DUE_TO = [
+  { x: 356, y: 130.6, maxWidth: 160 },
+  { x: 356, y: 120.9, maxWidth: 178 },
+  { x: 356, y: 111.1, maxWidth: 178 }
+];
+const dayCount = value => String(Math.round(Number(value) * 1000) / 1000);
+
+// The Head's decision and signature (7.C/7.D): approved, the days with pay and without pay (the
+// leave's working days, less the days HR 2's certification found the credits do not cover); or
+// disapproved, the reason. The signature goes over the approving official's name.
+export const leaveHeadMarks = ({ decision, request = {}, reason = '' }) => {
+  const marks = [{ type: 'signature', ...LEAVE_FORM_LAYOUT.approverSignature }];
+  if (decision === 'Approved') {
+    const days = Number(request.workingDays) || 0;
+    const withoutPay = Math.min(days, Number(request.creditCertification?.withoutPayDays) || 0);
+    if (days - withoutPay > 0) marks.push({ type: 'text', text: dayCount(days - withoutPay), center: APPROVED_FOR.center, y: APPROVED_FOR.withPay, size: 7.5, maxWidth: 28 });
+    if (withoutPay > 0) marks.push({ type: 'text', text: dayCount(withoutPay), center: APPROVED_FOR.center, y: APPROVED_FOR.withoutPay, size: 7.5, maxWidth: 28 });
+  } else if (decision === 'Rejected' && reason.trim()) {
+    marks.push({ type: 'paragraph', text: reason.trim(), size: 7, lines: DISAPPROVED_DUE_TO });
+  }
+  return marks;
+};
+
 // The template's sizes for a signatory's name (bold) and position under it.
 const SIGNATORY_NAME_SIZE = 8.4;
 const SIGNATORY_POSITION_SIZE = 7.65;
