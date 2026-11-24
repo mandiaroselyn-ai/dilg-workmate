@@ -66,9 +66,9 @@ export const uploadSignedForm = async ({ kind, ref, file, decision, remarks }) =
   return data;
 };
 
-// "Signed in Adobe by NAME on Nov 12, 2026" for a request's or DTR's note of a signed form.
+// "Digitally signed by NAME on Nov 12, 2026" for a request's or DTR's note of a signed form.
 export const signedNoteText = note => {
   if (!note) return '';
   const when = note.uploadedAt ? new Date(note.uploadedAt).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }) : '';
-  return `Signed in Adobe by ${note.uploadedBy || 'the signer'}${when ? ` on ${when}` : ''}`;
+  return `Digitally signed by ${note.uploadedBy || 'the signer'}${when ? ` on ${when}` : ''}`;
 };

@@ -152,8 +152,9 @@ export default function SupervisorView({
     }
   };
 
-  // The form the Head signs in Adobe: a leave's CSC Form No. 6 as HR 2 signed it (or, for a leave
-  // HR sent before signed uploads began, made now), or the Travel Order made now.
+  // The form the Head signs: a leave's CSC Form No. 6 as HR 2 signed it (or, for a leave HR sent
+  // before signed uploads began, made now), or the Travel Order made now, with where the Head's
+  // signature goes on it (`spot`, for signing in WorkMate).
   const formToSign = async request => {
     const person = getRequester(request) || { name: request.employeeName };
     if (request.type === 'Leave Request') {
@@ -163,14 +164,16 @@ export default function SupervisorView({
       return { bytes: await stampForSigning(await fillLeaveForm(template, request, person), 'leave-head', request.id), fileName: `CSC_Form_6_${request.id}_to_sign.pdf` };
     }
     const template = await (await fetch(travelOrderTemplate)).arrayBuffer();
-    return { bytes: await stampForSigning(await fillTravelOrder(template, request, person), 'travel-head', request.id), fileName: `Travel_Order_${request.id}_to_sign.pdf` };
+    let spot = null;
+    const order = await fillTravelOrder(template, request, person, { onSignatureSpot: value => { spot = value; } });
+    return { bytes: await stampForSigning(order, 'travel-head', request.id), fileName: `Travel_Order_${request.id}_to_sign.pdf`, spot };
   };
   const uploadSignedDecision = async ({ file, decision, remarks: signedRemarks }) => {
     const request = selectedRequest;
     const leave = request.type === 'Leave Request';
     const data = await onUploadSignedForm({ kind: leave ? 'leave-head' : 'travel-head', ref: request.id, file, decision: leave ? decision : 'Approved', remarks: signedRemarks });
     const status = data?.request?.status;
-    setSuccessMsg(`Application ID ${request.id} was ${status === 'Rejected' ? 'disapproved' : 'approved'}. The form you signed in Adobe is now its official copy.`);
+    setSuccessMsg(`Application ID ${request.id} was ${status === 'Rejected' ? 'disapproved' : 'approved'}. The signed form is now its official copy.`);
     setSelectedRequest(null);
     setRemarks('');
     window.setTimeout(() => setSuccessMsg(''), 6000);
@@ -530,7 +533,7 @@ export default function SupervisorView({
                 {awaitsHead(selectedRequest) ? (
                   <SignedFormStep
                     key={selectedRequest.id}
-                    title={selectedRequest.type === 'Leave Request' ? 'Decide and sign 7.C and 7.D in Adobe' : 'Sign the Travel Order in Adobe'}
+                    title={selectedRequest.type === 'Leave Request' ? 'Decide and sign 7.C and 7.D in Adobe' : 'Sign the Travel Order'}
                     description={selectedRequest.type === 'Leave Request'
                       ? (selectedRequest.signedForms?.hr ? 'The form already carries HR 2\'s signature at 7.A and 7.B. Mark your decision at 7.C or 7.D, sign it, and upload it.' : 'Mark your decision at 7.C or 7.D, sign it, and upload it.')
                       : 'Signing the Travel Order approves it. To disapprove it, use the button below instead.'}
@@ -539,6 +542,13 @@ export default function SupervisorView({
                     remarksPlaceholder="Recommendations or comments, or the reason for disapproving"
                     remarksRequiredFor="Rejected"
                     submitLabel={selectedRequest.type === 'Leave Request' ? 'Upload Signed Form & Record Decision' : 'Upload Signed Travel Order & Approve'}
+                    signLabel="Sign & Approve the Travel Order"
+                    digitalSign={selectedRequest.type === 'Travel Order' ? {
+                      getForm: () => formToSign(selectedRequest),
+                      image: user?.signatureImage || '',
+                      reason: `Approved Travel Order ${selectedRequest.id}`,
+                      location: 'DILG Marinduque'
+                    } : null}
                     onDownload={() => formToSign(selectedRequest)}
                     onSubmit={uploadSignedDecision}
                   />

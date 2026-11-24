@@ -1275,7 +1275,7 @@ export default function App() {
   // The Supervisor returns a DTR with remarks. Verifying one is signing it in Adobe and uploading
   // it (handleUploadSignedForm).
   const handleReviewDtr = async ({ id, action, remarks }) => sendDtrSubmission('PATCH', { id, action, remarks });
-  // A form signed in Adobe and uploaded (HR 2's leave form, or the Head's leave form, Travel Order
+  // A form signed with a digital ID, in Adobe or in WorkMate (HR 2's leave form, or the Head's leave form, Travel Order
   // or DTR): the request or DTR it belongs to is saved as the server returns it, and the next
   // reviewer is told, as a status change tells them.
   const handleUploadSignedForm = async args => {
@@ -1298,7 +1298,7 @@ export default function App() {
       if (activeRole === 'supervisor' && ['Approved', 'Rejected'].includes(saved.status)) {
         pushSystemNotification({
           title: `${saved.type} ${saved.status === 'Approved' ? 'Approved' : 'Disapproved'} by Supervisor`,
-          message: `${saved.employeeName || 'An employee'}'s ${saved.type} ${saved.id} was ${saved.status === 'Approved' ? 'approved' : 'disapproved'} and signed in Adobe by ${user?.name || 'the supervisor'}. Remarks: ${saved.supervisorRemarks || 'none'}`,
+          message: `${saved.employeeName || 'An employee'}'s ${saved.type} ${saved.id} was ${saved.status === 'Approved' ? 'approved' : 'disapproved'} and digitally signed by ${user?.name || 'the supervisor'}. Remarks: ${saved.supervisorRemarks || 'none'}`,
           time: 'Just now',
           type: 'request',
           recipientRole: 'hr_admin'

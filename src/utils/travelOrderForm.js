@@ -120,7 +120,9 @@ export const travelSubject = (request = {}) => String(request.travelActivity || 
   .replace(/^Official Travel\.\s*/i, '')
   .trim();
 
-export async function fillTravelOrder(templateBytes, request = {}, person = {}, { grid = false } = {}) {
+// `onSignatureSpot` gets where the Supervisor's signature goes on the order ({ center, bottom,
+// width, height }, see TRAVEL_ORDER_LAYOUT.signatureSpot), for signing it in WorkMate.
+export async function fillTravelOrder(templateBytes, request = {}, person = {}, { grid = false, onSignatureSpot = null } = {}) {
   const pdf = await PDFDocument.load(templateBytes);
   const page = pdf.getPages()[0];
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
@@ -196,8 +198,10 @@ export async function fillTravelOrder(templateBytes, request = {}, person = {}, 
   ]);
   for (const { text, x, y: textY, font, size } of texts) page.drawText(text, { x, y: textY, size, font, color: black });
   // Signed only once approved: before that (or when disapproved) the order has the name only.
+  const signatureSpot = { ...L.signatureSpot, bottom: L.signatureSpot.bottom - dy };
+  onSignatureSpot?.(signatureSpot);
   if (request.status === 'Approved') {
-    await drawSignature(pdf, page, request.supervisorSignature || request.signatureData, { ...L.signatureSpot, bottom: L.signatureSpot.bottom - dy });
+    await drawSignature(pdf, page, request.supervisorSignature || request.signatureData, signatureSpot);
   }
 
   if (grid) drawGrid(page, regular);
