@@ -613,8 +613,8 @@ If they left the service (resigned, retired, transferred, or their contract ende
     return updateAccountStatus(selectedEmployee, accountStatus);
   };
 
-  // Deletes an account that is not Active and has no records (the server refuses one with
-  // attendance or requests: an employee who left stays Inactive, so HR can still see their DTR).
+  // Deletes an account that is not Active. Its attendance, requests, and signed DTRs stay in the
+  // database, but HR's pages and reports list only current accounts, so they no longer show.
   const handleDeleteEmployee = async () => {
     if (!selectedEmployee) return;
     const name = employeeName(selectedEmployee);
@@ -623,7 +623,7 @@ If they left the service (resigned, retired, transferred, or their contract ende
 
 They will no longer be able to log in, and their ID photos and enrollment selfie will be removed.
 
-Only an account with no attendance or requests can be deleted, such as a sign-up made by mistake. For an employee who left, keep the account Inactive instead, so their DTR and leave history stay in HR's pages and reports.
+Their attendance, leave, travel orders, and signed DTRs stay saved, but they will no longer show in HR's pages and reports. To keep seeing their DTR and leave history, keep the account Inactive instead.
 
 This cannot be undone.`
     );

@@ -119,16 +119,6 @@ export const Leave = {
     return (own.modifiedCount || 0) + (companions.modifiedCount || 0);
   },
 
-  // True when one account filed any request, or is on another employee's Travel Order.
-  hasOwnRecords: async owner => {
-    ensureConnected();
-    const filter = ownRecordsFilter(owner);
-    if (filter && await MongoRequest.exists(filter)) return true;
-    return Boolean(owner?.employeeId && await MongoRequest.exists({
-      companions: { $elemMatch: { employeeId: owner.employeeId, ...(owner.name ? { name: exactTextPattern(owner.name) } : {}) } }
-    }));
-  },
-
   // Changes whenever a request this person sees is filed, reviewed, or withdrawn.
   updateStamp: async (user) => {
     ensureConnected();

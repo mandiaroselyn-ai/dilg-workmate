@@ -3,8 +3,8 @@ import { isRealDate } from './localDate.js';
 // An employee's separation from the service: the last day of service (`separationDate`,
 // YYYY-MM-DD) and its cause, which HR records when the employee leaves. Up to that day the
 // employee still counts (their last month's DTR, absences, and leave credits, earned for the days
-// of service that month), and their records are kept (an account with records is not deleted, see
-// services/employeeIdentity.js). The causes are the usual ones for leaving government service.
+// of service that month), as long as HR keeps the account Inactive rather than deleting it. The
+// causes are the usual ones for leaving government service.
 export const SEPARATION_REASONS = [
   'Resignation',
   'Retirement',

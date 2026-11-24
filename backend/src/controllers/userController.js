@@ -32,7 +32,7 @@ import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/aut
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
-import { KEEP_ACCOUNT_WITH_RECORDS, carryRecordsOrWarn, hasOwnRecords } from '../services/employeeIdentity.js';
+import { carryRecordsOrWarn } from '../services/employeeIdentity.js';
 import { normalizeSeparation } from '../../../shared/separation.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
@@ -691,17 +691,14 @@ export const enterStartingBalances = async (req, res) => {
 
 export const deleteEmployee = async (req, res) => {
   try {
-    // The one account HR chose, by its database ID (old accounts can share an Employee ID): the
-    // same account is checked and deleted. Only one with no records is deleted (for example, a
-    // sign-up made by mistake); an employee who left is kept Inactive, so their DTR and leave
-    // history stay in HR's pages.
+    // The one account HR chose, by its database ID (old accounts can share an Employee ID), once
+    // it is no longer Active. Its attendance, requests, and signed DTRs are separate documents and
+    // stay in the database; HR's pages and reports list only current accounts, so they no longer
+    // show there.
     const account = await User.findEmployeeAccount(req.params.identifier);
     if (!account) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     if ((account.accountStatus || 'Active').toString().trim().toLowerCase() === 'active') {
       return res.status(409).json({ success: false, error: 'Deactivate this account before deleting it.' });
-    }
-    if (await hasOwnRecords(account)) {
-      return res.status(409).json({ success: false, error: KEEP_ACCOUNT_WITH_RECORDS });
     }
     const deleted = await User.deleteEmployee(account._id);
     if (!deleted) {

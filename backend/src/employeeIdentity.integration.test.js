@@ -143,61 +143,45 @@ test('HR\'s saved name parts make the full name', async t => {
   assert.equal(update.mock.calls[0].arguments[1].name, 'Roselyn Mandia-Reyes');
 });
 
-test('an account with records is kept Inactive instead of deleted; one without records is deleted', async t => {
+test('an Inactive account is deleted, with records or without; an Active one is deactivated first', async t => {
   const inactive = { ...roselyn, accountStatus: 'Inactive' };
   t.mock.method(User, 'findByEmail', async () => hr);
-  t.mock.method(User, 'findEmployeeAccount', async () => inactive);
+  const find = t.mock.method(User, 'findEmployeeAccount', async () => inactive);
   t.mock.method(Announcement, 'createNotification', async data => data);
   const remove = t.mock.method(User, 'deleteEmployee', async () => inactive);
-  t.mock.method(DtrLog, 'hasOwnRecords', async () => true);
-  t.mock.method(Leave, 'hasOwnRecords', async () => false);
-  t.mock.method(DtrSubmission, 'hasOwnRecords', async () => false);
-  const kept = await request(app).delete(`/api/employees/${roselyn.employeeId}`).set('Authorization', `Bearer ${createAuthToken(hr)}`);
-  assert.equal(kept.status, 409);
-  assert.match(kept.body.error, /Keep the account Inactive instead/);
-  assert.equal(remove.mock.callCount(), 0);
+  const auth = ['Authorization', `Bearer ${createAuthToken(hr)}`];
 
-  DtrLog.hasOwnRecords.mock.mockImplementation(async () => false);
-  const deleted = await request(app).delete(`/api/employees/${roselyn.employeeId}`).set('Authorization', `Bearer ${createAuthToken(hr)}`);
+  const deleted = await request(app).delete(`/api/employees/${roselyn.email}`).set(...auth);
   assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
   assert.equal(remove.mock.callCount(), 1);
   assert.equal(remove.mock.calls[0].arguments[0], inactive._id);
+
+  // Active: not deleted until HR deactivates it.
+  find.mock.mockImplementation(async () => roselyn);
+  const active = await request(app).delete(`/api/employees/${roselyn.email}`).set(...auth);
+  assert.equal(active.status, 409);
+  assert.match(active.body.error, /Deactivate this account/);
+  // Not found.
+  find.mock.mockImplementation(async () => null);
+  assert.equal((await request(app).delete('/api/employees/64b000000000000000000009').set(...auth)).status, 404);
+  assert.equal(remove.mock.callCount(), 1);
 });
 
 test('HR deletes the very account chosen, even when another account shares its Employee ID', async t => {
-  // Two old accounts with the default ID: Lara (Inactive, with records) and Rose (Inactive, none).
+  // Two old accounts with the default ID.
   const lara = { _id: '64b000000000000000000001', name: 'Lara Montiano', email: 'lara@x.test', employeeId: 'DILG-2026-7689', accessLevel: 'employee', accountStatus: 'Inactive' };
   const rose = { _id: '64b000000000000000000002', name: 'Rose Reyes', email: 'rose@x.test', employeeId: 'DILG-2026-7689', accessLevel: 'employee', accountStatus: 'Inactive' };
   t.mock.method(User, 'findByEmail', async () => hr);
   const find = t.mock.method(User, 'findEmployeeAccount', async id => [lara, rose].find(person => person._id === id) || null);
   t.mock.method(Announcement, 'createNotification', async data => data);
   const remove = t.mock.method(User, 'deleteEmployee', async id => [lara, rose].find(person => person._id === id) || null);
-  const checked = [];
-  t.mock.method(DtrLog, 'hasOwnRecords', async owner => { checked.push(owner.name); return owner.name === 'Lara Montiano'; });
-  t.mock.method(Leave, 'hasOwnRecords', async () => false);
-  t.mock.method(DtrSubmission, 'hasOwnRecords', async () => false);
   const auth = ['Authorization', `Bearer ${createAuthToken(hr)}`];
 
   const deleted = await request(app).delete(`/api/employees/${rose._id}`).set(...auth);
   assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
   assert.equal(find.mock.calls[0].arguments[0], rose._id);
-  assert.deepEqual(checked, ['Rose Reyes']);
-  assert.equal(remove.mock.calls[0].arguments[0], rose._id);
+  assert.deepEqual(remove.mock.calls.map(call => call.arguments[0]), [rose._id]);
   assert.equal(deleted.body.id, rose._id);
-
-  // Lara has records: she is kept, and nothing else is deleted for her.
-  const kept = await request(app).delete(`/api/employees/${lara._id}`).set(...auth);
-  assert.equal(kept.status, 409);
-  assert.equal(remove.mock.callCount(), 1);
-
-  // An Active account is not deleted; one not found says so.
-  find.mock.mockImplementation(async () => ({ ...rose, accountStatus: 'Active' }));
-  const active = await request(app).delete(`/api/employees/${rose._id}`).set(...auth);
-  assert.equal(active.status, 409);
-  assert.match(active.body.error, /Deactivate this account/);
-  find.mock.mockImplementation(async () => null);
-  assert.equal((await request(app).delete('/api/employees/64b000000000000000000009').set(...auth)).status, 404);
-  assert.equal(remove.mock.callCount(), 1);
 });
 
 test("HR saves the date and cause of separation, checked against the date hired", async t => {

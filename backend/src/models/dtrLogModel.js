@@ -256,13 +256,6 @@ export const DtrLog = {
     return (await MongoDtrLog.updateMany(filter, { $set: set })).modifiedCount || 0;
   },
 
-  // True when one account has any attendance record (see utils/recordOwner.js).
-  hasOwnRecords: async owner => {
-    ensureConnected();
-    const filter = ownRecordsFilter(owner);
-    return Boolean(filter && await MongoDtrLog.exists(filter));
-  },
-
   // Changes on every Time In (a new record), Lunch Out, Lunch In, and Time Out (a record
   // closed). The location updates sent every minute during a shift are left out, so HR's
   // attendance list is not downloaded again for each of them.

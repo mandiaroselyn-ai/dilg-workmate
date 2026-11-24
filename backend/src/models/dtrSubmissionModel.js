@@ -78,13 +78,6 @@ export const DtrSubmission = {
     return (await MongoDtrSubmission.updateMany(filter, { $set: set })).modifiedCount || 0;
   },
 
-  // True when one account signed any DTR.
-  hasOwnRecords: async owner => {
-    ensureConnected();
-    const filter = ownRecordsFilter(owner);
-    return Boolean(filter && await MongoDtrSubmission.exists(filter));
-  },
-
   // An employee's submissions, newest month first.
   findForEmployee: async employeeId => {
     ensureConnected();
