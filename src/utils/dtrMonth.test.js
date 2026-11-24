@@ -99,6 +99,9 @@ test('the deduction reads as HR charged it, or else as it will be charged', () =
   const none = { tardinessDeductions: [{ month: '2026-10', days: 0.281, deductedDays: 0, withoutPayDays: 0.281 }] };
   assert.equal(monthDeductionText(none, 2026, 10, 135), '0.281 day without pay');
   assert.equal(monthDeductionText({ tardinessDeductions: [{ month: '2026-10', days: 0, deductedDays: 0, withoutPayDays: 0 }] }, 2026, 10, 0), 'None');
+  // Days absent without approved leave HR recorded with the charge: without pay, not charged.
+  const absent = { tardinessDeductions: [{ month: '2026-10', days: 0.281, deductedDays: 0.281, withoutPayDays: 0, absentDays: 2 }] };
+  assert.equal(monthDeductionText(absent, 2026, 10, 135), '0.281 day charged to vacation leave, 2 days absent without leave, without pay');
 });
 
 test('the DTR\'s summary shows late, undertime, the deduction, and overtime as not deducted', () => {

@@ -79,9 +79,11 @@ export const normalizeLeaveEarnings = (body, currentMonth) => {
 };
 
 // Validates HR's charging of one month's tardiness and undertime to vacation leave:
-// { month: 'YYYY-MM', deductions: [{ identifier, minutes }] }, where the minutes are each
-// employee's DTR total for that month. Only a month that has ended can be charged, so a DTR
-// still being filled in is never charged. `currentMonth` is this month, as YYYY-MM.
+// { month: 'YYYY-MM', deductions: [{ identifier, minutes, absentDates }] }, where the minutes
+// are each employee's DTR total for that month, and `absentDates` (optional) the working days of
+// that month (YYYY-MM-DD) the employee was absent without approved leave, recorded with the
+// charge as days without pay. Only a month that has ended can be charged, so a DTR still being
+// filled in is never charged. `currentMonth` is this month, as YYYY-MM.
 export const normalizeTardinessDeductions = (body, currentMonth) => {
   const month = typeof body?.month === 'string' ? body.month.trim() : '';
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { error: 'The month must be written like 2026-10.' };
@@ -97,7 +99,13 @@ export const normalizeTardinessDeductions = (body, currentMonth) => {
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 100000) {
       return { error: 'Tardiness and undertime must be a whole number of minutes from 0 to 100000.' };
     }
-    deductions.push({ identifier, minutes });
+    const dates = item?.absentDates ?? [];
+    if (!Array.isArray(dates) || dates.length > 31 || dates.some(date => typeof date !== 'string'
+      || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date.slice(0, 7) !== month
+      || Number.isNaN(Date.parse(`${date}T00:00:00Z`)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date)) {
+      return { error: `The days absent without approved leave must be dates in ${month}, written like ${month}-05.` };
+    }
+    deductions.push({ identifier, minutes, absentDates: [...new Set(dates)].sort() });
   }
   return { month, deductions };
 };

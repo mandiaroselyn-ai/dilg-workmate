@@ -480,6 +480,7 @@ export default function HRAdminView({
         loadedAttendanceMonths={loadedAttendanceMonths}
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         requests={requests}
+        holidays={holidays}
         onEmployeesChange={onEmployeesChange}
       />}
 

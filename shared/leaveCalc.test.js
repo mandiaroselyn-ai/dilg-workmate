@@ -64,6 +64,11 @@ test('a month\'s days without pay come from uncovered approved leave and tardine
   assert.equal(monthWithoutPayDays('2026-10', { requests, tardinessDeductions }), 1.581);
   assert.equal(monthWithoutPayDays('2026-11', { requests, tardinessDeductions }), 2);
   assert.equal(monthWithoutPayDays('2026-09', { requests, tardinessDeductions }), 0);
+  // Days absent without approved leave, recorded with the month's charge, are without pay too
+  // (CSC MC No. 41, s. 1998, Sec. 50), so they lower the leave earned that month.
+  const withAbsences = [{ month: '2026-10', withoutPayDays: 0.081, absentDays: 2, absentDates: ['2026-10-05', '2026-10-12'] }];
+  assert.equal(monthWithoutPayDays('2026-10', { requests, tardinessDeductions: withAbsences }), 3.581);
+  assert.equal(monthlyEarnedCredits(2), 1.167);
 });
 
 test('sick leave comes out of sick leave, then vacation leave, then is without pay', () => {

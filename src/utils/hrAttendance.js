@@ -253,14 +253,15 @@ const firstWorkDayOf = employee => {
 // latest of `from` (the first loaded day), the first day anyone's attendance was recorded in
 // WorkMate (so the days before the office used it are not absences), and the employee's own
 // first day; up to yesterday, or today once its office hours are over (`minutes` after midnight,
-// see isDayOver). A half day the employee missed is not an absence: the DTR counts it as
-// tardiness or undertime (CSC MC No. 17, s. 2010, see dtrDayLogs).
-export const absentDays = ({ employees = [], records = [], requests = [], holidays = [], from = '', today, minutes }) => {
+// see isDayOver), or up to `to` (YYYY-MM-DD) when that is earlier. A half day the employee missed
+// is not an absence: the DTR counts it as tardiness or undertime (CSC MC No. 17, s. 2010, see
+// dtrDayLogs).
+export const absentDays = ({ employees = [], records = [], requests = [], holidays = [], from = '', to = '', today, minutes }) => {
   const ownRecords = recordsForEmployees(records, employees);
   const firstRecorded = ownRecords.reduce((first, record) => (record.date && (!first || record.date < first) ? record.date : first), '');
   if (!firstRecorded || !today) return [];
   const start = [from, firstRecorded].filter(Boolean).sort().pop();
-  const last = isDayOver(today, minutes) ? today : previousDay(today);
+  const last = [isDayOver(today, minutes) ? today : previousDay(today), to].filter(Boolean).sort()[0];
   const ownRequests = recordsForEmployees(requests, employees);
   const days = [];
   for (const employee of activeEmployees(employees)) {

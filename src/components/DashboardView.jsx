@@ -322,7 +322,8 @@ export default function DashboardView({
                         {last && (
                           <p className="mt-1">
                             Last charged: <b className="text-slate-800">{lastMonth}</b>, {Number(last.days).toFixed(3)} day
-                            {last.withoutPayDays ? ` (${Number(last.withoutPayDays).toFixed(3)} day without pay)` : ''}.
+                            {last.withoutPayDays ? ` (${Number(last.withoutPayDays).toFixed(3)} day without pay)` : ''}
+                            {last.absentDays ? `; ${last.absentDays} day${last.absentDays === 1 ? '' : 's'} absent without approved leave, without pay` : ''}.
                           </p>
                         )}
                         {lastEarned && (

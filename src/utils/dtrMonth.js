@@ -114,13 +114,19 @@ export const monthDtrTotals = recordsByDay => Object.values(recordsByDay).reduce
 const dayText = days => `${Number(days).toFixed(3)} day`;
 
 // What the month's tardiness and undertime (`minutes`, its DTR total) take from the employee:
-// what HR charged for that month (`month` is 1–12) or, until then, what the CSC table will
+// what HR charged for that month (`month` is 1–12), with the days absent without approved leave
+// HR recorded with it (without pay, not charged to leave), or, until then, what the CSC table will
 // charge. Contract of service and job order workers have no leave to charge it to.
 export const monthDeductionText = (employee, year, month, minutes) => {
   const key = `${year}-${String(month).padStart(2, '0')}`;
   const charged = (employee?.tardinessDeductions || []).find(item => item.month === key);
+  const absent = Number(charged?.absentDays) || 0;
   const parts = charged
-    ? [charged.deductedDays && `${dayText(charged.deductedDays)} charged to vacation leave`, charged.withoutPayDays && `${dayText(charged.withoutPayDays)} without pay`]
+    ? [
+      charged.deductedDays && `${dayText(charged.deductedDays)} charged to vacation leave`,
+      charged.withoutPayDays && `${dayText(charged.withoutPayDays)} without pay`,
+      absent && `${absent} day${absent === 1 ? '' : 's'} absent without leave, without pay`
+    ]
     : [minutes && `${dayText(minutesToLeaveDays(minutes))} ${earnsLeaveCredits(employee) ? 'to be charged to vacation leave' : 'without pay'}`];
   return parts.filter(Boolean).join(', ') || 'None';
 };

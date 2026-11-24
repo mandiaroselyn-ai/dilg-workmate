@@ -274,4 +274,7 @@ test('absent days start when the office began using WorkMate, and skip leave, tr
   const monday = absentDays({ employees: [ana], records, requests, from: '2026-11-01', today: '2026-11-23', minutes: 10 * 60 });
   assert.equal(monday.some(day => ['2026-11-21', '2026-11-22'].includes(day.date)), false);
   assert.deepEqual(absentDays({ employees: [ana], records: [], today: '2026-11-20', minutes: 600 }), []);
+  // Up to `to`, for one month that has ended.
+  const upTo = absentDays({ employees: [ana, ben], records, requests, from: '2026-11-01', to: '2026-11-18', today: '2026-11-24', minutes: 10 * 60 });
+  assert.deepEqual(upTo.map(day => `${day.employee.employeeId} ${day.date}`).sort(), ['E1 2026-11-17', 'E2 2026-11-18']);
 });

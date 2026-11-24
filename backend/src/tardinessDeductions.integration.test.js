@@ -45,6 +45,53 @@ test('HR charges a month of tardiness and undertime to vacation leave by the CSC
   assert.match(notice.message, /0\.200 day was deducted from your vacation leave, and 0\.081 day is without pay/);
 });
 
+test('days absent without approved leave are recorded with the charge, without pay and not deducted', async t => {
+  const send = signIn(t);
+  const deductions = t.mock.method(User, 'deductTardiness', async (identifier, { month, minutes, days, absentDates }) => {
+    const entry = { month, minutes, days, deductedDays: days, withoutPayDays: 0, absentDays: absentDates.length, absentDates };
+    return { employee, entry };
+  });
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-03T02:00:00Z') });
+
+  // Tardiness and two absences: one notice says both.
+  const both = await send({ month: '2026-10', deductions: [{ identifier: 'EMP-4', minutes: 135, absentDates: ['2026-10-12', '2026-10-05'] }] });
+  assert.equal(both.status, 200, JSON.stringify(both.body));
+  assert.deepEqual(deductions.mock.calls[0].arguments[1].absentDates, ['2026-10-05', '2026-10-12']);
+  const notice = Announcement.createNotification.mock.calls[0].arguments[0];
+  assert.equal(notice.title, 'Leave Credits Deducted');
+  assert.match(notice.message, /0\.281 day was deducted from your vacation leave\. You were absent without approved leave on 2 days in October 2026 \(Oct 5, Oct 12\)\. Under CSC MC No\. 41, s\. 1998, Sec\. 50, those days are without pay and not deducted from your leave credits\./);
+
+  // Absences only: still notified.
+  await send({ month: '2026-10', deductions: [{ identifier: 'EMP-4', minutes: 0, absentDates: ['2026-10-05'] }] });
+  const absentOnly = Announcement.createNotification.mock.calls[1].arguments[0];
+  assert.equal(absentOnly.title, 'Absences Without Pay');
+  assert.match(absentOnly.message, /^You were absent without approved leave on 1 day in October 2026 \(Oct 5\)\. .*that day is without pay/);
+
+  // Dates outside the month are refused.
+  const outside = await send({ month: '2026-10', deductions: [{ identifier: 'EMP-4', minutes: 0, absentDates: ['2026-11-02'] }] });
+  assert.equal(outside.status, 400);
+  assert.equal(deductions.mock.callCount(), 2);
+});
+
+test('days absent without approved leave lower the leave earned that month', async t => {
+  const { Leave } = await import('./models/leaveModel.js');
+  t.mock.method(User, 'findByEmail', async email => (email === hrAdmin.email ? hrAdmin : null));
+  t.mock.method(User, 'findByEmployeeId', async () => ({ ...employee, tardinessDeductions: [{ month: '2026-10', withoutPayDays: 0, absentDays: 2, absentDates: ['2026-10-05', '2026-10-12'] }] }));
+  t.mock.method(Leave, 'findAbsencesOfEmployee', async () => []);
+  const credits = t.mock.method(User, 'creditMonthlyEarnings', async (identifier, { month, withoutPayDays, earned }) => ({
+    employee, entry: { month, withoutPayDays, earned }
+  }));
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-03T02:00:00Z') });
+
+  const response = await request(app).post('/api/employees/leave-earnings').set('Authorization', `Bearer ${createAuthToken(hrAdmin)}`).send({ month: '2026-10', identifiers: ['EMP-4'] });
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const [, credit] = credits.mock.calls[0].arguments;
+  // 1.25 × (30 − 2) / 30.
+  assert.equal(credit.withoutPayDays, 2);
+  assert.equal(credit.earned, 1.167);
+});
+
 test('a month already charged is not charged again', async t => {
   const send = signIn(t);
   t.mock.method(User, 'deductTardiness', async () => ({ alreadyDeducted: { month: '2026-10', days: 0.281 } }));

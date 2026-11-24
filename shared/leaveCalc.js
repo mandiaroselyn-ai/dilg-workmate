@@ -48,14 +48,21 @@ export const monthServiceDays = (month, dateHired) => {
 
 // One employee's days of leave without pay in a month (YYYY-MM), which lower that month's
 // earned credits: the part of their approved leave that their credits could not cover (counted
-// in the month the leave starts), and the tardiness and undertime charged without pay for
-// that month. `requests` are the employee's own; `tardinessDeductions` are on their account.
-export const monthWithoutPayDays = (month, { requests = [], tardinessDeductions = [] } = {}) => round3(
-  requests
-    .filter(request => request?.type === 'Leave Request' && request.status === 'Approved' && dayOf(request.startDate).startsWith(month))
-    .reduce((total, request) => total + (Number(request.creditCharge?.withoutPayDays) || 0), 0)
-  + (Number(tardinessDeductions.find(item => item?.month === month)?.withoutPayDays) || 0)
-);
+// in the month the leave starts), the tardiness and undertime charged without pay for that
+// month, and the days they were absent without approved leave, which HR recorded with that
+// charge (`absentDays`): those are without pay and not deducted from leave credits (CSC MC
+// No. 41, s. 1998, Sec. 50). `requests` are the employee's own; `tardinessDeductions` are on
+// their account.
+export const monthWithoutPayDays = (month, { requests = [], tardinessDeductions = [] } = {}) => {
+  const charged = tardinessDeductions.find(item => item?.month === month);
+  return round3(
+    requests
+      .filter(request => request?.type === 'Leave Request' && request.status === 'Approved' && dayOf(request.startDate).startsWith(month))
+      .reduce((total, request) => total + (Number(request.creditCharge?.withoutPayDays) || 0), 0)
+    + (Number(charged?.withoutPayDays) || 0)
+    + (Number(charged?.absentDays) || 0)
+  );
+};
 
 // Which balance an approved leave type is charged to first: Vacation and Mandatory/Forced
 // leave to vacation leave, Sick leave to sick leave. Others (maternity, special privilege, and

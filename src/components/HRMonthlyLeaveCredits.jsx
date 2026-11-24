@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronDown, Scale } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
@@ -10,11 +10,14 @@ import { apiFetch } from '../utils/api';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { durationText } from '../utils/dtrDay';
 import { monthUndertimeMinutes } from '../utils/dtrMonth';
-import { activeEmployees, dtrIssue } from '../utils/hrAttendance';
+import { absentDays, activeEmployees, dtrIssue } from '../utils/hrAttendance';
 
 const monthLabel = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const daysText = days => `${Number(days || 0).toFixed(3)} day`;
 const employeeId = employee => employee.employeeId || employee.email || '';
+// "Oct 5, Oct 12" for dates written YYYY-MM-DD.
+const datesText = dates => dates.map(date => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })).join(', ');
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const sameEmployee = (a, b) => employeeId(a).toLowerCase() === employeeId(b).toLowerCase();
 
 // The month before this one, as YYYY-MM: the latest month that has ended.
@@ -31,13 +34,16 @@ const lastEndedMonth = () => {
 // 2. the month's earned leave credited: 1.25 days of vacation and of sick leave (1.25/30 for each
 //    day of service in the month the employee was hired), less 1.25/30 for each day without pay
 //    that month (unpaid leave and unpaid tardiness, so step 1 comes first).
+// Step 1 also records the working days the employee was absent without approved leave (see
+// absentDays): those are without pay and not deducted from leave credits (CSC MC No. 41, s. 1998,
+// Sec. 50), and step 2 earns 1.25/30 less for each, as for leave without pay.
 // Each step is done once per month and employee, and the employee is notified. Contract of
 // service and job order workers earn no leave credits, so step 2 leaves them out; their
 // tardiness in step 1 is all without pay.
 // `canChangeCredits`: only HR 2 charges and credits leave (shared/hrSteps.js); other HR accounts only see the month.
 // `creditsStart`: the month WorkMate starts counting leave credits (shared/leaveStart.js). Months
 // before it are on the leave cards, and an employee waiting for a starting balance is skipped.
-export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange, canChangeCredits = true }) {
+export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [], attendanceHistory = [], requests = [], holidays = [], attendanceFrom = '', loadedMonths = [], onLoadMonth, onEmployeesChange, canChangeCredits = true }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(lastEndedMonth);
   const [saving, setSaving] = useState(false);
@@ -50,16 +56,32 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
   const monthLoaded = month >= (attendanceFrom || '').slice(0, 7) || loadedMonths.includes(month);
   const [year, monthNumber] = month.split('-').map(Number);
   const monthRecords = attendanceHistory.filter(record => (record.date || '').startsWith(month));
+  // The working days of the month each employee was absent without approved leave, by employee
+  // ID (worked out only while this is open, as it goes through every day of the month).
+  const absences = useMemo(() => {
+    const byEmployee = new Map();
+    if (!open || !monthLoaded) return byEmployee;
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const days = absentDays({ employees, records: attendanceHistory, requests, holidays, from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, '0')}`, today, minutes: 0 });
+    for (const { date, employee } of days) {
+      const key = employeeId(employee).toLowerCase();
+      byEmployee.set(key, [...(byEmployee.get(key) || []), date].sort());
+    }
+    return byEmployee;
+  }, [open, monthLoaded, month, year, monthNumber, employees, attendanceHistory, requests, holidays, today]);
   const rows = activeEmployees(employees).map(employee => {
     const records = monthRecords.filter(record => matchesAttendanceEmployee(record, employee));
     const minutes = monthUndertimeMinutes(records, year, monthNumber);
     const charged = (employee.tardinessDeductions || []).find(item => item.month === month) || null;
     const credited = (employee.leaveEarnings || []).find(item => item.month === month) || null;
+    // The days absent without approved leave: as recorded with the charge, or, until then, as the
+    // DTR has them now (and counted without pay ahead of the charge, for the leave to be earned).
+    const absent = charged ? charged.absentDates || [] : absences.get(employeeId(employee).toLowerCase()) || [];
     // Days without pay this month, as the server reads them when it credits the month.
     const withoutPayDays = monthWithoutPayDays(month, {
       requests: requests.filter(request => matchesAttendanceEmployee(request, employee)),
       tardinessDeductions: employee.tardinessDeductions || []
-    });
+    }) + (charged ? 0 : absent.length);
     // Days of service this month, from the date hired: fewer than 30 in the month hired.
     const serviceDays = monthServiceDays(month, employee.dateHired);
     const earnsLeave = earnsLeaveCredits(employee);
@@ -70,6 +92,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
       days: minutesToLeaveDays(minutes),
       charged,
       credited,
+      absent,
       withoutPayDays,
       // As credited (months credited before days of service were kept were full months).
       shownServiceDays: credited ? credited.serviceDays ?? 30 : serviceDays,
@@ -122,10 +145,12 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
     if (!chargeRows.length || saving) return;
     const totalDays = Math.round(chargeRows.reduce((total, row) => total + row.days, 0) * 1000) / 1000;
     const who = chargeRows.length === 1 ? chargeRows[0].employee.name || 'this employee' : `${chargeRows.length} employees`;
-    if (!window.confirm(`Charge ${monthLabel(month)} tardiness and undertime of ${who} to vacation leave (${daysText(totalDays)} in all)? Each month is charged once and cannot be undone here.${issueWarning}`)) return;
+    const absentTotal = chargeRows.reduce((total, row) => total + row.absent.length, 0);
+    const absentText = absentTotal ? `, and record ${plural(absentTotal, 'day')} absent without approved leave as without pay (not charged to leave)` : '';
+    if (!window.confirm(`Charge ${monthLabel(month)} tardiness and undertime of ${who} to vacation leave (${daysText(totalDays)} in all)${absentText}? Each month is charged once and cannot be undone here.${issueWarning}`)) return;
     post('/api/employees/tardiness-deductions', {
       month,
-      deductions: chargeRows.map(row => ({ identifier: employeeId(row.employee), minutes: row.minutes }))
+      deductions: chargeRows.map(row => ({ identifier: employeeId(row.employee), minutes: row.minutes, absentDates: row.absent }))
     }, 'deducted', 'charged');
   };
 
@@ -167,7 +192,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
             )}
           </div>
           <p className="text-xs text-slate-500">
-            Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge step 1 first. In the month an employee was hired, they earn 1.25/30 for each day from their Date Hired (CSC Table II), so fill in each new employee's Date Hired first.
+            Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. A working day absent without approved leave is without pay and is not deducted from leave credits (CSC MC No. 41, s. 1998, Sec. 50); step 1 records it, so have any leave for those days filed and approved first. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge step 1 first. In the month an employee was hired, they earn 1.25/30 for each day from their Date Hired (CSC Table II), so fill in each new employee's Date Hired first.
           </p>
           {beforeStart ? (
             <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">{beforeStart}</p>
@@ -203,6 +228,13 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
                         <button type="button" onClick={() => charge([row])} disabled={!canChangeCredits || saving} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 font-black text-blue-700 disabled:opacity-50">Charge</button>
                       )}
                     </div>
+                    {row.absent.length > 0 && (
+                      <p className="text-slate-600">
+                        Absent without approved leave: <b className="text-rose-700">{plural(row.absent.length, 'day')}</b> ({datesText(row.absent)}) · without pay
+                        {withoutPayAmount(row.employee, row.absent.length) ? ` (${pesoText(withoutPayAmount(row.employee, row.absent.length))})` : ''}, not charged to leave
+                        {row.charged ? '' : '. File and approve any leave for these days before charging.'}
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-slate-600">
                         2. Earned: +{daysText(row.credited ? row.credited.earned : row.earned)} VL and SL

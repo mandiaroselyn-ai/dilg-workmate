@@ -466,6 +466,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
         employees={employees}
         attendanceHistory={attendanceHistory}
         requests={requests}
+        holidays={holidays}
         attendanceFrom={attendanceFrom}
         loadedMonths={loadedAttendanceMonths}
         onLoadMonth={onLoadAttendanceMonth}

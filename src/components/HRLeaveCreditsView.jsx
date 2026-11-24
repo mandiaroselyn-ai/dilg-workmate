@@ -17,7 +17,7 @@ const daysText = value => Number(value ?? 0).toFixed(3);
 // and each ended month's tardiness charge and earned leave. Only HR 2 changes them; HR 1 sees
 // them in Employee Management and DTR Records. Contract of service and job order workers earn no
 // leave credits, so they are not listed.
-export default function HRLeaveCreditsView({ user = {}, employees = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth, requests = [], onEmployeesChange }) {
+export default function HRLeaveCreditsView({ user = {}, employees = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth, requests = [], holidays = [], onEmployeesChange }) {
   const canEdit = canChangeLeaveCredits(user);
   const [creditsStart, setCreditsStart] = useLeaveCreditsStart();
   const [search, setSearch] = useState('');
@@ -55,6 +55,7 @@ export default function HRLeaveCreditsView({ user = {}, employees = [], attendan
         employees={employees}
         attendanceHistory={attendanceHistory}
         requests={requests}
+        holidays={holidays}
         attendanceFrom={attendanceFrom}
         loadedMonths={loadedAttendanceMonths}
         onLoadMonth={onLoadAttendanceMonth}

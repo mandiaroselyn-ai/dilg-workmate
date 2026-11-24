@@ -438,10 +438,17 @@ export const updateEmployeeLeaveCredits = async (req, res) => {
   }
 };
 
+// "Oct 5, Oct 12" for dates written YYYY-MM-DD.
+const shortDatesText = dates => dates
+  .map(date => new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }))
+  .join(', ');
+
 // Charges one month's tardiness and undertime to each listed employee's vacation leave, as
 // government DTRs are charged: the minutes are each employee's DTR total for that month, and
-// the CSC table converts them into days. Each month is charged once per employee, and each
-// employee charged is notified.
+// the CSC table converts them into days. The days the employee was absent without approved
+// leave that month are recorded with it: without pay, and not deducted from leave credits (CSC
+// MC No. 41, s. 1998, Sec. 50), so they lower the leave earned that month. Each month is charged
+// once per employee, and each employee charged is notified.
 export const deductTardinessCredits = async (req, res) => {
   try {
     const { month, deductions, error } = normalizeTardinessDeductions(req.body, getManilaDateString().slice(0, 7));
@@ -453,7 +460,7 @@ export const deductTardinessCredits = async (req, res) => {
     const changedBy = req.user?.name || req.user?.email || 'HR/Admin';
     const label = monthLabel(month);
     const results = [];
-    for (const { identifier, minutes } of deductions) {
+    for (const { identifier, minutes, absentDates = [] } of deductions) {
       // The starting balance comes first, as entering it replaces the balance.
       const account = start ? await User.findAccount(identifier) : null;
       if (account && needsStartingBalance(account, start)) {
@@ -463,7 +470,7 @@ export const deductTardinessCredits = async (req, res) => {
       const days = minutesToLeaveDays(minutes);
       const reason = entry => `Tardiness and undertime, ${label}: ${minutesText(minutes)} = ${entry.days.toFixed(3)} day`
         + (entry.withoutPayDays ? `; ${entry.withoutPayDays.toFixed(3)} day without pay (not enough vacation leave)` : '');
-      const result = await User.deductTardiness(identifier, { month, minutes, days, reason }, { changedBy });
+      const result = await User.deductTardiness(identifier, { month, minutes, days, absentDates, reason }, { changedBy });
       if (!result) {
         results.push({ identifier, status: 'not-found' });
         continue;
@@ -473,12 +480,20 @@ export const deductTardinessCredits = async (req, res) => {
         continue;
       }
       const { employee, entry } = result;
-      if (entry.days > 0) {
-        await Announcement.createNotification({
-          title: 'Leave Credits Deducted',
-          message: `Your tardiness and undertime for ${label}, ${minutesText(minutes)}, equal ${entry.days.toFixed(3)} day under the CSC table. `
+      const absent = entry.absentDates || [];
+      if (entry.days > 0 || absent.length) {
+        const tardinessText = entry.days > 0
+          ? `Your tardiness and undertime for ${label}, ${minutesText(minutes)}, equal ${entry.days.toFixed(3)} day under the CSC table. `
             + `${entry.deductedDays.toFixed(3)} day was deducted from your vacation leave`
-            + (entry.withoutPayDays ? `, and ${entry.withoutPayDays.toFixed(3)} day is without pay because your vacation leave was not enough.` : '.'),
+            + (entry.withoutPayDays ? `, and ${entry.withoutPayDays.toFixed(3)} day is without pay because your vacation leave was not enough.` : '.')
+          : '';
+        const absentText = absent.length
+          ? `You were absent without approved leave on ${absent.length} day${absent.length === 1 ? '' : 's'} in ${label} (${shortDatesText(absent)}). `
+            + `Under CSC MC No. 41, s. 1998, Sec. 50, ${absent.length === 1 ? 'that day is' : 'those days are'} without pay and not deducted from your leave credits.`
+          : '';
+        await Announcement.createNotification({
+          title: entry.days > 0 ? 'Leave Credits Deducted' : 'Absences Without Pay',
+          message: [tardinessText, absentText].filter(Boolean).join(' '),
           type: 'system',
           view: 'dashboard',
           employeeId: employee.employeeId || '',

@@ -56,8 +56,14 @@ test('only an ended month can be charged, with whole minutes for each employee',
   const current = '2026-11';
   assert.deepEqual(normalizeTardinessDeductions({ month: '2026-10', deductions: [{ identifier: 'EMP-1', minutes: 135 }] }, current), {
     month: '2026-10',
-    deductions: [{ identifier: 'EMP-1', minutes: 135 }]
+    deductions: [{ identifier: 'EMP-1', minutes: 135, absentDates: [] }]
   });
+  // The days absent without approved leave come with the charge, once each and in order.
+  assert.deepEqual(normalizeTardinessDeductions({ month: '2026-10', deductions: [{ identifier: 'EMP-1', minutes: 0, absentDates: ['2026-10-12', '2026-10-05', '2026-10-12'] }] }, current).deductions,
+    [{ identifier: 'EMP-1', minutes: 0, absentDates: ['2026-10-05', '2026-10-12'] }]);
+  for (const absentDates of [['2026-11-02'], ['2026-10-32'], ['Oct 5'], '2026-10-05', [5]]) {
+    assert.match(normalizeTardinessDeductions({ month: '2026-10', deductions: [{ identifier: 'EMP-1', minutes: 0, absentDates }] }, current).error, /absent without approved leave must be dates in 2026-10/, JSON.stringify(absentDates));
+  }
   assert.match(normalizeTardinessDeductions({ month: '2026-11', deductions: [{ identifier: 'EMP-1', minutes: 5 }] }, current).error, /month that has ended/);
   assert.match(normalizeTardinessDeductions({ month: 'Oct', deductions: [] }, current).error, /written like/);
   assert.match(normalizeTardinessDeductions({ month: '2026-10', deductions: [] }, current).error, /at least one employee/);

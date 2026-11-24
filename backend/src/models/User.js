@@ -169,7 +169,9 @@ const UserSchema = new mongoose.Schema({
   },
   // Each month whose tardiness and undertime were charged to vacation leave (once a month):
   // the minutes, the days they convert to, how much of that came out of vacation leave, and
-  // the rest without pay when vacation leave was not enough.
+  // the rest without pay when vacation leave was not enough. With it, the working days the
+  // employee was absent without approved leave that month: without pay, and not deducted from
+  // leave credits (CSC MC No. 41, s. 1998, Sec. 50).
   tardinessDeductions: {
     type: [{
       month: { type: String, required: true }, // YYYY-MM
@@ -177,6 +179,8 @@ const UserSchema = new mongoose.Schema({
       days: Number,
       deductedDays: Number,
       withoutPayDays: Number,
+      absentDays: { type: Number, default: 0 },
+      absentDates: { type: [String], default: [] },
       deductedAt: { type: Date, default: Date.now },
       deductedBy: { type: String, default: '' }
     }],
@@ -1009,10 +1013,11 @@ export const User = {
 
   // Charges one month's tardiness and undertime (`minutes`, which convert to `days`) to an
   // employee's vacation leave, once per month. When vacation leave is not enough it goes to
-  // zero and the rest is without pay. The change is added to the leave credit history (when
-  // anything is charged). Returns { employee, entry }, { alreadyDeducted: entry } when the
-  // month was already charged, or null when no employee account matches.
-  deductTardiness: async (identifier, { month, minutes, days, reason }, { changedBy }) => {
+  // zero and the rest is without pay. The days absent without approved leave (`absentDates`)
+  // are kept with it, without pay and not deducted. The change is added to the leave credit
+  // history (when anything is charged). Returns { employee, entry }, { alreadyDeducted: entry }
+  // when the month was already charged, or null when no employee account matches.
+  deductTardiness: async (identifier, { month, minutes, days, absentDates = [], reason }, { changedBy }) => {
     ensureConnected();
     const value = identifier?.toString().trim();
     if (!value) return null;
@@ -1030,7 +1035,7 @@ export const User = {
 
     const previousVacation = Number(employee.vacationLeaveCredits ?? DEFAULT_LEAVE_CREDITS);
     const { deductedDays, withoutPayDays, vacationLeaveCredits } = tardinessCharge(previousVacation, days);
-    const entry = { month, minutes, days, deductedDays, withoutPayDays, deductedAt: new Date(), deductedBy: changedBy };
+    const entry = { month, minutes, days, deductedDays, withoutPayDays, absentDays: absentDates.length, absentDates, deductedAt: new Date(), deductedBy: changedBy };
     const history = days > 0 ? [{
       changedAt: entry.deductedAt,
       changedBy,
