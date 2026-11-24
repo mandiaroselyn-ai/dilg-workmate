@@ -206,6 +206,19 @@ export const missingDtrLog = record => (!record?.timeIn ? 'Missing Time In'
   : !record.timeOut ? 'Missing Time Out'
     : missingLunchLog(record) || '');
 
+// An employee's days from `from` (YYYY-MM-DD) to `today` whose DTR still lacks a log (Missing Time
+// Out, Missing Lunch Out, or Missing Lunch In; see missingDtrLog), newest first, as
+// [{ date, record, missing }], for the reminder to have HR correct them before the DTR is signed.
+// Today counts only once its shift is timed out. A record left out of the DTR (an offline Time In
+// HR rejected) or set Absent by HR does not count. A day HR corrected drops off.
+export const incompleteDtrDays = ({ records = [], today, from = '' }) => records
+  .filter(record => record?.timeIn && record.date && record.date >= from && record.date <= today
+    && !(record.date === today && !record.timeOut)
+    && !isRejectedOffline(record) && !/absent/i.test(record.status || ''))
+  .map(record => ({ date: record.date, record, missing: missingDtrLog(record) }))
+  .filter(item => item.missing)
+  .sort((a, b) => b.date.localeCompare(a.date));
+
 // How a record reads in the DTR lists and reports: its `status` (see dtrRecordStatus), the
 // `label` to show (the log an Incomplete record lacks, such as Missing Time Out), and `lateToo`
 // when an open or incomplete record is late as well, which its status alone does not say.

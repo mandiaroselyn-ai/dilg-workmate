@@ -12,6 +12,7 @@ import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 import LiveFaceCamera from './LiveFaceCamera';
 import PunchReceipt from './PunchReceipt';
+import MissingLogReminder from './MissingLogReminder';
 
 import { describeTimeInFingerprintError, PROMPT_STILL_OPEN_MESSAGE } from '../utils/fingerprintMessages.js';
 const fetch = apiFetch;
@@ -1466,7 +1467,9 @@ export default function AttendanceView({
 
   return (
     <div className="p-4 sm:p-8 pb-24 md:pb-8 space-y-8 overflow-y-auto flex-1 id-attendance-view">
-      
+      {/* Earlier days still missing a log, for HR to correct (Time In is not blocked by them). */}
+      <MissingLogReminder records={personalLogs} today={today} />
+
       {/* Attendance Control Center */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         

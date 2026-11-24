@@ -11,6 +11,7 @@ import {
   dtrTimeOut,
   employeeDayStatus,
   geofenceStateOf,
+  incompleteDtrDays,
   liveLocationFor,
   isOfflineReviewPending,
   isOfflineTimeOutPending,
@@ -324,4 +325,27 @@ test('absent days start when the office began using WorkMate, and skip leave, tr
   // Up to `to`, for one month that has ended.
   const upTo = absentDays({ employees: [ana, ben], records, requests, from: '2026-11-01', to: '2026-11-18', today: '2026-11-24', minutes: 10 * 60 });
   assert.deepEqual(upTo.map(day => `${day.employee.employeeId} ${day.date}`).sort(), ['E1 2026-11-17', 'E2 2026-11-18']);
+});
+
+test('the reminder lists the days still missing a log, for HR to correct', () => {
+  const day = (date, extra = {}) => ({ id: date, date, timeIn: '07:00 AM', ...extra });
+  const records = [
+    day('2026-11-24', { timeIn: '07:05 AM' }), // today, still on duty: not yet
+    day('2026-11-23', { timeIn: '07:20 AM' }), // no Time Out
+    day('2026-11-20', { lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '04:00 PM' }), // complete
+    day('2026-11-18', { timeIn: '06:42 PM' }), // no Time Out (afternoon only: no lunch logs)
+    day('2026-11-17', { lunchOut: '12:00 PM', timeOut: '04:00 PM' }), // no Lunch In
+    day('2026-11-16', { offlineTimeIn: { reviewReasons: ['x'], decision: 'rejected' } }), // left out of the DTR
+    day('2026-11-13', { status: 'Absent' }), // set Absent by HR
+    day('2026-09-30') // before last month
+  ];
+  const days = incompleteDtrDays({ records, today: '2026-11-24', from: '2026-10-01' });
+  assert.deepEqual(days.map(item => `${item.date} ${item.missing}`), [
+    '2026-11-23 Missing Time Out',
+    '2026-11-18 Missing Time Out',
+    '2026-11-17 Missing Lunch In'
+  ]);
+  // Today counts once it is timed out without its lunch logs.
+  const timedOut = [day('2026-11-24', { timeOut: '04:00 PM' })];
+  assert.deepEqual(incompleteDtrDays({ records: timedOut, today: '2026-11-24', from: '2026-10-01' }).map(item => item.missing), ['Missing Lunch Out']);
 });

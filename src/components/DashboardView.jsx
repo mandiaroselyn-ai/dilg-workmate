@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import backgroundImage from '../assets/login-bg.jpg';
 import AttendanceTodayCard from './AttendanceTodayCard';
+import MissingLogReminder from './MissingLogReminder';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { approvedTravelOrderOn, travelOrderCovers } from '../../shared/travelStatus';
 import { YEARLY_LEAVES, WELLNESS_LEAVE, yearlyLeaveLeft } from '../../shared/yearlyLeave';
@@ -193,6 +194,8 @@ export default function DashboardView({
               </div>
             </div>
           </div>
+
+          <MissingLogReminder records={personalAttendanceHistory} today={today} />
 
           <DashboardSection
             title="Attendance Today"
