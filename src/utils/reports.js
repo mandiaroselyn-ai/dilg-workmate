@@ -2,7 +2,7 @@ import { minutesToLeaveDays } from '../../shared/leaveConversion.js';
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
 import { durationText } from './dtrDay.js';
 import { dtrEntry } from './dtrMonth.js';
-import { dtrRecordStatus, totalHoursWorked } from './hrAttendance.js';
+import { absentDays, dtrRecordStatus, totalHoursWorked } from './hrAttendance.js';
 import { travelDayCount } from './travelDuration.js';
 
 // HR's reports: attendance, leave, and travel orders, filtered by employee, date range,
@@ -11,7 +11,8 @@ import { travelDayCount } from './travelDuration.js';
 export const REPORT_TYPES = [
   { id: 'attendance', label: 'Attendance' },
   { id: 'leave', label: 'Leave' },
-  { id: 'travel', label: 'Travel Order' }
+  { id: 'travel', label: 'Travel Order' },
+  { id: 'absence', label: 'Absences' }
 ];
 
 export const ATTENDANCE_STATUSES = ['Complete', 'Late', 'Incomplete', 'On Duty'];
@@ -221,10 +222,43 @@ const travelReport = ({ requests, employees, filters }) => {
   };
 };
 
-// The report of `type` ('attendance', 'leave', or 'travel') for these filters:
+// Every working day an employee was absent: no Time In, and no approved leave or Travel Order
+// (see absentDays). `from` is the first loaded day of attendance, and `minutes` the time now.
+const absenceReport = ({ records, requests, employees, holidays, filters, from, today, minutes }) => {
+  const rows = absentDays({ employees, records, requests, holidays, from, today, minutes })
+    .filter(({ date, employee }) => isFor(employee, employee, filters, employees) && overlaps(date, date, filters.from, filters.to))
+    .map(({ date, employee }) => ({
+      sortDate: date,
+      date,
+      employee: employee.name || 'Unnamed employee',
+      employeeId: employee.employeeId || '',
+      office: employee.office || '',
+      note: 'No Time In, and no approved leave or Travel Order'
+    }))
+    .sort(byDateThenName);
+  return {
+    title: 'Absence Report',
+    note: 'Working days (not Saturdays, Sundays, or holidays) with no Time In and no approved leave or Travel Order, counted from the first day attendance was recorded in WorkMate and from each employee\'s hiring. Days before the loaded months are not included.',
+    columns: [
+      { key: 'date', label: 'Date' },
+      { key: 'employee', label: 'Employee' },
+      { key: 'employeeId', label: 'Employee ID' },
+      { key: 'office', label: 'Office' },
+      { key: 'note', label: 'Remarks' }
+    ],
+    rows,
+    summary: [
+      { label: 'Absent days', value: rows.length },
+      { label: 'Employees', value: new Set(rows.map(row => row.employeeId || row.employee)).size }
+    ]
+  };
+};
+
+// The report of `type` ('attendance', 'leave', 'travel', or 'absence') for these filters:
 // { employee (employeeKey), from, to (YYYY-MM-DD), office, status }, any of them empty.
 // Only records and requests of current employee accounts are included.
-export const buildReport = ({ type, records = [], requests = [], employees = [], filters = {}, today = '' }) => {
+export const buildReport = ({ type, records = [], requests = [], employees = [], filters = {}, today = '', holidays = [], from = '', minutes = 24 * 60 }) => {
+  if (type === 'absence') return absenceReport({ records, requests, employees, holidays, filters, from, today, minutes });
   if (type === 'leave') return leaveReport({ requests, employees, filters });
   if (type === 'travel') return travelReport({ requests, employees, filters });
   return attendanceReport({ records, employees, filters, today });

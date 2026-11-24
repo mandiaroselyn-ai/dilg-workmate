@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { FileSpreadsheet, Printer, RotateCcw } from 'lucide-react';
-import { getManilaDateString } from '../../shared/localDate';
+import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { downloadBytes } from '../utils/documentFiles';
 import {
   ATTENDANCE_STATUSES,
@@ -22,7 +22,7 @@ const labelClass = 'block text-[10px] font-black uppercase tracking-wide text-sl
 // HR's reports on attendance, leave, and travel orders: filtered by employee, dates,
 // office (department), and status, previewed here, and exported as CSV or printed (or saved
 // as PDF from the print dialog). Attendance covers the months loaded on this page.
-export default function HRReportsView({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', generatedBy = '' }) {
+export default function HRReportsView({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', generatedBy = '', holidays = [] }) {
   const today = getManilaDateString();
   const firstOfMonth = `${today.slice(0, 7)}-01`;
   const emptyFilters = { employee: '', from: firstOfMonth, to: today, office: '', status: '' };
@@ -38,11 +38,12 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
     () => [...new Set(employees.map(employee => employee.office).filter(Boolean))].sort(),
     [employees]
   );
-  const statuses = type === 'attendance' ? ATTENDANCE_STATUSES : REQUEST_STATUSES;
+  // An absence has no status to filter by.
+  const statuses = type === 'attendance' ? ATTENDANCE_STATUSES : type === 'absence' ? [] : REQUEST_STATUSES;
 
   const report = useMemo(
-    () => buildReport({ type, records: attendanceHistory, requests, employees, filters, today }),
-    [type, attendanceHistory, requests, employees, filters, today]
+    () => buildReport({ type, records: attendanceHistory, requests, employees, filters, today, holidays, from: attendanceFrom, minutes: getManilaMinutesOfDay() }),
+    [type, attendanceHistory, requests, employees, filters, today, holidays, attendanceFrom]
   );
   const filtersText = describeFilters(filters, employees);
 

@@ -3,6 +3,7 @@ import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLu
 import { travelOrderCovers } from '../../shared/travelStatus.js';
 import { holidaysFor } from '../../shared/phHolidays.js';
 import { isFixedHoursDay, OFFICE_HOURS } from '../../shared/officeHours.js';
+import { getManilaDateString } from '../../shared/localDate.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -212,4 +213,50 @@ export const mergeRecentAttendance = (previous = [], recent = [], loadedMonths =
 export const mergeAttendanceMonth = (previous = [], monthRecords = []) => {
   const ids = new Set(monthRecords.map(record => record.id));
   return [...previous.filter(record => !ids.has(record.id)), ...monthRecords].sort(newestFirst);
+};
+
+// The next calendar day of `date` (YYYY-MM-DD).
+const nextDay = date => {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + 1);
+  return day.toISOString().slice(0, 10);
+};
+const previousDay = date => {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+};
+
+// The first day an employee is expected at work in WorkMate: their hiring date, or the day
+// their account was made ('' when neither is known).
+const firstWorkDayOf = employee => {
+  const hired = String(employee?.dateHired || '').slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(hired)) return hired;
+  const created = employee?.createdAt ? new Date(employee.createdAt) : null;
+  return created && !Number.isNaN(created.getTime()) ? getManilaDateString(created) : '';
+};
+
+// Every day an active employee was Absent (a working day with no Time In and no approved leave
+// or Travel Order, see employeeDayStatus), as [{ date, employee }]. Days are counted from the
+// latest of `from` (the first loaded day), the first day anyone's attendance was recorded in
+// WorkMate (so the days before the office used it are not absences), and the employee's own
+// first day; up to yesterday, or today once its latest on-time arrival (`minutes` after
+// midnight) has passed.
+export const absentDays = ({ employees = [], records = [], requests = [], holidays = [], from = '', today, minutes }) => {
+  const ownRecords = recordsForEmployees(records, employees);
+  const firstRecorded = ownRecords.reduce((first, record) => (record.date && (!first || record.date < first) ? record.date : first), '');
+  if (!firstRecorded || !today) return [];
+  const start = [from, firstRecorded].filter(Boolean).sort().pop();
+  const last = isBeforeLatestArrival(today, minutes) ? previousDay(today) : today;
+  const ownRequests = recordsForEmployees(requests, employees);
+  const days = [];
+  for (const employee of activeEmployees(employees)) {
+    const first = [start, firstWorkDayOf(employee)].filter(Boolean).sort().pop();
+    for (let date = first; date <= last; date = nextDay(date)) {
+      if (employeeDayStatus(employee, { records: ownRecords, requests: ownRequests, date, holidays, today }).status === 'Absent') {
+        days.push({ date, employee });
+      }
+    }
+  }
+  return days.sort((a, b) => b.date.localeCompare(a.date) || String(a.employee.name || '').localeCompare(String(b.employee.name || '')));
 };
