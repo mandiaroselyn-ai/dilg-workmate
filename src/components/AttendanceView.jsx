@@ -356,6 +356,14 @@ export default function AttendanceView({
   // the prompt at once. Whether the browser has the phone's own biometric is checked ahead too.
   const preparedWebAuthnRef = useRef(null);
   const platformAuthenticatorRef = useRef(null);
+  // The same in the phone app: its fingerprint challenge, asked once the selfie is done, so the
+  // phone's fingerprint prompt opens right after the tap ({ options, at } or { failed }).
+  const preparedNativeRef = useRef(null);
+  // The last GPS reading and when it was taken ({ lat, lon, accuracy, at }), so a punch made
+  // right after Verify GPS uses it instead of waiting for the phone to find the GPS again.
+  const lastGpsFixRef = useRef(null);
+  // The punch being saved ('Time In', 'Time Out', ...), shown until the server answers.
+  const [savingPunch, setSavingPunch] = useState('');
   const [fingerprintError, setFingerprintError] = useState(null);
   // True when the WorkMate app's fingerprint key no longer matches the registered one.
   const [phoneKeyChanged, setPhoneKeyChanged] = useState(false);
@@ -585,15 +593,15 @@ export default function AttendanceView({
 
     try {
       if (hasNativeBridge) {
-        const optionsResponse = await fetch('/api/biometric/native/options', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ replaceRegisteredKey: replacePhoneKey === true }),
-          signal: timeoutSignal(20000)
-        });
-        const options = await optionsResponse.json();
-        if (!optionsResponse.ok || !options.challenge) {
-          throw new Error(options.error || 'Unable to start phone fingerprint verification.');
+        // The challenge asked once the selfie was done (or still on its way), so the phone's
+        // prompt opens right after the tap. Registering this phone asks a new one, which takes
+        // the place of the prepared one on the server.
+        let options;
+        if (replacePhoneKey === true) {
+          preparedNativeRef.current = null;
+          options = await fetchNativeOptions(true);
+        } else {
+          options = await takePreparedNativeOptions() || await fetchNativeOptions(false);
         }
 
         const assertion = await requestNativeBiometricSignature(options.challenge, options.keyId);
@@ -697,6 +705,40 @@ export default function AttendanceView({
     }
   };
 
+  // The phone app's fingerprint challenge from the server (`replaceRegisteredKey` to register
+  // this phone in place of the old one).
+  const fetchNativeOptions = async (replaceRegisteredKey = false) => {
+    const optionsResponse = await fetch('/api/biometric/native/options', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ replaceRegisteredKey }),
+      signal: timeoutSignal(20000)
+    });
+    const options = await optionsResponse.json();
+    if (!optionsResponse.ok || !options.challenge) {
+      throw new Error(options.error || 'Unable to start phone fingerprint verification.');
+    }
+    return options;
+  };
+
+  // Asks the phone app's challenge ahead of the tap (see preparedNativeRef). The server keeps
+  // only the newest one, for 5 minutes, so the tap waits for one still on its way instead of
+  // asking another, and one older than 4 minutes is not used.
+  const PREPARED_NATIVE_MAX_AGE_MS = 4 * 60 * 1000;
+  const prepareNativeOptions = () => {
+    if (preparedNativeRef.current) return;
+    const entry = { at: Date.now(), promise: null };
+    entry.promise = fetchNativeOptions(false).catch(() => null);
+    preparedNativeRef.current = entry;
+  };
+  // The prepared challenge (waiting for it if it is on its way), or null.
+  const takePreparedNativeOptions = async () => {
+    const entry = preparedNativeRef.current;
+    preparedNativeRef.current = null;
+    if (!entry || Date.now() - entry.at > PREPARED_NATIVE_MAX_AGE_MS) return null;
+    return entry.promise;
+  };
+
   // The server's fingerprint challenge for this browser, or an error that says what to do.
   const fetchWebAuthnOptions = async () => {
     const optionsResponse = await apiFetch('/api/biometric/action?action=authenticate-options', { method: 'POST' });
@@ -777,6 +819,7 @@ export default function AttendanceView({
     const parsedAccuracy = Number(accuracy);
     setGpsAccuracy(Number.isFinite(parsedAccuracy) && parsedAccuracy >= 0 ? parsedAccuracy : null);
     setCoordinates({ lat, lon });
+    rememberGpsFix(lat, lon, parsedAccuracy);
 
     const assignedLocation = siteLocationRef.current;
     if (!assignedLocation) {
@@ -967,7 +1010,9 @@ export default function AttendanceView({
   const showLunchInButton = isOnLunch && fingerprintVerified;
   const showTimeOutButton = Boolean(isCurrentlyActive);
 
-  // Bring the next step into view as each one is done, so the steps follow down the page.
+  // Bring the next step into view as each one is done, so the steps follow down the page. The
+  // jump is instant: on a phone, a tap made while the page is still scrolling smoothly only
+  // stops the scroll, so the fingerprint or Time In button would need a second tap.
   const selfieStepRef = useRef(null);
   const fingerprintStepRef = useRef(null);
   const punchStepRef = useRef(null);
@@ -979,14 +1024,18 @@ export default function AttendanceView({
       : selfieStepDone && !before.selfie ? fingerprintStepRef
         : gpsStepDone && !before.gps ? selfieStepRef
           : null;
-    next?.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    next?.current?.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
   }, [gpsStepDone, selfieStepDone, biometricStepDone]);
 
   // In a browser, gets the fingerprint (Face ID) prompt ready before the tap: whether the phone's
   // own biometric is there, and, once the selfie is done, the server's challenge (see
   // preparedWebAuthnRef), so the prompt opens right away on an iPhone.
   useEffect(() => {
-    if (hasNativeBridge || !hasSecureWebAuthn) return;
+    if (hasNativeBridge) {
+      if (selfieStepDone && !fingerprintVerified && !fingerprintScanning && navigator.onLine) prepareNativeOptions();
+      return;
+    }
+    if (!hasSecureWebAuthn) return;
     if (platformAuthenticatorRef.current === null && window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
       window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
         .then(available => { platformAuthenticatorRef.current = available; })
@@ -1000,6 +1049,25 @@ export default function AttendanceView({
   const resetGpsStep = () => {
     setHasGpsPosition(false);
     setGpsChecked(false);
+    lastGpsFixRef.current = null;
+  };
+
+  // A GPS reading kept for the punch made right after it (see lastGpsFixRef).
+  const GPS_FIX_REUSE_MS = 2 * 60 * 1000;
+  const rememberGpsFix = (lat, lon, accuracy) => {
+    lastGpsFixRef.current = Number.isFinite(accuracy) ? { lat, lon, accuracy, at: Date.now() } : null;
+  };
+  // The GPS for a punch: the reading taken in the last two minutes when it is accurate enough,
+  // or else a fresh one (which keeps reading until it is accurate, see getAccuratePosition).
+  const punchPosition = () => {
+    const fix = lastGpsFixRef.current;
+    if (fix && Date.now() - fix.at <= GPS_FIX_REUSE_MS && fix.accuracy <= GPS_ACCURACY_REQUIRED_METERS) {
+      return Promise.resolve({ coords: { latitude: fix.lat, longitude: fix.lon, accuracy: fix.accuracy } });
+    }
+    return getAccuratePosition(showRoughGps).then(position => {
+      rememberGpsFix(Number(position.coords.latitude), Number(position.coords.longitude), Number(position.coords.accuracy));
+      return position;
+    });
   };
 
   const executeClockIn = async () => {
@@ -1017,7 +1085,7 @@ export default function AttendanceView({
     }
 
     setGpsLoading(true);
-    getAccuratePosition(showRoughGps)
+    punchPosition()
       .then(position => {
         setGpsChecked(true);
         const lat = Number(position.coords.latitude.toFixed(6));
@@ -1050,6 +1118,7 @@ export default function AttendanceView({
         }
 
         const timeIn = offlineProof => {
+          setSavingPunch('Time In');
           Promise.resolve(onTimeIn(
             effectiveLocation,
             effectiveBarangay,
@@ -1072,7 +1141,7 @@ export default function AttendanceView({
             assignmentSite,
             accuracy,
             offlineProof
-          )).then(saved => showPunchReceipt('timeIn', saved));
+          )).then(saved => showPunchReceipt('timeIn', saved)).finally(() => setSavingPunch(''));
           resetGpsStep();
           setCapturedSelfie(null);
           setFingerprintVerified(false);
@@ -1117,7 +1186,7 @@ export default function AttendanceView({
   // punch cannot be made here.
   const locatePunch = punch => {
     setGpsLoading(true);
-    return getAccuratePosition(showRoughGps)
+    return punchPosition()
       .then(position => {
         const lat = Number(position.coords.latitude.toFixed(6));
         const lon = Number(position.coords.longitude.toFixed(6));
@@ -1174,12 +1243,13 @@ export default function AttendanceView({
     locatePunch('Time Out').then(fix => {
       if (!fix) return;
       const timeOut = offlineTimeOutProof => {
+        setSavingPunch('Time Out');
         Promise.resolve(onTimeOut({
           ...fix,
           selfie: capturedSelfie,
           fingerprintProof,
           offlineTimeOut: offlineTimeOutProof
-        })).then(saved => showPunchReceipt('timeOut', saved));
+        })).then(saved => showPunchReceipt('timeOut', saved)).finally(() => setSavingPunch(''));
         resetGpsStep();
         setCapturedSelfie(null);
         handleResetFingerprint();
@@ -1234,6 +1304,7 @@ export default function AttendanceView({
     locatePunch(punch).then(fix => {
       if (!fix) return;
       setLunchSaving(true);
+      setSavingPunch(punch);
       onLunch(action, { ...fix, selfie: capturedSelfie, fingerprintProof })
         .then(record => {
           resetGpsStep();
@@ -1242,7 +1313,10 @@ export default function AttendanceView({
           showPunchReceipt(action === 'lunch-out' ? 'lunchOut' : 'lunchIn', { record });
         })
         .catch(error => setLocationError(`Unable to record ${punch}: ${error.message}`))
-        .finally(() => setLunchSaving(false));
+        .finally(() => {
+          setLunchSaving(false);
+          setSavingPunch('');
+        });
     });
   };
 
@@ -1911,8 +1985,14 @@ export default function AttendanceView({
                   )}
                 </div>
               ) : (
-                <div ref={punchStepRef} className="w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center">
-                  <p className="text-xs font-black text-slate-600">The {punchLabel} button shows here once all the checks below are done.</p>
+                <div ref={punchStepRef} className={`w-full rounded-xl border px-4 py-3 text-center ${savingPunch ? 'border-emerald-200 bg-emerald-50' : 'border-dashed border-slate-300 bg-slate-50'}`}>
+                  {savingPunch ? (
+                    <p role="status" className="flex items-center justify-center gap-2 text-sm font-black text-emerald-800">
+                      <RotateCw className="h-4 w-4 animate-spin" /> Saving your {savingPunch}...
+                    </p>
+                  ) : (
+                    <p className="text-xs font-black text-slate-600">The {punchLabel} button shows here once all the checks below are done.</p>
+                  )}
                 </div>
               ))}
             </div>
