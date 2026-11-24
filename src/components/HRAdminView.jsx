@@ -37,9 +37,7 @@ import {
 import HRAdminDashboard from './HRAdminDashboard';
 import HRAdminAttendanceView from './HRAdminAttendanceView';
 import HRAdminDTRRecordsView from './HRAdminDTRRecordsView';
-import HRAdminAttendanceHistoryView from './HRAdminAttendanceHistoryView';
 import HRAdminRequestsView from './HRAdminRequestsView';
-import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import HRAdminEmployeesView from './HRAdminEmployeesView';
 import HRLeaveCreditsView from './HRLeaveCreditsView';
 import HRAdminProfileView from './HRAdminProfileView';
@@ -430,23 +428,11 @@ export default function HRAdminView({
         loadedAttendanceMonths={loadedAttendanceMonths}
         onLoadAttendanceMonth={onLoadAttendanceMonth}
         reviewerName={user?.name || 'HR/Admin'}
-        canChangeCredits={canChangeLeaveCredits(user)}
         onSaveRecord={onUpdateAttendance ? update => onUpdateAttendance([update]) : undefined}
-        onEmployeesChange={onEmployeesChange}
-        requests={requests}
         holidays={holidays}
         onHolidaysChange={onHolidaysChange}
         overtimeOrders={overtimeOrders}
         onOvertimeOrdersChange={onOvertimeOrdersChange}
-        onBack={() => setActiveTab('dtr')}
-      />}
-
-      {activeTab === 'attendance_history' && <HRAdminAttendanceHistoryView
-        employees={employees}
-        attendanceHistory={attendanceHistory}
-        attendanceFrom={attendanceFrom}
-        loadedAttendanceMonths={loadedAttendanceMonths}
-        onLoadAttendanceMonth={onLoadAttendanceMonth}
         onBack={() => setActiveTab('dtr')}
       />}
 

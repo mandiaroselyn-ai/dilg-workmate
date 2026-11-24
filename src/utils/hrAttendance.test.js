@@ -4,6 +4,7 @@ import {
   absentDays,
   activeEmployees,
   monitoringStatus,
+  dayEndText,
   countsInDtr,
   dtrIssue,
   dtrRecordStatus,
@@ -285,15 +286,26 @@ test('an employee a Travel Order includes is On Travel on its days, not absent',
   assert.equal(employeeDayStatus({ employeeId: 'E8', name: 'Pedro Cruz' }, { requests: [order], date: '2026-11-11' }).status, 'Absent');
 });
 
-test('before the latest on-time arrival, HR sees Not Yet In instead of Absent', () => {
-  // Monday 2026-11-23: 7:00 AM. Tuesday 2026-11-24 (flexitime): 9:00 AM.
+test('today, HR sees Not Yet In, then No Time In, and Absent only once the day is over', () => {
+  // Monday 2026-11-23: 7:00 AM to 4:00 PM. Tuesday 2026-11-24 (flexitime): 9:00 AM, ends 6:00 PM.
   assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 6 * 60 + 50), 'Not Yet In');
-  assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 7 * 60 + 5), 'Absent');
+  assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 7 * 60 + 5), 'No Time In');
+  assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 15 * 60 + 59), 'No Time In');
+  assert.equal(monitoringStatus('Absent', '2026-11-23', '2026-11-23', 16 * 60), 'Absent');
   assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 8 * 60 + 30), 'Not Yet In');
-  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 9 * 60), 'Absent');
+  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 9 * 60), 'No Time In');
+  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 17 * 60 + 59), 'No Time In');
+  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 18 * 60), 'Absent');
+  // A record HR set to Absent stays Absent.
+  assert.equal(monitoringStatus('Absent', '2026-11-24', '2026-11-24', 10 * 60, { status: 'Absent', timeIn: '08:00 AM' }), 'Absent');
   // An earlier day, or another status, is as it was.
   assert.equal(monitoringStatus('Absent', '2026-11-20', '2026-11-24', 8 * 60), 'Absent');
   assert.equal(monitoringStatus('Late', '2026-11-24', '2026-11-24', 8 * 60), 'Late');
+});
+
+test('the day ends at 4:00 PM on a Monday and 6:00 PM on the flexitime days', () => {
+  assert.equal(dayEndText('2026-11-23'), '4:00 PM');
+  assert.equal(dayEndText('2026-11-24'), '6:00 PM');
 });
 
 test('absent days start when the office began using WorkMate, and skip leave, travel, and rest days', () => {

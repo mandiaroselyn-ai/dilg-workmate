@@ -158,7 +158,6 @@ export default function Header({
     hr_dashboard: 'HR Dashboard',
     hr_dtr: 'DTR Management',
     dtr_records: 'DTR Records',
-    attendance_history: 'Attendance History',
     hr_employees: 'Employee Management',
     hr_service_records: 'Service Records',
     hr_leave_records: 'Request Management',

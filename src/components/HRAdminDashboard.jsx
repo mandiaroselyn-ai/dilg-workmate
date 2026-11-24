@@ -14,7 +14,7 @@ import {
   Users,
   XCircle
 } from 'lucide-react';
-import { activeEmployees, dtrIssue, employeeDayStatus, geofenceStateOf, liveLocationFor, monitoringStatus, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
+import { activeEmployees, dayEndText, dtrIssue, employeeDayStatus, geofenceStateOf, isDayOver, liveLocationFor, monitoringStatus, NO_TIME_IN, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { apiFetch } from '../utils/api';
 
@@ -73,12 +73,13 @@ export default function HRAdminDashboard({
   const employeeHistory = recordsForEmployees(attendanceHistory, employees);
   const employeeRequests = recordsForEmployees(requests, employees);
   const totalEmployees = staff.length;
-  // Before 7:00 AM on a Monday or 9:00 AM on the flexitime days, no Time In yet is Not Yet In,
-  // not Absent (see monitoringStatus).
+  // No Time In yet is Not Yet In before 7:00 AM on a Monday or 9:00 AM on the flexitime days,
+  // then No Time In until the day's office hours end, and only then Absent (see monitoringStatus).
   const nowMinutes = getManilaMinutesOfDay();
+  const todayIsOver = isDayOver(today, nowMinutes);
   const todayStatuses = staff.map(employee => {
     const day = employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date: today, holidays, today });
-    return { employee, ...day, status: monitoringStatus(day.status, today, today, nowMinutes) };
+    return { employee, ...day, status: monitoringStatus(day.status, today, today, nowMinutes, day.record) };
   });
   const countStatus = (...statuses) => todayStatuses.filter(item => statuses.includes(item.status)).length;
   const late = countStatus('Late');
@@ -88,12 +89,13 @@ export default function HRAdminDashboard({
   const onTravel = countStatus('On Travel');
   const absent = countStatus('Absent');
   const notYetIn = countStatus(NOT_YET_IN);
+  const noTimeIn = countStatus(NO_TIME_IN);
   const leaveRequests = employeeRequests.filter(request => request.type === 'Leave Request');
   const travelRequests = employeeRequests.filter(request => request.type === 'Travel Order');
-  // The records that need HR, plus the employees with no Time In today (Absent, after the latest
-  // on-time arrival), as Attendance's DTR Issues lists them.
+  // The records that need HR, plus the employees with no Time In today (No Time In or Absent,
+  // after the latest on-time arrival), as Attendance's DTR Issues lists them.
   const dtrIssues = employeeHistory.filter(record => dtrIssue(record, today));
-  const dtrIssueCount = dtrIssues.length + absent;
+  const dtrIssueCount = dtrIssues.length + absent + noTimeIn;
   // Employees outside their assigned area now, by the live GPS of their open shift, as
   // Attendance's Geofence Status counts them (not those out for lunch or already timed out).
   const todayRecords = employeeHistory.filter(record => record.date === today);
@@ -181,7 +183,10 @@ export default function HRAdminDashboard({
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard icon={Users} label="Active Employees" value={totalEmployees} detail="Pending accounts not included" action="View Employees" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('directory')} />
         <MetricCard icon={CheckCircle2} label="Present Today" value={present} detail={`${rate}% of employees`} action="View Attendance" color="bg-emerald-50 text-emerald-600" onClick={() => onOpenTab('dtr')} />
-        <MetricCard icon={XCircle} label="Absent Today" value={absent} detail={`${totalEmployees ? ((absent / totalEmployees) * 100).toFixed(1) : '0.0'}% of employees`} action="View Records" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
+        {/* While today's hours last, no Time In is not an absence yet (see monitoringStatus). */}
+        {todayIsOver
+          ? <MetricCard icon={XCircle} label="Absent Today" value={absent} detail={`${totalEmployees ? ((absent / totalEmployees) * 100).toFixed(1) : '0.0'}% of employees`} action="View Records" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
+          : <MetricCard icon={Clock3} label="No Time In Today" value={noTimeIn} detail={`Absent if none by ${dayEndText(today)}`} action="View Records" color="bg-amber-50 text-amber-700" onClick={() => onOpenTab('dtr')} />}
         <MetricCard icon={Clock3} label="Late Today" value={late} detail={`${totalEmployees ? ((late / totalEmployees) * 100).toFixed(1) : '0.0'}% of employees`} action="View Late" color="bg-amber-50 text-amber-600" onClick={() => onOpenTab('dtr')} />
         <MetricCard icon={CalendarDays} label="On Leave" value={onLeave} detail="Employees currently on approved leave" action="View Leaves" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('requests')} />
         <MetricCard icon={Plane} label="On Official Travel" value={onTravel} detail="Employees assigned outside office" action="View Travels" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('requests')} />
@@ -189,7 +194,7 @@ export default function HRAdminDashboard({
         <MetricCard icon={MapPin} label="Geofence Alerts" value={geofenceAlerts.length} detail="Employees outside assigned location" action="View Alerts" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Today's Attendance Overview</h3><button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-5 flex flex-wrap items-center justify-center gap-8 md:justify-start"><div className="relative h-44 w-44 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0deg ${presentDegrees}deg, #f59e0b ${presentDegrees}deg ${presentDegrees + lateDegrees}deg, #ef4444 ${presentDegrees + lateDegrees}deg ${presentDegrees + lateDegrees + absentDegrees}deg, #3b82f6 ${presentDegrees + lateDegrees + absentDegrees}deg ${presentDegrees + lateDegrees + absentDegrees + awayDegrees}deg, #cbd5e1 ${presentDegrees + lateDegrees + absentDegrees + awayDegrees}deg 360deg)` }}><div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white"><strong className="text-2xl font-black text-slate-900">{rate}%</strong><span className="text-xs font-bold text-slate-500">Attendance Rate</span></div></div><div className="grid min-w-[210px] gap-3 text-sm">{[['On Time', onTime, 'bg-emerald-500'], ['Late', late, 'bg-amber-500'], ['Absent', absent, 'bg-rose-500'], ['On Leave / Travel', onLeave + onTravel, 'bg-blue-500'], ...(notYetIn ? [['Not Yet In', notYetIn, 'bg-slate-300']] : [])].map(([label, value, color]) => <div key={label} className="flex items-center justify-between gap-8"><span className="flex items-center gap-2 font-semibold text-slate-600"><i className={`h-3 w-3 rounded-full ${color}`} />{label}</span><strong className="text-lg text-slate-900">{value}</strong></div>)}</div></div></section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Today's Attendance Overview</h3><button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-5 flex flex-wrap items-center justify-center gap-8 md:justify-start"><div className="relative h-44 w-44 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0deg ${presentDegrees}deg, #f59e0b ${presentDegrees}deg ${presentDegrees + lateDegrees}deg, #ef4444 ${presentDegrees + lateDegrees}deg ${presentDegrees + lateDegrees + absentDegrees}deg, #3b82f6 ${presentDegrees + lateDegrees + absentDegrees}deg ${presentDegrees + lateDegrees + absentDegrees + awayDegrees}deg, #cbd5e1 ${presentDegrees + lateDegrees + absentDegrees + awayDegrees}deg 360deg)` }}><div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white"><strong className="text-2xl font-black text-slate-900">{rate}%</strong><span className="text-xs font-bold text-slate-500">Attendance Rate</span></div></div><div className="grid min-w-[210px] gap-3 text-sm">{[['On Time', onTime, 'bg-emerald-500'], ['Late', late, 'bg-amber-500'], ['Absent', absent, 'bg-rose-500'], ['On Leave / Travel', onLeave + onTravel, 'bg-blue-500'], ...(notYetIn ? [['Not Yet In', notYetIn, 'bg-slate-300']] : []), ...(noTimeIn ? [['No Time In', noTimeIn, 'bg-slate-300']] : [])].map(([label, value, color]) => <div key={label} className="flex items-center justify-between gap-8"><span className="flex items-center gap-2 font-semibold text-slate-600"><i className={`h-3 w-3 rounded-full ${color}`} />{label}</span><strong className="text-lg text-slate-900">{value}</strong></div>)}</div></div></section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">

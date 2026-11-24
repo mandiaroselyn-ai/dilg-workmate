@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { durationText } from '../utils/dtrDay';
 import { dtrEntry } from '../utils/dtrMonth';
-import { absentDays, activeEmployees, employeeDayStatus, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { absentDays, activeEmployees, dayEndText, employeeDayStatus, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, monitoringStatus, NO_TIME_IN, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { employeeKey, employeeLabel } from '../utils/reports';
 import { downloadBytes } from '../utils/documentFiles';
@@ -174,19 +174,21 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   const filterStaff = employees.filter(employee => ['active', 'inactive'].includes(String(employee?.accountStatus || 'Active').toLowerCase()));
   const attendanceHistory = recordsForEmployees(allAttendance, employees);
   const requests = recordsForEmployees(allRequests, employees);
-  // Before 7:00 AM on a Monday or 9:00 AM on the flexitime days, no Time In yet is Not Yet In.
+  // No Time In yet is Not Yet In before 7:00 AM on a Monday or 9:00 AM on the flexitime days,
+  // then No Time In until the day's office hours end, and only then Absent (see monitoringStatus).
   const nowMinutes = getManilaMinutesOfDay();
   // The employees the office and employee filters choose.
   const inFilters = employee => (!officeFilter || employee.office === officeFilter) && (!employeeFilter || employeeKey(employee) === employeeFilter);
   const shownStaff = staff.filter(inFilters);
-  const todayStatuses = shownStaff.map(employee => monitoringStatus(
-    employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays, today }).status,
-    today, today, nowMinutes
-  ));
+  const todayStatuses = shownStaff.map(employee => {
+    const day = employeeDayStatus(employee, { records: attendanceHistory, requests, date: today, holidays, today });
+    return monitoringStatus(day.status, today, today, nowMinutes, day.record);
+  });
   const lateCount = todayStatuses.filter(status => status === 'Late').length;
   const presentCount = lateCount + todayStatuses.filter(status => status === 'Present').length;
   const absentCount = todayStatuses.filter(status => status === 'Absent').length;
   const notYetInCount = todayStatuses.filter(status => status === NOT_YET_IN).length;
+  const noTimeInCount = todayStatuses.filter(status => status === NO_TIME_IN).length;
 
   // True when a record or request (or an employee's absence) is in the chosen month, office,
   // and employee; `dates` are the YYYY-MM-DD dates it covers.
@@ -532,6 +534,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <div className="flex items-center justify-between"><span className="text-slate-600">Late / Tardy</span><strong className="text-slate-900">{lateCount}</strong></div>
                   <div className="flex items-center justify-between"><span className="text-slate-600">Absent</span><strong className="text-slate-900">{absentCount}</strong></div>
                   {notYetInCount > 0 && <div className="flex items-center justify-between"><span className="text-slate-600">Not yet in</span><strong className="text-slate-900">{notYetInCount}</strong></div>}
+                  {noTimeInCount > 0 && <div className="flex items-center justify-between"><span className="text-slate-600">No Time In (absent if none by {dayEndText(today)})</span><strong className="text-slate-900">{noTimeInCount}</strong></div>}
                   <div className="flex items-center justify-between"><span className="text-slate-600">Employees</span><strong className="text-slate-900">{totalEmployees}</strong></div>
                 </div>
               </div>

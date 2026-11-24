@@ -474,7 +474,7 @@ export default function App() {
   const roleAllowedViews = {
     employee: ['dashboard', 'attendance', 'requests', 'announcements', 'documents', 'office_directory', 'calendar', 'profile', 'settings', 'help'],
     supervisor: ['supervisor', 'announcements', 'calendar', 'profile', 'notifications'],
-    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log'],
+    hr_admin: ['hr_dashboard', 'hr_dtr', 'dtr_records', 'hr_employees', 'hr_leave_records', 'hr_records', 'hr_announcements', 'hr_directory', 'calendar', 'hr_profile', 'notifications', 'sms_log'],
     // HR 2's desk: only pre-approval and leave credits (shared/hrSteps.js).
     hr_2: HR2_DESK_VIEWS
   };
@@ -1798,7 +1798,7 @@ export default function App() {
             </div>
           )}
 
-          {['hr_dashboard', 'hr_dtr', 'dtr_records', 'attendance_history', 'hr_employees', 'hr_leave_records', 'hr_leave_credits', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
+          {['hr_dashboard', 'hr_dtr', 'dtr_records', 'hr_employees', 'hr_leave_records', 'hr_leave_credits', 'hr_records', 'hr_announcements', 'hr_directory', 'hr_profile'].includes(currentView) && (
             <HRAdminView
               key={viewVisit}
               section={currentView}

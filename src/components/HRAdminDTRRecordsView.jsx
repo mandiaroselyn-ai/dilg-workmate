@@ -9,12 +9,11 @@ import { dayEntry } from '../utils/dtrMonth';
 import { BROWSER_FINGERPRINT_CAUTION, describeFingerprintCheck, usedBrowserFingerprint } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import HRHolidays from './HRHolidays';
-import HRLeaveCreditsStart from './HRLeaveCreditsStart';
 import HRDtrSubmissions from './HRDtrSubmissions';
-import HRMonthlyLeaveCredits from './HRMonthlyLeaveCredits';
 import HROvertimeOrders from './HROvertimeOrders';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
-import useLeaveCreditsStart from '../utils/useLeaveCreditsStart';
+
+const monthName = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 // "08:05 AM" (how Time In and Time Out are saved) as "08:05" for a time input, and back.
 const toInputTime = value => {
@@ -268,15 +267,15 @@ const offlineRowLabels = record => [
   record?.offlineTimeOut?.recordedAt && (isOfflineTimeOutPending(record) ? 'Offline Time Out · needs your review' : 'Offline Time Out')
 ].filter(Boolean);
 
-// `canChangeCredits`: whether this HR account (HR 2) charges and credits leave.
-export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCredits = true, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onEmployeesChange, requests = [], holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
+// HR 1's DTR desk. Leave credits (their start and the monthly crediting and charging) are HR 2's,
+// on its Leave Credits page.
+export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('All Months');
   const [dateFilter, setDateFilter] = useState('All Dates');
   const [officeFilter, setOfficeFilter] = useState('All Offices');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedId, setSelectedId] = useState(null);
-  // The month WorkMate starts counting leave credits, and the leave card date it starts from.
-  const [creditsStart, setCreditsStart] = useLeaveCreditsStart();
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
   const today = getManilaDateString();
   // Only records that belong to current employee accounts.
@@ -295,8 +294,15 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
       lateToo
     };
   });
+  // The chosen month's records; the counts and the date choices follow it.
+  const months = [...new Set(records.map(row => (row.record.date || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+  const monthRecords = records.filter(row => monthFilter === 'All Months' || (row.record.date || '').startsWith(monthFilter));
+  const pickMonth = month => {
+    setMonthFilter(month);
+    if (month !== 'All Months' && !dateFilter.startsWith(month)) setDateFilter('All Dates');
+  };
   // A date picked from Attendance is listed even without records.
-  const dates = [...new Set([...records.map(row => row.record.date), dateFilter !== 'All Dates' ? dateFilter : null].filter(Boolean))];
+  const dates = [...new Set([...monthRecords.map(row => row.record.date), dateFilter !== 'All Dates' ? dateFilter : null].filter(Boolean))];
   const offices = [...new Set(records.map(row => row.office).filter(Boolean))];
   // The statuses, and the records waiting for HR: any DTR issue, an offline Time In or Time Out
   // to decide, or a fingerprint checked in a browser (where a PIN can stand in for it).
@@ -307,15 +313,15 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
           // Late lists every late record, an incomplete one too.
           : statusFilter === 'Late' ? row.status === 'Late' || row.lateToo
             : row.status === statusFilter);
-  const filtered = records.filter(row => (
+  const filtered = monthRecords.filter(row => (
     (dateFilter === 'All Dates' || row.record.date === dateFilter)
     && (officeFilter === 'All Offices' || row.office === officeFilter)
     && matchesStatus(row)
     && `${row.name} ${row.employeeId} ${row.office}`.toLowerCase().includes(search.toLowerCase())
   ));
-  const complete = records.filter(row => row.status === 'Complete').length;
-  const incomplete = records.filter(row => row.status === 'Incomplete').length;
-  const forReview = records.filter(row => dtrIssue(row.record, today)).length;
+  const complete = monthRecords.filter(row => row.status === 'Complete').length;
+  const incomplete = monthRecords.filter(row => row.status === 'Incomplete').length;
+  const forReview = monthRecords.filter(row => dtrIssue(row.record, today)).length;
 
   // Opened from Attendance: shows that record (opened, and scrolled to), or that date and
   // status, with the other filters cleared.
@@ -324,6 +330,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
     if (!focus) return;
     setSearch('');
     setOfficeFilter('All Offices');
+    setMonthFilter('All Months');
     setDateFilter(focus.date || 'All Dates');
     setStatusFilter(focus.status || 'All Statuses');
     if (focus.recordId) setSelectedId(focus.recordId);
@@ -457,26 +464,6 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
       </div>
       <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
       <HRDtrSubmissions employees={employees} submissions={dtrSubmissions} />
-      <HRLeaveCreditsStart
-        employees={employees}
-        start={creditsStart.start}
-        asOf={creditsStart.asOf}
-        onStartChange={setCreditsStart}
-        onEmployeesChange={onEmployeesChange}
-        canChangeCredits={canChangeCredits}
-      />
-      <HRMonthlyLeaveCredits
-        creditsStart={creditsStart.start}
-        employees={employees}
-        attendanceHistory={attendanceHistory}
-        requests={requests}
-        holidays={holidays}
-        attendanceFrom={attendanceFrom}
-        loadedMonths={loadedAttendanceMonths}
-        onLoadMonth={onLoadAttendanceMonth}
-        onEmployeesChange={onEmployeesChange}
-        canChangeCredits={canChangeCredits}
-      />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
       <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -497,6 +484,9 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], canChangeCr
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search employee..." className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-3 text-sm" />
         </div>
+        <select value={monthFilter} onChange={event => pickMonth(event.target.value)} aria-label="Month" className="rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
+          <option>All Months</option>{months.map(month => <option key={month} value={month}>{monthName(month)}</option>)}
+        </select>
         <select value={dateFilter} onChange={event => setDateFilter(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold">
           <option>All Dates</option>{dates.map(date => <option key={date}>{date}</option>)}
         </select>

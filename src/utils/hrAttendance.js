@@ -95,16 +95,26 @@ const isRejectedOffline = record => record?.offlineTimeIn?.decision === 'rejecte
 // True when HR set the employee's Employment Status to ON LEAVE.
 export const hasOnLeaveStatus = employee => (employee?.employmentStatus || '').toString().trim().toUpperCase() === 'ON LEAVE';
 
-// Shown on HR's monitoring instead of Absent while it is still early: no Time In yet is not an
-// absence before the latest on-time arrival of the day (7:00 AM on a Monday, 9:00 AM on the
-// flexitime days, see shared/officeHours.js).
+// Shown on HR's monitoring instead of Absent while today is not over. No Time In yet is Not Yet
+// In before the latest on-time arrival (7:00 AM on a Monday, 9:00 AM on the flexitime days, see
+// shared/officeHours.js), then No Time In until the day's office hours end (4:00 PM on a Monday,
+// 6:00 PM on the other days, see isDayOver): a Time In later that day is tardiness, not an absence
+// (CSC MC No. 17, s. 2010), so the day is Absent only once it is over, as HR Records counts it.
 export const NOT_YET_IN = 'Not Yet In';
+export const NO_TIME_IN = 'No Time In';
 export const isBeforeLatestArrival = (date, minutes) => minutes < (isFixedHoursDay(date) ? OFFICE_HOURS.amStart : OFFICE_HOURS.flexLatestStart);
-// An employee's status on `date` for HR's monitoring at `minutes` after midnight today: Absent
-// is Not Yet In on `today` before the latest on-time arrival.
-export const monitoringStatus = (status, date, today, minutes) => (
-  status === 'Absent' && date === today && isBeforeLatestArrival(date, minutes) ? NOT_YET_IN : status
-);
+// An employee's status on `date` for HR's monitoring at `minutes` after midnight today (see
+// NO_TIME_IN). `record` is the day's attendance record: one HR set to Absent stays Absent.
+export const monitoringStatus = (status, date, today, minutes, record = null) => {
+  if (status !== 'Absent' || date !== today || /absent/i.test(record?.status || '')) return status;
+  if (isBeforeLatestArrival(date, minutes)) return NOT_YET_IN;
+  return isDayOver(date, minutes) ? 'Absent' : NO_TIME_IN;
+};
+// When today's No Time In becomes Absent, such as "6:00 PM".
+export const dayEndText = date => {
+  const end = workdayEnd(isFixedHoursDay(date) ? OFFICE_HOURS.amStart : OFFICE_HOURS.flexLatestStart);
+  return `${Math.floor(end / 60) % 12 || 12}:${String(end % 60).padStart(2, '0')} ${end < 12 * 60 ? 'AM' : 'PM'}`;
+};
 
 // An employee's attendance on `date`: Present, Late, On Leave, On Travel, Rest Day (a Saturday,
 // Sunday, or a holiday of the employee's with none of those; a town's holiday is only its offices'), or Absent. On Leave is an approved leave
