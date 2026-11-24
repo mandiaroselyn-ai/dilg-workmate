@@ -230,7 +230,7 @@ export default function SupervisorView({
       </div>
 
       {activeMainTab === 'dtr' ? (
-        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} />
+        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} signerKey={user?.email || user?.employeeId || ''} />
       ) : (<>
       {/* Row 1: Quick Insights Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
@@ -546,6 +546,7 @@ export default function SupervisorView({
                     signLabel={selectedRequest.type === 'Leave Request' ? 'Sign & Record Decision' : 'Sign & Approve the Travel Order'}
                     digitalSign={{
                       getForm: choice => formToSign(selectedRequest, choice),
+                      owner: user?.email || user?.employeeId || '',
                       image: user?.signatureImage || '',
                       reason: ({ decision }) => (selectedRequest.type === 'Leave Request'
                         ? `${decision === 'Rejected' ? 'Disapproved' : 'Approved'} leave ${selectedRequest.id} (7.C/7.D)`

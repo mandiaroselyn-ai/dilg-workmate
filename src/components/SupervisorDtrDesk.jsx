@@ -18,8 +18,9 @@ const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('
 // The Supervisor's desk for the DTRs employees signed and submitted through WorkMate: as the
 // In-charge of CSC Form No. 48, the Supervisor opens each one, then verifies it by signing it with
 // their digital ID (here, or in Adobe and uploading it), or returns it to the employee with
-// remarks. `signatureImage` is the Supervisor's saved signature, shown with their digital signature.
-export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '' }) {
+// remarks. `signatureImage` is the Supervisor's saved signature, shown with their digital signature;
+// `signerKey` is their account (email or ID), under which this device remembers their digital ID.
+export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '', signerKey = '' }) {
   const [tab, setTab] = useState('Submitted');
   const [viewer, setViewer] = useState(null);
   const [verifying, setVerifying] = useState(null);
@@ -111,11 +112,13 @@ export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, 
             {verifying?.id === submission.id && (
               <div className="mt-3">
                 <SignedFormStep
+                  key={submission.id}
                   title="Verify and sign as the In-charge"
                   description="The DTR carries the employee's signature. Check it, then sign it with your digital ID as the In-charge."
                   signLabel="Sign & Verify the DTR"
                   digitalSign={{
                     getForm: () => dtrToSign(submission),
+                    owner: signerKey,
                     image: signatureImage,
                     reason: `Verified as to the prescribed office hours (In-charge), DTR ${monthText(submission.month)}`,
                     location: 'DILG Marinduque'

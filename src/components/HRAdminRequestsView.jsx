@@ -231,11 +231,13 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
         {signing && (
           <div className="mt-3">
             <SignedFormStep
+              key={selected.id}
               title="Sign 7.A and 7.B"
               description="The CSC Form No. 6 now has the leave credits you certified and your recommendation. Sign it with your digital ID; signing sends the leave to the Head."
               signLabel="Sign & Send to the Head"
               digitalSign={{
                 getForm: formToSign,
+                owner: user?.email || user?.employeeId || '',
                 image: user?.signatureImage || '',
                 reason: `Certified leave credits (7.A) and recommendation (7.B), leave ${selected.id}`,
                 location: 'DILG Marinduque'
