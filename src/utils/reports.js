@@ -4,35 +4,50 @@ import { durationText } from './dtrDay.js';
 import { dtrEntry } from './dtrMonth.js';
 import { absentDays, dtrStatusOf, totalHoursWorked } from './hrAttendance.js';
 import { travelDayCount } from './travelDuration.js';
+import { separationText } from '../../shared/separation.js';
 
-// HR's reports: attendance, leave, and travel orders, filtered by employee, date range,
-// office (department), and status, shown on screen and exported as CSV or printed.
+// HR's reports: attendance, leave, travel orders, absences, and the employee masterlist,
+// filtered by employee, date range, office (department), and status, shown on screen and
+// exported as CSV or printed.
 
 export const REPORT_TYPES = [
   { id: 'attendance', label: 'Attendance' },
   { id: 'leave', label: 'Leave' },
   { id: 'travel', label: 'Travel Order' },
-  { id: 'absence', label: 'Absences' }
+  { id: 'absence', label: 'Absences' },
+  { id: 'masterlist', label: 'Employee Masterlist' }
 ];
 
 export const ATTENDANCE_STATUSES = ['Complete', 'Late', 'Incomplete', 'On Duty'];
+// The masterlist is filtered by account status.
+export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Pending', 'Rejected'];
 export const REQUEST_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor', 'Returned', 'Approved', 'Rejected', 'Withdrawn'];
 // A draft the employee has not submitted, or one they discarded, is not a transaction.
 const UNSUBMITTED = ['Draft', 'Cancelled'];
 const AWAITING_DECISION = ['Pending', 'Pending Review', 'For Supervisor'];
 
-// An employee's key in the employee filter.
-export const employeeKey = employee => String(employee?.employeeId || employee?.email || '');
+// An employee's key in the employee filter: the account's own (its database ID, else its email),
+// as old accounts can share the default Employee ID (DILG-2026-7689). Their records are told
+// apart by the ID and the name (matchesAttendanceEmployee).
+export const employeeKey = employee => String(employee?._id || employee?.email || employee?.employeeId || '');
+// An employee as the filters and lists name them.
+export const employeeLabel = employee => employee?.name || employee?.employeeId || employee?.email || 'Unnamed employee';
 
 const accountFor = (item, employees) => employees.find(employee => matchesAttendanceEmployee(item, employee)) || null;
 const nameOf = (item, account) => account?.name || item.employeeName || item.employee?.name || 'Unknown employee';
 const officeOf = (item, account) => account?.office || item.employeeOffice || item.employee?.office || '';
 
 // True when a record or request passes the employee and office filters.
+// An account itself (an absence, a masterlist line) is the chosen one by its key; a record or
+// request, by its Employee ID and name.
 const isFor = (item, account, { employee, office }, employees) => {
   if (employee) {
-    const chosen = employees.find(candidate => employeeKey(candidate) === employee);
-    if (!chosen || !matchesAttendanceEmployee(item, chosen)) return false;
+    if (employees.includes(item)) {
+      if (employeeKey(item) !== employee) return false;
+    } else {
+      const chosen = employees.find(candidate => employeeKey(candidate) === employee);
+      if (!chosen || !matchesAttendanceEmployee(item, chosen)) return false;
+    }
   }
   return !office || officeOf(item, account) === office;
 };
@@ -260,27 +275,97 @@ const absenceReport = ({ records, requests, employees, holidays, filters, from, 
   };
 };
 
-// The report of `type` ('attendance', 'leave', 'travel', or 'absence') for these filters:
+const accountStatusText = employee => {
+  const status = String(employee?.accountStatus || 'Active').trim();
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+};
+// "Dela Cruz, Juan Santos Jr." when the name parts are saved, else the full name.
+const listName = employee => {
+  if (!employee.lastName) return employee.name || 'Unnamed employee';
+  const given = [employee.firstName, employee.middleName, employee.suffix].filter(Boolean).join(' ');
+  return given ? `${employee.lastName}, ${given}` : employee.lastName;
+};
+
+// Every employee account with its position, office, appointment, salary grade, date hired,
+// account status, separation, and contact details, as of today. The dates do not filter it.
+const masterlistReport = ({ employees, filters }) => {
+  const rows = employees
+    .filter(employee => isFor(employee, employee, filters, employees)
+      && (!filters.status || accountStatusText(employee).toLowerCase() === filters.status.toLowerCase()))
+    .map(employee => ({
+      employee: listName(employee),
+      employeeId: employee.employeeId || '',
+      position: employee.role || '',
+      designation: employee.designation || '',
+      office: employee.office || '',
+      division: employee.division || '',
+      station: employee.assignedStation || '',
+      appointment: employee.appointmentStatus || '',
+      grade: [employee.salaryGrade, employee.salaryStep].filter(Boolean).join(' / '),
+      salary: employee.salary || '',
+      dateHired: employee.dateHired || '',
+      employment: employee.employmentStatus || '',
+      accountStatus: accountStatusText(employee),
+      separation: separationText(employee),
+      phone: employee.phoneNumber || '',
+      email: employee.email || ''
+    }))
+    .sort((a, b) => a.employee.localeCompare(b.employee));
+  const appointments = [...new Set(rows.map(row => row.appointment).filter(Boolean))].sort();
+  return {
+    title: 'Employee Masterlist',
+    note: 'Employee accounts in WorkMate; Supervisors and HR/Admin accounts are not included. The monthly salary is the one set by the salary grade and step.',
+    columns: [
+      { key: 'employeeId', label: 'Employee ID' },
+      { key: 'employee', label: 'Name' },
+      { key: 'position', label: 'Position' },
+      { key: 'designation', label: 'Designation' },
+      { key: 'office', label: 'Office' },
+      { key: 'division', label: 'Division / Unit' },
+      { key: 'station', label: 'Station' },
+      { key: 'appointment', label: 'Status of Appointment' },
+      { key: 'grade', label: 'SG / Step' },
+      { key: 'salary', label: 'Monthly Salary' },
+      { key: 'dateHired', label: 'Date Hired' },
+      { key: 'employment', label: 'Employment Status' },
+      { key: 'accountStatus', label: 'Account Status' },
+      { key: 'separation', label: 'Separation' },
+      { key: 'phone', label: 'Mobile No.' },
+      { key: 'email', label: 'Email' }
+    ],
+    rows,
+    summary: [
+      { label: 'Employees', value: rows.length },
+      ...ACCOUNT_STATUSES.map(status => ({ label: status, value: rows.filter(row => row.accountStatus === status).length })),
+      { label: 'Separated', value: rows.filter(row => row.separation).length },
+      ...appointments.map(appointment => ({ label: appointment, value: rows.filter(row => row.appointment === appointment).length }))
+    ]
+  };
+};
+
+// The report of `type` ('attendance', 'leave', 'travel', 'absence', or 'masterlist') for these filters:
 // { employee (employeeKey), from, to (YYYY-MM-DD), office, status }, any of them empty.
 // Only records and requests of current employee accounts are included.
 export const buildReport = ({ type, records = [], requests = [], employees = [], filters = {}, today = '', holidays = [], from = '', minutes = 24 * 60 }) => {
+  if (type === 'masterlist') return masterlistReport({ employees, filters });
   if (type === 'absence') return absenceReport({ records, requests, employees, holidays, filters, from, today, minutes });
   if (type === 'leave') return leaveReport({ requests, employees, filters });
   if (type === 'travel') return travelReport({ requests, employees, filters });
   return attendanceReport({ records, employees, filters, today });
 };
 
-// The filters in words, for the report's heading.
-export const describeFilters = (filters = {}, employees = []) => {
+// The filters in words, for the report's heading. Without `dates` (the masterlist), it says
+// the day it is `asOf` instead of the date range.
+export const describeFilters = (filters = {}, employees = [], { dates: byDates = true, asOf = '' } = {}) => {
   const chosen = filters.employee ? employees.find(employee => employeeKey(employee) === filters.employee) : null;
   const dates = filters.from && filters.to ? `${filters.from} to ${filters.to}`
     : filters.from ? `From ${filters.from}` : filters.to ? `Up to ${filters.to}` : 'All dates';
   return [
-    chosen ? `Employee: ${chosen.name || filters.employee}` : 'All employees',
-    dates,
+    chosen ? `Employee: ${employeeLabel(chosen)}` : 'All employees',
+    byDates ? dates : asOf ? `As of ${asOf}` : '',
     filters.office ? `Office: ${filters.office}` : 'All offices',
     filters.status ? `Status: ${filters.status}` : 'All statuses'
-  ].join(' · ');
+  ].filter(Boolean).join(' · ');
 };
 
 // A CSV cell. Text that a spreadsheet would run as a formula (starting with =, +, -, or @)

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
+import { employeesInServiceOn } from '../../shared/separation';
 import { minutesToLeaveDays } from '../../shared/leaveConversion';
 import {
   AlarmClockCheck,
@@ -17,7 +18,7 @@ import { durationText } from '../utils/dtrDay';
 import { dtrEntry } from '../utils/dtrMonth';
 import { absentDays, activeEmployees, employeeDayStatus, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, missingDtrLog, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
-import { employeeKey } from '../utils/reports';
+import { employeeKey, employeeLabel } from '../utils/reports';
 import { downloadBytes } from '../utils/documentFiles';
 import { dtrStatusText } from '../utils/dtrSubmission';
 import { dtrSubmissionFor, makeEmployeeDtr } from '../utils/employeeDtr';
@@ -167,7 +168,10 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
   };
   // Counted like the Dashboard: only active employee accounts, and only records and
   // requests that belong to a current employee account.
-  const staff = activeEmployees(employees);
+  // Today's counts are of those in the service today. The office and employee filters also list
+  // Inactive accounts, so HR can still find and print the DTR of an employee who left.
+  const staff = employeesInServiceOn(employees, today);
+  const filterStaff = employees.filter(employee => ['active', 'inactive'].includes(String(employee?.accountStatus || 'Active').toLowerCase()));
   const attendanceHistory = recordsForEmployees(allAttendance, employees);
   const requests = recordsForEmployees(allRequests, employees);
   // Before 7:00 AM on a Monday or 9:00 AM on the flexitime days, no Time In yet is Not Yet In.
@@ -186,7 +190,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
 
   // True when a record or request (or an employee's absence) is in the chosen month, office,
   // and employee; `dates` are the YYYY-MM-DD dates it covers.
-  const accountOf = item => employees.find(employee => matchesAttendanceEmployee(item, employee)) || null;
+  // An absence's employee is the account itself: old accounts can share an Employee ID.
+  const accountOf = item => (employees.includes(item) ? item : employees.find(employee => matchesAttendanceEmployee(item, employee)) || null);
   const passesFilters = (item, dates) => {
     const account = accountOf(item);
     if (employeeFilter && (!account || employeeKey(account) !== employeeFilter)) return false;
@@ -197,8 +202,8 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     ...allAttendance.map(record => String(record.date || '').slice(0, 7)),
     ...allRequests.map(request => String(request.startDate || '').slice(0, 7))
   ].filter(month => /^\d{4}-\d{2}$/.test(month)))].sort().reverse();
-  const officeOptions = [...new Set(staff.map(employee => employee.office).filter(Boolean))].sort();
-  const employeeOptions = [...staff].filter(employee => employeeKey(employee)).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const officeOptions = [...new Set(filterStaff.map(employee => employee.office).filter(Boolean))].sort();
+  const employeeOptions = [...filterStaff].filter(employee => employeeKey(employee)).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   const filtersActive = Boolean(monthFilter || officeFilter || employeeFilter);
   const clearFilters = () => {
     setMonthFilter('');
@@ -436,7 +441,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             </select>
             <select value={employeeFilter} onChange={event => { setEmployeeFilter(event.target.value); setShownCount(PAGE_SIZE); }} aria-label="Employee" className="max-w-[14rem] rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">
               <option value="">All employees</option>
-              {employeeOptions.map(employee => <option key={employeeKey(employee)} value={employeeKey(employee)}>{employee.name || employeeKey(employee)}</option>)}
+              {employeeOptions.map(employee => <option key={employeeKey(employee)} value={employeeKey(employee)}>{employeeLabel(employee)}{String(employee.accountStatus || '').toLowerCase() === 'inactive' ? ' (Inactive)' : ''}</option>)}
             </select>
             {filtersActive && <button type="button" onClick={clearFilters} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-indigo-700">Clear filters</button>}
           </div>
@@ -805,7 +810,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           {absenceTotals.length > 0 && (
             <div className="mb-4 flex flex-wrap gap-2">
               {absenceTotals.map(({ employee, days }) => (
-                <span key={employeeKey(employee) || employee.name} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-800">{employee.name || employeeKey(employee)}: {days} day{days === 1 ? '' : 's'}</span>
+                <span key={employeeKey(employee) || employee.name} className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-800">{employeeLabel(employee)}: {days} day{days === 1 ? '' : 's'}</span>
               ))}
             </div>
           )}
@@ -877,7 +882,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                 ) : (
                   habitualRows.slice(0, shownCount).map(row => (
                     <tr key={`${employeeKey(row.employee)}-${row.rule.id}`} {...clickableRow(() => { setEmployeeFilter(employeeKey(row.employee)); openTab(row.rule.id === 'absences' ? 'absences' : 'dtr'); })}>
-                      <td className="px-3 py-3 font-bold text-slate-800">{row.employee.name || employeeKey(row.employee)}</td>
+                      <td className="px-3 py-3 font-bold text-slate-800">{employeeLabel(row.employee)}</td>
                       <td className="px-3 py-3 text-slate-600">{row.employee.office || '—'}</td>
                       <td className="px-3 py-3 text-slate-700">{row.rule.label}</td>
                       <td className="px-3 py-3">

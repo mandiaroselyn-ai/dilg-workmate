@@ -35,6 +35,14 @@ const UserSchema = new mongoose.Schema({
   gender: { type: String, default: '' },
   employmentStatus: { type: String, default: 'ACTIVE' },
   dateHired: { type: String, default: '' },
+  // The last day of service and its cause, when the employee leaves (shared/separation.js). Up to
+  // that day they still count in the DTR, absences, and leave credits.
+  separationDate: { type: String, default: '' },
+  separationReason: { type: String, default: '' },
+  // The employee's Service Record, as HR keeps it: each appointment or change with its inclusive
+  // dates, designation, status, annual salary, office, station, branch, leave without pay, and
+  // separation (shared/serviceRecord.js).
+  serviceRecord: { type: [mongoose.Schema.Types.Mixed], default: [] },
   assignedStation: { type: String, default: '' },
   assignedLGU: { type: String, default: '' },
   // The rest of the profile, listed in shared/profileFields.js. The name parts go on
@@ -154,7 +162,8 @@ const UserSchema = new mongoose.Schema({
   notificationsClearedAt: { type: Date, default: null },
   vacationLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
   sickLeaveCredits: { type: Number, default: DEFAULT_LEAVE_CREDITS },
-  // Record of HR's manual balance adjustments (latest 50).
+  // Every change to the leave balances, the employee's leave card: HR's adjustments, approved leave,
+  // tardiness charged, and leave earned. All are kept, as the leave card is a record HR keeps.
   leaveCreditHistory: {
     type: [{
       changedAt: { type: Date, default: Date.now },
@@ -339,7 +348,7 @@ export const User = {
       sickLeaveCredits: charge.sickLeaveCredits,
       previousVacationLeaveCredits: previousVacation,
       previousSickLeaveCredits: previousSick
-    }].slice(-50);
+    }];
     await employee.save();
     return { employee: employee.toObject(), charge };
   },
@@ -944,8 +953,32 @@ export const User = {
     });
     if (!user) return null;
     user.accountStatus = accountStatus;
+    // Reactivated, the employee is in the service again, so an earlier separation no longer ends it.
+    if (accountStatus === 'Active') {
+      user.separationDate = '';
+      user.separationReason = '';
+    }
     await user.save();
     return user.toObject();
+  },
+
+  // Replaces an employee's Service Record lines (already checked, see shared/serviceRecord.js).
+  setServiceRecord: async (identifier, lines) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const employee = await MongoUser.findOne({
+      $and: [
+        { $or: [{ email: emailPattern }, { employeeId: value }] },
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
+      ]
+    });
+    if (!employee) return null;
+    employee.serviceRecord = lines;
+    employee.markModified('serviceRecord');
+    await employee.save();
+    return employee.toObject();
   },
 
   // Sets an employee's leave balances (HR adjustment) and records the change.
@@ -970,7 +1003,7 @@ export const User = {
       previousSickLeaveCredits: employee.sickLeaveCredits
     };
     employee.set(credits);
-    employee.leaveCreditHistory = [...(employee.leaveCreditHistory || []), entry].slice(-50);
+    employee.leaveCreditHistory = [...(employee.leaveCreditHistory || []), entry];
     await employee.save();
     return employee.toObject();
   },
@@ -1005,7 +1038,7 @@ export const User = {
       { _id: employee._id, 'startingLeaveBalance.start': { $ne: start } },
       {
         $set: { ...credits, startingLeaveBalance: { start, asOf, ...credits, enteredAt: new Date(), enteredBy: changedBy } },
-        $push: { leaveCreditHistory: { $each: [entry], $slice: -50 } }
+        $push: { leaveCreditHistory: entry }
       },
       { new: true }
     );
@@ -1056,7 +1089,7 @@ export const User = {
       { _id: employee._id, 'tardinessDeductions.month': { $ne: month } },
       {
         $set: { vacationLeaveCredits },
-        $push: { tardinessDeductions: entry, leaveCreditHistory: { $each: history, $slice: -50 } }
+        $push: { tardinessDeductions: entry, leaveCreditHistory: { $each: history } }
       },
       { new: true }
     );
@@ -1104,7 +1137,7 @@ export const User = {
     // Only when the month is still not credited, so two HR clicks never credit it twice.
     const updated = await MongoUser.findOneAndUpdate(
       { _id: employee._id, 'leaveEarnings.month': { $ne: month } },
-      { $set: balances, $push: { leaveEarnings: entry, leaveCreditHistory: { $each: history, $slice: -50 } } },
+      { $set: balances, $push: { leaveEarnings: entry, leaveCreditHistory: { $each: history } } },
       { new: true }
     );
     if (!updated) {

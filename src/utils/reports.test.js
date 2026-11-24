@@ -147,3 +147,48 @@ test('the printable report shows the filters and escapes what employees typed', 
   assert.match(html, /&lt;b&gt;ok&lt;\/b&gt;/);
   assert.doesNotMatch(html, /<b>ok<\/b>/);
 });
+
+test('the employee masterlist lists every account, filtered by office and account status', () => {
+  const ana = { employeeId: 'E3', email: 'ana@dilg.gov.ph', name: 'Ana Reyes', firstName: 'Ana', middleName: 'Santos', lastName: 'Reyes', office: 'Provincial Administrative Section', role: 'Administrative Aide IV', appointmentStatus: 'Permanent', salaryGrade: 'SG 4', salaryStep: 'Step 1', salary: 'PHP 16,000', dateHired: '2020-01-06', accountStatus: 'Active' };
+  const ben = { employeeId: 'E4', email: 'ben@dilg.gov.ph', name: 'Ben Cruz', office: 'Boac Municipal Operations Office', appointmentStatus: 'Job Order', accountStatus: 'Inactive', separationDate: '2026-11-15', separationReason: 'End of contract or appointment' };
+  const all = [ana, ben, juan];
+  const report = buildReport({ type: 'masterlist', employees: all });
+  assert.equal(report.title, 'Employee Masterlist');
+  // Last name first when the name parts are saved; sorted by that.
+  assert.deepEqual(report.rows.map(row => row.employee), ['Ben Cruz', 'Juan Dela Cruz', 'Reyes, Ana Santos']);
+  const anaRow = report.rows.find(row => row.employeeId === 'E3');
+  assert.equal(anaRow.grade, 'SG 4 / Step 1');
+  assert.equal(anaRow.salary, 'PHP 16,000');
+  // An account saved without a status is Active, as the server saves it.
+  assert.equal(report.rows.find(row => row.employeeId === 'E1').accountStatus, 'Active');
+  assert.equal(report.rows.find(row => row.employeeId === 'E4').separation, 'Nov 15, 2026 · End of contract or appointment');
+  assert.equal(valueOf(report, 'Employees'), 3);
+  assert.equal(valueOf(report, 'Active'), 2);
+  assert.equal(valueOf(report, 'Inactive'), 1);
+  assert.equal(valueOf(report, 'Separated'), 1);
+  assert.equal(valueOf(report, 'Job Order'), 1);
+  // The dates do not filter it; the office and status do.
+  assert.equal(buildReport({ type: 'masterlist', employees: all, filters: { from: '2030-01-01', to: '2030-01-31' } }).rows.length, 3);
+  assert.deepEqual(buildReport({ type: 'masterlist', employees: all, filters: { status: 'Inactive' } }).rows.map(row => row.employeeId), ['E4']);
+  assert.deepEqual(buildReport({ type: 'masterlist', employees: all, filters: { office: 'Provincial Administrative Section' } }).rows.map(row => row.employeeId), ['E3']);
+  // Its heading says the day it is as of, not a date range.
+  assert.equal(describeFilters({ from: '2026-11-01', to: '2026-11-25' }, all, { dates: false, asOf: '2026-11-25' }), 'All employees · As of 2026-11-25 · All offices · All statuses');
+});
+
+test("two old accounts sharing the default Employee ID are told apart in the employee filter", () => {
+  const lara = { _id: 'a1', employeeId: 'DILG-2026-7689', email: 'lara@x.test', name: 'Lara Montiano', office: 'Provincial Administrative Section', accountStatus: 'Active' };
+  const rose = { _id: 'a2', employeeId: 'DILG-2026-7689', email: 'rose@x.test', name: 'Roselyn Mandia', office: 'Provincial Administrative Section', accountStatus: 'Active' };
+  const both = [lara, rose];
+  assert.notEqual(employeeKey(lara), employeeKey(rose));
+  const shared = [
+    { id: 's1', employeeId: 'DILG-2026-7689', employeeName: 'Lara Montiano', date: '2026-11-23', timeIn: '07:00 AM', timeOut: '04:00 PM' },
+    { id: 's2', employeeId: 'DILG-2026-7689', employeeName: 'Roselyn Mandia', date: '2026-11-23', timeIn: '07:05 AM', timeOut: '04:00 PM' }
+  ];
+  const roseOnly = { employee: employeeKey(rose) };
+  assert.deepEqual(buildReport({ type: 'attendance', records: shared, employees: both, filters: roseOnly, today: '2026-11-24' }).rows.map(row => row.employee), ['Roselyn Mandia']);
+  assert.deepEqual(buildReport({ type: 'masterlist', employees: both, filters: roseOnly }).rows.map(row => row.employee), ['Roselyn Mandia']);
+  // Monday Nov 23 logged, Tuesday Nov 24 over with no Time In: each is absent on her own row.
+  const absences = buildReport({ type: 'absence', records: shared, employees: both, filters: roseOnly, today: '2026-11-24', from: '2026-11-23', minutes: 18 * 60 });
+  assert.deepEqual(absences.rows.map(row => `${row.employee} ${row.date}`), ['Roselyn Mandia 2026-11-24']);
+  assert.match(describeFilters(roseOnly, both), /^Employee: Roselyn Mandia/);
+});

@@ -33,6 +33,8 @@ import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 import { KEEP_ACCOUNT_WITH_RECORDS, carryRecordsOrWarn, hasOwnRecords } from '../services/employeeIdentity.js';
+import { normalizeSeparation } from '../../../shared/separation.js';
+import { normalizeServiceRecord } from '../../../shared/serviceRecord.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -275,6 +277,12 @@ const normalizeEmployeeInput = (body, reviewer, { creating = false } = {}) => {
   Object.assign(employee, details.value);
   // The full name follows the name parts HR saved (see nameFromParts).
   employee.name = nameFromParts(employee) || employee.name;
+  // The date and cause of separation, when sent (both empty clears them).
+  if (body.separationDate !== undefined || body.separationReason !== undefined) {
+    const separation = normalizeSeparation(body, employee.dateHired);
+    if (separation.error) return { error: separation.error };
+    Object.assign(employee, separation.value);
+  }
   if (body.approvedWfhLocation !== undefined) {
     try {
       employee.approvedWfhLocation = normalizeApprovedWfhLocation(body.approvedWfhLocation, reviewer);
@@ -423,6 +431,20 @@ export const updateEmployee = async (req, res) => {
   }
 };
 
+// Saves an employee's Service Record lines, which HR enters from the appointments and other papers
+// on file (shared/serviceRecord.js). The whole list is sent each time, oldest line first.
+export const updateServiceRecord = async (req, res) => {
+  try {
+    const { value, error } = normalizeServiceRecord(req.body?.lines);
+    if (error) return res.status(400).json({ success: false, error });
+    const updated = await User.setServiceRecord(req.params.identifier, value);
+    if (!updated) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    res.status(200).json({ success: true, employee: employeeResponse(updated) });
+  } catch (error) {
+    sendServerError(res, error);
+  }
+};
+
 export const updateEmployeeLeaveCredits = async (req, res) => {
   try {
     const { value, reason, error } = normalizeLeaveCreditInput(req.body);
@@ -554,11 +576,17 @@ export const creditLeaveEarnings = async (req, res) => {
       }
       const leaves = await Leave.findAbsencesOfEmployee({ employeeId: account.employeeId, email: account.email });
       const withoutPayDays = monthWithoutPayDays(month, { requests: leaves, tardinessDeductions: account.tardinessDeductions || [] });
-      const serviceDays = monthServiceDays(month, account.dateHired);
+      // Fewer than 30 in the month hired or the month separated.
+      const serviceDays = monthServiceDays(month, account.dateHired, account.separationDate);
+      // A month wholly before the employee was hired or after they left earns nothing to credit.
+      if (serviceDays === 0) {
+        results.push({ identifier, status: 'no-service' });
+        continue;
+      }
       const earned = monthlyEarnedCredits(withoutPayDays, serviceDays);
       const serviceText = `${serviceDays} day${serviceDays === 1 ? '' : 's'} of service`;
       const notes = [
-        serviceDays < 30 ? `${serviceText}, hired ${account.dateHired}` : '',
+        serviceDays < 30 ? [serviceText, account.dateHired && account.dateHired.slice(0, 7) === month ? `hired ${account.dateHired}` : '', account.separationDate && account.separationDate.slice(0, 7) === month ? `separated ${account.separationDate}` : ''].filter(Boolean).join(', ') : '',
         withoutPayDays ? `${withoutPayDays.toFixed(3)} day without pay that month` : ''
       ].filter(Boolean);
       const reason = `Leave earned for ${label}: ${earned.toFixed(3)} day vacation leave and ${earned.toFixed(3)} day sick leave`

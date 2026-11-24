@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { EMPLOYMENT_FIELDS, GOVERNMENT_ID_FIELDS, PERSONAL_FIELDS, SELF_EMPLOYMENT_FIELDS, nameFromParts } from '../../shared/profileFields';
+import { separationText } from '../../shared/separation';
 import { DILG_OFFICE_GROUPS, DILG_OFFICES, POSITION_TITLES, POSITION_TITLE_GROUPS } from '../../shared/dilgAssignments';
 import AddressPicker from './AddressPicker';
 
@@ -221,6 +222,7 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
 
       <Section title="Employment Information" note={employmentNote}>
         {employment.map(item => show(item, item.key === 'employmentStatus' ? person.employmentStatus || 'ACTIVE' : undefined))}
+        {person.separationDate && <Row label="Separation from Service" value={separationText(person)} />}
         {attendanceAssignment && (
           <>
             <Row label="Assigned Station" value={person.assignedStation} />

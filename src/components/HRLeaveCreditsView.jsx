@@ -4,6 +4,8 @@ import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import { earnsLeaveCredits } from '../../shared/profileFields';
 import { needsStartingBalance } from '../../shared/leaveStart';
 import { activeEmployees } from '../utils/hrAttendance';
+import { employeesInServiceSince } from '../../shared/separation';
+import { attendanceWindowStart } from '../../shared/localDate';
 import useLeaveCreditsStart from '../utils/useLeaveCreditsStart';
 import HRLeaveCreditsCard, { employeeKey } from './HRLeaveCreditsCard';
 import HRLeaveCreditsStart from './HRLeaveCreditsStart';
@@ -29,7 +31,9 @@ export default function HRLeaveCreditsView({ user = {}, employees = [], attendan
     window.setTimeout(() => setToast({ text: '', error: false }), 6000);
   };
 
-  const earning = useMemo(() => activeEmployees(employees)
+  // Those in the service since last month began, so the balances of one who just left can still be
+  // set for their terminal leave.
+  const earning = useMemo(() => employeesInServiceSince(employees, attendanceWindowStart())
     .filter(employee => (!employee.accessLevel || employee.accessLevel === 'employee') && earnsLeaveCredits(employee))
     .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '')), [employees]);
   const query = search.trim().toLowerCase();

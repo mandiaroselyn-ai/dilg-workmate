@@ -3,12 +3,14 @@ import { FileSpreadsheet, Printer, RotateCcw } from 'lucide-react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { downloadBytes } from '../utils/documentFiles';
 import {
+  ACCOUNT_STATUSES,
   ATTENDANCE_STATUSES,
   REPORT_TYPES,
   REQUEST_STATUSES,
   buildReport,
   describeFilters,
   employeeKey,
+  employeeLabel,
   reportCsv,
   reportHtml
 } from '../utils/reports';
@@ -19,9 +21,10 @@ const PREVIEW_ROWS = 100;
 const fieldClass = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500';
 const labelClass = 'block text-[10px] font-black uppercase tracking-wide text-slate-500';
 
-// HR's reports on attendance, leave, and travel orders: filtered by employee, dates,
-// office (department), and status, previewed here, and exported as CSV or printed (or saved
-// as PDF from the print dialog). Attendance covers the months loaded on this page.
+// HR's reports on attendance, leave, travel orders, absences, and the employee masterlist:
+// filtered by employee, dates, office (department), and status, previewed here, and exported as
+// CSV or printed (or saved as PDF from the print dialog). Attendance covers the months loaded on
+// this page. The masterlist is as of today, so it has no dates to choose.
 export default function HRReportsView({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', generatedBy = '', holidays = [] }) {
   const today = getManilaDateString();
   const firstOfMonth = `${today.slice(0, 7)}-01`;
@@ -38,24 +41,27 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
     () => [...new Set(employees.map(employee => employee.office).filter(Boolean))].sort(),
     [employees]
   );
-  // An absence has no status to filter by.
-  const statuses = type === 'attendance' ? ATTENDANCE_STATUSES : type === 'absence' ? [] : REQUEST_STATUSES;
+  // An absence has no status to filter by; the masterlist is filtered by account status.
+  const statuses = type === 'attendance' ? ATTENDANCE_STATUSES : type === 'absence' ? [] : type === 'masterlist' ? ACCOUNT_STATUSES : REQUEST_STATUSES;
+  const byDates = type !== 'masterlist';
 
   const report = useMemo(
     () => buildReport({ type, records: attendanceHistory, requests, employees, filters, today, holidays, from: attendanceFrom, minutes: getManilaMinutesOfDay() }),
     [type, attendanceHistory, requests, employees, filters, today, holidays, attendanceFrom]
   );
-  const filtersText = describeFilters(filters, employees);
+  const filtersText = describeFilters(filters, employees, { dates: byDates, asOf: today });
 
   const change = field => event => setFilters(previous => ({ ...previous, [field]: event.target.value }));
   const chooseType = next => {
     setType(next);
-    // Statuses differ between attendance and requests.
+    // Statuses differ between attendance, requests, and accounts.
     setFilters(previous => ({ ...previous, status: '' }));
     setMessage('');
   };
 
-  const fileName = extension => `DILG-${report.title.replace(/\s+/g, '-')}-${filters.from || 'start'}-to-${filters.to || today}.${extension}`;
+  const fileName = extension => (byDates
+    ? `DILG-${report.title.replace(/\s+/g, '-')}-${filters.from || 'start'}-to-${filters.to || today}.${extension}`
+    : `DILG-${report.title.replace(/\s+/g, '-')}-${today}.${extension}`);
 
   const exportCsv = async () => {
     try {
@@ -105,21 +111,25 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
           ))}
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className={`mt-4 grid gap-3 sm:grid-cols-2 ${byDates ? 'lg:grid-cols-5' : 'lg:grid-cols-3'}`}>
           <label className={labelClass}>Employee
             <select value={filters.employee} onChange={change('employee')} className={fieldClass}>
               <option value="">All employees</option>
               {sortedEmployees.map(employee => (
-                <option key={employeeKey(employee)} value={employeeKey(employee)}>{employee.name || employeeKey(employee)}</option>
+                <option key={employeeKey(employee)} value={employeeKey(employee)}>{employeeLabel(employee)}</option>
               ))}
             </select>
           </label>
-          <label className={labelClass}>From
-            <input type="date" value={filters.from} max={filters.to || undefined} onChange={change('from')} className={fieldClass} />
-          </label>
-          <label className={labelClass}>To
-            <input type="date" value={filters.to} min={filters.from || undefined} onChange={change('to')} className={fieldClass} />
-          </label>
+          {byDates && (
+            <>
+              <label className={labelClass}>From
+                <input type="date" value={filters.from} max={filters.to || undefined} onChange={change('from')} className={fieldClass} />
+              </label>
+              <label className={labelClass}>To
+                <input type="date" value={filters.to} min={filters.from || undefined} onChange={change('to')} className={fieldClass} />
+              </label>
+            </>
+          )}
           <label className={labelClass}>Office / Department
             <select value={filters.office} onChange={change('office')} className={fieldClass}>
               <option value="">All offices</option>

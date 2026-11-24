@@ -1,6 +1,6 @@
 import { dtrEntry } from './dtrMonth.js';
-import { matchesAttendanceEmployee } from './attendanceIdentity.js';
-import { activeEmployees } from './hrAttendance.js';
+import { matchesAttendanceEmployee, normalizeAttendanceValue } from './attendanceIdentity.js';
+import { employeesInServiceSince } from '../../shared/separation.js';
 
 // The CSC's rules on habitual tardiness, undertime, and absenteeism, which HR watches for: each
 // counts something a month (`meets`, with `watchAt` as the count that is getting close), and the
@@ -64,8 +64,18 @@ export const isHabitualPattern = (months, need) => {
   return false;
 };
 
-const isSameEmployee = (a, b) => a === b
-  || (a?.employeeId && b?.employeeId ? a.employeeId === b.employeeId : Boolean(a?.email) && a.email === b?.email);
+// The same account: by its database ID, else its Employee ID and name, as old accounts can share
+// the default Employee ID (DILG-2026-7689), else its email.
+const isSameEmployee = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a._id && b._id) return String(a._id) === String(b._id);
+  if (a.employeeId && b.employeeId) {
+    const [nameA, nameB] = [normalizeAttendanceValue(a.name), normalizeAttendanceValue(b.name)];
+    return a.employeeId === b.employeeId && (!nameA || !nameB || nameA === nameB);
+  }
+  return Boolean(a.email) && a.email === b.email;
+};
 
 // The employees HR should look at in `year` (YYYY) under each rule, as
 // [{ employee, rule, months: [{ month, count, meets }], status, monthsMet, thisMonth }]: 'Habitual'
@@ -78,7 +88,8 @@ export const habitualAttendance = ({ employees = [], records = [], absences = []
   const thisMonth = monthOf(today);
   const inYear = date => String(date || '').startsWith(`${year}-`);
   const rows = [];
-  for (const employee of activeEmployees(employees)) {
+  // Everyone in the service in `year`, those who left during it too.
+  for (const employee of employeesInServiceSince(employees, `${year}-01-01`)) {
     const counts = { tardiness: {}, undertime: {}, absences: {} };
     const add = (rule, date, count) => {
       if (count) counts[rule][monthOf(date)] = (counts[rule][monthOf(date)] || 0) + count;

@@ -10,7 +10,8 @@ import { apiFetch } from '../utils/api';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { durationText } from '../utils/dtrDay';
 import { monthUndertimeMinutes } from '../utils/dtrMonth';
-import { absentDays, activeEmployees, dtrIssue } from '../utils/hrAttendance';
+import { absentDays, dtrIssue } from '../utils/hrAttendance';
+import { employeesInServiceSince } from '../../shared/separation';
 
 const monthLabel = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 const daysText = days => `${Number(days || 0).toFixed(3)} day`;
@@ -69,7 +70,9 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
     }
     return byEmployee;
   }, [open, monthLoaded, month, year, monthNumber, employees, attendanceHistory, requests, holidays, today]);
-  const rows = activeEmployees(employees).map(employee => {
+  // Everyone in the service in the month: an employee who left during it still has its leave
+  // charged and credited, for the days up to their separation.
+  const rows = employeesInServiceSince(employees, `${month}-01`).map(employee => {
     const records = monthRecords.filter(record => matchesAttendanceEmployee(record, employee));
     const minutes = monthUndertimeMinutes(records, year, monthNumber);
     const charged = (employee.tardinessDeductions || []).find(item => item.month === month) || null;
@@ -83,7 +86,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
       tardinessDeductions: employee.tardinessDeductions || []
     }) + (charged ? 0 : absent.length);
     // Days of service this month, from the date hired: fewer than 30 in the month hired.
-    const serviceDays = monthServiceDays(month, employee.dateHired);
+    const serviceDays = monthServiceDays(month, employee.dateHired, employee.separationDate);
     const earnsLeave = earnsLeaveCredits(employee);
     return {
       employee,

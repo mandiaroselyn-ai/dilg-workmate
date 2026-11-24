@@ -54,6 +54,19 @@ test('the days of service in a month count from the day hired to the end of the 
   assert.equal(monthServiceDays('2026-10', '2026-11-03'), 0);
 });
 
+test('the days of service in a month end on the day of separation', () => {
+  // Separated November 15: November 1 to 15 is 15 days; a later month has none.
+  assert.equal(monthServiceDays('2026-11', '2020-01-06', '2026-11-15'), 15);
+  assert.equal(monthServiceDays('2026-12', '2020-01-06', '2026-11-15'), 0);
+  // Separated on the last day, or after the month: a full month.
+  assert.equal(monthServiceDays('2026-11', '2020-01-06', '2026-11-30'), 30);
+  assert.equal(monthServiceDays('2026-10', '2020-01-06', '2026-11-15'), 30);
+  // Hired and separated in the same month: November 10 to 20 is 11 days.
+  assert.equal(monthServiceDays('2026-11', '2026-11-10', '2026-11-20'), 11);
+  // A separation date that is not a date is ignored.
+  assert.equal(monthServiceDays('2026-11', '2020-01-06', 'soon'), 30);
+});
+
 test('a month\'s days without pay come from uncovered approved leave and tardiness charged without pay', () => {
   const requests = [
     { type: 'Leave Request', status: 'Approved', startDate: '2026-10-05', creditCharge: { withoutPayDays: 1.5 } },

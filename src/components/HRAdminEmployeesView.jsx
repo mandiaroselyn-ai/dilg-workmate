@@ -19,11 +19,13 @@ import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES, PROVINCE_LGU, lguOfStati
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import HRLeaveCreditsCard from './HRLeaveCreditsCard';
+import HRServiceRecordCard from './HRServiceRecordCard';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, nameFromParts, profileFieldValues } from '../../shared/profileFields';
 import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
+import { SEPARATION_REASONS, separationText } from '../../shared/separation';
 
 // HR's form takes the name, login email, mobile number, and employment details. The employee
 // fills in their own personal details and government ID numbers on their Profile, and HR sees
@@ -47,6 +49,9 @@ const emptyForm = {
   // An account HR makes is Active at once (no approval needed).
   accountStatus: 'Active',
   dateHired: '',
+  // The last day of service and its cause, when the employee leaves (shared/separation.js).
+  separationDate: '',
+  separationReason: '',
   assignedStation: '',
   assignedLGU: '',
   approvedWfhMunicipality: '',
@@ -97,6 +102,8 @@ const normalizeEmployee = (employee = {}) => {
     employmentStatus: employee.employmentStatus || employee.status || 'ACTIVE',
     accountStatus: employee.accountStatus || 'Pending',
     dateHired: employee.dateHired || '',
+    separationDate: employee.separationDate || '',
+    separationReason: employee.separationReason || '',
     assignedStation: employee.assignedStation || '',
     assignedLGU: employee.assignedLGU || '',
     approvedWfhMunicipality: employee.approvedWfhLocation?.municipality || '',
@@ -594,7 +601,17 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     }
   };
 
-  const handleAccountStatus = accountStatus => updateAccountStatus(selectedEmployee, accountStatus);
+  const handleAccountStatus = accountStatus => {
+    if (accountStatus === 'Inactive' && !selectedEmployee?.separationDate && !window.confirm(
+      `Deactivate ${employeeName(selectedEmployee)}? They will no longer be able to log in.
+
+If they left the service (resigned, retired, transferred, or their contract ended), choose Cancel and enter their Date and Cause of Separation under Edit first, so their last month's DTR, absences, and leave credits still count.`
+    )) return undefined;
+    if (accountStatus === 'Active' && selectedEmployee?.separationDate && !window.confirm(
+      `Reactivate ${employeeName(selectedEmployee)}? Their separation (${separationText(selectedEmployee)}) is cleared, as they are back in the service.`
+    )) return undefined;
+    return updateAccountStatus(selectedEmployee, accountStatus);
+  };
 
   // Deletes an account that is not Active and has no records (the server refuses one with
   // attendance or requests: an employee who left stays Inactive, so HR can still see their DTR).
@@ -804,6 +821,24 @@ This cannot be undone.`
                 </div>
               )}
 
+              {editingId && (
+                <div className="sm:col-span-2 xl:col-span-4">
+                  <p className="text-[11px] font-black text-slate-700">Separation from Service</p>
+                  <p className="mt-1 text-xs font-medium text-slate-500">When the employee leaves (resigns, retires, transfers, or their contract ends), enter their last day of service and the cause, then deactivate the account. Up to that day they still count: their last month's DTR, absences, and leave credits, earned for the days of service. Leave both blank while they are in the service.</p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <label className="text-[11px] font-black text-slate-600">Date of Separation (last day of service)
+                      <input name="separationDate" type="date" value={form.separationDate} min={form.dateHired || undefined} onChange={handleChange} required={Boolean(form.separationReason)} className={inputClass} />
+                    </label>
+                    <label className="text-[11px] font-black text-slate-600">Cause of Separation
+                      <select name="separationReason" value={form.separationReason} onChange={handleChange} required={Boolean(form.separationDate)} className={inputClass}>
+                        <option value="">Not separated</option>
+                        {SEPARATION_REASONS.map(reason => <option key={reason} value={reason}>{reason}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              )}
+
               <div className="sm:col-span-2 xl:col-span-4">
                 <p className="text-[11px] font-black text-slate-700">Approved Work-From-Home Location</p>
                 <p className="mt-1 text-xs font-medium text-slate-500">Saving a valid municipality and barangay approves this WFH geofence for the employee.</p>
@@ -872,6 +907,11 @@ This cannot be undone.`
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
               {selectedEmployee.accountStatus || 'Pending'} account
             </span>
+            {separationText(selectedEmployee) && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
+                Separated {separationText(selectedEmployee)}
+              </span>
+            )}
           </div>
           {isDemoEnrollment && (
             <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-900">
@@ -950,6 +990,8 @@ This enrollment used the sample ID the app used to offer for testing, which does
           )}
 
           <HRLeaveCreditsCard key={`credits-${employeeKey(selectedEmployee)}`} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
+
+          <HRServiceRecordCard key={`service-record-${employeeKey(selectedEmployee)}`} employee={selectedEmployee} currentUser={currentUser} onEmployeesChange={onEmployeesChange} onNotify={notify} />
 
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1245,6 +1287,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
         {employee.hasBrowserFingerprint || employee.hasPhoneFingerprint ? 'Fingerprint ✓' : 'No fingerprint'}
         {employmentNote(employee)}
       </span>
+      {separationText(employee) && <span className="mt-0.5 block text-xs font-semibold text-slate-600">Separated {separationText(employee)}</span>}
     </>
   );
   // A sign-up can be approved here once it has what approval needs; otherwise Edit opens to fill

@@ -9,6 +9,12 @@ import { holidaysFor } from '../../shared/phHolidays';
 export const employeeKey = (employee = {}) =>
   String(employee._id || employee.employeeId || employee.email || employee.id || '').trim().toLowerCase();
 
+const historyDate = value => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' });
+};
+const balanceText = value => (value == null || value === '' ? '-' : Number(value).toFixed(3));
+
 const creditsOf = employee => ({
   vacationLeaveCredits: Number(employee?.vacationLeaveCredits ?? 0),
   sickLeaveCredits: Number(employee?.sickLeaveCredits ?? 0)
@@ -61,6 +67,9 @@ export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmploy
   };
 
   const last = (employee?.leaveCreditHistory || []).at(-1);
+  // The whole history, newest first.
+  const [showHistory, setShowHistory] = useState(false);
+  const history = [...(employee?.leaveCreditHistory || [])].reverse();
   // Contract of service and job order workers earn no leave credits: their card says so. A
   // balance saved for one (from before the Status of Appointment said so) is shown for HR 2 to
   // clear, which is all the server lets HR 2 do with it.
@@ -137,6 +146,30 @@ export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmploy
         <p className="mt-2 text-xs font-semibold text-slate-500">
           Last adjusted {new Date(last.changedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} by {last.changedBy}: {last.reason}
         </p>
+      )}
+      {/* Every change to the balances, newest first: the employee's leave card. */}
+      {history.length > 0 && (
+        <div className="mt-2">
+          <button type="button" onClick={() => setShowHistory(shown => !shown)} aria-expanded={showHistory} className="text-xs font-black text-blue-700">
+            {showHistory ? 'Hide history' : `View history (${history.length})`}
+          </button>
+          {showHistory && (
+            <ol className="mt-2 max-h-96 space-y-1.5 overflow-y-auto">
+              {history.map((entry, index) => (
+                <li key={`${entry.changedAt}-${index}`} className="rounded-xl border border-slate-100 bg-slate-50 p-2.5 text-xs text-slate-700">
+                  <p className="font-black text-slate-800">
+                    {historyDate(entry.changedAt)} · {entry.changedBy || 'HR'}
+                  </p>
+                  <p className="mt-0.5">{entry.reason || 'No reason recorded.'}</p>
+                  <p className="mt-0.5 font-semibold text-slate-500">
+                    VL {balanceText(entry.previousVacationLeaveCredits)} → <b className="text-slate-800">{balanceText(entry.vacationLeaveCredits)}</b>
+                    {' · '}SL {balanceText(entry.previousSickLeaveCredits)} → <b className="text-slate-800">{balanceText(entry.sickLeaveCredits)}</b>
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       )}
     </section>
   );

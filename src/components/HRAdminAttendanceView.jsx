@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
+import { employeesInServiceOn } from '../../shared/separation';
 import { MISMATCH_ALERT_COUNT, mismatchesOn, OUTSIDE_ALERT_AFTER_MINUTES } from '../../shared/attendanceAlerts';
 import { usedBrowserFingerprint } from '../utils/fingerprintMessages';
 import {
@@ -160,12 +161,13 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
 
   // Only active employee accounts, and records and requests that belong to current
   // employees, are counted.
-  const staff = activeEmployees(employees);
+  // Those in the service today, and on an earlier day those in it then (one who has since left too).
+  const staff = employeesInServiceOn(employees, today);
   const employeeHistory = recordsForEmployees(attendanceHistory, employees);
   const employeeRequests = recordsForEmployees(requests, employees);
   const records = employeeHistory.filter(record => record.date === today);
   const findEmployee = record => employees.find(employee => matchesAttendanceEmployee(record, employee));
-  const statusesOn = date => staff.map(employee => ({
+  const statusesOn = date => employeesInServiceOn(employees, date).map(employee => ({
     employee,
     ...employeeDayStatus(employee, { records: employeeHistory, requests: employeeRequests, date, holidays, today })
   }));

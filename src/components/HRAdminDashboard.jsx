@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
+import { employeesInServiceOn } from '../../shared/separation';
 import {
   AlertCircle,
   ArrowRight,
@@ -67,7 +68,8 @@ export default function HRAdminDashboard({
   }, []);
   const today = getManilaDateString();
   // Only current, active employee accounts and their own records and requests are counted.
-  const staff = activeEmployees(employees);
+  // Those in the service today.
+  const staff = employeesInServiceOn(employees, today);
   const employeeHistory = recordsForEmployees(attendanceHistory, employees);
   const employeeRequests = recordsForEmployees(requests, employees);
   const totalEmployees = staff.length;

@@ -327,6 +327,17 @@ test('absent days start when the office began using WorkMate, and skip leave, tr
   assert.deepEqual(upTo.map(day => `${day.employee.employeeId} ${day.date}`).sort(), ['E1 2026-11-17', 'E2 2026-11-18']);
 });
 
+test('a separated employee is absent only up to the day of separation', () => {
+  // Ana left on Wednesday, November 18; her account is now Inactive.
+  const ana = { employeeId: 'E1', name: 'Ana Reyes', accountStatus: 'Inactive', separationDate: '2026-11-18', separationReason: 'Resignation' };
+  const records = [{ employeeId: 'E1', date: '2026-11-16', timeIn: '07:55 AM', timeOut: '04:00 PM' }];
+  const days = absentDays({ employees: [ana], records, requests: [], from: '2026-11-01', today: '2026-11-24', minutes: 18 * 60 });
+  assert.deepEqual(days.map(day => day.date), ['2026-11-18', '2026-11-17']);
+  // An Inactive account with no separation date is not counted, as before.
+  const inactive = { ...ana, separationDate: '', separationReason: '' };
+  assert.deepEqual(absentDays({ employees: [inactive], records, requests: [], from: '2026-11-01', today: '2026-11-24', minutes: 18 * 60 }), []);
+});
+
 test('the reminder lists the days still missing a log, for HR to correct', () => {
   const day = (date, extra = {}) => ({ id: date, date, timeIn: '07:00 AM', ...extra });
   const records = [

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, PenLine } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
-import { activeEmployees } from '../utils/hrAttendance';
+import { employeesInServiceSince } from '../../shared/separation';
 import { dtrStatusText } from '../utils/dtrSubmission';
 
 // The month before this one, as YYYY-MM: the latest DTR that can be submitted.
@@ -20,7 +20,8 @@ const tone = { Verified: 'bg-emerald-50 text-emerald-700', Submitted: 'bg-blue-5
 export default function HRDtrSubmissions({ employees = [], submissions = [], initialMonth = '' }) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => initialMonth || lastEndedMonth());
-  const staff = activeEmployees(employees);
+  // Everyone in the service in the month, an employee who left during it too.
+  const staff = employeesInServiceSince(employees, `${month}-01`);
   const rows = staff.map(employee => ({
     employee,
     submission: submissions.find(item => item.month === month && item.employeeId === employee.employeeId) || null

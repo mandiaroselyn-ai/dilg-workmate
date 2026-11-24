@@ -34,16 +34,23 @@ export const monthlyEarnedCredits = (withoutPayDays = 0, serviceDays = 30) => {
 };
 
 // An employee's days of service in a month (YYYY-MM), for the leave earned that month: 30, a
-// full month, when they were hired (`dateHired`, YYYY-MM-DD) before the month or on its first
-// day, or the date is not known; the calendar days from the day hired to the end of the month,
-// at most 30, when hired during it; and 0 when hired after it.
-export const monthServiceDays = (month, dateHired) => {
-  const hired = dayOf(dateHired);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(hired) || hired <= `${month}-01`) return 30;
-  if (hired.slice(0, 7) > month) return 0;
+// full month, when they served all of it (hired before it or on its first day, or the date is not
+// known, and not separated before its last day); otherwise the calendar days served, at most 30,
+// from the day hired (`dateHired`, YYYY-MM-DD) and up to the day of separation (`separationDate`,
+// their last day of service); and 0 when hired after the month or separated before it.
+export const monthServiceDays = (month, dateHired, separationDate = '') => {
   const [year, monthNumber] = month.split('-').map(Number);
   const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-  return Math.max(0, Math.min(30, lastDay - Number(hired.slice(8, 10)) + 1));
+  const hired = dayOf(dateHired);
+  const left = dayOf(separationDate);
+  const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (isDate(hired) && hired.slice(0, 7) > month) return 0;
+  if (isDate(left) && left.slice(0, 7) < month) return 0;
+  const firstDay = isDate(hired) && hired > `${month}-01` ? Number(hired.slice(8, 10)) : 1;
+  const finalDay = isDate(left) && left.slice(0, 7) === month ? Number(left.slice(8, 10)) : lastDay;
+  if (finalDay < firstDay) return 0;
+  if (firstDay === 1 && finalDay === lastDay) return 30;
+  return Math.max(0, Math.min(30, finalDay - firstDay + 1));
 };
 
 // One employee's days of leave without pay in a month (YYYY-MM), which lower that month's

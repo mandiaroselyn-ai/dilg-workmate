@@ -162,3 +162,62 @@ test('an account with records is kept Inactive instead of deleted; one without r
   assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
   assert.equal(remove.mock.callCount(), 1);
 });
+
+test("HR saves the date and cause of separation, checked against the date hired", async t => {
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findAccount', async () => roselyn);
+  const update = t.mock.method(User, 'updateEmployee', async (_id, data) => ({ ...roselyn, ...data }));
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  mockMoves(t);
+  const save = body => request(app)
+    .patch(`/api/employees/${roselyn.employeeId}`)
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ ...roselyn, employmentStatus: 'ACTIVE', ...body });
+  const saved = await save({ separationDate: '2026-11-15', separationReason: 'Resignation' });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(update.mock.calls[0].arguments[1].separationDate, '2026-11-15');
+  assert.equal(update.mock.calls[0].arguments[1].separationReason, 'Resignation');
+  // Before the date hired, without a cause, or with a cause not on the list: not saved.
+  assert.equal((await save({ separationDate: '2024-01-31', separationReason: 'Resignation' })).status, 400);
+  assert.equal((await save({ separationDate: '2026-11-15', separationReason: '' })).status, 400);
+  assert.equal((await save({ separationDate: '2026-11-15', separationReason: 'Went home' })).status, 400);
+  assert.equal(update.mock.callCount(), 1);
+});
+
+test("HR saves an employee's Service Record lines, oldest first, and only HR can", async t => {
+  t.mock.method(User, 'findByEmail', async email => (email === hr.email ? hr : roselyn));
+  const setLines = t.mock.method(User, 'setServiceRecord', async (_id, lines) => ({ ...roselyn, serviceRecord: lines }));
+  const lines = [
+    { from: '2025-01-01', designation: 'Administrative Aide IV', status: 'Permanent', salary: '170,000' },
+    { from: '2024-02-01', to: '2024-12-31', designation: 'Administrative Aide III', status: 'Permanent', salary: '160000', branch: 'National' }
+  ];
+  const saved = await request(app)
+    .put(`/api/employees/${encodeURIComponent(roselyn.email)}/service-record`)
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ lines });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(setLines.mock.calls[0].arguments[0], roselyn.email);
+  assert.deepEqual(saved.body.employee.serviceRecord.map(line => line.from), ['2024-02-01', '2025-01-01']);
+  assert.equal(saved.body.employee.serviceRecord[1].salary, '170000');
+  // A line without its From date says which line.
+  const wrong = await request(app)
+    .put(`/api/employees/${encodeURIComponent(roselyn.email)}/service-record`)
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ lines: [...lines, { designation: 'Clerk' }] });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.body.error, /^Line 3/);
+  // No such account.
+  setLines.mock.mockImplementation(async () => null);
+  const missing = await request(app)
+    .put('/api/employees/nobody%40x.test/service-record')
+    .set('Authorization', `Bearer ${createAuthToken(hr)}`)
+    .send({ lines });
+  assert.equal(missing.status, 404);
+  // The employee cannot change their own.
+  const own = await request(app)
+    .put(`/api/employees/${encodeURIComponent(roselyn.email)}/service-record`)
+    .set('Authorization', `Bearer ${createAuthToken(roselyn)}`)
+    .send({ lines });
+  assert.equal(own.status, 403);
+  assert.equal(setLines.mock.callCount(), 2);
+});

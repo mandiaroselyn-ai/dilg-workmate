@@ -4,6 +4,7 @@ import { travelOrderCovers } from '../../shared/travelStatus.js';
 import { holidaysFor } from '../../shared/phHolidays.js';
 import { isFixedHoursDay, OFFICE_HOURS, workdayEnd } from '../../shared/officeHours.js';
 import { getManilaDateString } from '../../shared/localDate.js';
+import { employeesInServiceSince } from '../../shared/separation.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
 // an active account are expected at work, and only records that belong to a current
@@ -313,9 +314,12 @@ export const absentDays = ({ employees = [], records = [], requests = [], holida
   const last = [isDayOver(today, minutes) ? today : previousDay(today), to].filter(Boolean).sort()[0];
   const ownRequests = recordsForEmployees(requests, employees);
   const days = [];
-  for (const employee of activeEmployees(employees)) {
+  // Every employee in the service in that time, each up to their separation date when they left.
+  for (const employee of employeesInServiceSince(employees, start)) {
     const first = [start, firstWorkDayOf(employee)].filter(Boolean).sort().pop();
-    for (let date = first; date <= last; date = nextDay(date)) {
+    const separated = /^\d{4}-\d{2}-\d{2}$/.test(employee.separationDate || '') ? employee.separationDate : '';
+    const end = separated && separated < last ? separated : last;
+    for (let date = first; date <= end; date = nextDay(date)) {
       if (employeeDayStatus(employee, { records: ownRecords, requests: ownRequests, date, holidays, today }).status === 'Absent') {
         days.push({ date, employee });
       }

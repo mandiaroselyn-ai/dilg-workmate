@@ -8,6 +8,7 @@ import {
   updateEmployeeAccountStatus,
   deleteEmployee,
   updateEmployeeLeaveCredits,
+  updateServiceRecord,
   deductTardinessCredits,
   creditLeaveEarnings,
   getLeaveCreditsStart,
@@ -114,6 +115,8 @@ router.patch('/employees/:identifier', requireAdmin, updateEmployee);
 router.patch('/employees/:identifier/status', requireAdmin, updateEmployeeAccountStatus);
 router.delete('/employees/:identifier', requireAdmin, deleteEmployee);
 router.patch('/employees/:identifier/leave-credits', requireAdmin, requireLeaveCreditsHr, updateEmployeeLeaveCredits);
+// The employee's Service Record lines, which HR keeps (see updateServiceRecord).
+router.put('/employees/:identifier/service-record', requireAdmin, updateServiceRecord);
 // One ended month's tardiness and undertime charged to vacation leave (see deductTardinessCredits).
 router.post('/employees/tardiness-deductions', requireAdmin, requireLeaveCreditsHr, deductTardinessCredits);
 // One ended month's earned leave credited (see creditLeaveEarnings).

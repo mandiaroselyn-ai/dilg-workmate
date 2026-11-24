@@ -58,3 +58,18 @@ test('more than 2.5 days absent a month for three months in a row is habitual ab
   // Two days a month never meets it.
   assert.deepEqual(habitualAttendance({ employees: [ana], absences: absent('2026-09', 2), year: '2026', today: '2026-11-24' }), []);
 });
+
+test('the absences of one old account are not counted for another sharing its Employee ID', () => {
+  const lara = { _id: 'a1', employeeId: 'DILG-2026-7689', name: 'Lara Montiano', accountStatus: 'Active' };
+  const rose = { _id: 'a2', employeeId: 'DILG-2026-7689', name: 'Roselyn Mandia', accountStatus: 'Active' };
+  const absent = (person, month, days) => weekdays(month).slice(0, days).map(date => ({ date, employee: person }));
+  const absences = ['2026-08', '2026-09', '2026-10'].flatMap(month => absent(lara, month, 3));
+  const rows = habitualAttendance({ employees: [lara, rose], absences, year: '2026', today: '2026-11-24' });
+  assert.deepEqual(rows.map(row => `${row.employee.name} ${row.rule.id} ${row.status}`), ['Lara Montiano absences Habitual']);
+  // A copy of the account (as after a save) is still the same account.
+  assert.equal(habitualAttendance({ employees: [{ ...lara }], absences, year: '2026', today: '2026-11-24' }).length, 1);
+  // Without database IDs, the Employee ID and the name tell them apart.
+  const [laraNoId, roseNoId] = [{ ...lara, _id: undefined }, { ...rose, _id: undefined }];
+  const byName = ['2026-08', '2026-09', '2026-10'].flatMap(month => absent(laraNoId, month, 3));
+  assert.deepEqual(habitualAttendance({ employees: [{ ...laraNoId }, roseNoId], absences: byName, year: '2026', today: '2026-11-24' }).map(row => row.employee.name), ['Lara Montiano']);
+});
