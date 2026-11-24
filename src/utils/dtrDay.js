@@ -30,24 +30,30 @@ export const isRestDate = (date, holidays = []) => isRestDay({ date, holiday: ho
 // Time Out with the noon break filled in.
 export const usesLunchLogs = record => hasLunchLogs(record) || (record?.date || '') >= LUNCH_LOGS_FROM;
 
-// The day's four logs as saved times ('' when there is none). A Time In before noon is the
-// A.M. arrival; one from noon on is the P.M. arrival of an afternoon-only day. Without a
-// Lunch In, a Time Out by 1:00 PM ends a morning-only day: it is the A.M. departure unless a
-// Lunch Out already is. `timeOut` defaults to the record's.
+// The day's four logs as saved times ('' when there is none), and `missedHalf`, the half of the
+// day the employee missed. A Time In before noon is the A.M. arrival; one from noon on is the P.M.
+// arrival of a day whose morning was missed. Without a Lunch In, a Time Out by 1:00 PM ends the
+// day in the morning: it is the A.M. departure unless a Lunch Out already is, and the afternoon
+// was missed. A missed morning is tardiness and a missed afternoon is undertime (CSC MC No. 17,
+// s. 2010, Policy on Half-Day Absence), so `missedHalf` is 'Morning' or 'Afternoon'. It is ''
+// for a whole day, and when an approved leave or Travel Order covers the day
+// (`record.coveredByRequest`, from markDtrDay). `timeOut` defaults to the record's.
 export const dtrDayLogs = (record, timeOut = record?.timeOut) => {
-  const logs = { amArrival: '', amDeparture: '', pmArrival: '', pmDeparture: '' };
+  const logs = { amArrival: '', amDeparture: '', pmArrival: '', pmDeparture: '', missedHalf: '' };
   const timeIn = clockMinutes(record?.timeIn);
   if (timeIn === null) return logs;
   const out = clockMinutes(timeOut);
+  const missed = half => (record.coveredByRequest ? '' : half);
   if (timeIn >= OFFICE_HOURS.noon) {
-    return { ...logs, pmArrival: record.timeIn, pmDeparture: out === null ? '' : timeOut };
+    return { ...logs, pmArrival: record.timeIn, pmDeparture: out === null ? '' : timeOut, missedHalf: missed('Morning') };
   }
   const morningOnly = !record.lunchIn && out !== null && out <= OFFICE_HOURS.pmStart;
   return {
     amArrival: record.timeIn,
     amDeparture: record.lunchOut || (morningOnly ? timeOut : ''),
     pmArrival: record.lunchIn || '',
-    pmDeparture: out === null || morningOnly ? '' : timeOut
+    pmDeparture: out === null || morningOnly ? '' : timeOut,
+    missedHalf: morningOnly ? missed('Afternoon') : ''
   };
 };
 
@@ -56,16 +62,27 @@ export const minutesLate = (value, start) => (clockMinutes(value) === null ? 0 :
 export const minutesEarly = (value, end) => (clockMinutes(value) === null ? 0 : Math.max(0, end - clockMinutes(value)));
 
 // The office hours of the day the four logs are from (`date`, YYYY-MM-DD), by its first arrival.
-export const logsSchedule = (logs, date) => daySchedule(date, clockMinutes(logs.amArrival) ?? clockMinutes(logs.pmArrival));
+// An afternoon whose morning an approved leave or Travel Order covers is a half day (see
+// daySchedule and dtrDayLogs).
+export const logsSchedule = (logs, date) => daySchedule(date, clockMinutes(logs.amArrival) ?? clockMinutes(logs.pmArrival), {
+  halfDay: !logs.amArrival && Boolean(logs.pmArrival) && !logs.missedHalf
+});
 
 // Minutes of tardiness the four logs of `date` show (arriving after the day's latest on-time
-// arrival, or after 1:00 PM), of undertime (leaving before noon, or before the day's eight hours
-// end), and of both, which is the DTR's UNDERTIME column. A half day counts only the half that was
-// worked; the other half is a leave or an absence, not undertime.
-export const dtrLateMinutes = (logs, date) => minutesLate(logs.amArrival, logsSchedule(logs, date).lateAfter)
-  + minutesLate(logs.pmArrival, OFFICE_HOURS.pmStart);
-export const dtrEarlyMinutes = (logs, date) => minutesEarly(logs.amDeparture, OFFICE_HOURS.noon)
-  + minutesEarly(logs.pmDeparture, logsSchedule(logs, date).end);
+// arrival or after 1:00 PM, and a missed morning, from that arrival to noon), of undertime
+// (leaving before noon or before the day's eight hours end, and a missed afternoon, from 1:00 PM
+// to that end), and of both, which is the DTR's UNDERTIME column (CSC MC No. 17, s. 2010). A half
+// day an approved leave or Travel Order covers counts only the half that was worked.
+export const dtrLateMinutes = (logs, date) => {
+  const { lateAfter } = logsSchedule(logs, date);
+  return minutesLate(logs.amArrival, lateAfter) + minutesLate(logs.pmArrival, OFFICE_HOURS.pmStart)
+    + (logs.missedHalf === 'Morning' ? OFFICE_HOURS.noon - lateAfter : 0);
+};
+export const dtrEarlyMinutes = (logs, date) => {
+  const { end } = logsSchedule(logs, date);
+  return minutesEarly(logs.amDeparture, OFFICE_HOURS.noon) + minutesEarly(logs.pmDeparture, end)
+    + (logs.missedHalf === 'Afternoon' ? end - OFFICE_HOURS.pmStart : 0);
+};
 export const dtrUndertimeMinutes = (logs, date) => dtrLateMinutes(logs, date) + dtrEarlyMinutes(logs, date);
 
 // The spans of a day's work in minutes, without its break: the employee's own Lunch Out to Lunch
@@ -105,33 +122,43 @@ export const dtrOvertime = (logs, record) => {
 
 // How each punch of a record stands against the day's office hours, as the DTR reads it (see
 // dtrDayLogs): minutes `late` for Time In and Lunch In, minutes `early` for Lunch Out and Time
-// Out, or null for a punch not made. A Time In from noon on is an afternoon arrival, and a
-// Time Out that ends a morning-only day is a noon departure. A rest day has no office hours to
-// stand against, so every punch is null.
+// Out, or null for a punch not made. A Time In from noon on is an afternoon arrival, late by the
+// morning it missed too, and a Time Out that ends the day in the morning is a noon departure,
+// early by the afternoon it missed too (see dtrDayLogs). A rest day has no office hours to stand
+// against, so every punch is null.
 export const punchStanding = record => {
   if (isRestDay(record)) return { timeIn: null, lunchOut: null, lunchIn: null, timeOut: null };
   const logs = dtrDayLogs(record);
   const { noon, pmStart } = OFFICE_HOURS;
   const { lateAfter, end } = logsSchedule(logs, record?.date);
-  const timeOutEnd = !record?.timeOut ? null
-    : logs.pmDeparture === record.timeOut ? end
-      : logs.amDeparture === record.timeOut ? noon : null;
+  const missedMorning = logs.missedHalf === 'Morning' ? noon - lateAfter : 0;
+  const missedAfternoon = logs.missedHalf === 'Afternoon' ? end - pmStart : 0;
+  let timeOut = null;
+  if (record?.timeOut) {
+    if (logs.pmDeparture === record.timeOut) timeOut = { early: minutesEarly(record.timeOut, end) };
+    else if (logs.amDeparture === record.timeOut) timeOut = { early: minutesEarly(record.timeOut, noon) + missedAfternoon };
+    // A Time Out after a Lunch Out with no Lunch In: the Lunch Out shows the morning's standing.
+    else if (missedAfternoon) timeOut = { early: missedAfternoon };
+  }
   return {
-    timeIn: record?.timeIn ? { late: logs.amArrival ? minutesLate(logs.amArrival, lateAfter) : minutesLate(logs.pmArrival, pmStart) } : null,
+    timeIn: record?.timeIn ? { late: logs.amArrival ? minutesLate(logs.amArrival, lateAfter) : missedMorning + minutesLate(logs.pmArrival, pmStart) } : null,
     lunchOut: record?.lunchOut ? { early: minutesEarly(record.lunchOut, noon) } : null,
     lunchIn: record?.lunchIn ? { late: minutesLate(record.lunchIn, pmStart) } : null,
-    timeOut: timeOutEnd === null ? null : { early: minutesEarly(record.timeOut, timeOutEnd) }
+    timeOut
   };
 };
 
 // Minutes late of the day's arrivals, as government DTRs count tardiness: `am` for a morning
 // Time In after the day's latest on-time arrival (7:00 AM on Monday, 9:00 AM on the flexitime
-// days), and `pm` for an afternoon-only Time In or a Lunch In after 1:00 PM.
+// days), or for a missed morning (a Time In from noon on), from that arrival to noon (CSC MC No.
+// 17, s. 2010); and `pm` for an afternoon Time In or a Lunch In after 1:00 PM.
 export const tardiness = record => {
-  const standing = punchStanding(record);
-  const timeInLate = standing.timeIn?.late || 0;
-  const morning = (clockMinutes(record?.timeIn) ?? 0) < OFFICE_HOURS.noon;
-  return { am: morning ? timeInLate : 0, pm: (morning ? 0 : timeInLate) + (standing.lunchIn?.late || 0) };
+  if (!record?.timeIn || isRestDay(record)) return { am: 0, pm: 0 };
+  const logs = dtrDayLogs(record);
+  const { lateAfter } = logsSchedule(logs, record.date);
+  const am = logs.amArrival ? minutesLate(logs.amArrival, lateAfter)
+    : logs.missedHalf === 'Morning' ? OFFICE_HOURS.noon - lateAfter : 0;
+  return { am, pm: minutesLate(logs.pmArrival, OFFICE_HOURS.pmStart) };
 };
 
 // A day's tardiness as shown, such as "AM 7 min · PM 15 min", or '' when on time.
@@ -161,6 +188,9 @@ export const officeHoursText = () => {
   const hour = minutes => (minutes % 60 ? shortTime(minutes) : String(Math.floor(minutes / 60) % 12 || 12));
   return `Mon ${hour(amStart)}–${hour(workdayEnd(amStart))}; Tue–Fri flexi ${hour(amStart)}–${hour(flexLatestStart)}, ${workMinutes / 60} hrs`;
 };
+
+// Minutes after midnight as attendance times are saved: "08:05 AM" (see clockMinutes).
+export const clockText = minutes => `${String(Math.floor(minutes / 60) % 12 || 12).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')} ${minutes < OFFICE_HOURS.noon ? 'AM' : 'PM'}`;
 
 // A number of minutes as "7 min" or "1h 05m".
 export const durationText = minutes => (minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`);

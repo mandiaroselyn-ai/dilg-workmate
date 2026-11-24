@@ -1,8 +1,8 @@
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
-import { clockMinutes, dtrDayLogs, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
+import { clockMinutes, isRestDate, isRestDay, missingLunchLog, tardiness, usesLunchLogs } from './dtrDay.js';
 import { travelOrderCovers } from '../../shared/travelStatus.js';
 import { holidaysFor } from '../../shared/phHolidays.js';
-import { isFixedHoursDay, OFFICE_HOURS } from '../../shared/officeHours.js';
+import { isFixedHoursDay, OFFICE_HOURS, workdayEnd } from '../../shared/officeHours.js';
 import { getManilaDateString } from '../../shared/localDate.js';
 
 // Attendance rules shared by the HR dashboard and attendance screens. Only employees with
@@ -32,24 +32,32 @@ const clock24Minutes = value => {
   return hours * 60 + minutes;
 };
 
+// An approved request of `types` on the record's date, filed by its employee or (a Travel Order)
+// including them.
+const approvedRequestOn = (record, requests, types) => requests.some(request => types.includes(request?.type)
+  && /approved/i.test(request.status || '')
+  && requestCoversDate(request, record.date)
+  && (matchesAttendanceEmployee(request, { employeeId: record.employeeId, email: record.employeeEmail ?? record.email, name: record.employeeName })
+    || travelOrderCovers(request, { employeeId: record.employeeId })));
+
 // A day that earns no overtime, whatever an office order says: work from home (CSC MC No. 6,
 // s. 2022, item V.B.1.1.4) or travel status (Joint CSC-DBM Circular No. 01-15, Sec. 7.3).
 const cannotEarnOvertime = (record, requests) => (record.dutyType || record.workAssignment?.assignmentRole) === 'wfh'
-  || requests.some(request => request?.type === 'Travel Order' && /approved/i.test(request.status || '')
-    && requestCoversDate(request, record.date)
-    && (matchesAttendanceEmployee(request, { employeeId: record.employeeId, email: record.employeeEmail ?? record.email, name: record.employeeName })
-      || travelOrderCovers(request, { employeeId: record.employeeId })));
+  || approvedRequestOn(record, requests, ['Travel Order']);
 
 // A record with what the office's calendar says about its day, for everything that reads it as
 // the DTR does: `holiday` when HR set its date as one, `noOvertime` for a day that earns none,
-// `overtimeWindows` for the office orders that name its employee on that date, and no `late`
-// from the server on a rest day.
+// `overtimeWindows` for the office orders that name its employee on that date,
+// `coveredByRequest` when an approved leave or Travel Order covers the day (so a half day the
+// employee missed is not tardiness or undertime, see dtrDayLogs), and no `late` from the server
+// on a rest day.
 export const markDtrDay = (record, { holidays = [], overtimeOrders = [], requests = [] } = {}) => {
   const noOvertime = cannotEarnOvertime(record, requests);
   const marked = {
     ...record,
     holiday: holidays.some(holiday => holiday.date === record.date),
     noOvertime,
+    coveredByRequest: approvedRequestOn(record, requests, ['Leave Request', 'Travel Order']),
     overtimeWindows: noOvertime ? [] : overtimeOrders
       .filter(order => order.startDate <= record.date && record.date <= order.endDate
         && order.employeeIds.some(id => matchesAttendanceEmployee(record, { employeeId: id, email: id })))
@@ -58,10 +66,10 @@ export const markDtrDay = (record, { holidays = [], overtimeOrders = [], request
   return isRestDay(marked) ? { ...marked, late: false } : marked;
 };
 
-// A late day: an arrival after the start of its half of the day (a Time In after 7:00 AM on
-// Monday or 9:00 AM on the flexitime days, or after 1:00 PM for an afternoon-only day) or back
-// from lunch after 1:00 PM, or a record HR set
-// to Late. Records with lunch logs are read from their own times, as their DTR is; earlier ones
+// A late day: a Time In after 7:00 AM on Monday or 9:00 AM on the flexitime days (which a Time
+// In from noon on always is, since a missed morning is tardiness, CSC MC No. 17, s. 2010, unless
+// an approved leave or Travel Order covers it: then after 1:00 PM), back from lunch after
+// 1:00 PM, or a record HR set to Late. Records with lunch logs are read from their own times, as their DTR is; earlier ones
 // use the `late` the server saved at Time In. Nobody is late on a rest day.
 export const isLate = record => {
   if (/late/i.test(record?.status || '')) return true;
@@ -227,6 +235,10 @@ const previousDay = date => {
   return day.toISOString().slice(0, 10);
 };
 
+// True once `date`'s office hours are over at `minutes` after midnight: 4:00 PM on a Monday, and
+// 6:00 PM, when the latest flexitime day ends, on the other days.
+export const isDayOver = (date, minutes) => minutes >= workdayEnd(isFixedHoursDay(date) ? OFFICE_HOURS.amStart : OFFICE_HOURS.flexLatestStart);
+
 // The first day an employee is expected at work in WorkMate: their hiring date, or the day
 // their account was made ('' when neither is known).
 const firstWorkDayOf = employee => {
@@ -236,51 +248,27 @@ const firstWorkDayOf = employee => {
   return created && !Number.isNaN(created.getTime()) ? getManilaDateString(created) : '';
 };
 
-// The half of a working day a record shows the employee missed, which the DTR leaves out of its
-// undertime ("a leave or an absence", see dtrDayLogs): 'Morning' for a Time In from noon on,
-// 'Afternoon' for a Time Out by 1:00 PM with no Lunch In (a morning-only day). '' otherwise. A
-// day with a missing lunch log but a Time Out in the afternoon is a DTR issue for HR to correct,
-// not an absence.
-export const missedHalfOf = record => {
-  if (!record?.timeIn) return '';
-  const logs = dtrDayLogs(record);
-  if (!logs.amArrival && logs.pmArrival) return 'Morning';
-  const out = clockMinutes(record.timeOut);
-  if (logs.amArrival && out !== null && !record.lunchIn && out <= OFFICE_HOURS.pmStart) return 'Afternoon';
-  return '';
-};
-
 // Every day an active employee was Absent (a working day with no Time In and no approved leave
-// or Travel Order, see employeeDayStatus), as [{ date, employee, days: 1, half: '' }], and every
-// half day they missed (see missedHalfOf) without an approved leave or Travel Order that day,
-// as { ..., days: 0.5, half: 'Morning' | 'Afternoon', record }. Days are counted from the
+// or Travel Order, see employeeDayStatus), as [{ date, employee }]. Days are counted from the
 // latest of `from` (the first loaded day), the first day anyone's attendance was recorded in
 // WorkMate (so the days before the office used it are not absences), and the employee's own
-// first day; up to yesterday, or today once its latest on-time arrival (`minutes` after
-// midnight) has passed.
+// first day; up to yesterday, or today once its office hours are over (`minutes` after midnight,
+// see isDayOver). A half day the employee missed is not an absence: the DTR counts it as
+// tardiness or undertime (CSC MC No. 17, s. 2010, see dtrDayLogs).
 export const absentDays = ({ employees = [], records = [], requests = [], holidays = [], from = '', today, minutes }) => {
   const ownRecords = recordsForEmployees(records, employees);
   const firstRecorded = ownRecords.reduce((first, record) => (record.date && (!first || record.date < first) ? record.date : first), '');
   if (!firstRecorded || !today) return [];
   const start = [from, firstRecorded].filter(Boolean).sort().pop();
-  const last = isBeforeLatestArrival(today, minutes) ? previousDay(today) : today;
+  const last = isDayOver(today, minutes) ? today : previousDay(today);
   const ownRequests = recordsForEmployees(requests, employees);
   const days = [];
   for (const employee of activeEmployees(employees)) {
     const first = [start, firstWorkDayOf(employee)].filter(Boolean).sort().pop();
     for (let date = first; date <= last; date = nextDay(date)) {
-      const { status, record } = employeeDayStatus(employee, { records: ownRecords, requests: ownRequests, date, holidays, today });
-      if (status === 'Absent') {
-        days.push({ date, employee, days: 1, half: '' });
-        continue;
+      if (employeeDayStatus(employee, { records: ownRecords, requests: ownRequests, date, holidays, today }).status === 'Absent') {
+        days.push({ date, employee });
       }
-      // A half day missed on a working day, without a leave or Travel Order that covers it.
-      const half = (status === 'Present' || status === 'Late') && !isRestDate(date, holidaysFor(holidays, employee)) ? missedHalfOf(record) : '';
-      const covered = half && ownRequests.some(request => /approved/i.test(request?.status || '')
-        && ['Leave Request', 'Travel Order'].includes(request.type)
-        && requestCoversDate(request, date)
-        && (matchesAttendanceEmployee(request, employee) || travelOrderCovers(request, employee)));
-      if (half && !covered) days.push({ date, employee, days: 0.5, half, record });
     }
   }
   return days.sort((a, b) => b.date.localeCompare(a.date) || String(a.employee.name || '').localeCompare(String(b.employee.name || '')));

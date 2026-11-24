@@ -6,8 +6,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { apiFetch } from '../utils/api';
-import { hasSelfie, isLate, markDtrDay } from '../utils/hrAttendance';
-import { clockMinutes, daySchedule, durationText, isFixedHoursDay, isRestDate, missingLunchLog, OFFICE_HOURS, officeRangeText, officeTimeText, punchStanding, tardinessText, usesLunchLogs, workdayEnd } from '../utils/dtrDay';
+import { hasSelfie, isLate, markDtrDay, requestCoversDate } from '../utils/hrAttendance';
+import { clockMinutes, clockText, daySchedule, dtrDayLogs, durationText, logsSchedule, isFixedHoursDay, isRestDate, missingLunchLog, OFFICE_HOURS, officeRangeText, officeTimeText, punchStanding, tardinessText, usesLunchLogs, workdayEnd } from '../utils/dtrDay';
 import { serverNow, syncServerClock } from '../utils/serverClock';
 import RecordSelfie from './RecordSelfie';
 import LiveFaceCamera from './LiveFaceCamera';
@@ -383,7 +383,7 @@ export default function AttendanceView({
   // `saved` is what saving the punch resolved with: { record, queued, afterQueuedTimeIn }, or
   // null when it was not saved.
   const showPunchReceipt = (punch, saved) => {
-    if (saved?.record) setPunchReceipt({ punch, record: markDtrDay(saved.record, { holidays }), queued: Boolean(saved.queued), afterQueuedTimeIn: Boolean(saved.afterQueuedTimeIn) });
+    if (saved?.record) setPunchReceipt({ punch, record: markDtrDay(saved.record, { holidays, requests }), queued: Boolean(saved.queued), afterQueuedTimeIn: Boolean(saved.afterQueuedTimeIn) });
   };
   const nativeBiometricResolversRef = useRef(new Map());
   const hasNativeBridge = typeof window !== 'undefined'
@@ -1372,7 +1372,10 @@ export default function AttendanceView({
   const afternoonOnly = timeInMinutes !== null && timeInMinutes >= noon;
   // Today's hours: Monday's are fixed; on the flexitime days the eight hours end by the Time In.
   const fixedHoursToday = isFixedHoursDay(today);
-  const todaySchedule = daySchedule(today, timeInMinutes);
+  const todaySchedule = todayRecord ? logsSchedule(dtrDayLogs(todayRecord), today) : daySchedule(today);
+  // An approved leave or Travel Order today: a half day missed is then not tardiness or undertime.
+  const coveredToday = Boolean(travelOrderToday) || requests.some(request => request?.type === 'Leave Request'
+    && /approved/i.test(request.status || '') && requestCoversDate(request, today));
   const missingLunch = isDoneForToday ? missingLunchLog(todayRecord) : null;
   const lateIfNow = start => (restDayToday ? null : { late: Math.max(0, nowMinutes - start) });
   const earlyIfNow = end => (restDayToday ? null : { early: Math.max(0, end - nowMinutes) });
@@ -1380,12 +1383,12 @@ export default function AttendanceView({
   const dayLogs = [
     {
       // Always scheduled in the morning: at 7:00 AM on Monday, from 7:00 to 9:00 AM on the
-      // flexitime days. A Time In from noon on starts a half day, counted against the 1:00 PM
-      // start, and says so.
+      // flexitime days. A Time In from noon on starts a half day and says so; the morning it
+      // missed is tardiness (CSC MC No. 17, s. 2010), as the DTR counts it.
       key: 'timeIn', label: 'Time In', time: todayRecord?.timeIn, standing: standing.timeIn,
       scheduled: fixedHoursToday ? officeTimeText(amStart) : officeRangeText(amStart, flexLatestStart),
       halfDay: afternoonOnly || (!todayRecord && nowMinutes >= noon),
-      ifNow: !todayRecord ? lateIfNow(nowMinutes >= noon ? pmStart : todaySchedule.lateAfter) : null
+      ifNow: !todayRecord && !restDayToday ? punchStanding({ date: today, timeIn: clockText(nowMinutes), coveredByRequest: coveredToday }).timeIn : null
     },
     {
       key: 'lunchOut', label: 'Lunch Out', time: todayRecord?.lunchOut, standing: standing.lunchOut, scheduled: officeTimeText(noon),
@@ -1401,8 +1404,9 @@ export default function AttendanceView({
       // Eight hours after the day's start: known once timed in on a flexitime day.
       key: 'timeOut', label: 'Time Out', time: todayRecord?.timeOut, standing: standing.timeOut,
       scheduled: fixedHoursToday || todayRecord ? officeTimeText(todaySchedule.end) : officeRangeText(workdayEnd(amStart), workdayEnd(flexLatestStart)),
-      // Before 1:00 PM without a Lunch Out, a Time Out ends a morning-only day at noon.
-      ifNow: isCurrentlyActive && !isOnLunch ? earlyIfNow(canLunchOut && nowMinutes <= pmStart ? noon : todaySchedule.end) : null
+      // Before 1:00 PM without a Lunch In, a Time Out ends the day in the morning: the afternoon
+      // it misses is undertime (CSC MC No. 17, s. 2010), as the DTR counts it.
+      ifNow: isCurrentlyActive && !isOnLunch && !restDayToday ? punchStanding({ ...todayRecord, timeOut: clockText(nowMinutes) }).timeOut : null
     }
   ];
   const describeStanding = ({ late, early }) => (late ? { text: `Late · ${durationText(late)}`, tone: 'text-rose-600' }

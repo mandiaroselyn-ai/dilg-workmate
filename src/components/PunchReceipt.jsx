@@ -23,7 +23,8 @@ export default function PunchReceipt({ receipt, employee, onClose }) {
 
   const { punch, record, queued, afterQueuedTimeIn } = receipt;
   const standing = punchStanding(record)[punch];
-  // A Time In from noon on starts a half day, counted against the 1:00 PM start.
+  // A Time In from noon on starts a half day: the morning it missed is tardiness (CSC MC No. 17,
+  // s. 2010), unless an approved leave or Travel Order covers it.
   const halfDay = punch === 'timeIn' && clockMinutes(record.timeIn) >= OFFICE_HOURS.noon ? 'Half day · ' : '';
   const status = !standing ? null
     : standing.late ? { text: `${halfDay}Late · ${durationText(standing.late)}`, tone: 'bg-rose-50 text-rose-700' }

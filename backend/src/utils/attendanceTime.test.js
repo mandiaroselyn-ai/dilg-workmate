@@ -16,13 +16,14 @@ test('Tuesday to Friday, a Time In is late only after 9:00 AM Manila time (flexi
   assert.equal(isLateClockIn(new Date('2026-09-29T01:01:00Z')), true);
 });
 
-test('a Time In from noon on starts a half day, late only after 1:00 PM', () => {
-  // 04:50Z is 12:50 PM in Manila; 05:20Z is 1:20 PM.
-  assert.equal(isLateClockIn(new Date('2026-09-29T04:50:00Z')), false);
+test('a Time In from noon on is late: the morning it missed is tardiness', () => {
+  // CSC MC No. 17, s. 2010. 04:50Z is 12:50 PM in Manila; 05:20Z is 1:20 PM.
+  assert.equal(isLateClockIn(new Date('2026-09-29T04:50:00Z')), true);
   assert.equal(isLateClockIn(new Date('2026-09-29T05:20:00Z')), true);
-  assert.equal(isLateTimeText('12:50 PM', '2026-09-29'), false);
-  assert.equal(isLateTimeText('01:00 PM', '2026-09-28'), false);
-  assert.equal(isLateTimeText('01:20 PM', '2026-09-29'), true);
+  assert.equal(isLateTimeText('12:50 PM', '2026-09-29'), true);
+  assert.equal(isLateTimeText('01:00 PM', '2026-09-28'), true);
+  // A morning arrival keeps its own rule.
+  assert.equal(isLateTimeText('08:50 AM', '2026-09-29'), false);
 });
 
 test('back from lunch after 1:00 PM is late', () => {

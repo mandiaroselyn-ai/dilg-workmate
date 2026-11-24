@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { durationText } from '../utils/dtrDay';
 import { dtrEntry } from '../utils/dtrMonth';
-import { absentDays, activeEmployees, employeeDayStatus, hasSelfie, isBeforeLatestArrival, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
+import { absentDays, activeEmployees, employeeDayStatus, hasSelfie, isDayOver, isLate, isOfflineReviewPending, isOfflineTimeOutPending, monitoringStatus, NOT_YET_IN, recordsForEmployees, totalHoursWorked } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { employeeKey } from '../utils/reports';
 import { downloadBytes } from '../utils/documentFiles';
@@ -299,8 +299,9 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     [travelOrders, normalizedQuery, today, monthFilter, officeFilter, employeeFilter, employees]
   );
 
-  // Every past working day an employee was absent (see absentDays), newest first.
-  const todayCounted = !isBeforeLatestArrival(today, nowMinutes);
+  // Every working day an employee was absent (see absentDays), newest first: today once its office
+  // hours are over.
+  const todayCounted = isDayOver(today, nowMinutes);
   const allAbsences = useMemo(
     () => absentDays({ employees, records: allAttendance, requests: allRequests, holidays, from: attendanceFrom || '', today, minutes: todayCounted ? 24 * 60 : 0 }),
     [employees, allAttendance, allRequests, holidays, attendanceFrom, today, todayCounted]
@@ -310,13 +311,12 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     .filter(({ date, employee }) => !normalizedQuery
       || [employee.name, employee.employeeId, employee.office, date, new Date(date).toLocaleString('en-US', { month: 'long' })]
         .some(value => String(value || '').toLowerCase().includes(normalizedQuery)));
-  // Absent days per employee (half days count 0.5), most first.
-  const absenceTotals = Object.values(absenceRows.reduce((totals, { employee, days }) => {
+  // Absent days per employee, most first.
+  const absenceTotals = Object.values(absenceRows.reduce((totals, { employee }) => {
     const key = employeeKey(employee) || employee.name;
-    totals[key] = { employee, days: (totals[key]?.days || 0) + days };
+    totals[key] = { employee, days: (totals[key]?.days || 0) + 1 };
     return totals;
   }, {})).sort((a, b) => b.days - a.days);
-  const absenceDayTotal = absenceRows.reduce((total, row) => total + row.days, 0);
 
 
   const tabs = [
@@ -750,9 +750,9 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
             <div>
               <p className="text-xs font-black uppercase tracking-[0.25em] text-rose-600">Absence Registry</p>
               <h3 className="mt-2 text-xl font-black text-slate-900">Absent Days</h3>
-              <p className="mt-1 text-xs text-slate-500">Working days with no Time In, and half days missed (a Time In from noon on, or a Time Out by 1:00 PM), with no approved leave or Travel Order. Counted from the first day attendance was recorded in WorkMate and from each employee's hiring, in the months loaded on this page.</p>
+              <p className="mt-1 text-xs text-slate-500">Working days with no Time In, and no approved leave or Travel Order; today is counted once its office hours end. A half day missed is not an absence: the DTR counts a missed morning as tardiness and a missed afternoon as undertime (CSC MC No. 17, s. 2010). Counted from the first day attendance was recorded in WorkMate and from each employee's hiring, in the months loaded on this page.</p>
             </div>
-            <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">{absenceDayTotal} day{absenceDayTotal === 1 ? '' : 's'}</span>
+            <span className="shrink-0 rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">{absenceRows.length} day{absenceRows.length === 1 ? '' : 's'}</span>
           </div>
           {absenceTotals.length > 0 && (
             <div className="mb-4 flex flex-wrap gap-2">
@@ -769,28 +769,22 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Employee</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Employee ID</th>
                   <th className="px-3 py-2 font-black uppercase tracking-wide">Office</th>
-                  <th className="px-3 py-2 font-black uppercase tracking-wide">Absent</th>
                 </tr>
               </thead>
               <tbody>
                 {absenceRows.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan="4" className="px-3 py-8 text-center text-sm font-semibold text-slate-500">
                       No absent days found.
                     </td>
                   </tr>
                 ) : (
-                  absenceRows.slice(0, shownCount).map(({ date, employee, half, record }) => (
-                    <tr key={`${employeeKey(employee)}-${date}`} {...clickableRow(record?.id && onOpenRecord ? () => onOpenRecord({ recordId: record.id, date }) : null)}>
+                  absenceRows.slice(0, shownCount).map(({ date, employee }) => (
+                    <tr key={`${employeeKey(employee)}-${date}`} className="border-b border-slate-100 last:border-none">
                       <td className="whitespace-nowrap px-3 py-3 text-slate-600">{date}</td>
                       <td className="px-3 py-3 font-bold text-slate-800">{employee.name || 'Unnamed employee'}</td>
                       <td className="px-3 py-3 text-slate-600">{employee.employeeId || '—'}</td>
                       <td className="px-3 py-3 text-slate-600">{employee.office || '—'}</td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <span className={`rounded-full px-2 py-1 text-xs font-black ${half ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}`}>
-                          {half ? `${half} (half day)` : 'Whole day'}
-                        </span>
-                      </td>
                     </tr>
                   ))
                 )}

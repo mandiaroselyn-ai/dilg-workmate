@@ -30,12 +30,15 @@ export const isFixedHoursDay = date => new Date(`${date}T00:00:00Z`).getUTCDay()
 // midnight, or null before Time In): `lateAfter`, the latest on-time arrival; `start`, when the
 // day's eight hours count from; and `end`, when they end. Monday is 7:00 AM, 7:00 AM, and 4:00 PM.
 // Tuesday to Friday, the day counts from the arrival, but not before 7:00 or after 9:00 AM. An
-// afternoon-only half day (an arrival from noon on) runs from 1:00 PM to the end of Monday's hours
-// on a Monday, and for four hours, to 5:00 PM, on the other days.
-export const daySchedule = (date, arrival = null) => {
+// arrival from noon on missed the morning, which is tardiness (CSC MC No. 17, s. 2010, Policy on
+// Half-Day Absence), so its day is held to the latest on-time arrival like any late one: it ends
+// at 4:00 PM on Monday and 6:00 PM on the other days. Only when an approved leave or Travel Order
+// covers the morning (`halfDay`) is the afternoon a half day of its own: from 1:00 PM to the end
+// of Monday's hours on a Monday, and for four hours, to 5:00 PM, on the other days.
+export const daySchedule = (date, arrival = null, { halfDay = false } = {}) => {
   const { amStart, flexLatestStart, noon, pmStart, workMinutes } = OFFICE_HOURS;
   const fixed = isFixedHoursDay(date);
-  if (arrival !== null && arrival >= noon) {
+  if (halfDay && arrival !== null && arrival >= noon) {
     return { lateAfter: pmStart, start: pmStart, end: fixed ? workdayEnd(amStart) : pmStart + workMinutes / 2 };
   }
   const lateAfter = fixed ? amStart : flexLatestStart;

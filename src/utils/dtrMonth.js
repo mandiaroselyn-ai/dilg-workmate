@@ -57,7 +57,8 @@ function undertimeMins(timeIn, timeOut) {
 // One day's four DTR cells and its minutes: `undertime` is the form's UNDERTIME column, which is
 // `late` (tardiness) and `early` (undertime) together, and `overtime` and `noOrder` (see
 // dtrOvertime) are apart from them. A record with Lunch Out and Lunch In shows its own four
-// logs, with tardiness and undertime against the office hours. A rest day has neither.
+// logs, with tardiness and undertime against the office hours, and so does an older record of a
+// half day the employee missed (see dtrDayLogs). A rest day has neither.
 export function dayEntry(rec) {
   const logs = dtrDayLogs(rec);
   const cell = value => fmt(parseTime(value));
@@ -66,7 +67,7 @@ export function dayEntry(rec) {
     : dtrTimes(rec.timeIn, rec.timeOut);
   const day = { ...cells, ...dtrOvertime(logs, rec) };
   if (isRestDay(rec)) return { ...day, undertime: 0, late: 0, early: 0 };
-  if (!usesLunchLogs(rec)) {
+  if (!usesLunchLogs(rec) && !logs.missedHalf) {
     // These count the hours worked, so the time late is at most the day's undertime.
     const undertime = undertimeMins(rec.timeIn, rec.timeOut);
     const late = Math.min(undertime, dtrLateMinutes(logs, rec.date));

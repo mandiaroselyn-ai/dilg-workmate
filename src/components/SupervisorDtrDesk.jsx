@@ -3,6 +3,7 @@ import { CheckCircle2, Clock, Eye, MessageSquare, PenLine, RotateCcw } from 'luc
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { dtrFilename, fillDTR } from '../utils/dtrForm';
 import { dtrSignatures, dtrStatusText } from '../utils/dtrSubmission';
+import { markDtrDay } from '../utils/hrAttendance';
 import { fetchSignedForm, signedNoteText, stampForSigning } from '../utils/signedForms';
 import DocumentViewer from './DocumentViewer';
 import SignedFormStep from './SignedFormStep';
@@ -40,10 +41,12 @@ export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, 
   const makeDtr = async submission => {
     const signed = submission.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;
     if (signed) return { fileName: signed.fileName || `DTR_${submission.id}.pdf`, fileType: 'application/pdf', bytes: signed.bytes };
-    const { employee, records, travelOrders } = await onOpen(submission.id);
+    const { employee, records, travelOrders = [], leaves = [] } = await onOpen(submission.id);
     const [year, month] = submission.month.split('-').map(Number);
     const template = await (await fetch(dtrTemplate)).arrayBuffer();
-    const bytes = await fillDTR(template, employee, year, month, records, { travelOrders, signatures: dtrSignatures(submission) });
+    // A half day an approved leave or Travel Order covers is not tardiness or undertime.
+    const days = records.map(record => markDtrDay(record, { requests: [...travelOrders, ...leaves] }));
+    const bytes = await fillDTR(template, employee, year, month, days, { travelOrders, signatures: dtrSignatures(submission) });
     return { fileName: dtrFilename(employee?.name || submission.employeeName, year, month), fileType: 'application/pdf', bytes };
   };
   // The DTR to sign in Adobe as the In-charge, tagged for the upload.

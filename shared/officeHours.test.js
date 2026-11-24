@@ -25,9 +25,13 @@ test('Tuesday to Friday, the eight hours count from the arrival between 7:00 and
   assert.equal(daySchedule(TUESDAY).end, at(16));
 });
 
-test('an afternoon-only half day starts at 1:00 PM', () => {
-  assert.deepEqual(daySchedule(TUESDAY, at(12, 50)), { lateAfter: at(13), start: at(13), end: at(17) });
-  assert.deepEqual(daySchedule(MONDAY, at(13, 10)), { lateAfter: at(13), start: at(13), end: at(16) });
+test('an arrival from noon on is a late day, unless a leave or Travel Order covers the morning', () => {
+  // The missed morning is tardiness (CSC MC No. 17, s. 2010), so the day ends like a late one.
+  assert.deepEqual(daySchedule(TUESDAY, at(12, 50)), { lateAfter: at(9), start: at(9), end: at(18) });
+  assert.deepEqual(daySchedule(MONDAY, at(13, 10)), { lateAfter: at(7), start: at(7), end: at(16) });
+  // A covered morning leaves an afternoon half day from 1:00 PM.
+  assert.deepEqual(daySchedule(TUESDAY, at(12, 50), { halfDay: true }), { lateAfter: at(13), start: at(13), end: at(17) });
+  assert.deepEqual(daySchedule(MONDAY, at(13, 10), { halfDay: true }), { lateAfter: at(13), start: at(13), end: at(16) });
 });
 
 test('eight working hours end after the lunch break', () => {

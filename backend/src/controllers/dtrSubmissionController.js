@@ -50,7 +50,8 @@ const employeeOf = async submission => (await User.findByEmployeeId(submission.e
 
 // An employee's own submissions, or everyone's from the past year for the Supervisor and HR.
 // With ?id=, one submission with what its DTR is made from: the employee, the month's records,
-// and the approved Travel Orders that include them.
+// the approved Travel Orders that include them, and their approved leave (a half day either
+// covers is not tardiness or undertime).
 export const getDtrSubmissions = async (req, res) => {
   try {
     const role = req.user?.accessLevel;
@@ -64,14 +65,20 @@ export const getDtrSubmissions = async (req, res) => {
       const employee = await employeeOf(submission);
       const person = employee || { employeeId: submission.employeeId, email: submission.employeeEmail, name: submission.employeeName };
       const records = await DtrLog.findMonthForEmployee({ employeeId: person.employeeId, email: person.email }, submission.month);
-      const travelOrders = (await Leave.findAllRequests())
+      const requests = await Leave.findAllRequests();
+      const travelOrders = requests
         .filter(request => request.type === 'Travel Order' && /approved/i.test(request.status || '') && travelOrderCovers(request, person));
+      const leaves = requests
+        .filter(request => request.type === 'Leave Request' && /approved/i.test(request.status || '')
+          && ((person.employeeId && request.employeeId === person.employeeId) || (person.email && request.employeeEmail === person.email)))
+        .map(({ type, status, startDate, endDate, employeeId, employeeEmail }) => ({ type, status, startDate, endDate, employeeId, employeeEmail }));
       return res.status(200).json({
         success: true,
         submission,
         employee: employee ? { ...toRequesterProfile(employee), name: employee.name, employeeId: employee.employeeId } : person,
         records,
-        travelOrders
+        travelOrders,
+        leaves
       });
     }
     const list = role === 'employee'

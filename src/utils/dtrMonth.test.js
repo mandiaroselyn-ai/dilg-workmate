@@ -37,9 +37,13 @@ test('a record from before lunch logs keeps its DTR total when it is split', () 
   // In at 7:55 on a flexitime day, so out at 4:55 PM: 25 minutes early.
   const early = dayEntry(october[1]);
   assert.deepEqual([early.undertime, early.late, early.early], [25, 0, 25]);
-  // An afternoon-only day is late against 1:00 PM.
+  // A Friday begun at 1:10 PM: tardy from 9:00 to noon and 10 minutes after 1:00 PM, and out an
+  // hour before 6:00 PM (CSC MC No. 17, s. 2010).
   const afternoon = dayEntry({ date: '2026-10-09', timeIn: '01:10 PM', timeOut: '05:00 PM' });
-  assert.deepEqual([afternoon.undertime, afternoon.late], [10, 10]);
+  assert.deepEqual([afternoon.undertime, afternoon.late, afternoon.early], [250, 190, 60]);
+  // A morning-only day: the afternoon from 1:00 PM to 4:55 PM (begun at 7:55) is undertime.
+  const morning = dayEntry({ date: '2026-10-09', timeIn: '07:55 AM', timeOut: '12:00 PM' });
+  assert.deepEqual([morning.undertime, morning.late, morning.early], [235, 0, 235]);
   assert.equal(dayEntry(marked[2]).overtime, 90);
 });
 

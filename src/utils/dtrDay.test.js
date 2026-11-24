@@ -19,7 +19,7 @@ const wholeDay = {
 
 test('a whole day shows its own four logs, with no tardiness or undertime inside office hours', () => {
   const logs = dtrDayLogs(wholeDay);
-  assert.deepEqual(logs, { amArrival: '07:55 AM', amDeparture: '12:02 PM', pmArrival: '12:58 PM', pmDeparture: '05:04 PM' });
+  assert.deepEqual(logs, { amArrival: '07:55 AM', amDeparture: '12:02 PM', pmArrival: '12:58 PM', pmDeparture: '05:04 PM', missedHalf: '' });
   assert.equal(dtrUndertimeMinutes(logs, day), 0);
 });
 
@@ -141,23 +141,45 @@ test('a punch on a rest day is neither late nor undertime', () => {
   assert.equal(isLate({ ...saturday, status: 'Late' }), true);
 });
 
-test('a half day counts only the half that was worked', () => {
+test('a missed morning is tardiness and a missed afternoon undertime, unless a leave or Travel Order covers it', () => {
+  // CSC MC No. 17, s. 2010. Home at noon on a flexitime day begun at 8:00: 1:00 to 5:00 PM is undertime.
   const morning = dtrDayLogs({ date: day, timeIn: '08:00 AM', timeOut: '12:00 PM' });
-  assert.deepEqual(morning, { amArrival: '08:00 AM', amDeparture: '12:00 PM', pmArrival: '', pmDeparture: '' });
-  assert.equal(dtrUndertimeMinutes(morning, day), 0);
+  assert.deepEqual(morning, { amArrival: '08:00 AM', amDeparture: '12:00 PM', pmArrival: '', pmDeparture: '', missedHalf: 'Afternoon' });
+  assert.equal(dtrLateMinutes(morning, day), 0);
+  assert.equal(dtrEarlyMinutes(morning, day), 240);
+  // On a Monday, the afternoon is 1:00 to 4:00 PM.
+  assert.equal(dtrEarlyMinutes(dtrDayLogs({ date: monday, timeIn: '07:00 AM', timeOut: '12:00 PM' }), monday), 180);
 
-  // The afternoon is four hours, to 5:00 PM; on a Monday it ends with Monday's hours, at 4:00 PM.
+  // In at 12:50 on a flexitime day: tardy from 9:00 to noon, and the day ends at 6:00 PM.
   const afternoon = dtrDayLogs({ date: day, timeIn: '12:50 PM', timeOut: '05:00 PM' });
-  assert.deepEqual(afternoon, { amArrival: '', amDeparture: '', pmArrival: '12:50 PM', pmDeparture: '05:00 PM' });
-  assert.equal(dtrUndertimeMinutes(afternoon, day), 0);
-  assert.equal(dtrEarlyMinutes(dtrDayLogs({ date: day, timeIn: '01:00 PM', timeOut: '04:00 PM' }), day), 60);
-  assert.equal(dtrUndertimeMinutes(dtrDayLogs({ date: monday, timeIn: '01:00 PM', timeOut: '04:00 PM' }), monday), 0);
+  assert.deepEqual(afternoon, { amArrival: '', amDeparture: '', pmArrival: '12:50 PM', pmDeparture: '05:00 PM', missedHalf: 'Morning' });
+  assert.equal(dtrLateMinutes(afternoon, day), 180);
+  assert.equal(dtrEarlyMinutes(afternoon, day), 60);
+  // In at 1:20 PM on a Monday: tardy from 7:00 to noon, and 20 minutes after 1:00 PM.
+  assert.equal(dtrUndertimeMinutes(dtrDayLogs({ date: monday, timeIn: '01:20 PM', timeOut: '04:00 PM' }), monday), 320);
   assert.equal(missingLunchLog({ date: day, timeIn: '12:50 PM', timeOut: '05:00 PM' }), null);
+
+  // With an approved Travel Order or leave that day, only the half that was worked counts.
+  const travel = { type: 'Travel Order', status: 'Approved', employeeId: 'E1', startDate: day, endDate: day };
+  const marked = (record, request = travel) => markDtrDay({ ...juan, ...record }, { requests: [request] });
+  const coveredMorning = dtrDayLogs(marked({ date: day, timeIn: '08:00 AM', timeOut: '12:00 PM' }));
+  assert.equal(coveredMorning.missedHalf, '');
+  assert.equal(dtrUndertimeMinutes(coveredMorning, day), 0);
+  // The afternoon is then four hours, to 5:00 PM (4:00 PM on a Monday), late only after 1:00 PM.
+  assert.equal(dtrUndertimeMinutes(dtrDayLogs(marked({ date: day, timeIn: '12:50 PM', timeOut: '05:00 PM' })), day), 0);
+  assert.equal(dtrEarlyMinutes(dtrDayLogs(marked({ date: day, timeIn: '01:00 PM', timeOut: '04:00 PM' })), day), 60);
+  const mondayTravel = { ...travel, startDate: monday, endDate: monday };
+  assert.equal(dtrUndertimeMinutes(dtrDayLogs(marked({ date: monday, timeIn: '01:00 PM', timeOut: '04:00 PM' }, mondayTravel)), monday), 0);
+  const leave = { ...travel, type: 'Leave Request' };
+  assert.equal(dtrUndertimeMinutes(dtrDayLogs(marked({ date: day, timeIn: '12:50 PM', timeOut: '05:00 PM' }, leave)), day), 0);
+  // Not while it is pending, or for another employee.
+  assert.equal(dtrLateMinutes(dtrDayLogs(marked({ date: day, timeIn: '12:50 PM', timeOut: '05:00 PM' }, { ...leave, status: 'Pending' })), day), 180);
+  assert.equal(dtrLateMinutes(dtrDayLogs(marked({ date: day, timeIn: '12:50 PM', timeOut: '05:00 PM' }, { ...leave, employeeId: 'E2' })), day), 180);
 });
 
 test('a whole day without lunch logs leaves the noon cells empty and goes to HR', () => {
   const record = { ...wholeDay, lunchOut: null, lunchIn: null };
-  assert.deepEqual(dtrDayLogs(record), { amArrival: '07:55 AM', amDeparture: '', pmArrival: '', pmDeparture: '05:04 PM' });
+  assert.deepEqual(dtrDayLogs(record), { amArrival: '07:55 AM', amDeparture: '', pmArrival: '', pmDeparture: '05:04 PM', missedHalf: '' });
   assert.equal(missingLunchLog(record), 'Missing Lunch Out');
   assert.equal(missingLunchLog({ ...wholeDay, lunchIn: null }), 'Missing Lunch In');
   assert.equal(dtrIssue(record, '2026-12-01'), 'Missing Lunch Out');
@@ -168,11 +190,11 @@ test('a whole day without lunch logs leaves the noon cells empty and goes to HR'
 
 test('going home at lunch ends a morning-only day; not coming back to Lunch In goes to HR', () => {
   const wentHome = { date: day, timeIn: '08:00 AM', lunchOut: '12:00 PM', timeOut: '12:20 PM' };
-  assert.deepEqual(dtrDayLogs(wentHome), { amArrival: '08:00 AM', amDeparture: '12:00 PM', pmArrival: '', pmDeparture: '' });
+  assert.deepEqual(dtrDayLogs(wentHome), { amArrival: '08:00 AM', amDeparture: '12:00 PM', pmArrival: '', pmDeparture: '', missedHalf: 'Afternoon' });
   assert.equal(missingLunchLog(wentHome), null);
 
   const noLunchIn = { ...wentHome, timeOut: '05:00 PM' };
-  assert.deepEqual(dtrDayLogs(noLunchIn), { amArrival: '08:00 AM', amDeparture: '12:00 PM', pmArrival: '', pmDeparture: '05:00 PM' });
+  assert.deepEqual(dtrDayLogs(noLunchIn), { amArrival: '08:00 AM', amDeparture: '12:00 PM', pmArrival: '', pmDeparture: '05:00 PM', missedHalf: '' });
   assert.equal(missingLunchLog(noLunchIn), 'Missing Lunch In');
 });
 
@@ -191,10 +213,13 @@ test('each punch shows how late or early it was against the day\'s office hours'
   assert.deepEqual(punchStanding({ ...wholeDay, timeIn: '08:07 AM', lunchOut: '12:00 PM', lunchIn: '01:00 PM', timeOut: '05:00 PM' }), {
     timeIn: { late: 0 }, lunchOut: { early: 0 }, lunchIn: { late: 0 }, timeOut: { early: 7 }
   });
-  // An afternoon-only day arrives against 1:00 PM; a morning-only day leaves against noon.
-  assert.deepEqual(punchStanding({ date: day, timeIn: '01:20 PM' }), { timeIn: { late: 20 }, lunchOut: null, lunchIn: null, timeOut: null });
-  assert.deepEqual(punchStanding({ date: day, timeIn: '08:00 AM', timeOut: '11:30 AM' }).timeOut, { early: 30 });
-  assert.equal(punchStanding({ date: day, timeIn: '08:00 AM', lunchOut: '12:00 PM', timeOut: '12:20 PM' }).timeOut, null);
+  // In from noon on is late by the morning it missed too (9:00 to noon), and home by 1:00 PM is
+  // early by the afternoon it missed (1:00 to 5:00 PM for a day begun at 8:00).
+  assert.deepEqual(punchStanding({ date: day, timeIn: '01:20 PM' }), { timeIn: { late: 200 }, lunchOut: null, lunchIn: null, timeOut: null });
+  assert.deepEqual(punchStanding({ date: day, timeIn: '08:00 AM', timeOut: '11:30 AM' }).timeOut, { early: 270 });
+  assert.deepEqual(punchStanding({ date: day, timeIn: '08:00 AM', lunchOut: '12:00 PM', timeOut: '12:20 PM' }), {
+    timeIn: { late: 0 }, lunchOut: { early: 0 }, lunchIn: null, timeOut: { early: 240 }
+  });
 });
 
 test('a late day has a late arrival, in the morning or back from lunch', () => {
@@ -207,10 +232,11 @@ test('a late day has a late arrival, in the morning or back from lunch', () => {
   assert.equal(dtrRecordStatus({ ...wholeDay, lunchIn: '01:15 PM' }, '2026-12-01'), 'Late');
   assert.deepEqual(tardiness({ ...wholeDay, timeIn: '09:07 AM', lunchIn: '01:15 PM' }), { am: 7, pm: 15 });
   assert.equal(tardinessText({ ...wholeDay, timeIn: '09:07 AM', lunchIn: '01:15 PM' }), 'AM 7 min · PM 15 min');
-  // An afternoon-only day is late only after 1:00 PM, whatever was saved at Time In.
-  assert.equal(isLate({ date: day, timeIn: '12:50 PM', late: true }), false);
-  assert.equal(isLate({ date: day, timeIn: '01:20 PM' }), true);
-  assert.equal(tardinessText({ date: day, timeIn: '01:20 PM' }), 'PM 20 min');
+  // A Time In from noon on missed the morning, which is tardiness (CSC MC No. 17, s. 2010).
+  assert.equal(isLate({ date: day, timeIn: '12:50 PM', late: false }), true);
+  assert.equal(tardinessText({ date: day, timeIn: '12:50 PM' }), 'AM 3h 00m');
+  assert.equal(tardinessText({ date: day, timeIn: '01:20 PM' }), 'AM 3h 00m · PM 20 min');
+  assert.deepEqual(tardiness({ date: monday, timeIn: '01:00 PM' }), { am: 300, pm: 0 });
   // Records from before lunch logs keep the late saved at Time In; HR can set Late too.
   assert.equal(isLate({ date: '2026-10-20', timeIn: '07:30 AM', late: false }), false);
   assert.equal(isLate({ date: '2026-10-20', timeIn: '08:30 AM', late: true }), true);

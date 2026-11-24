@@ -3,8 +3,9 @@ import { OFFICE_HOURS, daySchedule } from '../../../shared/officeHours.js';
 
 // Whether an arrival at `minutes` after midnight on `date` (YYYY-MM-DD) is late, as government
 // DTRs count tardiness: after the day's latest on-time arrival in the morning (7:00 AM on Monday,
-// 9:00 AM on the flexitime days, see shared/officeHours.js), or after 1:00 PM from noon on, when a
-// Time In starts an afternoon-only half day. The app and the DTR use the same office hours.
+// 9:00 AM on the flexitime days, see shared/officeHours.js). A Time In from noon on is always late:
+// the morning it missed is tardiness (CSC MC No. 17, s. 2010). The app and the DTR use the same
+// office hours.
 const isLateArrival = (minutes, date) => minutes > daySchedule(date, minutes).lateAfter;
 
 // A Time In is late when it is after the latest on-time arrival of its day in Manila.
