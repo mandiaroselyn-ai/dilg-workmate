@@ -496,6 +496,19 @@ export const User = {
     return MongoUser.findOne({ $or: [{ email: emailPattern }, { employeeId: value }] });
   },
 
+  // One employee account: by its database ID, which is each account's own, else by email or
+  // Employee ID. HR's pages send the database ID, as old accounts can share the default
+  // Employee ID (DILG-2026-7689).
+  findEmployeeAccount: async (identifier) => {
+    ensureConnected();
+    const value = identifier?.toString().trim();
+    if (!value) return null;
+    const employeeOnly = { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] };
+    if (/^[a-f0-9]{24}$/i.test(value)) return MongoUser.findOne({ $and: [{ _id: value }, employeeOnly] });
+    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    return MongoUser.findOne({ $and: [{ $or: [{ email: emailPattern }, { employeeId: value }] }, employeeOnly] });
+  },
+
   // Employee accounts that can log in, for the supervisor's dashboard.
   countActiveEmployees: async () => {
     ensureConnected();
@@ -1125,27 +1138,17 @@ export const User = {
     return { employee: updated.toObject(), entry };
   },
 
-  // Permanently deletes an employee account that is not Active. Returns
-  // { deleted } on success, { active: true } when the account must be deactivated
-  // first, or null when no employee account matches. Attendance and request records
-  // are separate documents and are kept.
-  deleteEmployee: async (identifier) => {
+  // Permanently deletes the employee account with this database ID (see findEmployeeAccount)
+  // while it is not Active. Returns the deleted account, or null when it is Active or gone.
+  deleteEmployee: async (accountId) => {
     ensureConnected();
-    const value = identifier?.toString().trim();
-    if (!value) return null;
-    const emailPattern = new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-    const employeeMatch = {
-      $and: [
-        { $or: [{ email: emailPattern }, { employeeId: value }] },
-        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] }
-      ]
-    };
+    if (!/^[a-f0-9]{24}$/i.test(String(accountId || ''))) return null;
     const deleted = await MongoUser.findOneAndDelete({
-      $and: [...employeeMatch.$and, { accountStatus: { $not: /^active$/i } }]
+      _id: String(accountId),
+      accountStatus: { $exists: true, $not: /^active$/i },
+      $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }]
     });
-    if (deleted) return { deleted: deleted.toObject() };
-    const existing = await MongoUser.findOne(employeeMatch).select('_id');
-    return existing ? { active: true } : null;
+    return deleted ? deleted.toObject() : null;
   },
 
   setPasswordResetToken: async (email, token, expiry) => {

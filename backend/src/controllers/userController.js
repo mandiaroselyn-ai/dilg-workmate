@@ -691,27 +691,30 @@ export const enterStartingBalances = async (req, res) => {
 
 export const deleteEmployee = async (req, res) => {
   try {
-    // Only an account with no records is deleted (for example, a sign-up made by mistake); an
-    // employee who left is kept Inactive, so their DTR and leave history stay in HR's pages.
-    const account = await User.findAccount(req.params.identifier);
-    const active = account && (account.accountStatus || 'Active').toString().toLowerCase() === 'active';
-    if (account && !active && await hasOwnRecords(account)) {
-      return res.status(409).json({ success: false, error: KEEP_ACCOUNT_WITH_RECORDS });
-    }
-    const result = await User.deleteEmployee(req.params.identifier);
-    if (!result) return res.status(404).json({ success: false, error: 'Employee account not found.' });
-    if (result.active) {
+    // The one account HR chose, by its database ID (old accounts can share an Employee ID): the
+    // same account is checked and deleted. Only one with no records is deleted (for example, a
+    // sign-up made by mistake); an employee who left is kept Inactive, so their DTR and leave
+    // history stay in HR's pages.
+    const account = await User.findEmployeeAccount(req.params.identifier);
+    if (!account) return res.status(404).json({ success: false, error: 'Employee account not found.' });
+    if ((account.accountStatus || 'Active').toString().trim().toLowerCase() === 'active') {
       return res.status(409).json({ success: false, error: 'Deactivate this account before deleting it.' });
     }
-    const { deleted } = result;
+    if (await hasOwnRecords(account)) {
+      return res.status(409).json({ success: false, error: KEEP_ACCOUNT_WITH_RECORDS });
+    }
+    const deleted = await User.deleteEmployee(account._id);
+    if (!deleted) {
+      return res.status(409).json({ success: false, error: 'The account changed while it was being deleted. Refresh the employee list and try again.' });
+    }
     const reviewer = req.user?.name || req.user?.email || 'HR/Admin';
     await Announcement.createNotification({
       title: 'Employee Account Deleted',
-      message: `${deleted.name || deleted.email} (${deleted.employeeId || deleted.email}) was deleted by ${reviewer}. Their attendance and request records were kept.`,
+      message: `${deleted.name || deleted.email} (${deleted.employeeId || deleted.email}) was deleted by ${reviewer}.`,
       type: 'employee_management',
       recipientRole: 'hr_admin'
     }).catch(error => console.error('Unable to record the employee deletion notice:', error));
-    res.status(200).json({ success: true, employeeId: deleted.employeeId || '', email: deleted.email || '' });
+    res.status(200).json({ success: true, id: String(deleted._id || ''), employeeId: deleted.employeeId || '', email: deleted.email || '' });
   } catch (error) {
     sendServerError(res, error);
   }

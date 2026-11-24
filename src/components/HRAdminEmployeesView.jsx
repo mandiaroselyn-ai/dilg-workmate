@@ -186,6 +186,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   const [employeesRefreshing, setEmployeesRefreshing] = useState(false);
   const [employeeSaving, setEmployeeSaving] = useState(false);
   const [accountStatusUpdating, setAccountStatusUpdating] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [promotion, setPromotion] = useState(null); // { accessLevel, password } while confirming
   const [promotionSaving, setPromotionSaving] = useState(false);
 
@@ -629,8 +630,11 @@ This cannot be undone.`
     if (!confirmed) return;
     const key = employeeKey(selectedEmployee);
     setAccountStatusUpdating(true);
+    setDeletingAccount(true);
     try {
-      const identifier = selectedEmployee.employeeId || selectedEmployee.email;
+      // The account's own database ID, so an old account sharing the default Employee ID is
+      // never deleted in its place.
+      const identifier = selectedEmployee._id || selectedEmployee.email || selectedEmployee.employeeId;
       const response = await apiFetch(`/api/employees/${encodeURIComponent(identifier)}`, { method: 'DELETE' });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) {
@@ -644,6 +648,7 @@ This cannot be undone.`
       notify(error.message || 'Unable to delete the employee account.', true);
     } finally {
       setAccountStatusUpdating(false);
+      setDeletingAccount(false);
     }
   };
 
@@ -928,7 +933,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
               <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : accountStatusOf(selectedEmployee) === 'rejected' ? 'Approve account' : 'Reactivate'}</button>
             )}
             {accountStatusOf(selectedEmployee) !== 'active' && (
-              <button type="button" onClick={handleDeleteEmployee} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Delete account'}</button>
+              <button type="button" onClick={handleDeleteEmployee} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{deletingAccount ? 'Deleting...' : 'Delete account'}</button>
             )}
           </div>
           {accountStatusOf(selectedEmployee) === 'active' && (
