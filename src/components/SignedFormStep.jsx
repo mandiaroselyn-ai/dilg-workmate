@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileSignature, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, FileSignature, KeyRound } from 'lucide-react';
 import AdobePdfView from './AdobePdfView';
 import PdfPreview from './PdfPreview';
 import { fetchSigningId, keepSigningId } from '../utils/signingId';
@@ -75,6 +75,9 @@ export default function SignedFormStep({
   const [keepFile, setKeepFile] = useState(true);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // Show the passwords as typed (as Change Password does).
+  const [showPasswords, setShowPasswords] = useState(false);
+  const passwordInputProps = { type: showPasswords ? 'text' : 'password', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false };
   const [decision, setDecision] = useState(decisions?.[0]?.value || '');
   const [remarks, setRemarks] = useState('');
   const [busy, setBusy] = useState(false);
@@ -193,10 +196,10 @@ export default function SignedFormStep({
           </p>
           <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">Name on the digital ID: <span className="font-black">{digitalSign.signerName || 'Your name'}</span></p>
           <label className="block text-[11px] font-black text-slate-700">Set a signing password (at least 8 characters)
-            <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" className={fieldClass} />
+            <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" className={fieldClass} />
           </label>
           <label className="block text-[11px] font-black text-slate-700">Type the signing password again
-            <input type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" className={fieldClass} />
+            <input {...passwordInputProps} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" className={fieldClass} />
           </label>
           <p className="text-[11px] font-semibold text-slate-500">Only you know this password. WorkMate keeps your digital ID locked with it and cannot open it, so it cannot be reset; if you forget it, you make a new digital ID.</p>
           <div className="flex flex-wrap gap-3">
@@ -217,7 +220,7 @@ export default function SignedFormStep({
             Remember it on this device, so next time only the password is asked
           </label>
           <label className="block text-[11px] font-black text-slate-700">Password of the digital ID
-            <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="off" className={fieldClass} />
+            <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete="off" className={fieldClass} />
           </label>
           <button type="button" onClick={() => switchTo(savedId ? 'saved' : 'create')} className={linkClass}>{savedId ? 'Back' : 'Make my digital ID in WorkMate instead'}</button>
         </>
@@ -230,7 +233,7 @@ export default function SignedFormStep({
           {!workmateId && <button type="button" onClick={forgetAdobeId} className={linkClass}>Use another digital ID</button>}
         </div>
         <label className="block text-[11px] font-black text-slate-700">{workmateId ? 'Your signing password' : 'Password of the digital ID'}
-          <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="off" className={fieldClass} />
+          <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete="off" className={fieldClass} />
         </label>
         {workmateId && (
           <div className="flex flex-wrap gap-3">
@@ -281,7 +284,12 @@ export default function SignedFormStep({
       )}
 
       <div className="space-y-2 rounded-xl border border-indigo-200 bg-white p-3">
-        <p className="flex items-center gap-1.5 text-xs font-black text-indigo-900"><KeyRound className="h-3.5 w-3.5" />Sign with your digital ID</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="flex items-center gap-1.5 text-xs font-black text-indigo-900"><KeyRound className="h-3.5 w-3.5" />Sign with your digital ID</p>
+          <button type="button" onClick={() => setShowPasswords(value => !value)} className="inline-flex items-center gap-1 text-[10px] font-black text-slate-500">
+            {showPasswords ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {showPasswords ? 'Hide' : 'Show'} password
+          </button>
+        </div>
         {signingBox()}
         <p className="text-[11px] font-semibold text-slate-500">Your signature goes on the form above where it belongs{digitalSign?.image ? ', with your saved signature' : ''}. Adobe Reader shows it as signed by you.</p>
       </div>
