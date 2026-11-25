@@ -50,7 +50,7 @@ const faqs = [
   {
     topic: 'Attendance',
     question: 'I forgot to Time Out, or my attendance record is wrong. What do I do?',
-    answer: 'Ask HR to correct it. HR can review and fix attendance records, and add a record for a day you worked but have none of (for example, when your phone died), with the reason, such as your approved letter of explanation. Use the "Ask HR for help" form below and include the date.'
+    answer: 'Ask HR to correct it. HR can review and fix attendance records. Use the "Ask HR for help" form below and include the date.'
   },
   {
     topic: 'Attendance',

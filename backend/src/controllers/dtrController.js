@@ -13,7 +13,6 @@ import { barangayPlaceName, currentAssignedArea, describePlace, isWithinAssigned
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { attendanceReviewNotices, noticeEmployee } from '../services/employeeNotices.js';
-import { readHrRecord } from '../utils/hrAddedRecord.js';
 import { clockTextMinutes, isLateClockIn, isLateLunchIn, resolveTimeOutMoment } from '../utils/attendanceTime.js';
 import { attendanceWindowStart, formatManilaClockTime, getManilaDateString } from '../../../shared/localDate.js';
 import { GEOFENCE_METERS } from '../../../shared/assignmentGeofence.js';
@@ -662,39 +661,6 @@ export const clockInOut = async (req, res) => {
       success: false,
       error: error.statusCode ? error.message : 'Unable to verify and save attendance. Try again later.'
     });
-  }
-};
-
-// HR adds an attendance record for a day the employee worked but has no record of
-// (utils/hrAddedRecord.js): { employee (Employee ID or email), date, timeIn, lunchOut, lunchIn,
-// timeOut, dutyType, location, reason }. A day that has a record is corrected instead, and a day
-// of approved leave or official travel has no attendance. The employee is told.
-export const addDtrRecord = async (req, res) => {
-  try {
-    const { value, error } = readHrRecord(req.body, getManilaDateString());
-    if (error) return res.status(400).json({ success: false, error });
-    // The account's own database ID (old accounts can share an Employee ID), its email, or its ID.
-    const employee = await User.findEmployeeAccount(value.employee);
-    if (!employee) return res.status(404).json({ success: false, error: 'Employee account not found.' });
-    if (await DtrLog.hasLogOnDate(employee.employeeId, value.date)) {
-      return res.status(409).json({ success: false, error: `${employee.name || 'This employee'} already has a record on ${value.date}. Correct it in DTR Records instead.` });
-    }
-    const away = noTimeInOn(await Leave.findAbsencesOfEmployee({ employeeId: employee.employeeId, email: employee.email }), null, value.date);
-    if (away) {
-      return res.status(409).json({ success: false, error: `${employee.name || 'This employee'} is on an approved ${away.kind === 'travel' ? 'Travel Order' : 'leave'} (${away.request.id}) on ${value.date}, so that day has no attendance.` });
-    }
-    const reviewer = req.user?.name || req.user?.email || 'HR/Admin';
-    const record = await DtrLog.addByHr(value, employee, reviewer);
-    const times = [`Time In ${value.timeIn}`, value.lunchOut && `Lunch Out ${value.lunchOut}`, value.lunchIn && `Lunch In ${value.lunchIn}`, value.timeOut && `Time Out ${value.timeOut}`].filter(Boolean).join(', ');
-    await noticeEmployee(employee, {
-      title: 'Attendance Added by HR',
-      message: `HR added your attendance on ${value.date}: ${times}. Reason: ${value.reason}`,
-      type: 'attendance',
-      view: 'attendance'
-    });
-    res.status(201).json({ success: true, record });
-  } catch (error) {
-    sendServerError(res, error);
   }
 };
 

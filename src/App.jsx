@@ -1561,19 +1561,6 @@ export default function App() {
     return data.attendanceHistory;
   };
 
-  // HR adds an attendance record for a day without one (HRAddRecord); the saved record joins the list.
-  const handleAddAttendance = async (record) => {
-    const response = await apiFetch('/api/attendance/history', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(record)
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.success || !data.record) throw new Error(data.error || 'Unable to add the record.');
-    setAttendanceHistory(previous => [data.record, ...previous.filter(item => item.id !== data.record.id)]);
-    return data.record;
-  };
-
   // Sends review updates ({ id, ...reviewFields }) and merges the saved requests back.
   const handleUpdateAllRequests = async (requestUpdates) => {
     const response = await apiFetch('/api/requests', {
@@ -1826,7 +1813,6 @@ export default function App() {
               loadedAttendanceMonths={loadedAttendanceMonths}
               onLoadAttendanceMonth={handleLoadAttendanceMonth}
               onUpdateAttendance={handleUpdateAllAttendance}
-              onAddAttendance={handleAddAttendance}
               requests={requests}
               onUpdateRequests={handleUpdateAllRequests}
               onUpdateRequestStatus={handleUpdateRequestStatus}

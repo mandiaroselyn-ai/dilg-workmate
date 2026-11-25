@@ -182,9 +182,8 @@ export const dtrIssue = (record, today) => {
   // HR already decided this one.
   if (isRejectedOffline(record)) return null;
   if (isOfflineTimeOutPending(record)) return 'Offline Time Out for Review';
-  // HR approved this Time In after checking its selfie and fingerprint, or HR added the record
-  // itself with a reason (it has neither).
-  const approvedOffline = record.offlineTimeIn?.decision === 'approved' || Boolean(record.hrEntry);
+  // HR approved this Time In after checking its selfie and fingerprint.
+  const approvedOffline = record.offlineTimeIn?.decision === 'approved';
   if (!approvedOffline && !hasSelfie(record)) return 'Missing Selfie Verification';
   if (!approvedOffline && !record.fingerprintVerified) return 'Missing Biometric Verification';
   if (!record.timeOut) return record.date && record.date < today ? 'Missing Time Out' : null;

@@ -11,7 +11,6 @@ import HRFaceComparison from './HRFaceComparison';
 import HRHolidays from './HRHolidays';
 import HRDtrSubmissions from './HRDtrSubmissions';
 import HROvertimeOrders from './HROvertimeOrders';
-import HRAddRecord from './HRAddRecord';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 
 const monthName = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -272,9 +271,8 @@ const recordCount = count => `${count} record${count === 1 ? '' : 's'}`;
 const isVerified = record => Boolean(record?.verificationAudit?.verifiedAt);
 
 // HR 1's DTR desk. Leave credits (their start and the monthly crediting and charging) are HR 2's,
-// on its Leave Credits page. `onSaveRecord` saves one record's update, `onSaveRecords` several,
-// and `onAddRecord` adds one for a day without a record (HRAddRecord).
-export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, onAddRecord, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
+// on its Leave Credits page. `onSaveRecord` saves one record's update, `onSaveRecords` several.
+export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('All Months');
   const [dateFilter, setDateFilter] = useState('All Dates');
@@ -437,11 +435,6 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
         <span className={`rounded-full px-2 py-1 font-bold ${selected.record.fingerprintVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
           <CheckCircle2 className="inline h-3 w-3" /> Fingerprint
         </span>
-        {selected.record.hrEntry && (
-          <span className="rounded-full bg-blue-100 px-2 py-1 font-bold text-blue-800">
-            Added by HR ({selected.record.hrEntry.addedBy || 'HR'}{selected.record.hrEntry.addedAt ? `, ${new Date(selected.record.hrEntry.addedAt).toLocaleDateString()}` : ''}): {selected.record.hrEntry.reason}
-          </span>
-        )}
         {usedBrowserFingerprint(selected.record) && (
           <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-800" title={BROWSER_FINGERPRINT_CAUTION}>
             Browser fingerprint: PIN possible
@@ -507,7 +500,6 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
       <HRDtrSubmissions employees={employees} submissions={dtrSubmissions} />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
       <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />
-      <HRAddRecord employees={employees} onAdd={onAddRecord} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ['Total Records', records.length, 'text-slate-900'],
