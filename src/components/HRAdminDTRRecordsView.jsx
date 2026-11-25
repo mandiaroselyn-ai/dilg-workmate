@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, ChevronRight, FileCheck2, Search } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -12,9 +12,6 @@ import HRHolidays from './HRHolidays';
 import HRDtrSubmissions from './HRDtrSubmissions';
 import HROvertimeOrders from './HROvertimeOrders';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
-
-// Loaded on its own: it carries the barangay map and a map of its own.
-const HRFieldSites = lazy(() => import('./HRFieldSites'));
 
 const monthName = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -503,8 +500,6 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
       <HRDtrSubmissions employees={employees} submissions={dtrSubmissions} />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
       <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />
-      {/* Where field work in each barangay counts, with HR's other attendance settings. */}
-      <Suspense fallback={null}><HRFieldSites /></Suspense>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           ['Total Records', records.length, 'text-slate-900'],

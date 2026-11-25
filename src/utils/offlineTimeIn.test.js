@@ -36,14 +36,6 @@ test('without internet, the assignment area comes from the app or from the last 
   assert.equal(await resolveSiteOffline(home), null);
   rememberSiteLocation(home, { mode: 'wfh', latitude: 13.45, longitude: 121.88, label: '12 Rizal St., Pawa, Boac' });
   assert.equal((await resolveSiteOffline(home)).label, '12 Rizal St., Pawa, Boac');
-
-  // A barangay's field site HR set is remembered from the server's answer, and used offline
-  // instead of the whole barangay.
-  const pawa = { mode: 'field', municipality: 'Boac', barangay: 'Pawa' };
-  rememberSiteLocation(pawa, { mode: 'field', municipality: 'Boac', barangay: 'Pawa', latitude: 13.45, longitude: 121.88, radiusMeters: 100, label: 'Barangay Hall, Brgy. Pawa, Boac, Marinduque, Philippines' });
-  const site = await resolveSiteOffline(pawa);
-  assert.equal(site.radiusMeters, 100);
-  assert.match(site.label, /^Barangay Hall/);
 });
 
 test('a failed connection is told apart from an error answer', () => {

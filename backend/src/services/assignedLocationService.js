@@ -3,23 +3,8 @@ import { distanceToAreaMeters } from '../../../shared/assignmentGeofence.js';
 import { MARINDUQUE_BARANGAY_AREAS } from '../../../shared/marinduqueBarangayAreas.js';
 import { resolveFieldAssignment } from '../../../shared/fieldAssignmentArea.js';
 import { resolveOfficeArea } from '../../../shared/officeAreas.js';
-import { FieldSite } from '../models/fieldSiteModel.js';
 
 export { isWithinAssignedLocation } from '../../../shared/assignmentGeofence.js';
-
-// The barangays' field sites HR set (shared/fieldSites.js), kept for a minute so a Time Out or
-// a live GPS update does not read them each time. Saving or removing one forgets them on this
-// server. Without the database (or when it fails), no field sites: field work counts in the
-// whole barangay, as before HR set any.
-const FIELD_SITES_TTL_MS = 60 * 1000;
-let fieldSitesCache = null;
-export const forgetFieldSites = () => { fieldSitesCache = null; };
-const fieldSites = async () => {
-  if (fieldSitesCache && Date.now() - fieldSitesCache.at < FIELD_SITES_TTL_MS) return fieldSitesCache.sites;
-  const sites = await FieldSite.findAll().catch(() => null);
-  if (sites) fieldSitesCache = { at: Date.now(), sites };
-  return sites || [];
-};
 
 const cache = new Map();
 let lastRequestAt = 0;
@@ -214,22 +199,22 @@ const geocode = async query => {
   return promise;
 };
 
-// A field assignment's area is its barangay's field site (Brgy. Tanza's campus, or the site HR
-// set), else its boundary on the PSA's map (see shared/fieldAssignmentArea.js), and the
-// Provincial Office's is the Provincial Capitol Compound (shared/officeAreas.js). Other offices
-// and WFH addresses are points found on OpenStreetMap.
+// A field assignment's area is its barangay's boundary on the PSA's map, or Brgy. Tanza's campus
+// (see shared/fieldAssignmentArea.js), and the Provincial Office's is the Provincial Capitol
+// Compound (shared/officeAreas.js). Other offices and WFH addresses are points found on
+// OpenStreetMap.
 export const resolveAssignedLocation = async assignment => {
   const normalized = buildQuery(assignment);
-  if (normalized.mode === 'field') return resolveFieldAssignment(normalized, await fieldSites());
+  if (normalized.mode === 'field') return resolveFieldAssignment(normalized);
   const officeArea = normalized.mode === 'office' ? resolveOfficeArea(assignment.officeId) : null;
   if (officeArea) return officeArea;
   return { ...normalized, ...(await geocode(normalized.query)) };
 };
 
 // The area an open shift is checked against now: a field or DILG office area as it is defined
-// today, so a field site HR set or changed (or Brgy. Tanza's campus) applies to a shift timed in
-// before it, at Lunch, Time Out, and on the live map. A work-from-home address, or a saved area
-// that cannot be read again, stays as saved at Time In.
+// today, so a change to it (such as Brgy. Tanza's campus) applies to a shift timed in before it,
+// at Lunch, Time Out, and on the live map. A work-from-home address, or a saved area that cannot
+// be read again, stays as saved at Time In.
 export const currentAssignedArea = async saved => {
   if (!saved || !['field', 'office'].includes(saved.mode)) return saved;
   if (saved.mode === 'office' && !resolveOfficeArea(saved.officeId)) return saved;

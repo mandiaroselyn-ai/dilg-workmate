@@ -214,3 +214,16 @@ test('the barangay is still named when OpenStreetMap is unavailable', async t =>
   assert.equal(await describePlace(...rimhelynTimeIn), 'Brgy. Pawa, Boac');
   await assert.rejects(describePlace(13.40, 121.80), /temporarily unavailable/, 'out at sea there is nothing to name');
 });
+
+test('an open shift is checked against its area as it is now, so the MarSU campus applies to a Brgy. Tanza shift timed in before it', async () => {
+  const { currentAssignedArea } = await import('./assignedLocationService.js');
+  // Saved at Time In when Tanza counted as a whole barangay.
+  const savedAtTimeIn = { mode: 'field', municipality: 'Boac', barangay: 'Tanza', latitude: 13.46045, longitude: 121.84362, label: 'Brgy. Tanza, Boac, Marinduque, Philippines' };
+  const now = await currentAssignedArea(savedAtTimeIn);
+  assert.equal(now.areaName, 'Marinduque State University campus');
+  assert.equal(now.areaMarginMeters, 0);
+  // A work-from-home address stays as it was saved, and so does nothing.
+  const home = { mode: 'wfh', municipality: 'Boac', latitude: 13.45, longitude: 121.88, label: 'Home' };
+  assert.equal(await currentAssignedArea(home), home);
+  assert.equal(await currentAssignedArea(null), null);
+});

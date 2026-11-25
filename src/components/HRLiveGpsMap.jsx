@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css';
 // simplified to about 20 m.
 import marinduqueLand from '../assets/marinduque-land.json';
 import { GEOFENCE_METERS } from '../../shared/assignmentGeofence';
+import { FIELD_RANGE_METERS } from '../../shared/dutyRange';
 
 // With a Google Maps API key (VITE_GOOGLE_MAPS_API_KEY, set on Vercel), the map uses
 // Google's satellite view through Google's official Maps JavaScript API. Without one, or
@@ -43,8 +44,10 @@ const loadGoogleMaps = key => {
 const COLORS = { inside: '#16a34a', outside: '#dc2626', lunch: '#0284c7', done: '#94a3b8' };
 const NO_SIGNAL_OPACITY = 0.4;
 const MARINDUQUE = [13.4, 121.95];
-// A light blue that stays visible on both satellite imagery and the street map.
-const AREA_STYLE = { color: '#38bdf8', weight: 3, dashArray: '8 5', fillColor: '#38bdf8', fillOpacity: 0.12 };
+// Each employee's range, a green circle at their location (shared/dutyRange.js); the picked
+// employee's is drawn stronger.
+const RANGE_STYLE = { color: '#16a34a', weight: 2, dashArray: '6 4', fillColor: '#16a34a', fillOpacity: 0.08 };
+const PICKED_RANGE_STYLE = { ...RANGE_STYLE, weight: 3, fillOpacity: 0.16 };
 // How far from an office or home address still counts as there, as in the Time In check
 // (shared/assignmentGeofence.js). Within this distance of a barangay's edge also counts.
 const ALLOWANCE_METERS = GEOFENCE_METERS;
@@ -60,11 +63,13 @@ const textElement = (tag, text, className = '') => {
   return element;
 };
 
-// The label on a dot: the employee's name and, once known, the place they are in.
+// The label on a dot: the employee's name, and whether they are in the Field, at the Office, or
+// on WFH, with the place they are in once known.
 const labelFor = point => {
   const label = document.createElement('div');
   label.append(textElement('div', point.name, 'font-bold'));
-  if (point.place) label.append(textElement('div', point.place, 'text-[10px] font-semibold text-slate-600'));
+  const where = [point.duty, point.place].filter(Boolean).join(' · ');
+  if (where) label.append(textElement('div', where, 'text-[10px] font-semibold text-slate-600'));
   return label;
 };
 
@@ -88,31 +93,40 @@ const landOnly = polygons => {
   }
 };
 
-// The area chosen at Time In, drawn the way the Time In check reads it: the geofence around an
-// office or home address, a barangay or town outline, or the extent of a barangay that is
-// only a point on the map. Nothing when its shape is not known.
-const areaLayerFor = area => {
+// How far, in meters, the corners of `bounds` are from its middle.
+const halfDiagonalMeters = ({ south, north, west, east }) => {
+  const latitude = (south + north) / 2;
+  return Math.hypot((north - south) * 110574, (east - west) * 111320 * Math.cos(latitude * Math.PI / 180)) / 2;
+};
+
+// An employee's range, drawn as it is checked (shared/dutyRange.js): a circle (field work, 100 m
+// around the Time In; a work-from-home address, 50 m), an office's grounds (a town hall with its
+// 50 m drawn as a circle around it), the Marinduque State University campus, or a whole barangay's
+// outline when nothing smaller is known. Nothing when its shape is not known.
+const areaLayerFor = (area, style = RANGE_STYLE) => {
   if (!area) return null;
   const hasCenter = Number.isFinite(area.latitude) && Number.isFinite(area.longitude);
-  const circle = () => (hasCenter ? L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: ALLOWANCE_METERS }) : null);
-  if (area.mode !== 'field') return circle();
-  // A barangay's field site HR set: the circle it counts within.
-  if (Number(area.radiusMeters) > 0 && hasCenter) {
-    return L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: Number(area.radiusMeters) });
-  }
+  const circle = radius => (hasCenter ? L.circle([area.latitude, area.longitude], { ...style, radius }) : null);
+  if (Number(area.radiusMeters) > 0) return circle(Number(area.radiusMeters));
   const type = area.geometry?.type;
+  const margin = Number(area.areaMarginMeters) || 0;
+  const bounds = area.bounds || {};
+  if ((type === 'Polygon' || type === 'MultiPolygon') && margin > 0 && [bounds.south, bounds.north, bounds.west, bounds.east].every(Number.isFinite)) {
+    return circle(halfDiagonalMeters(bounds) + margin);
+  }
   if (type === 'Polygon' || type === 'MultiPolygon') {
     const polygons = type === 'Polygon' ? [area.geometry.coordinates] : area.geometry.coordinates;
-    return L.geoJSON(landOnly(polygons) || area.geometry, { style: AREA_STYLE });
+    return L.geoJSON(landOnly(polygons) || area.geometry, { style });
   }
+  if (area.mode !== 'field') return circle(ALLOWANCE_METERS);
   if (!area.fallbackToRadius) return null;
-  const { south, north, west, east } = area.bounds || {};
+  const { south, north, west, east } = bounds;
   if ([south, north, west, east].every(Number.isFinite)) {
     const box = [[[west, south], [east, south], [east, north], [west, north], [west, south]]];
     const land = landOnly([box]);
-    return land ? L.geoJSON(land, { style: AREA_STYLE }) : L.rectangle([[south, west], [north, east]], AREA_STYLE);
+    return land ? L.geoJSON(land, { style }) : L.rectangle([[south, west], [north, east]], style);
   }
-  return circle();
+  return circle(ALLOWANCE_METERS);
 };
 
 // The area's extent, measured without adding it to the map: a Leaflet circle can only
@@ -124,10 +138,9 @@ const areaBoundsFor = area => {
 };
 
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'lunch' | 'done',
-//            noSignal, accuracy, area, place, details: [lines for the popup] }]
-// `accuracy` is how far off the phone said its GPS could be (meters). It is drawn as a light
-// circle around the dot: each phone's GPS has its own error, so two people standing together
-// can show apart, and their circles overlapping shows they may be at the same place.
+//            noSignal, duty ('Field' | 'Office' | 'WFH'), area (their range), place,
+//            details: [lines for the popup] }]
+// Each employee's range is a green circle (or their office's grounds) at their location.
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -198,23 +211,12 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     if (!map || !layer) return;
     layer.clearLayers();
 
-    // Drawn first, so the dots stay on top of it.
-    const picked = points.find(point => point.key === selectedKey);
-    const area = picked ? areaLayerFor(picked.area) : null;
-    if (area) area.addTo(layer);
-
-    // Each GPS's accuracy circle, under all the dots.
+    // Each employee's range, under all the dots; the picked employee's stronger.
     points.forEach(point => {
-      if (!(point.accuracy > 0)) return;
-      L.circle([point.latitude, point.longitude], {
-        radius: point.accuracy,
-        color: COLORS[point.state],
-        weight: 1,
-        opacity: point.noSignal ? 0.3 : 0.6,
-        fillColor: COLORS[point.state],
-        fillOpacity: point.noSignal ? 0.05 : 0.1,
-        interactive: false
-      }).addTo(layer);
+      const range = areaLayerFor(point.area, point.key === selectedKey ? PICKED_RANGE_STYLE : RANGE_STYLE);
+      if (!range) return;
+      range.options.interactive = false;
+      range.addTo(layer);
     });
 
     points.forEach(point => {
@@ -319,7 +321,7 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.lunch }} />On lunch</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full border border-dashed border-slate-700" style={{ backgroundColor: COLORS.inside, opacity: NO_SIGNAL_OPACITY }} />Faded: no live signal (15+ min), last known location</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS.done }} />Timed out</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 border-2 border-dashed" style={{ borderColor: AREA_STYLE.color, backgroundColor: `${AREA_STYLE.color}1f` }} />Picked employee's assigned area (field areas allow {GEOFENCE_METERS} m past the edge)</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-3 rounded-full border-2 border-dashed" style={{ borderColor: RANGE_STYLE.color, backgroundColor: `${RANGE_STYLE.color}1f` }} />Range: Office = its grounds, WFH = {GEOFENCE_METERS} m from home, Field = {FIELD_RANGE_METERS} m from where they timed in (Brgy. Tanza: the MarSU campus)</span>
         </div>
       </div>
       {points.length === 0 && <p className="text-center text-xs font-semibold text-slate-500">No employee has timed in today, so there is no one to show on the map.</p>}

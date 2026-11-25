@@ -89,7 +89,7 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
   }
 
-  // A barangay's field site that HR set (shared/fieldSites.js) counts within its own radius.
+  // A field range that is a circle (shared/dutyRange.js: around the Time In) counts within its radius.
   const siteRadius = Number(location.radiusMeters);
   if (siteRadius > 0 && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))) {
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= siteRadius;

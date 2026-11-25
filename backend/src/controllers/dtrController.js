@@ -2,6 +2,7 @@ import { DtrLog, MAX_TRACKING_ACCURACY_METERS } from '../models/dtrLogModel.js';
 import { Announcement } from '../models/announcementModel.js';
 import { Leave } from '../models/leaveModel.js';
 import { noTimeInOn } from '../../../shared/travelStatus.js';
+import { dutyRangeOf } from '../../../shared/dutyRange.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
@@ -709,9 +710,9 @@ export const updateLocationTracking = async (req, res) => {
         }) || ASSIGNED_LOCATION_MAP['Office Station'] || { lat: 13.4474, lon: 121.8344 };
 
     const distance = computeDistanceMeters(Number(latitude), Number(longitude), Number(assignedCoords.lat), Number(assignedCoords.lon));
-    // Use the same assignment area as Time In (a field assignment covers the whole
-    // barangay, not just the geofence distance around its center).
-    const area = await currentAssignedArea(activeLog?.assignmentSite);
+    // The range the employee is watched in while on duty (shared/dutyRange.js): their area as it
+    // is now, or, for field work in a whole barangay, 100 m around where they timed in.
+    const area = dutyRangeOf(await currentAssignedArea(activeLog?.assignmentSite), { latitude: activeLog?.latitude, longitude: activeLog?.longitude });
     const withinGeofence = Number.isFinite(Number(area?.latitude))
       ? isWithinAssignedLocation(latitude, longitude, area)
       : distance <= GEO_THRESHOLD_METERS;
@@ -784,11 +785,10 @@ export const getActiveLocationTracking = async (_req, res) => {
   try {
     // Each position's barangay comes from the PSA map on the server, so HR's screen does
     // not have to ask for a place name every time an employee moves.
-    // The area each open shift is checked against now (see currentAssignedArea), which the map
-    // outlines.
+    // The range each open shift is watched in now (see dutyRangeOf), which the map draws.
     const locations = await Promise.all((await DtrLog.getActiveLocationTracking()).map(async entry => ({
       ...entry,
-      assignmentArea: await currentAssignedArea(entry.assignmentArea),
+      assignmentArea: dutyRangeOf(await currentAssignedArea(entry.assignmentArea), entry.timeInGps),
       place: barangayPlaceName(Number(entry.latitude), Number(entry.longitude))
     })));
     res.status(200).json({ success: true, locations });

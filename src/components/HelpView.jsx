@@ -30,7 +30,7 @@ const faqs = [
   {
     topic: 'Attendance',
     question: "How do I choose where I am working today?",
-    answer: `On the Attendance page, choose Office and then your office, Field and then the municipality and barangay, or Work from home. You must be at the site you choose: for Field, near the barangay's field site that HR set, such as its barangay hall (the Attendance page shows how near), or anywhere in the barangay when it has none (for Brgy. Tanza, Boac, inside the Marinduque State University campus); inside the Provincial Capitol Compound for the DILG Provincial Office, within ${GEOFENCE_METERS} meters of the town hall for a municipal office, or within ${GEOFENCE_METERS} meters of your work-from-home address. Work from home works only after HR sets your approved work-from-home address.`
+    answer: `On the Attendance page, choose Office and then your office, Field and then the municipality and barangay, or Work from home. You must be at the site you choose: inside the barangay for Field (for Brgy. Tanza, Boac, inside the Marinduque State University campus), inside the Provincial Capitol Compound for the DILG Provincial Office, within ${GEOFENCE_METERS} meters of the town hall for a municipal office, or within ${GEOFENCE_METERS} meters of your work-from-home address. Work from home works only after HR sets your approved work-from-home address.`
   },
   {
     topic: 'Attendance',
