@@ -29,7 +29,9 @@ export default function WeeklyAttendanceChart({ days = [], today = '' }) {
   const most = Math.max(1, ...days.map(day => day.total));
 
   return (
-    <div className="min-w-[260px] flex-1 md:border-l md:border-slate-100 md:pl-8">
+    // `relative` keeps the screen-reader table inside the chart: placed against the page's main
+    // area instead, it made that area scroll on its own and cut the dashboard off.
+    <div className="relative min-w-[260px] flex-1 md:border-l md:border-slate-100 md:pl-8">
       <p className="text-xs font-black uppercase tracking-wide text-slate-500">Last {days.length} working days</p>
       <div className="mt-3 flex items-end justify-around gap-2 border-b border-slate-200" style={{ height: PLOT + 8 }} onMouseLeave={() => setActive('')}>
         {days.map((day, index) => {

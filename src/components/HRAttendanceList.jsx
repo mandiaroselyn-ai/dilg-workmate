@@ -39,7 +39,9 @@ export default function HRAttendanceList({ rows = [], statusStyles = {}, gpsRowO
   if (!rows.length) return <p className="mt-3 rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs font-semibold text-slate-500">No employees match these filters.</p>;
 
   return (
-    <div className="mt-3">
+    // `relative` keeps the screen-reader labels of the logs inside the list, so they never make
+    // the page's main area scroll on its own.
+    <div className="relative mt-3">
       <div className={`hidden gap-3 border-b border-slate-200 px-3 pb-2 text-[11px] font-black uppercase tracking-wide text-slate-500 sm:grid ${GRID}`}>
         <span>Employee</span>
         {LOGS.map(log => <span key={log.key}>{log.label}</span>)}
