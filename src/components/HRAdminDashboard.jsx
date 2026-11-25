@@ -11,8 +11,7 @@ import {
   MapPin,
   Plane,
   UserRound,
-  Users,
-  XCircle
+  Users
 } from 'lucide-react';
 import { activeEmployees, dayEndText, dtrIssue, employeeDayStatus, geofenceStateOf, isDayOver, liveLocationFor, monitoringStatus, NO_TIME_IN, NOT_YET_IN, recordsForEmployees } from '../utils/hrAttendance';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
@@ -149,29 +148,30 @@ export default function HRAdminDashboard({
   const absentDegrees = (absent / attendanceStatusTotal) * 360;
   const awayDegrees = ((onLeave + onTravel) / attendanceStatusTotal) * 360;
 
-  const employeeAttendanceRows = todayStatuses
-    .map(({ employee, status, record }) => ({
-      employeeName: employee.name || 'Unnamed Employee',
-      status,
-      timeIn: record?.timeIn || '--',
-      timeOut: record?.timeOut || '--',
-      late: status === 'Late'
-    }))
-    .slice(0, 8);
-
-  const getAttendanceStatusStyle = (status) => {
-    const normalized = (status || '').toLowerCase();
-    if (normalized.includes('present') || normalized === 'in' || normalized === 'on time') {
-      return 'bg-emerald-100 text-emerald-700';
-    }
-    if (normalized.includes('late')) {
-      return 'bg-amber-100 text-amber-700';
-    }
-    if (normalized.includes('absent') || normalized === 'no record') {
-      return 'bg-rose-100 text-rose-700';
-    }
-    return 'bg-slate-100 text-slate-700';
-  };
+  // Today's employees who need HR: absent, no Time In yet past the latest on-time arrival, late,
+  // or with a log that needs HR (see dtrIssue), most serious first. Those not in yet before the
+  // latest on-time arrival, on leave, or on travel are fine.
+  const ATTENTION_ORDER = { Absent: 0, [NO_TIME_IN]: 1, Late: 2 };
+  const attentionRows = todayStatuses
+    .map(({ employee, status, record }) => {
+      const issue = record ? dtrIssue(record, today) : '';
+      const flagged = status in ATTENTION_ORDER;
+      if (!flagged && !issue) return null;
+      return {
+        key: employee._id || employee.email || employee.employeeId || employee.name,
+        name: employee.name || 'Unnamed Employee',
+        office: employee.office || '',
+        status: flagged ? status : issue,
+        rank: flagged ? ATTENTION_ORDER[status] : 3,
+        detail: status === NO_TIME_IN ? `Absent if none by ${dayEndText(today)}`
+          : status === 'Absent' ? 'No Time In today'
+            : [record?.timeIn && `Time In ${record.timeIn}`, flagged && issue].filter(Boolean).join(' · ')
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  const ATTENTION_SHOWN = 8;
+  const attentionTone = rank => (rank === 0 ? 'bg-rose-50 text-rose-700' : rank === 3 ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700');
 
   return (
     <div className="w-full min-w-0 space-y-5 overflow-x-hidden pb-24 sm:pb-0">
@@ -189,52 +189,42 @@ export default function HRAdminDashboard({
         </div>
       </header>
 
+      {/* What the attendance overview below does not show: the counts there are not repeated. */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard icon={Users} label="Active Employees" value={totalEmployees} detail="Pending accounts not included" action="View Employees" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('directory')} />
-        <MetricCard icon={CheckCircle2} label="Present Today" value={present} detail={`${rate}% of employees`} action="View Attendance" color="bg-emerald-50 text-emerald-600" onClick={() => onOpenTab('dtr')} />
-        {/* While today's hours last, no Time In is not an absence yet (see monitoringStatus). */}
-        {todayIsOver
-          ? <MetricCard icon={XCircle} label="Absent Today" value={absent} detail={`${totalEmployees ? ((absent / totalEmployees) * 100).toFixed(1) : '0.0'}% of employees`} action="View Records" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
-          : <MetricCard icon={Clock3} label="No Time In Today" value={noTimeIn} detail={`Absent if none by ${dayEndText(today)}`} action="View Records" color="bg-amber-50 text-amber-700" onClick={() => onOpenTab('dtr')} />}
-        <MetricCard icon={Clock3} label="Late Today" value={late} detail={`${totalEmployees ? ((late / totalEmployees) * 100).toFixed(1) : '0.0'}% of employees`} action="View Late" color="bg-amber-50 text-amber-600" onClick={() => onOpenTab('dtr')} />
-        <MetricCard icon={CalendarDays} label="On Leave" value={onLeave} detail="Employees currently on approved leave" action="View Leaves" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('requests')} />
-        <MetricCard icon={Plane} label="On Official Travel" value={onTravel} detail="Employees assigned outside office" action="View Travels" color="bg-blue-50 text-blue-600" onClick={() => onOpenTab('requests')} />
         <MetricCard icon={AlertCircle} label="DTR Issues" value={dtrIssueCount} detail="Missing or incomplete attendance logs" action="Review DTR" color="bg-amber-50 text-amber-600" onClick={() => onOpenTab('dtr')} />
         <MetricCard icon={MapPin} label="Geofence Alerts" value={geofenceAlerts.length} detail="Employees outside assigned location" action="View Alerts" color="bg-rose-50 text-rose-600" onClick={() => onOpenTab('dtr')} />
+        <MetricCard icon={FileCheck2} label="Pending Requests" value={pendingLeave + pendingTravel} detail={[`${pendingLeave} leave`, `${pendingTravel} Travel Order${pendingTravel === 1 ? '' : 's'}`, returned && `${returned} returned to employees`].filter(Boolean).join(' · ')} action="View Requests" color="bg-emerald-50 text-emerald-600" onClick={() => onOpenTab('requests')} />
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Today's Attendance Overview</h3><button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-5 flex flex-wrap items-center justify-center gap-8 md:justify-start"><div className="relative h-44 w-44 shrink-0 rounded-full" style={{ background: `conic-gradient(#10b981 0deg ${presentDegrees}deg, #f59e0b ${presentDegrees}deg ${presentDegrees + lateDegrees}deg, #ef4444 ${presentDegrees + lateDegrees}deg ${presentDegrees + lateDegrees + absentDegrees}deg, #3b82f6 ${presentDegrees + lateDegrees + absentDegrees}deg ${presentDegrees + lateDegrees + absentDegrees + awayDegrees}deg, #cbd5e1 ${presentDegrees + lateDegrees + absentDegrees + awayDegrees}deg 360deg)` }}><div className="absolute inset-7 flex flex-col items-center justify-center rounded-full bg-white"><strong className="text-2xl font-black text-slate-900">{rate}%</strong><span className="text-xs font-bold text-slate-500">Attendance Rate</span></div></div><div className="grid min-w-[210px] gap-3 text-sm">{[['On Time', onTime, 'bg-emerald-500'], ['Late', late, 'bg-amber-500'], ['Absent', absent, 'bg-rose-500'], ['On Leave / Travel', onLeave + onTravel, 'bg-blue-500'], ...(notYetIn ? [['Not Yet In', notYetIn, 'bg-slate-300']] : []), ...(noTimeIn ? [['No Time In', noTimeIn, 'bg-slate-300']] : [])].map(([label, value, color]) => <div key={label} className="flex items-center justify-between gap-8"><span className="flex items-center gap-2 font-semibold text-slate-600"><i className={`h-3 w-3 rounded-full ${color}`} />{label}</span><strong className="text-lg text-slate-900">{value}</strong></div>)}</div><WeeklyAttendanceChart days={recentDays} today={today} /></div></section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="text-lg font-black text-slate-900">Employee Attendance Information</h3>
-          <button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View Details <ArrowRight className="inline h-3 w-3" /></button>
+          <h3 className="text-lg font-black text-slate-900">Needs attention today{attentionRows.length ? ` (${attentionRows.length})` : ''}</h3>
+          <button onClick={() => onOpenTab('dtr')} className="text-xs font-black text-indigo-700">View all in Attendance <ArrowRight className="inline h-3 w-3" /></button>
         </div>
-
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-          <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
-            <span>Employee</span>
-            <span>Status</span>
-            <span>Time In</span>
-            <span>Time Out</span>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {employeeAttendanceRows.map((row) => (
-              <div key={row.employeeName} className="grid grid-cols-[1.5fr_1fr_1fr_1fr] items-center gap-3 px-4 py-3 text-sm">
-                <span className="font-semibold text-slate-700">{row.employeeName}</span>
-                <span className={`inline-flex w-fit items-center justify-center rounded-full px-2.5 py-1 text-xs font-black ${getAttendanceStatusStyle(row.status)}`}>
-                  {row.status}
+        {attentionRows.length ? (
+          <ul className="mt-3 divide-y divide-slate-100">
+            {attentionRows.slice(0, ATTENTION_SHOWN).map(row => (
+              <li key={row.key} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-slate-800">{row.name}</span>
+                  <span className="block truncate text-xs text-slate-500">{[row.office, row.detail].filter(Boolean).join(' · ')}</span>
                 </span>
-                <span className="text-slate-600">{row.timeIn}</span>
-                <span className="text-slate-600">{row.timeOut}</span>
-              </div>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black ${attentionTone(row.rank)}`}>{row.status}</span>
+              </li>
             ))}
-          </div>
-        </div>
+            {attentionRows.length > ATTENTION_SHOWN && (
+              <li className="pt-2.5 text-xs font-bold text-slate-500">And {attentionRows.length - ATTENTION_SHOWN} more in Attendance.</li>
+            )}
+          </ul>
+        ) : (
+          <p className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-bold text-emerald-800">
+            <CheckCircle2 className="h-4 w-4 shrink-0" /> Everyone is on track today: no one late, absent, or with a log to fix.
+          </p>
+        )}
       </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h3 className="text-lg font-black text-slate-900">Pending Requests</h3><button onClick={() => onOpenTab('requests')} className="text-xs font-black text-indigo-700">View All <ArrowRight className="inline h-3 w-3" /></button></div><div className="mt-4 grid gap-4 md:grid-cols-3"><div className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4"><CalendarDays className="h-7 w-7 text-emerald-600" /><div><p className="text-sm font-bold text-slate-700">Leave Applications</p><strong className="text-2xl text-emerald-600">{pendingLeave}</strong><p className="text-[11px] text-slate-500">Awaiting HR validation</p></div></div><div className="flex items-center gap-3 rounded-xl bg-blue-50 p-4"><Plane className="h-7 w-7 text-blue-600" /><div><p className="text-sm font-bold text-slate-700">Travel Orders</p><strong className="text-2xl text-blue-600">{pendingTravel}</strong><p className="text-[11px] text-slate-500">Awaiting HR validation</p></div></div><div className="flex items-center gap-3 rounded-xl bg-amber-50 p-4"><FileCheck2 className="h-7 w-7 text-amber-600" /><div><p className="text-sm font-bold text-slate-700">Returned Requests</p><strong className="text-2xl text-amber-600">{returned}</strong><p className="text-[11px] text-slate-500">Needs employee action</p></div></div></div></section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 pb-3"><h3 className="text-lg font-black text-slate-900">Recent Activities</h3>{allActivityItems.length > 5 && <button onClick={() => setShowAllActivities(value => !value)} aria-expanded={showAllActivities} className="text-xs font-black text-indigo-700">{showAllActivities ? 'Show Less' : `View All (${allActivityItems.length})`} <ArrowRight className={`inline h-3 w-3 ${showAllActivities ? '-rotate-90' : ''}`} /></button>}</div><div className={`divide-y divide-slate-100 ${showAllActivities ? 'max-h-[28rem] overflow-y-auto' : ''}`}>{activityItems.length ? activityItems.map(([title, detail, Icon, time, tone], index) => <div key={`${title}-${index}`} className="flex items-center gap-3 py-3"><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-bold text-slate-800">{title}</p><p className="truncate text-xs text-slate-500">{detail}</p></div><span className="shrink-0 text-xs font-semibold text-slate-500">{time}</span></div>) : <p className="py-4 text-center text-xs font-semibold text-slate-500">No attendance or request activity from current employees yet.</p>}</div></section>
     </div>
