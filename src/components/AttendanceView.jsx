@@ -62,6 +62,8 @@ const formatTravelDates = travel => {
 };
 import dtrTemplate from '../assets/template/dtr-template.pdf';
 import { fillDTR, dtrFilename } from '../utils/dtrForm';
+import { dtrSignatures } from '../utils/dtrSubmission';
+import { fetchSignedForm } from '../utils/signedForms';
 import { downloadBytes } from '../utils/documentFiles';
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../shared/marinduqueLocations';
 import { GEOFENCE_METERS, isWithinAssignedLocation } from '../../shared/assignmentGeofence';
@@ -130,6 +132,9 @@ export default function AttendanceView({
   attendanceHistory,
   // The employee's leave requests and Travel Orders.
   requests = [],
+  // The employee's DTRs signed through WorkMate (Documents), so an exported DTR carries the
+  // signatures it has: the employee's, and the In-charge's once verified.
+  dtrSubmissions = [],
   holidays = [],
   onTimeIn,
   onTimeOut,
@@ -1382,16 +1387,25 @@ export default function AttendanceView({
   });
 
   // Generates the employee's Civil Service Form No. 48 (Daily Time Record) for the
-  // selected month and downloads it (in the Android app, into the phone's Downloads).
+  // selected month and downloads it (in the Android app, into the phone's Downloads). A month the
+  // employee signed in Documents carries their signature; one the In-charge verified is the copy
+  // the In-charge signed.
   const handleExportDTR = async () => {
     setDtrExporting(true);
     setDtrExportError('');
     try {
       const [year, month] = dtrExportMonth.split('-').map(Number);
+      const submission = dtrSubmissions.find(item => item.month === dtrExportMonth) || null;
+      const verified = submission?.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;
+      if (verified) {
+        await downloadBytes(verified.bytes, verified.fileName || dtrFilename(user?.name || fillName, year, month), 'application/pdf');
+        return;
+      }
       const response = await fetch(dtrTemplate);
       const templateBytes = await response.arrayBuffer();
       const pdfBytes = await fillDTR(templateBytes, user || { name: fillName, role: fillRole, office: fillOffice, employeeId: fillId }, year, month, attendanceHistory, {
-        travelOrders: requests.filter(request => travelOrderCovers(request, user))
+        travelOrders: requests.filter(request => travelOrderCovers(request, user)),
+        signatures: dtrSignatures(submission)
       });
       await downloadBytes(pdfBytes, dtrFilename(user?.name || fillName, year, month), 'application/pdf');
     } catch (err) {
@@ -2446,6 +2460,9 @@ export default function AttendanceView({
                 <span>{dtrExporting ? 'Generating…' : 'Export DTR'}</span>
               </button>
               {dtrExportError && <p role="alert" className="max-w-xs text-xs font-semibold text-rose-600">{dtrExportError}</p>}
+              {!dtrExportError && dtrExportMonth < getManilaDateString().slice(0, 7) && !dtrSubmissions.some(item => item.month === dtrExportMonth && item.status !== 'Returned') && (
+                <p className="max-w-xs text-[11px] font-semibold text-amber-700">Not signed yet. Sign this DTR in Documents so it carries your signature.</p>
+              )}
             </div>
 
             {/* Find Search Input */}

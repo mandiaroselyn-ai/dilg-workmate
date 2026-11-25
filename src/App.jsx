@@ -1784,6 +1784,7 @@ export default function App() {
               user={user}
               attendanceHistory={visibleEmployeeRecords}
               requests={visibleEmployeeRequests}
+              dtrSubmissions={dtrSubmissions}
               holidays={myHolidays}
               onTimeIn={handleTimeIn}
               onTimeOut={handleTimeOut}
