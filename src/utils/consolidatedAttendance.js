@@ -6,7 +6,7 @@ import { inServiceSince } from '../../shared/separation.js';
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
 import { dtrDayLogs, isRestDate, isRestDay, logsSchedule } from './dtrDay.js';
 import { dtrEntry } from './dtrMonth.js';
-import { absentDays, dtrTimeOut } from './hrAttendance.js';
+import { absentDays, dtrTimeOut, recordsForEmployees } from './hrAttendance.js';
 
 // DILG Marinduque's monthly Consolidated Report of Attendance based on CS Form 48 (the DTR), as
 // the office makes it in its own template (src/assets/template): one row per organic employee
@@ -176,21 +176,34 @@ const personnelRow = (person, { month, records, requests, holidays, absences }) 
 export const consolidatedAttendance = ({ month, employees = [], records = [], requests = [], holidays = [], from = '', today = '', minutes = 24 * 60, include = () => true }) => {
   const personnel = employees.filter(person => isPersonnelOf(person, month) && include(person));
   const days = monthDays(month);
+  const first = days[0];
+  const last = days[days.length - 1];
+  // Only the month's records and requests are read, which keeps the report quick with months of
+  // attendance loaded. The earliest record stays for the absences: they count from the first day
+  // attendance was recorded in WorkMate (see absentDays).
+  const ownRecords = recordsForEmployees(records, personnel);
+  const monthRecords = ownRecords.filter(record => String(record?.date || '').startsWith(month));
+  const earliest = ownRecords.reduce((found, record) => (record?.date && (!found || record.date < found.date) ? record : found), null);
+  const monthRequests = requests.filter(request => {
+    const start = String(request?.startDate || '').slice(0, 10);
+    const end = String(request?.endDate || '').slice(0, 10) || start;
+    return Boolean(start) && start <= last && end >= first;
+  });
   const absences = absentDays({
     employees: personnel,
-    records,
-    requests,
+    records: earliest && earliest.date < first ? [earliest, ...monthRecords] : monthRecords,
+    requests: monthRequests,
     holidays,
-    from: [days[0], from].filter(Boolean).sort().pop(),
-    to: days[days.length - 1],
+    from: [first, from].filter(Boolean).sort().pop(),
+    to: last,
     today,
     minutes
   });
   const rows = personnel
     .map(person => personnelRow(person, {
       month,
-      records,
-      requests,
+      records: monthRecords,
+      requests: monthRequests,
       holidays,
       absences: absences.filter(item => item.employee === person).map(item => item.date)
     }))

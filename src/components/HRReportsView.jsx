@@ -32,9 +32,12 @@ const labelClass = 'block text-[10px] font-black uppercase tracking-wide text-sl
 // CSV or printed. Attendance covers the months loaded on this page.
 export default function HRReportsView({ employees = [], attendanceHistory = [], requests = [], holidays = [], attendanceFrom = '', loadedAttendanceMonths = [], generatedBy = '' }) {
   const today = getManilaDateString();
-  const emptyFilters = { employee: '', month: today.slice(0, 7), office: '', status: '', vacant: '' };
+  const emptyFilters = { employee: '', month: today.slice(0, 7), office: '', status: '' };
   const [type, setType] = useState('attendance');
   const [filters, setFilters] = useState(emptyFilters);
+  // The number of vacant positions HR types, kept apart from the filters so typing it does not
+  // make the report again.
+  const [vacant, setVacant] = useState('');
   const [message, setMessage] = useState('');
   // The supervisor and HR/Admin accounts, to find the Provincial Director who signs the
   // attendance report.
@@ -96,7 +99,7 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
       } catch {
         throw new Error('The report template could not be loaded. Check your internet connection and try again.');
       }
-      await download(fillConsolidatedXlsx(template, report, { vacant: filters.vacant, director }), fileName('xlsx'), XLSX_TYPE);
+      await download(fillConsolidatedXlsx(template, report, { vacant, director }), fileName('xlsx'), XLSX_TYPE);
     } catch (downloadError) {
       setMessage(downloadError.message || 'Unable to download the report.');
     }
@@ -110,26 +113,37 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
     }
   };
 
+  // Printed from a hidden frame on this page, so the print dialog opens over WorkMate and the page
+  // works again as soon as the dialog closes. (Printed from a new tab, the page froze until that
+  // tab's print dialog was closed, and the dialog could be out of sight in the other tab.)
   const printReport = () => {
-    const page = window.open('', '_blank');
-    if (!page) {
-      setMessage('The report could not open in a new tab. Allow pop-ups for this site, then try again.');
-      return;
-    }
-    page.document.write(isAttendance
-      ? consolidatedHtml(report, { vacant: filters.vacant, director, logos: [dilgSeal, bagongPilipinasLogo].map(src => new URL(src, window.location.href).href) })
+    const html = isAttendance
+      ? consolidatedHtml(report, { vacant, director, logos: [dilgSeal, bagongPilipinasLogo].map(src => new URL(src, window.location.href).href) })
       : reportHtml(report, {
         filtersText,
         generatedAt: new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }),
         generatedBy
-      }));
-    page.document.close();
-    page.focus();
-    // Printed once the page and its logos have loaded. "Save as PDF" in the print dialog makes a PDF.
-    const images = [...page.document.images];
+      });
+    document.querySelectorAll('iframe[data-report-print]').forEach(frame => frame.remove());
+    const frame = document.createElement('iframe');
+    frame.setAttribute('data-report-print', '');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.title = report.title;
+    frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(frame);
+    const view = frame.contentWindow;
+    view.document.open();
+    view.document.write(html);
+    view.document.close();
+    // Printed once its logos have loaded. "Save as PDF" in the print dialog makes a PDF.
+    const images = [...view.document.images];
     Promise.all(images.map(image => (image.complete ? null : new Promise(resolve => { image.onload = resolve; image.onerror = resolve; }))))
-      .then(() => window.setTimeout(() => page.print(), 300));
-    setMessage('The report opened in a new tab for printing. Choose "Save as PDF" in the print dialog for a PDF copy.');
+      .then(() => {
+        view.addEventListener('afterprint', () => window.setTimeout(() => frame.remove(), 0));
+        view.focus();
+        view.print();
+      });
+    setMessage('The print dialog opens on this page. Choose "Save as PDF" there for a PDF copy.');
   };
 
   return (
@@ -179,7 +193,7 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
           </label>
           {isAttendance ? (
             <label className={labelClass}>No. of vacant positions
-              <input type="number" min="0" inputMode="numeric" value={filters.vacant} onChange={change('vacant')} placeholder="Leave blank to write it in" className={fieldClass} />
+              <input type="number" min="0" inputMode="numeric" value={vacant} onChange={event => setVacant(event.target.value)} placeholder="Leave blank to write it in" className={fieldClass} />
             </label>
           ) : (
             <label className={labelClass}>Status
@@ -204,7 +218,7 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
           <button type="button" onClick={printReport} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white hover:bg-blue-800">
             <Printer className="h-4 w-4" /> Print / Save as PDF
           </button>
-          <button type="button" onClick={() => { setFilters(emptyFilters); setMessage(''); }} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
+          <button type="button" onClick={() => { setFilters(emptyFilters); setVacant(''); setMessage(''); }} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">
             <RotateCcw className="h-4 w-4" /> Reset filters
           </button>
         </div>
