@@ -86,6 +86,44 @@ const initials = (name = '') =>
 const employeeKey = (employee = {}) =>
   String(employee._id || employee.employeeId || employee.email || employee.id || '').trim().toLowerCase();
 
+// What saving the edit form's `form` sends for an account (`existingEmployee`, or null for a new
+// one): { fullName, normalized }. The full name follows the name parts (nameFromParts, as the
+// server saves it); the server moves the employee's earlier records when it changes. An Employee
+// ID left blank on a new account is assigned by the server (DILG-2026-123456).
+const employeePayload = (form, existingEmployee) => {
+  const fullName = nameFromParts(form) || existingEmployee?.name || fullNameOf(form);
+  const employeeId = String(form.employeeId || '').trim();
+  const normalized = {
+    ...normalizeEmployee({
+      ...form,
+      name: fullName,
+      employeeId,
+      employmentStatus: form.employmentStatus || 'ACTIVE',
+      accountStatus: form.accountStatus || 'Active',
+      email: (form.email || '').trim().toLowerCase(),
+      phoneNumber: form.phoneNumber || ''
+    }),
+    name: fullName,
+    email: (form.email || '').trim().toLowerCase(),
+    employeeId,
+    role: String(form.role || '').trim(),
+    office: String(form.office || '').trim(),
+    region: String(form.region || '').trim(),
+    employmentStatus: form.employmentStatus || 'ACTIVE',
+    accountStatus: form.accountStatus || 'Active',
+    accessLevel: 'employee',
+    approvedWfhLocation: {
+      municipality: form.approvedWfhMunicipality,
+      barangay: form.approvedWfhBarangay,
+      street: form.approvedWfhStreet,
+      landmark: form.approvedWfhLandmark,
+      latitude: form.approvedWfhPin?.latitude ?? null,
+      longitude: form.approvedWfhPin?.longitude ?? null
+    }
+  };
+  return { fullName, normalized };
+};
+
 const normalizeEmployee = (employee = {}) => {
   const name = employeeName(employee);
   const parts = name.split(' ');
@@ -404,10 +442,10 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     setScreen('editor');
   };
 
-  const openEdit = (employee) => {
+  // The edit form's values for an existing account.
+  const formOf = employee => {
     const record = normalizeEmployee(employee);
-    setEditingId(employeeKey(employee));
-    setForm({
+    return {
       ...emptyForm,
       ...record,
       firstName: record.firstName,
@@ -420,8 +458,24 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
       accountStatus: record.accountStatus,
       // An account saved with a station but no LGU gets the station's LGU.
       assignedLGU: record.assignedLGU || lguOfStation(record.assignedStation)
-    });
+    };
+  };
+
+  const openEdit = (employee) => {
+    setEditingId(employeeKey(employee));
+    setForm(formOf(employee));
     setScreen('editor');
+  };
+
+  // A sign-up's short form: only what approval still needs (the employee filled in the rest at
+  // sign-up, which HR sees on their page). The fields are fixed when it opens, so they stay while
+  // HR types.
+  const [fillFields, setFillFields] = useState([]);
+  const openFillIn = employee => {
+    setEditingId(employeeKey(employee));
+    setForm(formOf(employee));
+    setFillFields(missingApprovalDetails(employee));
+    setScreen('fill');
   };
 
   const openView = (employee) => {
@@ -463,39 +517,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     const existingEmployee = editingId
       ? employeeAccounts.find(employee => employeeKey(employee) === editingId)
       : null;
-    // The full name follows the name parts (nameFromParts, as the server saves it); the server
-    // moves the employee's earlier records when it changes.
-    const fullName = nameFromParts(form) || existingEmployee?.name || fullNameOf(form);
-    // Left blank on a new account, the server assigns one (DILG-2026-123456).
-    const employeeId = form.employeeId.trim();
-    const normalized = {
-      ...normalizeEmployee({
-        ...form,
-        name: fullName,
-        employeeId,
-        employmentStatus: form.employmentStatus || 'ACTIVE',
-        accountStatus: form.accountStatus || 'Active',
-        email: (form.email || '').trim().toLowerCase(),
-        phoneNumber: form.phoneNumber || ''
-      }),
-      name: fullName,
-      email: (form.email || '').trim().toLowerCase(),
-      employeeId,
-      role: form.role.trim(),
-      office: form.office.trim(),
-      region: form.region.trim(),
-      employmentStatus: form.employmentStatus || 'ACTIVE',
-      accountStatus: form.accountStatus || 'Active',
-      accessLevel: 'employee',
-      approvedWfhLocation: {
-        municipality: form.approvedWfhMunicipality,
-        barangay: form.approvedWfhBarangay,
-        street: form.approvedWfhStreet,
-        landmark: form.approvedWfhLandmark,
-        latitude: form.approvedWfhPin?.latitude ?? null,
-        longitude: form.approvedWfhPin?.longitude ?? null
-      }
-    };
+    const { fullName, normalized } = employeePayload(form, existingEmployee);
 
     try {
       if (editingId && !existingEmployee) {
@@ -636,6 +658,41 @@ If they left the service (resigned, retired, transferred, or their contract ende
     return updateAccountStatus(selectedEmployee, accountStatus);
   };
 
+  // Saves the short form's details on a sign-up (the rest of the account as it is) and, with
+  // `approve`, approves it, which tells the employee they can log in.
+  const saveFillIn = async (event, approve) => {
+    event?.preventDefault?.();
+    const existing = editedEmployee;
+    if (!existing || employeeSaving || accountStatusUpdating) return;
+    setEmployeeSaving(true);
+    let saved;
+    try {
+      const { normalized } = employeePayload(form, existing);
+      const response = await apiFetch(`/api/employees/${encodeURIComponent(existing.employeeId || existing.email)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(normalized)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success || !data.employee) throw new Error(data.error || 'Unable to save the details.');
+      saved = data.employee;
+      onEmployeesChange?.(previous => previous.map(employee => (employeeKey(employee) === editingId ? { ...employee, ...saved } : employee)));
+    } catch (error) {
+      notify(error.message || 'Unable to save the details.', true);
+      return;
+    } finally {
+      setEmployeeSaving(false);
+    }
+    setSelectedId(editingId);
+    setPromotion(null);
+    if (approve) {
+      await updateAccountStatus({ ...existing, ...saved }, 'Active');
+    } else {
+      notify('Details saved. Approve the account when you are ready.');
+      setScreen('profile');
+    }
+  };
+
   // Deletes an account that is not Active. Its attendance, requests, and signed DTRs stay in the
   // database, but HR's pages and reports list only current accounts, so they no longer show.
   const handleDeleteEmployee = async () => {
@@ -703,6 +760,62 @@ This cannot be undone.`
       setPromotionSaving(false);
     }
   };
+
+  // A sign-up's short form: only what approval still needs (see openFillIn).
+  if (screen === 'fill' && editedEmployee) {
+    const appointmentField = EMPLOYMENT_FIELDS.find(field => field.key === 'appointmentStatus');
+    const busy = employeeSaving || accountStatusUpdating;
+    return (
+      <div className="w-full min-w-0 space-y-4 pb-24 sm:pb-0">
+        <button type="button" onClick={() => setScreen('list')} className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
+          <ArrowLeft className="h-4 w-4" /> Employee Management
+        </button>
+        <form onSubmit={event => saveFillIn(event, true)} className="max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Fill in details</h2>
+            <p className="mt-1 text-xs font-semibold text-slate-600">{employeeName(editedEmployee)} · {editedEmployee.email}</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">They filled in their own details when they signed up; you see them on their page. Add only what approval still needs.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {fillFields.includes('date hired') && (
+              <label className="text-[11px] font-black text-slate-600">Date Hired<RequiredMark />
+                <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} required className={inputClass} />
+                <span className="mt-1 block text-xs font-medium text-slate-500">The leave earned in the first month counts from this date.</span>
+              </label>
+            )}
+            {fillFields.includes('status of appointment') && appointmentField && (
+              <ProfileFieldInput item={{ ...appointmentField, required: true }} value={form.appointmentStatus} values={form} onChange={handleChange} />
+            )}
+            {fillFields.includes('position title') && (
+              <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
+                <PositionTitleSelect name="role" value={form.role} onChange={handleChange} required className={inputClass} />
+              </label>
+            )}
+            {fillFields.includes('office') && (
+              <label className="text-[11px] font-black text-slate-600">Office<RequiredMark />
+                <select name="office" value={form.office} onChange={handleChange} required className={inputClass}>
+                  <option value="">Select office</option>
+                  <OfficeOptions value={form.office} />
+                </select>
+              </label>
+            )}
+            {fillFields.includes('mobile number') && (
+              <label className="text-[11px] font-black text-slate-600">Mobile Number<RequiredMark />
+                <input name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} required maxLength={20} placeholder="09XX XXX XXXX" className={inputClass} />
+              </label>
+            )}
+          </div>
+          {!fillFields.length && <p className="text-xs font-semibold text-slate-500">Nothing is missing. You can approve the account.</p>}
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={busy} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{busy ? 'Saving...' : 'Save & Approve'}</button>
+            <button type="button" onClick={event => saveFillIn(event, false)} disabled={busy} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">Save only</button>
+            <button type="button" onClick={() => setScreen('list')} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-500">Cancel</button>
+          </div>
+          <button type="button" onClick={() => openEdit(editedEmployee)} className="text-xs font-black text-blue-700 underline">Something they entered is wrong? Open the full Edit form</button>
+        </form>
+      </div>
+    );
+  }
 
   if (screen === 'editor') {
     const editedEmployee = editingId ? employeeAccounts.find(employee => employeeKey(employee) === editingId) : null;
@@ -1022,7 +1135,8 @@ This enrollment used the sample ID the app used to offer for testing, which does
               </p>
               {pendingMissing.length > 0 ? (
                 <p className="mt-1 text-xs font-black text-amber-900">
-                  Before approving, use Edit to fill in their {pendingMissing.join(', ')}.
+                  Before approving, fill in their {pendingMissing.join(', ')}.{' '}
+                  <button type="button" onClick={() => openFillIn(selectedEmployee)} className="ml-1 rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-black text-amber-800">Fill in details</button>
                 </p>
               ) : (
                 <p className="mt-1 text-xs font-semibold text-amber-800">
@@ -1345,7 +1459,7 @@ This enrollment used the sample ID the app used to offer for testing, which does
     return (
       <>
         {pending && (missing.length ? (
-          <button type="button" onClick={() => openEdit(employee)} title={`Fill in their ${missing.join(', ')} first`} className="whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-black text-amber-800">Fill in details</button>
+          <button type="button" onClick={() => openFillIn(employee)} title={`Fill in their ${missing.join(', ')} first`} className="whitespace-nowrap rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-black text-amber-800">Fill in details</button>
         ) : (
           <button type="button" onClick={() => updateAccountStatus(employee, 'Active', { openProfile: false })} disabled={accountStatusUpdating} className="rounded-lg bg-emerald-600 px-2 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
         ))}
