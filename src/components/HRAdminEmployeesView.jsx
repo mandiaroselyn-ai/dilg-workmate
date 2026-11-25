@@ -198,6 +198,18 @@ const statusStyle = (status = '') => {
   return 'bg-slate-100 text-slate-600';
 };
 
+// The employee profile's tabs.
+const PROFILE_TABS = [
+  ['overview', 'Overview'],
+  ['personal', 'Personal Info'],
+  ['biometrics', 'Biometrics'],
+  ['documents', 'Documents'],
+  ['account', 'Account']
+];
+// The tab a profile opens on: Biometrics while the employee's enrollment waits for HR's review
+// (a notification or the Biometric Reviews card brought HR here for it), else Overview.
+const firstProfileTab = employee => (employee?.biometricEnrollmentStatus === 'pending' ? 'biometrics' : 'overview');
+
 // `onRecordsChanged`: reloads the attendance and requests, after an employee's earlier records
 // moved to a new name or Employee ID on the server.
 export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = [], currentUser = {}, onEmployeesChange, onAdminNotification, focusEmployeeId, requests = [], attendanceHistory = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth, onRecordsChanged, holidays = [] }) {
@@ -206,6 +218,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
   // A notification's button opens this employee's profile first.
   const focusedEmployee = focusEmployeeId ? findTargetEmployee(employees, focusEmployeeId) : null;
   const [screen, setScreen] = useState(() => (focusedEmployee ? 'profile' : 'list'));
+  const [profileTab, setProfileTab] = useState(() => firstProfileTab(focusedEmployee));
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [officeFilter, setOfficeFilter] = useState(''); // '' is every office
@@ -484,6 +497,7 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     // The promotion form belongs to one employee, so it starts closed on each profile (the
     // leave credits card is keyed to the employee).
     setPromotion(null);
+    setProfileTab(firstProfileTab(employee));
     setScreen('profile');
   };
 
@@ -1079,72 +1093,33 @@ This cannot be undone.`
               <p className="mt-1 text-xs font-bold text-slate-500">{selectedEmployee.role || 'Employee'}</p>
               <p className="mt-1 text-[11px] font-black text-blue-700">{selectedEmployee.employeeId || selectedEmployee.id}</p>
             </div>
+            <button type="button" onClick={() => openEdit(selectedEmployee)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white">
+              <Pencil className="h-4 w-4" /> Edit
+            </button>
           </div>
 
+          {/* One badge for the account; the employment status only when it is not the usual ACTIVE. */}
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusStyle(selectedEmployee.employmentStatus || selectedEmployee.status || 'ACTIVE')}`}>
-              {selectedEmployee.employmentStatus || selectedEmployee.status || 'ACTIVE'}
-            </span>
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">
+            <span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusStyle(selectedEmployee.accountStatus || 'Pending')}`}>
               {selectedEmployee.accountStatus || 'Pending'} account
             </span>
+            {String(selectedEmployee.employmentStatus || selectedEmployee.status || 'ACTIVE').toUpperCase() !== 'ACTIVE' && (
+              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${statusStyle(selectedEmployee.employmentStatus || selectedEmployee.status)}`}>
+                {selectedEmployee.employmentStatus || selectedEmployee.status}
+              </span>
+            )}
             {separationText(selectedEmployee) && (
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-700">
                 Separated {separationText(selectedEmployee)}
               </span>
             )}
           </div>
+
           {isDemoEnrollment && (
             <p role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs font-black text-amber-900">
 This enrollment used the sample ID the app used to offer for testing, which does not show who the employee is. The employee can now submit their real ID; reject a pending one so they do.
             </p>
           )}
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button type="button" onClick={() => openEdit(selectedEmployee)} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white">
-              <Pencil className="h-4 w-4" /> Edit
-            </button>
-            {accountStatusOf(selectedEmployee) === 'active' ? (
-              <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Deactivate'}</button>
-            ) : accountStatusOf(selectedEmployee) !== 'pending' && (
-              <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : accountStatusOf(selectedEmployee) === 'rejected' ? 'Approve account' : 'Reactivate'}</button>
-            )}
-            {accountStatusOf(selectedEmployee) !== 'active' && (
-              <button type="button" onClick={handleDeleteEmployee} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{deletingAccount ? 'Deleting...' : 'Delete account'}</button>
-            )}
-          </div>
-          {accountStatusOf(selectedEmployee) === 'active' && (
-            <p className="mt-2 text-xs font-semibold text-slate-500">To delete this account, deactivate it first.</p>
-          )}
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-500">Access</p>
-            {promotion ? (
-              <form onSubmit={promoteEmployee} className="mt-2 space-y-2">
-                <p className="text-xs font-semibold text-slate-700">
-                  Make {employeeName(selectedEmployee)} a {promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor'}? They will log in with that role. Their attendance and leave records stay saved, but HR's attendance pages, DTR, and reports list employees only, so those records will no longer show there. Print or download their DTRs first if HR needs them.
-                </p>
-                {promotion.accessLevel === 'hr_admin' && (
-                  <label className="block text-xs font-black uppercase text-slate-500">Your current password (required for HR/Admin)
-                    <input type="password" autoComplete="current-password" required value={promotion.password} onChange={event => setPromotion(current => ({ ...current, password: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold normal-case text-slate-800" />
-                  </label>
-                )}
-                <div className="flex gap-2">
-                  <button type="submit" disabled={promotionSaving} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{promotionSaving ? 'Saving...' : 'Confirm'}</button>
-                  <button type="button" onClick={() => setPromotion(null)} disabled={promotionSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Cancel</button>
-                </div>
-              </form>
-            ) : (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-600">Employee</span>
-                <button type="button" onClick={() => setPromotion({ accessLevel: 'supervisor', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make Supervisor</button>
-                <button type="button" onClick={() => setPromotion({ accessLevel: 'hr_admin', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make HR/Admin</button>
-              </div>
-            )}
-          </div>
-
-          {/* Each card has its own key: two siblings with the same key get duplicated or dropped by React. */}
-          <HRResetPasswordCard key={`password-${employeeKey(selectedEmployee)}`} account={selectedEmployee} />
 
           {accountStatusOf(selectedEmployee) === 'pending' && (
             <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
@@ -1170,209 +1145,6 @@ This enrollment used the sample ID the app used to offer for testing, which does
               </div>
             </div>
           )}
-
-          <HRLeaveCreditsCard key={`credits-${employeeKey(selectedEmployee)}`} employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
-
-          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
-              </div>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
-                selectedEmployee.biometricEnrollmentStatus === 'rejected'
-                  ? 'bg-rose-100 text-rose-800'
-                  : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
-                    ? 'bg-blue-100 text-blue-800'
-                    : selectedEmployee.biometricEnrollmentStatus === 'pending'
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-slate-100 text-slate-600'
-              }`}>
-                {selectedEmployee.biometricEnrollmentStatus === 'pending'
-                  ? 'Pending HR review'
-                  : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
-                    ? selectedEmployee.biometricEnrollmentIsDemo
-                      ? 'Approved with the old sample ID · waiting for a real ID'
-                      : 'HR approved · attendance face matching enabled'
-                    : selectedEmployee.biometricEnrollmentStatus === 'rejected'
-                      ? 'Not approved'
-                      : 'Not submitted'}
-              </span>
-            </div>
-            {selectedEmployee.biometricEnrollmentSubmittedAt && (
-              <p className="mt-2 text-xs font-semibold text-slate-500">
-                Submitted {new Date(selectedEmployee.biometricEnrollmentSubmittedAt).toLocaleString()}
-                {selectedEmployee.biometricEnrollmentReviewedAt ? ` · reviewed ${new Date(selectedEmployee.biometricEnrollmentReviewedAt).toLocaleString()}` : ''}
-              </p>
-            )}
-            {(() => {
-              const fingerprints = registeredFingerprints(selectedEmployee);
-              return (
-                <div className={`mt-3 rounded-xl border p-3 ${fingerprints.length ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
-                  <p className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${fingerprints.length ? 'text-emerald-800' : 'text-slate-600'}`}>
-                    <Fingerprint className="h-3.5 w-3.5" /> Fingerprint for Time In
-                  </p>
-                  {fingerprints.length ? (
-                    <>
-                      {fingerprints.map(({ source, registeredAt }) => (
-                        <p key={source} className="mt-1 text-xs font-bold text-emerald-900">
-                          Registered · {source}{registeredAt ? ` · ${new Date(registeredAt).toLocaleString()}` : ''}
-                        </p>
-                      ))}
-                      <p className="mt-1 text-xs font-semibold text-emerald-800">Every Time In must match this registered fingerprint. The fingerprint itself never leaves the employee's phone; WorkMate keeps only the phone's security key, so there is no fingerprint image to view.</p>
-                    </>
-                  ) : (
-                    <p className="mt-1 text-xs font-semibold text-slate-600">Not registered yet. The employee registers it on the Biometric Enrollment page. Time In needs a registered fingerprint.</p>
-                  )}
-                  {/* A new phone or browser fingerprint registered in place of the old one. */}
-                  {[
-                    ['phone-app', selectedEmployee.phoneFingerprintPendingAt, 'New phone (WorkMate app)'],
-                    ['browser', selectedEmployee.browserFingerprintPendingAt, 'New browser fingerprint']
-                  ].filter(([, pendingAt]) => pendingAt).map(([method, pendingAt, label]) => (
-                    <div key={method} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
-                      <p className="text-xs font-black text-amber-900">{label} waiting for your approval · {new Date(pendingAt).toLocaleString()}</p>
-                      <p className="mt-1 text-xs font-semibold text-amber-800">Approve only if the employee told you they changed phones or reinstalled WorkMate. Until you approve it, the one registered before stays in use.</p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => handleFingerprintDeviceReview(method, 'approve')} disabled={deviceReviewLoading} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
-                        <button type="button" onClick={() => handleFingerprintDeviceReview(method, 'reject')} disabled={deviceReviewLoading} className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-black text-rose-700 disabled:opacity-50">Reject</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-            {(enrollmentId.label || enrollmentId.number) && (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">
-                <p>ID submitted: <b>{enrollmentId.label || 'Not stated'}</b>{enrollmentId.number ? <> · No. <b className="font-mono">{enrollmentId.number}</b></> : null}</p>
-                <p className="mt-1 text-slate-500">Check that this number and the name on the ID match the employee's Personal Data Sheet.</p>
-              </div>
-            )}
-            {/* The server's comparison of the face on the ID with the selfie: an aid, not a decision. */}
-            {enrollmentId.faceCompared && (
-              <p className={`mt-2 rounded-xl border p-3 text-xs font-semibold ${
-                enrollmentId.faceDistance === null
-                  ? 'border-slate-200 bg-slate-50 text-slate-700'
-                  : enrollmentId.faceDistance <= ID_PHOTO_SIMILAR_DISTANCE
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : 'border-amber-300 bg-amber-50 text-amber-900'
-              }`}>
-                {enrollmentId.faceDistance === null
-                  ? 'No clear face was found on the ID photo, so the server could not compare it with the selfie. Compare them by eye.'
-                  : enrollmentId.faceDistance <= ID_PHOTO_SIMILAR_DISTANCE
-                    ? `The face on the ID looks like the selfie (distance ${enrollmentId.faceDistance.toFixed(3)}). Still compare them by eye.`
-                    : `The face on the ID does not look like the selfie (distance ${enrollmentId.faceDistance.toFixed(3)}). Compare them carefully; an old or small ID photo can also do this.`}
-              </p>
-            )}
-            {(dilgIdPhoto || dilgIdBackPhoto || savedEnrollmentImage) ? (
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {dilgIdPhoto && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
-                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-amber-900">Government ID · Front</p>
-                    <img src={dilgIdPhoto} alt="Employee-submitted front of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
-                  </div>
-                )}
-                {dilgIdBackPhoto && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
-                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-amber-900">Government ID · Back</p>
-                    <img src={dilgIdBackPhoto} alt="Employee-submitted back of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
-                  </div>
-                )}
-                {savedEnrollmentImage && (
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-2">
-                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-blue-900">Employee enrollment selfie</p>
-                    <img src={savedEnrollmentImage} alt="Employee-submitted enrollment selfie for HR review" className="max-h-64 w-full rounded-lg object-contain" />
-                  </div>
-                )}
-              </div>
-            ) : enrollmentImagesLoading ? (
-              <p role="status" className="mt-3 rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">Loading the employee's submitted enrollment images...</p>
-            ) : enrollmentImagesError ? (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
-                <p role="alert" className="text-xs font-semibold text-rose-800">{enrollmentImagesError}</p>
-                <button
-                  type="button"
-                  onClick={() => setEnrollmentImagesReloadKey(previous => previous + 1)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-black text-rose-800"
-                >
-                  <RefreshCw className="h-3 w-3" /> Retry
-                </button>
-              </div>
-            ) : (
-              selectedEmployee.biometricEnrollmentStatus === 'pending' ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-semibold text-amber-800">No enrollment images were returned for this pending submission. Retry loading or ask the employee to submit again.</p>
-                  <button
-                    type="button"
-                    onClick={() => setEnrollmentImagesReloadKey(previous => previous + 1)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-800"
-                  >
-                    <RefreshCw className="h-3 w-3" /> Retry
-                  </button>
-                </div>
-              ) : (
-                <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">The employee has not submitted enrollment images.</p>
-              )
-            )}
-            {selectedEmployee.biometricEnrollmentReviewNote && (
-              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
-                Previous HR note: {selectedEmployee.biometricEnrollmentReviewNote}
-                {selectedEmployee.biometricEnrollmentReviewedBy ? ` · ${selectedEmployee.biometricEnrollmentReviewedBy}` : ''}
-              </p>
-            )}
-            {selectedEmployee.biometricEnrollmentStatus === 'pending' && (
-              <div className="mt-4 space-y-3">
-                <label className="block text-[11px] font-black text-slate-600">
-                  HR review note
-                  <textarea
-                    value={biometricReviewNote}
-                    onChange={event => setBiometricReviewNote(event.target.value)}
-                    maxLength={500}
-                    rows={3}
-                    placeholder="Required if rejecting. Add correction instructions for the employee."
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium outline-none focus:border-blue-500"
-                  />
-                </label>
-                {isDemoEnrollment ? (
-                  <p role="status" className="text-xs font-semibold text-amber-800">This submission used the sample ID, which is no longer accepted. Reject it so the employee submits their real ID.</p>
-                ) : (!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
-                  <p role="status" className="text-xs font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || isDemoEnrollment || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
-                    {biometricReviewLoading ? 'Saving...' : 'Approve HR Review'}
-                  </button>
-                  <button type="button" onClick={() => handleBiometricReview('reject')} disabled={biometricReviewLoading} className="rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
-                    {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
-                  </button>
-                </div>
-                <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
-              </div>
-            )}
-            {/* An approved employee whose Time In keeps failing the face match can be asked for a new selfie. */}
-            {selectedEmployee.biometricEnrollmentStatus === 'hr-approved' && (
-              <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                {selectedEmployee.biometricReenrollRequested ? (
-                  <p className="text-xs font-semibold text-amber-800">You asked this employee for a new enrollment selfie. Their current one stays in use until they submit it; then it waits for your approval here.</p>
-                ) : (
-                  <>
-                    <p className="text-xs font-black text-slate-700">Time In keeps failing the face match?</p>
-                    <p className="text-xs text-slate-600">Ask for a new enrollment selfie, for example after a change in looks (glasses, beard, weight). The current one stays in use until the employee submits the new one; then Time In waits for your approval.</p>
-                    <textarea
-                      value={reenrollNote}
-                      onChange={event => setReenrollNote(event.target.value)}
-                      maxLength={500}
-                      rows={2}
-                      placeholder="Reason, shown to the employee"
-                      className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium outline-none focus:border-blue-500"
-                    />
-                    <button type="button" onClick={() => handleBiometricReview('reenroll')} disabled={biometricReviewLoading || !reenrollNote.trim()} className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
-                      {biometricReviewLoading ? 'Saving...' : 'Ask to Re-enroll'}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
           {toast && (
             <div role={toastIsError ? 'alert' : 'status'} className={`mt-3 rounded-xl border px-3 py-2 text-xs font-bold ${
               toastIsError
@@ -1384,55 +1156,335 @@ This enrollment used the sample ID the app used to offer for testing, which does
           )}
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
-          {selectedEmployee.faceVerificationAudit?.length ? (
-            <div className="mt-3 space-y-2">
-              {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
-                <div key={`${event.timestamp}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs">
-                  <div>
-                    <p className="font-black text-blue-700">
-                      {String(event.outcome || 'unknown').replaceAll('-', ' ').toUpperCase()}
-                    </p>
-                    <p className="mt-1 font-semibold text-slate-500">
-                      {event.timestamp ? new Date(event.timestamp).toLocaleString() : 'Unknown time'}
-                      {event.deviceId ? ` · Device ${event.deviceId}` : ''}
-                      {event.reviewedBy ? ` · HR ${event.reviewedBy}` : ''}
-                    </p>
-                  </div>
+        {/* The profile in tabs, so HR goes straight to what they need. */}
+        <div role="tablist" aria-label="Employee profile" className="flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-xs font-black">
+          {PROFILE_TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={profileTab === id}
+              onClick={() => setProfileTab(id)}
+              className={`inline-flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 ${profileTab === id ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              {label}
+              {id === 'biometrics' && selectedEmployee.biometricEnrollmentStatus === 'pending' && <span className="h-2 w-2 rounded-full bg-amber-500" aria-label="waiting for your review" />}
+            </button>
+          ))}
+        </div>
+
+        {profileTab === 'overview' && (
+          <>
+              <HRLeaveCreditsCard key={`credits-${employeeKey(selectedEmployee)}`} className="" employee={selectedEmployee} canEdit={canEditCredits} onEmployeesChange={onEmployeesChange} onNotify={notify} requests={requests} holidays={holidays} />
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <ProfileDetails person={selectedEmployee} attendanceAssignment sections={['employment']} />
+            </section>
+          </>
+        )}
+
+        {profileTab === 'personal' && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <ProfileDetails person={selectedEmployee} sections={['personal', 'emergency', 'government']} />
+          </section>
+        )}
+
+        {profileTab === 'biometrics' && (
+          <>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Biometric Enrollment Review</h3>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Review the employee-submitted ID and enrollment selfie. After approval, attendance selfies are automatically matched; liveness is not checked.</p>
                 </div>
-              ))}
+                <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                  selectedEmployee.biometricEnrollmentStatus === 'rejected'
+                    ? 'bg-rose-100 text-rose-800'
+                    : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
+                      ? 'bg-blue-100 text-blue-800'
+                      : selectedEmployee.biometricEnrollmentStatus === 'pending'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {selectedEmployee.biometricEnrollmentStatus === 'pending'
+                    ? 'Pending HR review'
+                    : selectedEmployee.biometricEnrollmentStatus === 'hr-approved'
+                      ? selectedEmployee.biometricEnrollmentIsDemo
+                        ? 'Approved with the old sample ID · waiting for a real ID'
+                        : 'HR approved · attendance face matching enabled'
+                      : selectedEmployee.biometricEnrollmentStatus === 'rejected'
+                        ? 'Not approved'
+                        : 'Not submitted'}
+                </span>
+              </div>
+              {selectedEmployee.biometricEnrollmentSubmittedAt && (
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  Submitted {new Date(selectedEmployee.biometricEnrollmentSubmittedAt).toLocaleString()}
+                  {selectedEmployee.biometricEnrollmentReviewedAt ? ` · reviewed ${new Date(selectedEmployee.biometricEnrollmentReviewedAt).toLocaleString()}` : ''}
+                </p>
+              )}
+              {(() => {
+                const fingerprints = registeredFingerprints(selectedEmployee);
+                return (
+                  <div className={`mt-3 rounded-xl border p-3 ${fingerprints.length ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className={`flex items-center gap-1.5 text-xs font-black uppercase tracking-wide ${fingerprints.length ? 'text-emerald-800' : 'text-slate-600'}`}>
+                      <Fingerprint className="h-3.5 w-3.5" /> Fingerprint for Time In
+                    </p>
+                    {fingerprints.length ? (
+                      <>
+                        {fingerprints.map(({ source, registeredAt }) => (
+                          <p key={source} className="mt-1 text-xs font-bold text-emerald-900">
+                            Registered · {source}{registeredAt ? ` · ${new Date(registeredAt).toLocaleString()}` : ''}
+                          </p>
+                        ))}
+                        <p className="mt-1 text-xs font-semibold text-emerald-800">Every Time In must match this registered fingerprint. The fingerprint itself never leaves the employee's phone; WorkMate keeps only the phone's security key, so there is no fingerprint image to view.</p>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-xs font-semibold text-slate-600">Not registered yet. The employee registers it on the Biometric Enrollment page. Time In needs a registered fingerprint.</p>
+                    )}
+                    {/* A new phone or browser fingerprint registered in place of the old one. */}
+                    {[
+                      ['phone-app', selectedEmployee.phoneFingerprintPendingAt, 'New phone (WorkMate app)'],
+                      ['browser', selectedEmployee.browserFingerprintPendingAt, 'New browser fingerprint']
+                    ].filter(([, pendingAt]) => pendingAt).map(([method, pendingAt, label]) => (
+                      <div key={method} className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                        <p className="text-xs font-black text-amber-900">{label} waiting for your approval · {new Date(pendingAt).toLocaleString()}</p>
+                        <p className="mt-1 text-xs font-semibold text-amber-800">Approve only if the employee told you they changed phones or reinstalled WorkMate. Until you approve it, the one registered before stays in use.</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <button type="button" onClick={() => handleFingerprintDeviceReview(method, 'approve')} disabled={deviceReviewLoading} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-black text-white disabled:opacity-50">Approve</button>
+                          <button type="button" onClick={() => handleFingerprintDeviceReview(method, 'reject')} disabled={deviceReviewLoading} className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-black text-rose-700 disabled:opacity-50">Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              {(enrollmentId.label || enrollmentId.number) && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-700">
+                  <p>ID submitted: <b>{enrollmentId.label || 'Not stated'}</b>{enrollmentId.number ? <> · No. <b className="font-mono">{enrollmentId.number}</b></> : null}</p>
+                  <p className="mt-1 text-slate-500">Check that this number and the name on the ID match the employee's Personal Data Sheet.</p>
+                </div>
+              )}
+              {/* The server's comparison of the face on the ID with the selfie: an aid, not a decision. */}
+              {enrollmentId.faceCompared && (
+                <p className={`mt-2 rounded-xl border p-3 text-xs font-semibold ${
+                  enrollmentId.faceDistance === null
+                    ? 'border-slate-200 bg-slate-50 text-slate-700'
+                    : enrollmentId.faceDistance <= ID_PHOTO_SIMILAR_DISTANCE
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-amber-300 bg-amber-50 text-amber-900'
+                }`}>
+                  {enrollmentId.faceDistance === null
+                    ? 'No clear face was found on the ID photo, so the server could not compare it with the selfie. Compare them by eye.'
+                    : enrollmentId.faceDistance <= ID_PHOTO_SIMILAR_DISTANCE
+                      ? `The face on the ID looks like the selfie (distance ${enrollmentId.faceDistance.toFixed(3)}). Still compare them by eye.`
+                      : `The face on the ID does not look like the selfie (distance ${enrollmentId.faceDistance.toFixed(3)}). Compare them carefully; an old or small ID photo can also do this.`}
+                </p>
+              )}
+              {(dilgIdPhoto || dilgIdBackPhoto || savedEnrollmentImage) ? (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {dilgIdPhoto && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
+                      <p className="mb-2 text-xs font-black uppercase tracking-wide text-amber-900">Government ID · Front</p>
+                      <img src={dilgIdPhoto} alt="Employee-submitted front of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                    </div>
+                  )}
+                  {dilgIdBackPhoto && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
+                      <p className="mb-2 text-xs font-black uppercase tracking-wide text-amber-900">Government ID · Back</p>
+                      <img src={dilgIdBackPhoto} alt="Employee-submitted back of government ID for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                    </div>
+                  )}
+                  {savedEnrollmentImage && (
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-2">
+                      <p className="mb-2 text-xs font-black uppercase tracking-wide text-blue-900">Employee enrollment selfie</p>
+                      <img src={savedEnrollmentImage} alt="Employee-submitted enrollment selfie for HR review" className="max-h-64 w-full rounded-lg object-contain" />
+                    </div>
+                  )}
+                </div>
+              ) : enrollmentImagesLoading ? (
+                <p role="status" className="mt-3 rounded-xl bg-blue-50 p-3 text-xs font-semibold text-blue-800">Loading the employee's submitted enrollment images...</p>
+              ) : enrollmentImagesError ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                  <p role="alert" className="text-xs font-semibold text-rose-800">{enrollmentImagesError}</p>
+                  <button
+                    type="button"
+                    onClick={() => setEnrollmentImagesReloadKey(previous => previous + 1)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-black text-rose-800"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Retry
+                  </button>
+                </div>
+              ) : (
+                selectedEmployee.biometricEnrollmentStatus === 'pending' ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold text-amber-800">No enrollment images were returned for this pending submission. Retry loading or ask the employee to submit again.</p>
+                    <button
+                      type="button"
+                      onClick={() => setEnrollmentImagesReloadKey(previous => previous + 1)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-800"
+                    >
+                      <RefreshCw className="h-3 w-3" /> Retry
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">The employee has not submitted enrollment images.</p>
+                )
+              )}
+              {selectedEmployee.biometricEnrollmentReviewNote && (
+                <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
+                  Previous HR note: {selectedEmployee.biometricEnrollmentReviewNote}
+                  {selectedEmployee.biometricEnrollmentReviewedBy ? ` · ${selectedEmployee.biometricEnrollmentReviewedBy}` : ''}
+                </p>
+              )}
+              {selectedEmployee.biometricEnrollmentStatus === 'pending' && (
+                <div className="mt-4 space-y-3">
+                  <label className="block text-[11px] font-black text-slate-600">
+                    HR review note
+                    <textarea
+                      value={biometricReviewNote}
+                      onChange={event => setBiometricReviewNote(event.target.value)}
+                      maxLength={500}
+                      rows={3}
+                      placeholder="Required if rejecting. Add correction instructions for the employee."
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium outline-none focus:border-blue-500"
+                    />
+                  </label>
+                  {isDemoEnrollment ? (
+                    <p role="status" className="text-xs font-semibold text-amber-800">This submission used the sample ID, which is no longer accepted. Reject it so the employee submits their real ID.</p>
+                  ) : (!dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage) && (
+                    <p role="status" className="text-xs font-semibold text-amber-800">This submission is missing one or more required images. Ask the employee to resubmit before approving.</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => handleBiometricReview('approve')} disabled={biometricReviewLoading || isDemoEnrollment || !dilgIdPhoto || (requiresBackId && !dilgIdBackPhoto) || !savedEnrollmentImage} className="rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                      {biometricReviewLoading ? 'Saving...' : 'Approve HR Review'}
+                    </button>
+                    <button type="button" onClick={() => handleBiometricReview('reject')} disabled={biometricReviewLoading} className="rounded-xl bg-rose-700 px-4 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                      {biometricReviewLoading ? 'Saving...' : 'Reject & Notify Employee'}
+                    </button>
+                  </div>
+                  <p className="text-xs font-semibold text-amber-800">Approval enables face matching for attendance selfies. It does not check liveness or prevent photo/screen replay.</p>
+                </div>
+              )}
+              {/* An approved employee whose Time In keeps failing the face match can be asked for a new selfie. */}
+              {selectedEmployee.biometricEnrollmentStatus === 'hr-approved' && (
+                <div className="mt-4 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  {selectedEmployee.biometricReenrollRequested ? (
+                    <p className="text-xs font-semibold text-amber-800">You asked this employee for a new enrollment selfie. Their current one stays in use until they submit it; then it waits for your approval here.</p>
+                  ) : (
+                    <>
+                      <p className="text-xs font-black text-slate-700">Time In keeps failing the face match?</p>
+                      <p className="text-xs text-slate-600">Ask for a new enrollment selfie, for example after a change in looks (glasses, beard, weight). The current one stays in use until the employee submits the new one; then Time In waits for your approval.</p>
+                      <textarea
+                        value={reenrollNote}
+                        onChange={event => setReenrollNote(event.target.value)}
+                        maxLength={500}
+                        rows={2}
+                        placeholder="Reason, shown to the employee"
+                        className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium outline-none focus:border-blue-500"
+                      />
+                      <button type="button" onClick={() => handleBiometricReview('reenroll')} disabled={biometricReviewLoading || !reenrollNote.trim()} className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">
+                        {biometricReviewLoading ? 'Saving...' : 'Ask to Re-enroll'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-700">Enrollment Activity</h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">Enrollment, fingerprint registration, and HR review events. Attendance face matches are shown on DTR records; liveness is not checked.</p>
+            {selectedEmployee.faceVerificationAudit?.length ? (
+              <div className="mt-3 space-y-2">
+                {[...selectedEmployee.faceVerificationAudit].slice(-5).reverse().map((event, index) => (
+                  <div key={`${event.timestamp}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 p-3 text-xs">
+                    <div>
+                      <p className="font-black text-blue-700">
+                        {String(event.outcome || 'unknown').replaceAll('-', ' ').toUpperCase()}
+                      </p>
+                      <p className="mt-1 font-semibold text-slate-500">
+                        {event.timestamp ? new Date(event.timestamp).toLocaleString() : 'Unknown time'}
+                        {event.deviceId ? ` · Device ${event.deviceId}` : ''}
+                        {event.reviewedBy ? ` · HR ${event.reviewedBy}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">No enrollment events recorded yet.</p>
+            )}
+            {selectedEmployee.dilgIdVerifiedAt && (
+              <p className="mt-3 text-xs font-semibold text-slate-500">
+                HR manually recorded ID review {new Date(selectedEmployee.dilgIdVerifiedAt).toLocaleString()}
+                {selectedEmployee.dilgIdVerifiedBy ? ` by ${selectedEmployee.dilgIdVerifiedBy}` : ''}
+                {' · attendance face matching runs after HR approval'}
+              </p>
+            )}
+          </section>
+          </>
+        )}
+
+        {profileTab === 'documents' && (
+          <HREmployeeDocuments
+            key={`documents-${employeeKey(selectedEmployee)}`}
+            employee={selectedEmployee}
+            dtrSubmissions={dtrSubmissions}
+            requests={requests}
+            attendanceHistory={attendanceHistory}
+            attendanceFrom={attendanceFrom}
+            loadedAttendanceMonths={loadedAttendanceMonths}
+            onLoadAttendanceMonth={onLoadAttendanceMonth}
+          />
+        )}
+
+        {/* The account in one box: its status, its access, and its password. */}
+        {profileTab === 'account' && (
+          <section className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
+            <div className="py-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Account status</p>
+              <p className="mt-1 text-xs font-semibold text-slate-600">{selectedEmployee.accountStatus || 'Pending'}{accountStatusOf(selectedEmployee) === 'pending' ? ': approve or reject it above.' : ''}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {accountStatusOf(selectedEmployee) === 'active' ? (
+                <button type="button" onClick={() => handleAccountStatus('Inactive')} disabled={accountStatusUpdating} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : 'Deactivate'}</button>
+              ) : accountStatusOf(selectedEmployee) !== 'pending' && (
+                <button type="button" onClick={() => handleAccountStatus('Active')} disabled={accountStatusUpdating} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{accountStatusUpdating ? 'Saving...' : accountStatusOf(selectedEmployee) === 'rejected' ? 'Approve account' : 'Reactivate'}</button>
+              )}
+              {accountStatusOf(selectedEmployee) !== 'active' && (
+                <button type="button" onClick={handleDeleteEmployee} disabled={accountStatusUpdating} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-black text-rose-700 disabled:opacity-50">{deletingAccount ? 'Deleting...' : 'Delete account'}</button>
+              )}
             </div>
-          ) : (
-            <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-500">No enrollment events recorded yet.</p>
-          )}
-          {selectedEmployee.dilgIdVerifiedAt && (
-            <p className="mt-3 text-xs font-semibold text-slate-500">
-              HR manually recorded ID review {new Date(selectedEmployee.dilgIdVerifiedAt).toLocaleString()}
-              {selectedEmployee.dilgIdVerifiedBy ? ` by ${selectedEmployee.dilgIdVerifiedBy}` : ''}
-              {' · attendance face matching runs after HR approval'}
-            </p>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Employee Information</p>
-          <div className="mt-4">
-            <ProfileDetails person={selectedEmployee} attendanceAssignment />
-          </div>
-        </section>
-
-        <HREmployeeDocuments
-          key={`documents-${employeeKey(selectedEmployee)}`}
-          employee={selectedEmployee}
-          dtrSubmissions={dtrSubmissions}
-          requests={requests}
-          attendanceHistory={attendanceHistory}
-          attendanceFrom={attendanceFrom}
-          loadedAttendanceMonths={loadedAttendanceMonths}
-          onLoadAttendanceMonth={onLoadAttendanceMonth}
-        />
+            {accountStatusOf(selectedEmployee) === 'active' && (
+              <p className="mt-2 text-xs font-semibold text-slate-500">To delete this account, deactivate it first.</p>
+            )}
+            </div>
+            <div className="py-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Access</p>
+              {promotion ? (
+                <form onSubmit={promoteEmployee} className="mt-2 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">
+                    Make {employeeName(selectedEmployee)} a {promotion.accessLevel === 'hr_admin' ? 'HR/Admin' : 'Supervisor'}? They will log in with that role. Their attendance and leave records stay saved, but HR's attendance pages, DTR, and reports list employees only, so those records will no longer show there. Print or download their DTRs first if HR needs them.
+                  </p>
+                  {promotion.accessLevel === 'hr_admin' && (
+                    <label className="block text-xs font-black uppercase text-slate-500">Your current password (required for HR/Admin)
+                      <input type="password" autoComplete="current-password" required value={promotion.password} onChange={event => setPromotion(current => ({ ...current, password: event.target.value }))} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold normal-case text-slate-800" />
+                    </label>
+                  )}
+                  <div className="flex gap-2">
+                    <button type="submit" disabled={promotionSaving} className="rounded-xl bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{promotionSaving ? 'Saving...' : 'Confirm'}</button>
+                    <button type="button" onClick={() => setPromotion(null)} disabled={promotionSaving} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700">Cancel</button>
+                  </div>
+                </form>
+              ) : (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-slate-600">Employee</span>
+                  <button type="button" onClick={() => setPromotion({ accessLevel: 'supervisor', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make Supervisor</button>
+                  <button type="button" onClick={() => setPromotion({ accessLevel: 'hr_admin', password: '' })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-black text-slate-700">Make HR/Admin</button>
+                </div>
+              )}
+            </div>
+            <HRResetPasswordCard key={`password-${employeeKey(selectedEmployee)}`} account={selectedEmployee} className="py-4" />
+          </section>
+        )}
       </div>
     );
   }

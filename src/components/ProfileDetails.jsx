@@ -171,7 +171,11 @@ const EMPLOYEE_EDITABLE_KEYS = ['role', 'office', ...SELF_EMPLOYMENT_FIELDS.map(
 // Fields marked readOnly are always shown as text.
 // `attendanceAssignment` adds the station, LGU, and approved WFH location, which only
 // employees who time in have.
-export default function ProfileDetails({ person = {}, form = {}, onChange, editing = false, employmentEditable = false, attendanceAssignment = false }) {
+// `sections` picks which parts to show (HR's employee profile shows them on separate tabs); all of
+// them by default.
+const ALL_SECTIONS = ['personal', 'emergency', 'government', 'employment'];
+
+export default function ProfileDetails({ person = {}, form = {}, onChange, editing = false, employmentEditable = false, attendanceAssignment = false, sections = ALL_SECTIONS }) {
   // A worked-out field (`derive`, such as the monthly salary) follows the form while it is edited.
   const current = item => (editing && item.derive ? item.derive({ ...person, ...form }) || person[item.key] : form[item.key] ?? person[item.key]);
   const show = (item, value = current(item)) => (editing && !item.readOnly
@@ -208,19 +212,25 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
 
   return (
     <div className="space-y-6">
-      <Section title="Personal Information">
-        {personal.map(item => show(item))}
-      </Section>
+      {sections.includes('personal') && (
+        <Section title="Personal Information">
+          {personal.map(item => show(item))}
+        </Section>
+      )}
 
-      <Section title="Emergency Contact">
-        {EMERGENCY_KEYS.map(key => show(field(key)))}
-      </Section>
+      {sections.includes('emergency') && (
+        <Section title="Emergency Contact">
+          {EMERGENCY_KEYS.map(key => show(field(key)))}
+        </Section>
+      )}
 
-      <Section title="Government ID Numbers" note={editing ? 'Only you and the HR Administrator can see these.' : ''}>
-        {GOVERNMENT_ID_FIELDS.map(item => show(item))}
-      </Section>
+      {sections.includes('government') && (
+        <Section title="Government ID Numbers" note={editing ? 'Only you and the HR Administrator can see these.' : ''}>
+          {GOVERNMENT_ID_FIELDS.map(item => show(item))}
+        </Section>
+      )}
 
-      <Section title="Employment Information" note={employmentNote}>
+      {sections.includes('employment') && <Section title="Employment Information" note={employmentNote}>
         {employment.map(item => show(item, item.key === 'employmentStatus' ? person.employmentStatus || 'ACTIVE' : undefined))}
         {person.separationDate && <Row label="Separation from Service" value={separationText(person)} />}
         {attendanceAssignment && (
@@ -230,7 +240,7 @@ export default function ProfileDetails({ person = {}, form = {}, onChange, editi
             <Row label="Approved Work-From-Home Location" value={wfhLocation(person.approvedWfhLocation)} wide />
           </>
         )}
-      </Section>
+      </Section>}
     </div>
   );
 }

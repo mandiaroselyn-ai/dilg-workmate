@@ -10,8 +10,9 @@ const makeTemporaryPassword = () => {
 };
 
 // Lets HR set a temporary password for someone who cannot reset theirs by email, such as a
-// DILG email account. Resetting an HR/Admin's password also needs HR's own password.
-export default function HRResetPasswordCard({ account }) {
+// DILG email account. Resetting an HR/Admin's password also needs HR's own password. `className`
+// is its box: a card of its own by default, or plain inside another box.
+export default function HRResetPasswordCard({ account, className = 'mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3' }) {
   const [open, setOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -49,7 +50,7 @@ export default function HRResetPasswordCard({ account }) {
   };
 
   return (
-    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+    <div className={className}>
       <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Password</p>
       {open ? (
         <form onSubmit={resetPassword} className="mt-2 space-y-2">
