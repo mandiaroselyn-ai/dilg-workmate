@@ -36,7 +36,7 @@ const modules = [
   ['User Management', [
     'The system allows HR/Admin to create and manage employee, supervisor, and HR/Admin accounts with their assigned roles.',
     'The system allows HR 2 to keep the employees’ leave credits, certify the leave credits on leave applications, and pre-approve them, while HR 1 handles the HR/Admin desk and monitors the employees’ transactions.',
-    'The system allows new users to register, including through Google sign-in, and HR/Admin to approve or reject their accounts, filling in only what HR/Admin keeps for a new account: the employee ID, date hired, status of appointment, and assigned station.',
+    'The system allows new users to register, including through Google sign-in, and HR/Admin to approve or reject their accounts, filling in only what HR/Admin keeps for a new account: the employee ID, date hired, status of appointment, assigned station, and assigned LGU, and the position title or office when the employee left it blank.',
     'The system notifies a newly approved user that they can log in, by SMS, or by email for an account registered through Google sign-in.',
     'The system allows HR/Admin to activate or deactivate user accounts, record an employee’s date and cause of separation, and promote an employee to supervisor or HR/Admin.',
     'The system allows HR/Admin to delete an inactive account, keeping its records in the database without attaching them to a new account made with the same email or Employee ID.',
@@ -117,7 +117,7 @@ const modules = [
     'The system allows HR/Admin to post, edit, and delete announcements and calendar events, giving each event a title, date, time, category (Meeting, Training, or LGU Event), location, and description, and users to view them.',
     'The system allows HR/Admin to file each announcement under a category, such as Memorandum Circular, Department Order, Advisory, or Special Order, and users to filter announcements.',
     'The system allows employees to acknowledge receipt of an announcement.',
-    'The system shows on the calendar the national and local holidays and each day’s events in order of time, lists the events for HR/Admin with the upcoming ones before the past ones, and shows upcoming events on the dashboard.'
+    'The system shows on the calendar the national and local holidays and each day’s events in order of time, lists the events for HR/Admin with the upcoming ones before the past ones, and shows upcoming events on the employee’s dashboard.'
   ]],
   ['Dashboard Monitoring', [
     'The system displays dashboard information based on the user’s assigned role, including relevant attendance, leave, and travel order transactions.',
