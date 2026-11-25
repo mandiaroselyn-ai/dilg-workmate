@@ -467,9 +467,10 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     setScreen('editor');
   };
 
-  // A sign-up's short form: only what approval still needs (the employee filled in the rest at
-  // sign-up, which HR sees on their page). The fields are fixed when it opens, so they stay while
-  // HR types.
+  // A sign-up's short form: what only HR fills in for a new account (Employee ID, date hired,
+  // status of appointment, assigned station and LGU), plus what approval needs that the employee
+  // left blank (the employee filled in the rest at sign-up, which HR sees on their page). The blank
+  // ones are fixed when it opens, so they stay while HR types.
   const [fillFields, setFillFields] = useState([]);
   const openFillIn = employee => {
     setEditingId(employeeKey(employee));
@@ -774,18 +775,38 @@ This cannot be undone.`
           <div>
             <h2 className="text-xl font-black text-slate-900">Fill in details</h2>
             <p className="mt-1 text-xs font-semibold text-slate-600">{employeeName(editedEmployee)} · {editedEmployee.email}</p>
-            <p className="mt-1 text-xs font-semibold text-slate-500">They filled in their own details when they signed up; you see them on their page. Add only what approval still needs.</p>
+            <p className="mt-1 text-xs font-semibold text-slate-500">They filled in their own details when they signed up; you see them on their page. Add what only HR fills in.</p>
           </div>
+          {/* What only HR fills in for a new account (the employee does not at sign-up), then
+              anything approval needs that the employee left blank. */}
           <div className="grid gap-3 sm:grid-cols-2">
-            {fillFields.includes('date hired') && (
-              <label className="text-[11px] font-black text-slate-600">Date Hired<RequiredMark />
-                <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} required className={inputClass} />
-                <span className="mt-1 block text-xs font-medium text-slate-500">The leave earned in the first month counts from this date.</span>
-              </label>
-            )}
-            {fillFields.includes('status of appointment') && appointmentField && (
+            <label className="text-[11px] font-black text-slate-600">Employee ID<RequiredMark />
+              <input name="employeeId" value={form.employeeId} onChange={handleChange} required maxLength={64} className={inputClass} />
+              <span className="mt-1 block text-xs font-medium text-slate-500">WorkMate gave one at sign-up. Change it to their DILG employee number if they have one.</span>
+            </label>
+            <label className="text-[11px] font-black text-slate-600">Date Hired<RequiredMark />
+              <input name="dateHired" type="date" value={form.dateHired} onChange={handleChange} required className={inputClass} />
+              <span className="mt-1 block text-xs font-medium text-slate-500">The leave earned in the first month counts from this date.</span>
+            </label>
+            {appointmentField && (
               <ProfileFieldInput item={{ ...appointmentField, required: true }} value={form.appointmentStatus} values={form} onChange={handleChange} />
             )}
+            <label className="text-[11px] font-black text-slate-600">Assigned Station
+              <select name="assignedStation" value={form.assignedStation} onChange={handleChange} className={inputClass}>
+                <option value="">Select station</option>
+                {MARINDUQUE_OFFICES.map(office => <option key={office.id} value={office.name}>{office.name}</option>)}
+                {form.assignedStation && !MARINDUQUE_OFFICES.some(office => office.name === form.assignedStation) && <option value={form.assignedStation}>{form.assignedStation}</option>}
+              </select>
+            </label>
+            <label className="text-[11px] font-black text-slate-600">Assigned LGU
+              <select name="assignedLGU" value={form.assignedLGU} onChange={handleChange} className={inputClass}>
+                <option value="">Select LGU</option>
+                <option value={PROVINCE_LGU}>{PROVINCE_LGU}</option>
+                {Object.keys(MARINDUQUE_MUNICIPALITIES).map(town => <option key={town} value={town}>{town}</option>)}
+                {form.assignedLGU && form.assignedLGU !== PROVINCE_LGU && !MARINDUQUE_MUNICIPALITIES[form.assignedLGU] && <option value={form.assignedLGU}>{form.assignedLGU}</option>}
+              </select>
+              <span className="mt-1 block text-xs font-medium text-slate-500">Filled in from the Assigned Station. A town limits field-duty Time In to that town.</span>
+            </label>
             {fillFields.includes('position title') && (
               <label className="text-[11px] font-black text-slate-600">Position Title<RequiredMark />
                 <PositionTitleSelect name="role" value={form.role} onChange={handleChange} required className={inputClass} />
@@ -805,7 +826,7 @@ This cannot be undone.`
               </label>
             )}
           </div>
-          {!fillFields.length && <p className="text-xs font-semibold text-slate-500">Nothing is missing. You can approve the account.</p>}
+          <p className="text-[11px] font-semibold text-slate-500">An approved Work From Home location is pinned on a map in the full Edit form, when the employee has one.</p>
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={busy} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{busy ? 'Saving...' : 'Save & Approve'}</button>
             <button type="button" onClick={event => saveFillIn(event, false)} disabled={busy} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700 disabled:opacity-50">Save only</button>
