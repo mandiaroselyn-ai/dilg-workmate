@@ -93,12 +93,16 @@ export const rememberSiteLocation = (site, location) => {
 };
 
 // The assignment area without internet: a field assignment's barangay, or the Provincial
-// Capitol Compound, from the maps in the app, or an office or WFH address found the last time
-// the app was online. Null when the app does not have it.
+// Capitol Compound, from the maps in the app; a WFH house HR pinned; or an office or WFH address
+// found the last time the app was online. Null when the app does not have it.
 export const resolveSiteOffline = async site => {
   if (site?.mode === 'field') {
     const { resolveFieldAssignment } = await import('../../shared/fieldAssignmentArea.js');
     return resolveFieldAssignment(site);
+  }
+  if (site?.mode === 'wfh') {
+    const { isWfhPinned, wfhPinArea } = await import('../../shared/wfhPin.js');
+    if (isWfhPinned(site)) return wfhPinArea(site);
   }
   if (site?.mode === 'office') {
     const { resolveOfficeArea } = await import('../../shared/officeAreas.js');

@@ -109,6 +109,8 @@ const DtrLogSchema = new mongoose.Schema({
   deviceId: { type: String, default: '' },
   selfieUrl: { type: String, default: '' },
   verificationAudit: { type: mongoose.Schema.Types.Mixed, default: null },
+  // A record HR added for a day without one (utils/hrAddedRecord.js): { addedBy, addedAt, reason }.
+  hrEntry: { type: mongoose.Schema.Types.Mixed, default: null },
   late: { type: Boolean, default: false },
   employeeName: { type: String },
   employeeRole: { type: String },
@@ -425,6 +427,40 @@ export const DtrLog = {
     ensureConnected();
     const filter = sameDateOnly && date ? { timeOut: null, employeeId, date } : openShiftFilter(employeeId, date);
     return MongoDtrLog.findOne(filter).sort({ createdAt: -1 });
+  },
+
+  // Adds the record HR entered for a day without one (utils/hrAddedRecord.js): `record` from
+  // readHrRecord, for `employee` (the account), added by `reviewer`. It counts as verified by
+  // HR, and has no GPS, selfie, or fingerprint.
+  addByHr: async (record, employee, reviewer, now = new Date()) => {
+    ensureConnected();
+    const mongoLog = await MongoDtrLog.create({
+      customId: createRecordId('att'),
+      date: record.date,
+      timeIn: record.timeIn,
+      lunchOut: record.lunchOut,
+      lunchIn: record.lunchIn,
+      timeOut: record.timeOut,
+      location: record.location,
+      dutyType: record.dutyType,
+      workAssignment: { assignmentRole: record.dutyType, location: record.location },
+      gpsStatus: 'In Range',
+      assignmentMatch: true,
+      status: 'Present',
+      late: record.late,
+      employeeName: employee.name || null,
+      employeeRole: employee.role || null,
+      employeeOffice: employee.office || null,
+      employeeId: employee.employeeId || null,
+      employeeEmail: employee.email || null,
+      hrEntry: { addedBy: reviewer, addedAt: now, reason: record.reason },
+      verificationAudit: { verifiedBy: reviewer, verifiedAt: now.toISOString(), note: `Added by HR: ${record.reason}` },
+      locationHistory: [],
+      siteVisits: [],
+      geofenceEvents: [],
+      totalDistanceTraveledMeters: 0
+    });
+    return toListLog(mongoLog.toObject());
   },
 
   // True when the employee already has an attendance record dated `date`.

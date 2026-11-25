@@ -190,7 +190,11 @@ export default function AttendanceView({
         municipality: approvedLocation?.municipality || selectedMuni,
         barangay: approvedLocation?.barangay || barangayLgu,
         street: approvedLocation?.street || wfhStreet,
-        landmark: approvedLocation?.landmark || wfhLandmark
+        landmark: approvedLocation?.landmark || wfhLandmark,
+        // The house HR pinned, for checking the area without internet (the server uses its own).
+        ...(approvedLocation?.latitude != null && approvedLocation?.longitude != null
+          ? { latitude: approvedLocation.latitude, longitude: approvedLocation.longitude }
+          : {})
       };
     }
     return { mode: 'field', municipality: selectedMuni, barangay: barangayLgu };

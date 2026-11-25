@@ -3,6 +3,7 @@ import { distanceToAreaMeters } from '../../../shared/assignmentGeofence.js';
 import { MARINDUQUE_BARANGAY_AREAS } from '../../../shared/marinduqueBarangayAreas.js';
 import { resolveFieldAssignment } from '../../../shared/fieldAssignmentArea.js';
 import { resolveOfficeArea } from '../../../shared/officeAreas.js';
+import { isWfhPinned, wfhPinArea } from '../../../shared/wfhPin.js';
 
 export { isWithinAssignedLocation } from '../../../shared/assignmentGeofence.js';
 
@@ -206,6 +207,10 @@ const geocode = async query => {
 export const resolveAssignedLocation = async assignment => {
   const normalized = buildQuery(assignment);
   if (normalized.mode === 'field') return resolveFieldAssignment(normalized);
+  // A work-from-home house HR pinned is not searched for.
+  if (normalized.mode === 'wfh' && isWfhPinned(assignment)) {
+    return wfhPinArea({ ...normalized, latitude: assignment.latitude, longitude: assignment.longitude });
+  }
   const officeArea = normalized.mode === 'office' ? resolveOfficeArea(assignment.officeId) : null;
   if (officeArea) return officeArea;
   return { ...normalized, ...(await geocode(normalized.query)) };

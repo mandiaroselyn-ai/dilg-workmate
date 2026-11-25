@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDtrLogs, clockInOut, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, getRecordSelfie, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
+import { getDtrLogs, clockInOut, addDtrRecord, bulkUpdateDtrHistory, updateLocationTracking, getLocationTracking, getActiveLocationTracking, getPlaceName, getRecordSelfie, checkGeofenceStatus, resolveGeofenceAssignment } from '../controllers/dtrController.js';
 import { authorizeRoles } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -7,10 +7,13 @@ const router = express.Router();
 router.get('/logs', getDtrLogs);
 router.post('/clock', clockInOut);
 router.put('/history', authorizeRoles('hr_admin'), bulkUpdateDtrHistory);
+// HR adds a record for a day without one (controllers/dtrController.js addDtrRecord).
+router.post('/history', authorizeRoles('hr_admin'), addDtrRecord);
 
 // Map frontend endpoints
 router.post('/attendance', clockInOut);
 router.put('/attendance/history', authorizeRoles('hr_admin'), bulkUpdateDtrHistory);
+router.post('/attendance/history', authorizeRoles('hr_admin'), addDtrRecord);
 
 // Location tracking endpoints
 router.post('/location/update', updateLocationTracking);

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   CalendarDays,
@@ -25,6 +25,10 @@ import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, nameFrom
 import { canChangeLeaveCredits } from '../../shared/hrSteps';
 import { DEFAULT_REGION, isSignUpApproval, missingApprovalDetails } from '../../shared/dilgAssignments';
 import { SEPARATION_REASONS, separationText } from '../../shared/separation';
+import { isWfhPinned } from '../../shared/wfhPin';
+
+// Loaded only when HR opens an employee's form: it carries the barangay map.
+const WfhPinMap = lazy(() => import('./WfhPinMap'));
 
 // HR's form takes the name, login email, mobile number, and employment details. The employee
 // fills in their own personal details and government ID numbers on their Profile, and HR sees
@@ -57,6 +61,8 @@ const emptyForm = {
   approvedWfhBarangay: '',
   approvedWfhStreet: '',
   approvedWfhLandmark: '',
+  // The house HR pins on the map: { latitude, longitude } or null (shared/wfhPin.js).
+  approvedWfhPin: null,
   password: '',
   // From the leave card, for a transferee or an employee who already has earned leave.
   openingVacationLeaveCredits: '',
@@ -109,6 +115,9 @@ const normalizeEmployee = (employee = {}) => {
     approvedWfhBarangay: employee.approvedWfhLocation?.barangay || '',
     approvedWfhStreet: employee.approvedWfhLocation?.street || '',
     approvedWfhLandmark: employee.approvedWfhLocation?.landmark || '',
+    approvedWfhPin: isWfhPinned(employee.approvedWfhLocation)
+      ? { latitude: Number(employee.approvedWfhLocation.latitude), longitude: Number(employee.approvedWfhLocation.longitude) }
+      : null,
     profilePicture: employee.profilePicture || '',
     accessLevel: 'employee'
   };
@@ -220,6 +229,13 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
     () => [...new Set(employeeAccounts.map(employee => employee.office).filter(Boolean))].sort(),
     [employeeAccounts]
   );
+  // Whether the form shows a WFH location approved before pins and not pinned yet: it still works
+  // by a map search of its address until HR pins the house (shared/wfhPin.js).
+  const editedEmployee = editingId ? employeeAccounts.find(employee => employeeKey(employee) === editingId) : null;
+  const wfhApprovedBeforePins = Boolean(editedEmployee?.approvedWfhLocation?.approvedAt)
+    && !isWfhPinned(editedEmployee.approvedWfhLocation)
+    && form.approvedWfhMunicipality === (editedEmployee.approvedWfhLocation.municipality || '')
+    && form.approvedWfhBarangay === (editedEmployee.approvedWfhLocation.barangay || '');
   // The Assigned Station column is shown only when some employee has one recorded.
   const showStationColumn = employeeAccounts.some(employee => employee.assignedStation || employee.assignedLGU);
 
@@ -418,8 +434,13 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    // The pin must be in the approved barangay, so choosing another one clears it.
     if (name === 'approvedWfhMunicipality') {
-      setForm(previous => ({ ...previous, [name]: value, approvedWfhBarangay: '' }));
+      setForm(previous => ({ ...previous, [name]: value, approvedWfhBarangay: '', approvedWfhPin: null }));
+      return;
+    }
+    if (name === 'approvedWfhBarangay') {
+      setForm(previous => ({ ...previous, [name]: value, approvedWfhPin: null }));
       return;
     }
     // Choosing the station fills in its LGU (the province for the Provincial Office, or the
@@ -470,7 +491,9 @@ export default function HRAdminEmployeesView({ dtrSubmissions = [], employees = 
         municipality: form.approvedWfhMunicipality,
         barangay: form.approvedWfhBarangay,
         street: form.approvedWfhStreet,
-        landmark: form.approvedWfhLandmark
+        landmark: form.approvedWfhLandmark,
+        latitude: form.approvedWfhPin?.latitude ?? null,
+        longitude: form.approvedWfhPin?.longitude ?? null
       }
     };
 
@@ -846,7 +869,7 @@ This cannot be undone.`
 
               <div className="sm:col-span-2 xl:col-span-4">
                 <p className="text-[11px] font-black text-slate-700">Approved Work-From-Home Location</p>
-                <p className="mt-1 text-xs font-medium text-slate-500">Saving a valid municipality and barangay approves this WFH geofence for the employee.</p>
+                <p className="mt-1 text-xs font-medium text-slate-500">Choose the municipality and barangay, then pin the employee's house on the map. A WFH Time In counts within 50 m of the pin. Saving approves it.</p>
                 <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <label className="text-[11px] font-black text-slate-600">Municipality
                     <select name="approvedWfhMunicipality" value={form.approvedWfhMunicipality} onChange={handleChange} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500">
@@ -867,6 +890,27 @@ This cannot be undone.`
                     <input name="approvedWfhLandmark" value={form.approvedWfhLandmark} onChange={handleChange} maxLength={120} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold outline-none focus:border-blue-500" />
                   </label>
                 </div>
+                {form.approvedWfhMunicipality && form.approvedWfhBarangay && (
+                  <div className="mt-3 space-y-2">
+                    <Suspense fallback={<div className="flex h-72 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-500">Loading map...</div>}>
+                      <WfhPinMap
+                        municipality={form.approvedWfhMunicipality}
+                        barangay={form.approvedWfhBarangay}
+                        value={form.approvedWfhPin}
+                        onChange={pin => setForm(previous => ({ ...previous, approvedWfhPin: pin }))}
+                      />
+                    </Suspense>
+                    {form.approvedWfhPin ? (
+                      <p className="text-xs font-semibold text-emerald-700">House pinned at {form.approvedWfhPin.latitude.toFixed(6)}, {form.approvedWfhPin.longitude.toFixed(6)}. Tap elsewhere to move it. <button type="button" onClick={() => setForm(previous => ({ ...previous, approvedWfhPin: null }))} className="font-black text-rose-700 underline">Clear pin</button></p>
+                    ) : (
+                      <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
+                        {wfhApprovedBeforePins
+                          ? 'Not pinned yet. This WFH location was approved before pins, so its area comes from a map search that may not find the house. Tap the house on the map (inside the dashed barangay outline) to pin it.'
+                          : 'Tap the employee\'s house on the map, inside the dashed barangay outline. A WFH location cannot be saved without its pin.'}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </section>

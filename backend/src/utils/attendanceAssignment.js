@@ -1,5 +1,6 @@
 import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES } from '../../../shared/marinduqueLocations.js';
 import { isWithinAssignedLocation } from '../../../shared/assignmentGeofence.js';
+import { isWfhPinned, readWfhPin } from '../../../shared/wfhPin.js';
 
 const fail = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -39,15 +40,32 @@ export const normalizeApprovedWfhLocation = (location, reviewer) => {
   if (street.length > 120 || landmark.length > 120) {
     fail('WFH street and landmark must be 120 characters or fewer.');
   }
+  // The house HR pinned on the map (shared/wfhPin.js), or null when none was sent (see
+  // keepWfhPin for when that is allowed).
+  const pin = readWfhPin(value, municipality, barangay);
+  if (pin.error) fail(pin.error);
 
   return {
     municipality,
     barangay,
     street,
     landmark,
+    latitude: pin.value?.latitude ?? null,
+    longitude: pin.value?.longitude ?? null,
     approvedAt: new Date(),
     approvedBy: normalizeText(reviewer)
   };
+};
+
+// An approved WFH location saved without a pin: it keeps the pin (or the lack of one) of the
+// approval `before` when its address is the same, as when HR saves an employee for something
+// else; a new or changed one must be pinned. Returns { value } or { error }.
+export const keepWfhPin = (next, before) => {
+  if (!next || isWfhPinned(next)) return { value: next };
+  const same = before?.approvedAt && ['municipality', 'barangay', 'street', 'landmark']
+    .every(field => (next[field] || '') === (before[field] || ''));
+  if (same) return { value: { ...next, latitude: before.latitude ?? null, longitude: before.longitude ?? null } };
+  return { error: 'Pin the employee\'s house on the map before saving the WFH location.' };
 };
 
 export const normalizeAttendanceAssignment = ({ dutyType, assignmentSite, user }) => {
@@ -116,7 +134,9 @@ export const normalizeAttendanceAssignment = ({ dutyType, assignmentSite, user }
       municipality: approvedMunicipality,
       barangay: approvedBarangay,
       street: approvedStreet,
-      landmark: approvedLandmark
+      landmark: approvedLandmark,
+      // The house HR pinned, when it did: the WFH area is 50 m around it (shared/wfhPin.js).
+      ...(isWfhPinned(approved) ? { latitude: Number(approved.latitude), longitude: Number(approved.longitude) } : {})
     }
   };
 };

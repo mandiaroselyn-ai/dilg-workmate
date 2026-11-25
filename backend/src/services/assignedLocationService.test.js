@@ -227,3 +227,11 @@ test('an open shift is checked against its area as it is now, so the MarSU campu
   assert.equal(await currentAssignedArea(home), home);
   assert.equal(await currentAssignedArea(null), null);
 });
+
+test('a WFH house HR pinned is not searched for on the map', async () => {
+  const { resolveAssignedLocation } = await import('./assignedLocationService.js');
+  const area = await resolveAssignedLocation({ mode: 'wfh', municipality: 'Boac', barangay: 'Pawa', street: 'Purok 3', landmark: '', latitude: 13.45147, longitude: 121.88398 });
+  assert.equal(area.source, 'Pinned by HR');
+  assert.equal(area.latitude, 13.45147);
+  assert.equal(area.longitude, 121.88398);
+});

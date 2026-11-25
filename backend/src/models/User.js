@@ -68,6 +68,9 @@ const UserSchema = new mongoose.Schema({
     barangay: { type: String, default: '' },
     street: { type: String, default: '' },
     landmark: { type: String, default: '' },
+    // The house HR pinned on the map (shared/wfhPin.js); null for an approval saved before pins.
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
     approvedAt: { type: Date, default: null },
     approvedBy: { type: String, default: '' }
   },
@@ -617,7 +620,8 @@ export const User = {
     const nextWfh = employeeData.approvedWfhLocation;
     const currentWfh = employee.approvedWfhLocation;
     const sameWfhLocation = nextWfh && currentWfh?.approvedAt
-      && ['municipality', 'barangay', 'street', 'landmark'].every(field => (nextWfh[field] || '') === (currentWfh[field] || ''));
+      && ['municipality', 'barangay', 'street', 'landmark'].every(field => (nextWfh[field] || '') === (currentWfh[field] || ''))
+      && ['latitude', 'longitude'].every(field => (nextWfh[field] ?? null) === (currentWfh[field] ?? null));
     const updates = sameWfhLocation
       ? { ...employeeData, approvedWfhLocation: { ...nextWfh, approvedAt: currentWfh.approvedAt, approvedBy: currentWfh.approvedBy } }
       : employeeData;

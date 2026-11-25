@@ -31,7 +31,7 @@ import { toRequesterProfile, toSafeUser } from '../utils/passwordSecurity.js';
 import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/authToken.js';
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
-import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
+import { keepWfhPin, normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
 import { carryRecordsOrWarn, detachRecordsOfDeletedAccount } from '../services/employeeIdentity.js';
 import { normalizeSeparation } from '../../../shared/separation.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
@@ -336,6 +336,9 @@ export const createEmployee = async (req, res) => {
     const reviewer = req.user?.employeeId || req.user?.email || String(req.user?._id || '');
     const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer, { creating: true });
     if (error) return res.status(400).json({ success: false, error });
+    // A WFH location approved on a new account is pinned on the map (shared/wfhPin.js).
+    const wfh = keepWfhPin(employee.approvedWfhLocation, null);
+    if (wfh.error) return res.status(400).json({ success: false, error: wfh.error });
     const office = officeError(employee.office);
     if (office) return res.status(400).json({ success: false, error: office });
     // The leave earned in the month hired counts from this date (see monthServiceDays).
@@ -399,6 +402,13 @@ export const updateEmployee = async (req, res) => {
     const { employee, error } = normalizeEmployeeInput(req.body || {}, reviewer);
     if (error) return res.status(400).json({ success: false, error });
     const before = await User.findAccount(req.params.identifier);
+    // A new or changed WFH location is pinned on the map; the same one keeps its pin, or works as
+    // before pins until HR pins it (shared/wfhPin.js).
+    if (employee.approvedWfhLocation) {
+      const wfh = keepWfhPin(employee.approvedWfhLocation, before?.approvedWfhLocation);
+      if (wfh.error) return res.status(400).json({ success: false, error: wfh.error });
+      employee.approvedWfhLocation = wfh.value;
+    }
     const office = officeError(employee.office, before?.office);
     if (office) return res.status(400).json({ success: false, error: office });
     // Saving a sign-up as Active approves it, which needs what HR fills in for a new account.

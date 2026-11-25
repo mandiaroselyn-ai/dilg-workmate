@@ -100,3 +100,35 @@ test('Time Out GPS must be inside the assigned area the shift started in', () =>
   assert.match(timeOutLocationError(office, {}), /GPS location is required/);
   assert.equal(timeOutLocationError(null, {}), null);
 });
+
+test('a new or changed WFH location must be pinned; the same one keeps its pin, or works as before pins', async () => {
+  const { keepWfhPin } = await import('./attendanceAssignment.js');
+  const pin = { latitude: 13.45147, longitude: 121.88398 };
+  const pinned = normalizeApprovedWfhLocation({ municipality: 'Boac', barangay: 'Pawa', street: 'Purok 3', ...pin }, 'HR-001');
+  assert.equal(pinned.latitude, pin.latitude);
+  assert.equal(keepWfhPin(pinned, null).value, pinned);
+
+  // Saved without a pin: a new one is refused.
+  const unpinned = normalizeApprovedWfhLocation({ municipality: 'Boac', barangay: 'Pawa', street: 'Purok 3' }, 'HR-001');
+  assert.equal(unpinned.latitude, null);
+  assert.match(keepWfhPin(unpinned, null).error, /Pin the employee's house on the map/);
+  // The same address as before keeps the earlier pin, or none for an approval made before pins.
+  assert.deepEqual(keepWfhPin(unpinned, { ...pinned }).value, { ...unpinned, ...pin });
+  const beforePins = { municipality: 'Boac', barangay: 'Pawa', street: 'Purok 3', landmark: '', approvedAt: new Date('2026-11-01') };
+  assert.equal(keepWfhPin(unpinned, beforePins).value.latitude, null);
+  // A changed address needs a pin.
+  assert.match(keepWfhPin({ ...unpinned, street: 'Purok 4' }, { ...pinned }).error, /Pin the employee's house/);
+  assert.equal(keepWfhPin(null, pinned).value, null);
+
+  // A pin outside the barangay is refused.
+  assert.throws(() => normalizeApprovedWfhLocation({ municipality: 'Boac', barangay: 'Pawa', latitude: 13.44099, longitude: 121.85443 }, 'HR-001'), /outside Brgy\. Pawa, Boac/);
+
+  // Time In uses the approved pin, whatever the app sends.
+  const result = normalizeAttendanceAssignment({
+    dutyType: 'wfh',
+    assignmentSite: { mode: 'wfh', municipality: 'Boac', barangay: 'Pawa', street: 'Purok 3', landmark: '', latitude: 13.5, longitude: 121.9 },
+    user: { approvedWfhLocation: pinned }
+  });
+  assert.equal(result.assignmentSite.latitude, pin.latitude);
+  assert.equal(result.assignmentSite.longitude, pin.longitude);
+});
