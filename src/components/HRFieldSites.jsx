@@ -17,8 +17,10 @@ const inputClass = 'mt-1 block w-full rounded-lg border border-slate-200 px-2 py
 // barangay hall, within a radius (shared/fieldSites.js). A barangay without one counts as a
 // whole. HR picks the barangay, taps the site on the map (or uses this device's GPS while
 // standing there), and saves. Brgy. Tanza, Boac is the Marinduque State University campus, built
-// in. `sites` is the list from GET /api/field-sites; `onSitesChange` gets the new list.
-export default function HRFieldSites({ sites = [], onSitesChange }) {
+// in. It loads the sites itself (GET /api/field-sites), and sits with HR's other attendance
+// settings (Holidays, Overtime Orders) in DTR Records.
+export default function HRFieldSites() {
+  const [sites, setSites] = useState([]);
   const [open, setOpen] = useState(false);
   const [municipality, setMunicipality] = useState(MUNICIPALITIES[0]);
   const [barangay, setBarangay] = useState('');
@@ -31,6 +33,15 @@ export default function HRFieldSites({ sites = [], onSitesChange }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch('/api/field-sites')
+      .then(response => response.json())
+      .then(data => { if (active && data?.success) setSites(data.sites || []); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const barangays = MARINDUQUE_MUNICIPALITIES[municipality] || [];
   const builtIn = barangay ? builtInFieldSiteName(municipality, barangay) : '';
@@ -121,7 +132,7 @@ export default function HRFieldSites({ sites = [], onSitesChange }) {
       const response = await apiFetch(`/api/field-sites${query}`, options);
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.success) throw new Error(data.error || 'Unable to save the field site.');
-      onSitesChange?.(data.sites || []);
+      setSites(data.sites || []);
       setResult({ text: doneText, error: false });
     } catch (saveError) {
       setResult({ text: saveError.message || 'Unable to save the field site.', error: true });
