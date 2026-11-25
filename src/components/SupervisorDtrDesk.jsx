@@ -19,8 +19,9 @@ const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('
 // In-charge of CSC Form No. 48, the Supervisor opens each one, then verifies it by signing it with
 // their digital ID (here, or in Adobe and uploading it), or returns it to the employee with
 // remarks. `signatureImage` is the Supervisor's saved signature, shown with their digital signature;
-// `signerKey` is their account (email or ID), under which this device remembers their digital ID.
-export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '', signerKey = '' }) {
+// `signerKey` is their account (email or ID), under which this device remembers their digital ID;
+// `signerName` and `signerEmail` go on a digital ID they make here.
+export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '', signerKey = '', signerName = '', signerEmail = '' }) {
   const [tab, setTab] = useState('Submitted');
   const [viewer, setViewer] = useState(null);
   const [verifying, setVerifying] = useState(null);
@@ -119,6 +120,8 @@ export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, 
                   digitalSign={{
                     getForm: () => dtrToSign(submission),
                     owner: signerKey,
+                    signerName,
+                    signerEmail,
                     image: signatureImage,
                     reason: `Verified as to the prescribed office hours (In-charge), DTR ${monthText(submission.month)}`,
                     location: 'DILG Marinduque'

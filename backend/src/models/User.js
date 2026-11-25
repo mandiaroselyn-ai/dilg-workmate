@@ -77,6 +77,14 @@ const UserSchema = new mongoose.Schema({
   faceEnrolledAt: { type: Date, default: null },
   faceEnrollmentImage: { type: String, default: '' },
   faceEnrollmentDescriptor: { type: [Number], default: undefined, select: false },
+  // The signer's digital ID made in WorkMate (src/utils/digitalIdSigning.js): a PKCS #12 file
+  // (base64) locked with the signing password only the signer knows, so WorkMate cannot open it,
+  // and the name on its certificate. Never listed; read only by its owner (getSigningId).
+  signingId: {
+    type: new mongoose.Schema({ data: String, name: String, createdAt: Date }, { _id: false }),
+    default: undefined,
+    select: false
+  },
   dilgIdPhoto: { type: String, default: '' },
   dilgIdBackPhoto: { type: String, default: '' },
   // Which ID was submitted (see shared/enrollmentIds.js) and its number as printed, for HR to
@@ -404,6 +412,27 @@ export const User = {
     return MongoUser.findOne({ employeeId: employeeId.toString().trim() })
       .select('employeeId email name accessLevel biometricEnrollmentStatus biometricEnrollmentIsDemo biometricEnrollmentVersion biometricEnrollmentSubmittedAt biometricEnrollmentReviewedAt biometricEnrollmentReviewedBy biometricEnrollmentReviewNote biometricReenrollRequested faceLivenessStatus dilgIdPhoto dilgIdBackPhoto faceEnrollmentImage enrollmentIdType enrollmentIdNumber enrollmentIdFaceDistance enrollmentIdFaceCompared')
       .lean();
+  },
+
+  // The account's own digital ID made in WorkMate ({ data, name, createdAt }), or null.
+  getSigningId: async userId => {
+    ensureConnected();
+    if (!userId) return null;
+    const user = await MongoUser.findById(userId).select('+signingId').lean();
+    const saved = user?.signingId;
+    return saved?.data ? { data: saved.data, name: saved.name || '', createdAt: saved.createdAt || null } : null;
+  },
+
+  // Keeps the account's digital ID ({ data, name }), replacing any before it; or, with null,
+  // removes it (a forgotten signing password: the signer makes a new one).
+  setSigningId: async (userId, value) => {
+    ensureConnected();
+    if (!userId) return false;
+    const update = value
+      ? { $set: { signingId: { data: value.data, name: value.name || '', createdAt: new Date() } } }
+      : { $unset: { signingId: 1 } };
+    const result = await MongoUser.updateOne({ _id: userId }, update);
+    return result.matchedCount === 1;
   },
 
   getApprovedFaceEnrollment: async (employeeId) => {

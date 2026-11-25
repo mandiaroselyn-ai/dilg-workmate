@@ -71,6 +71,48 @@ export const readDigitalId = (fileBytes, password) => {
   };
 };
 
+// The smallest signing password WorkMate takes for a digital ID it makes.
+export const MIN_SIGNING_PASSWORD = 8;
+// How hard the password is made to guess from the locked file (PBKDF2 rounds).
+const LOCK_ROUNDS = 20000;
+
+// A new digital ID for `name` (and `email`), like the one Adobe makes: an RSA 2048-bit key and a
+// self-signed certificate valid for 5 years, in a PKCS #12 file locked (AES-256) with `password`.
+// The key is made by the browser's own crypto. Returns { bytes, name }.
+export const createDigitalId = async ({ name, email = '', password }) => {
+  const signer = String(name || '').trim();
+  if (!signer) throw new DigitalIdError('Your name is needed for the digital ID.');
+  if (String(password || '').length < MIN_SIGNING_PASSWORD) throw new DigitalIdError(`The signing password needs at least ${MIN_SIGNING_PASSWORD} characters.`);
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) throw new DigitalIdError('This browser cannot make a digital ID. Use an up-to-date browser over https.');
+  const pair = await subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+  const pkcs8 = new Uint8Array(await subtle.exportKey('pkcs8', pair.privateKey));
+  const key = forge.pki.privateKeyFromAsn1(forge.asn1.fromDer(toBinary(pkcs8)));
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = forge.pki.setRsaPublicKey(key.n, key.e);
+  // A positive serial number (its first byte under 0x80).
+  const serial = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(serial);
+  serial[0] &= 0x7f;
+  cert.serialNumber = [...serial].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  const now = new Date();
+  cert.validity.notBefore = new Date(now.getTime() - 5 * 60 * 1000);
+  cert.validity.notAfter = new Date(now.getTime());
+  cert.validity.notAfter.setFullYear(now.getFullYear() + 5);
+  const subject = [{ name: 'commonName', value: signer }, { name: 'organizationName', value: 'DILG Marinduque' }];
+  if (email) subject.push({ name: 'emailAddress', value: String(email).trim() });
+  cert.setSubject(subject);
+  cert.setIssuer(subject);
+  cert.setExtensions([
+    { name: 'basicConstraints', cA: false },
+    { name: 'keyUsage', digitalSignature: true, nonRepudiation: true },
+    { name: 'subjectKeyIdentifier' }
+  ]);
+  cert.sign(key, forge.md.sha256.create());
+  const p12 = forge.pkcs12.toPkcs12Asn1(key, [cert], password, { algorithm: 'aes256', count: LOCK_ROUNDS, friendlyName: signer });
+  return { bytes: latin1(forge.asn1.toDer(p12).getBytes()), name: signer };
+};
+
 // PDF dates: D:20261125065000+08'00' (Philippine time).
 const pdfDate = date => {
   const manila = new Date(date.getTime() + 8 * 60 * 60 * 1000);

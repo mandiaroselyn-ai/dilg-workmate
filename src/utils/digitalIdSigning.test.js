@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import forge from 'node-forge';
 import { PDFDocument, PDFName, StandardFonts } from 'pdf-lib';
-import { DigitalIdError, readDigitalId, rectOfSpot, signPdfWithDigitalId } from './digitalIdSigning.js';
+import { createDigitalId, DigitalIdError, readDigitalId, rectOfSpot, signPdfWithDigitalId } from './digitalIdSigning.js';
 import { dtrInChargeMarks } from './dtrForm.js';
 import { fillLeaveForm, leaveHeadMarks, leaveHrMarks } from './leaveForm.js';
 import { countSignatures, keepsEarlierBytes, signedPdfProblem } from '../../backend/src/utils/signedPdf.js';
@@ -189,6 +189,23 @@ test('a DTR is signed as the In-charge on both copies', async () => {
   const [left, , right] = await widgetRectOf(signed, 0);
   assert.ok(left < 85 && right > 440, 'the box spans both copies');
   assert.equal((await appearanceTextOf(signed, 0)).match(/Verified and digitally signed by IVAN STEPHEN F\. FADRI as In-charge/g).length, 2);
+});
+
+test('WorkMate makes a digital ID in the signer\'s name, locked with their signing password, that signs', async () => {
+  const made = await createDigitalId({ name: 'JOHN ERICK J. MATINING', email: 'erick@dilg.gov.ph', password: 'my-signing-pass' });
+  assert.equal(made.name, 'JOHN ERICK J. MATINING');
+  assert.throws(() => readDigitalId(made.bytes, 'wrong-password'), /password/);
+  const id = readDigitalId(made.bytes, 'my-signing-pass');
+  assert.equal(id.name, 'JOHN ERICK J. MATINING');
+  assert.equal(id.certificate.subject.getField('E')?.value || id.certificate.subject.getField({ name: 'emailAddress' })?.value, 'erick@dilg.gov.ph');
+  const years = (id.certificate.validity.notAfter - id.certificate.validity.notBefore) / (365 * 24 * 60 * 60 * 1000);
+  assert.ok(years > 4.9 && years < 5.1);
+  const form = await makeForm({ marker: signedFormMarker('leave', 'LV-9') });
+  const signed = await signPdfWithDigitalId(form, { digitalId: id, marks: leaveHrMarks() });
+  assert.deepEqual(checkSignatures(signed).map(signature => signature.name), ['JOHN ERICK J. MATINING']);
+  // Too short a signing password, or no name, is refused.
+  await assert.rejects(createDigitalId({ name: 'X', password: 'short' }), /at least 8/);
+  await assert.rejects(createDigitalId({ name: ' ', password: 'long-enough' }), /name/);
 });
 
 test('an expired digital ID is refused', () => {

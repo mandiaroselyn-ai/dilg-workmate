@@ -238,6 +238,8 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
               digitalSign={{
                 getForm: formToSign,
                 owner: user?.email || user?.employeeId || '',
+                signerName: user?.name || '',
+                signerEmail: user?.email || '',
                 image: user?.signatureImage || '',
                 reason: `Certified leave credits (7.A) and recommendation (7.B), leave ${selected.id}`,
                 location: 'DILG Marinduque'
