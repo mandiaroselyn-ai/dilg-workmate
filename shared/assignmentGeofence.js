@@ -100,5 +100,8 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
     }
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
   }
-  return distanceToAreaMeters(lat, lon, geometry) <= bufferMeters;
+  // A field area counts within `bufferMeters` of its boundary, unless it sets its own margin (the
+  // Marinduque State University campus in Brgy. Tanza counts only inside; see fieldAssignmentArea.js).
+  const margin = typeof location.areaMarginMeters === 'number' ? location.areaMarginMeters : bufferMeters;
+  return distanceToAreaMeters(lat, lon, geometry) <= margin;
 };
