@@ -414,6 +414,17 @@ export const User = {
       .lean();
   },
 
+  // Every account's Employee ID and email ({ ids, emails }, emails in lower case), for telling
+  // which records still have an account (see services/deletedAccountRecords.js).
+  accountKeys: async () => {
+    ensureConnected();
+    const accounts = await MongoUser.find({}).select('employeeId email').lean();
+    return {
+      ids: [...new Set(accounts.map(account => String(account.employeeId || '').trim()).filter(Boolean))],
+      emails: [...new Set(accounts.map(account => String(account.email || '').trim().toLowerCase()).filter(Boolean))]
+    };
+  },
+
   // The account's own digital ID made in WorkMate ({ data, name, createdAt }), or null.
   getSigningId: async userId => {
     ensureConnected();

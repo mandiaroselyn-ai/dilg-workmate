@@ -19,6 +19,7 @@ import { MARINDUQUE_MUNICIPALITIES, MARINDUQUE_OFFICES, PROVINCE_LGU, lguOfStati
 import HRResetPasswordCard from './HRResetPasswordCard';
 import HREmployeeDocuments from './HREmployeeDocuments';
 import HRLeaveCreditsCard from './HRLeaveCreditsCard';
+import DeletedAccountRecordsCleanup from './DeletedAccountRecordsCleanup';
 import { findTargetEmployee } from '../utils/notifications';
 import ProfileDetails, { OfficeOptions, PositionTitleSelect, ProfileFieldInput, RequiredMark } from './ProfileDetails';
 import { EMPLOYMENT_FIELDS, NAME_FIELDS, earnsLeaveCredits, fullNameOf, nameFromParts, profileFieldValues } from '../../shared/profileFields';
@@ -1336,6 +1337,9 @@ This enrollment used the sample ID the app used to offer for testing, which does
           </div>
         )}
       </header>
+
+      {/* TEMPORARY: the testing clean-up of deleted accounts' records (see the component). */}
+      <DeletedAccountRecordsCleanup onRemoved={onRecordsChanged} />
 
       <div className="relative min-w-0">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
