@@ -51,6 +51,8 @@ export const createRateLimits = () => {
     ],
     '/register': [limit({ limit: 20, keyGenerator: clientIp })],
     '/change-password': [limit({ limit: 10, keyGenerator: sessionOrIp, skipSuccessfulRequests: true })],
+    // Keeping a digital ID checks the signer's WorkMate password; failed attempts are limited.
+    '/signing-id': [limit({ limit: 10, keyGenerator: sessionOrIp, skipSuccessfulRequests: true })],
     '/password-reset': [limit({ limit: 20, keyGenerator: clientIp, skipSuccessfulRequests: true })],
     '/auth/google/exchange': [limit({ limit: 20, keyGenerator: clientIp, skipSuccessfulRequests: true })],
     '/face/enrollment': [signedInActionLimit()],

@@ -75,8 +75,11 @@ export default function SupervisorView({
   dtrSubmissions = [],
   onReviewDtr,
   onOpenDtr,
-  onReloadDtrSubmissions
+  onReloadDtrSubmissions,
+  // Saves the Supervisor's profile changes, such as a new signature to sign with.
+  onUpdateUser
 }) {
+  const saveSignature = onUpdateUser ? image => onUpdateUser({ signatureImage: image }) : null;
   // A leave still with HR 2 (confirmation of leave credits and pre-approval) is not the Head's
   // yet, so it is not listed until HR 2 sends it.
   const requests = allRequests.filter(request => !isLeaveWithHr(request));
@@ -230,7 +233,7 @@ export default function SupervisorView({
       </div>
 
       {activeMainTab === 'dtr' ? (
-        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} signerKey={user?.email || user?.employeeId || ''} signerName={user?.name || ''} signerEmail={user?.email || ''} />
+        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} signerKey={user?.email || user?.employeeId || ''} signerName={user?.name || ''} signerEmail={user?.email || ''} onSaveSignature={saveSignature} />
       ) : (<>
       {/* Row 1: Quick Insights Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">
@@ -550,6 +553,7 @@ export default function SupervisorView({
                       signerName: user?.name || '',
                       signerEmail: user?.email || '',
                       image: user?.signatureImage || '',
+                      onSaveSignature: saveSignature,
                       reason: ({ decision }) => (selectedRequest.type === 'Leave Request'
                         ? `${decision === 'Rejected' ? 'Disapproved' : 'Approved'} leave ${selectedRequest.id} (7.C/7.D)`
                         : `Approved Travel Order ${selectedRequest.id}`),

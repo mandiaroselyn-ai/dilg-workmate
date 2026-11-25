@@ -1,7 +1,7 @@
 import { apiFetch } from './api';
 
 // The signer's own digital ID kept by WorkMate (see backend signingIdController): a PKCS #12 file
-// locked with their signing password, which WorkMate cannot open.
+// locked with their WorkMate password, which WorkMate cannot open.
 
 const answer = async (response, fallback) => {
   const data = await response.json().catch(() => ({}));
@@ -22,10 +22,12 @@ export const fetchSigningId = async () => {
   return signingId?.data ? { bytes: fromBase64(signingId.data), name: signingId.name || '', createdAt: signingId.createdAt || null } : null;
 };
 
-export const keepSigningId = async ({ bytes, name }) => answer(await apiFetch('/api/signing-id', {
+// Keeps a digital ID locked with `password`, the signer's WorkMate password, which the server
+// checks first.
+export const keepSigningId = async ({ bytes, name }, password) => answer(await apiFetch('/api/signing-id', {
   method: 'PUT',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ data: toBase64(bytes), name })
+  body: JSON.stringify({ data: toBase64(bytes), name, password })
 }), 'Unable to keep your digital ID.');
 
 export const removeSigningId = async () => answer(await apiFetch('/api/signing-id', { method: 'DELETE' }), 'Unable to remove your digital ID.');

@@ -191,7 +191,7 @@ test('a DTR is signed as the In-charge on both copies', async () => {
   assert.equal((await appearanceTextOf(signed, 0)).match(/Verified and digitally signed by IVAN STEPHEN F\. FADRI as In-charge/g).length, 2);
 });
 
-test('WorkMate makes a digital ID in the signer\'s name, locked with their signing password, that signs', async () => {
+test('WorkMate makes a digital ID in the signer\'s name, locked with their WorkMate password, that signs', async () => {
   const made = await createDigitalId({ name: 'JOHN ERICK J. MATINING', email: 'erick@dilg.gov.ph', password: 'my-signing-pass' });
   assert.equal(made.name, 'JOHN ERICK J. MATINING');
   assert.throws(() => readDigitalId(made.bytes, 'wrong-password'), /password/);
@@ -203,8 +203,8 @@ test('WorkMate makes a digital ID in the signer\'s name, locked with their signi
   const form = await makeForm({ marker: signedFormMarker('leave', 'LV-9') });
   const signed = await signPdfWithDigitalId(form, { digitalId: id, marks: leaveHrMarks() });
   assert.deepEqual(checkSignatures(signed).map(signature => signature.name), ['JOHN ERICK J. MATINING']);
-  // Too short a signing password, or no name, is refused.
-  await assert.rejects(createDigitalId({ name: 'X', password: 'short' }), /at least 8/);
+  // No password, or no name, is refused.
+  await assert.rejects(createDigitalId({ name: 'X', password: '' }), /password/);
   await assert.rejects(createDigitalId({ name: ' ', password: 'long-enough' }), /name/);
 });
 

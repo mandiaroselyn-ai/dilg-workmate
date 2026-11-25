@@ -11,16 +11,19 @@ const { createAuthToken } = await import('./utils/authToken.js');
 
 const app = createApiApp();
 
-const hr2 = { _id: 'hr-2', name: 'JOHN ERICK J. MATINING', email: 'erick@dilg.gov.ph', accessLevel: 'hr_admin', accountStatus: 'Active' };
-const head = { _id: 'pd-1', name: 'IVAN STEPHEN F. FADRI', email: 'pd@dilg.gov.ph', accessLevel: 'supervisor', accountStatus: 'Active' };
+const hr2 = { _id: 'hr-2', name: 'JOHN ERICK J. MATINING', email: 'erick@dilg.gov.ph', password: 'hash', accessLevel: 'hr_admin', accountStatus: 'Active' };
+const head = { _id: 'pd-1', name: 'IVAN STEPHEN F. FADRI', email: 'pd@dilg.gov.ph', password: 'hash', accessLevel: 'supervisor', accountStatus: 'Active' };
+// An account made with Google sign-in, with no WorkMate password yet.
+const googleHead = { _id: 'pd-2', name: 'OIC', email: 'oic@dilg.gov.ph', password: '', accessLevel: 'supervisor', accountStatus: 'Active' };
 const employee = { _id: 'emp-1', name: 'Juan Dela Cruz', email: 'juan@dilg.gov.ph', accessLevel: 'employee', accountStatus: 'Active' };
 // A PKCS #12 file starts with a DER SEQUENCE, "M" in base64.
-const p12 = { data: 'MIIKAgIBAzCCCbwGCSqGSIb3DQEHAaCCCa0Eggmp', name: 'JOHN ERICK J. MATINING' };
+const p12 = { data: 'MIIKAgIBAzCCCbwGCSqGSIb3DQEHAaCCCa0Eggmp', name: 'JOHN ERICK J. MATINING', password: 'right-password' };
 
 // The accounts' kept digital IDs, as the database would hold them.
 const withStore = t => {
   const store = new Map();
-  t.mock.method(User, 'findByEmail', async email => [hr2, head, employee].find(account => account.email === email) || null);
+  t.mock.method(User, 'findByEmail', async email => [hr2, head, googleHead, employee].find(account => account.email === email) || null);
+  t.mock.method(User, 'verifyPassword', async (account, password) => Boolean(account.password) && password === 'right-password');
   t.mock.method(User, 'getSigningId', async id => store.get(id) || null);
   t.mock.method(User, 'setSigningId', async (id, value) => {
     if (value) store.set(id, { ...value, createdAt: new Date() });
@@ -54,6 +57,22 @@ test('only HR and the Supervisor keep a digital ID, and only a PKCS #12 file is 
     assert.equal((await request(app).put('/api/signing-id').set(as(head)).send(body)).status, 400, JSON.stringify(body).slice(0, 60));
   }
   assert.equal(store.size, 0);
+});
+
+test('keeping a digital ID checks the WorkMate password it is locked with', async t => {
+  const store = withStore(t);
+  const wrong = await request(app).put('/api/signing-id').set(as(hr2)).send({ ...p12, password: 'wrong-password' });
+  assert.equal(wrong.status, 400);
+  assert.match(wrong.body.error, /WorkMate password is incorrect/);
+  assert.equal((await request(app).put('/api/signing-id').set(as(hr2)).send({ ...p12, password: '' })).status, 400);
+  const google = await request(app).put('/api/signing-id').set(as(googleHead)).send(p12);
+  assert.equal(google.status, 400);
+  assert.match(google.body.error, /Set a WorkMate password in Settings first/);
+  assert.equal(store.size, 0);
+  assert.equal((await request(app).put('/api/signing-id').set(as(hr2)).send(p12)).status, 200);
+  assert.equal(store.size, 1);
+  // The password is not kept with the digital ID.
+  assert.equal(JSON.stringify(store.get('hr-2')).includes('right-password'), false);
 });
 
 test('the kept digital ID is never listed with the account', () => {

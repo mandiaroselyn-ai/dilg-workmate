@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Eye, EyeOff, FileSignature, KeyRound } from 'lucide-react';
 import AdobePdfView from './AdobePdfView';
 import PdfPreview from './PdfPreview';
+import SignaturePad from './SignaturePad';
 import { fetchSigningId, keepSigningId } from '../utils/signingId';
 
 // One signing step on a form WorkMate made, as in Adobe: the form is open here (in Adobe's own
@@ -9,18 +10,23 @@ import { fetchSigningId, keepSigningId } from '../utils/signingId';
 // signature is made in this browser; the signed PDF goes to `onSubmit` as the official copy.
 //
 // The digital ID is, in order: the one WorkMate made for the signer (kept by WorkMate, locked with
-// their signing password, so it works on any device: see utils/signingId.js); or an Adobe digital
-// ID file (.pfx or .p12) this device remembers for the account. A signer with neither makes one
-// here, with a signing password, the first time they sign.
+// their WorkMate password, so it works on any device: see utils/signingId.js); or an Adobe or
+// PNPKI digital ID file (.pfx or .p12) this device remembers for the account. A signer with
+// neither makes one here, with their WorkMate password, the first time they sign.
 //
 // `decisions` ([{ value, label }]) adds a choice to record with it; `remarksRequiredFor` is the
 // decision that needs remarks. `onSubmit` gets { file, decision, remarks }. `digitalSign` is
-// { getForm, owner, signerName, signerEmail, image, reason, location }: getForm gets
-// { decision, remarks } and returns { bytes, fileName } with what the signature shows on the
+// { getForm, owner, signerName, signerEmail, image, onSaveSignature, reason, location }: getForm
+// gets { decision, remarks } and returns { bytes, fileName } with what the signature shows on the
 // first page, `marks` (see utils/digitalIdSigning.js) or one `spot` ({ center, bottom, width,
 // height }); owner is the signer's account (email or ID); signerName and signerEmail go on a
-// digital ID made here; image is the signer's saved signature (a data URL, or ''); reason is text
-// or a function of { decision, remarks }.
+// digital ID made here; image is the signer's saved signature (a data URL, or ''), and
+// onSaveSignature(image) saves a new one on their profile; reason is text or a function of
+// { decision, remarks }.
+//
+// As in Adobe's "Add signature", the signer puts their own signature on the form: the one saved on
+// their profile, or one they draw or upload now. It shows over their name with "Digitally signed
+// by" and the date under it.
 
 // The Adobe digital ID this device remembers for `owner`: { name, fileName, data (base64) }, or
 // null. Browser storage may be unavailable (a private window, blocked site data), so every read
@@ -74,7 +80,12 @@ export default function SignedFormStep({
   const [idFile, setIdFile] = useState(null);
   const [keepFile, setKeepFile] = useState(true);
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  // The signer's own signature on the form: the saved one, or a new one drawn or uploaded.
+  const savedSignature = digitalSign?.image || '';
+  const [useNewSignature, setUseNewSignature] = useState(!savedSignature);
+  const [drawnSignature, setDrawnSignature] = useState('');
+  const [saveSignature, setSaveSignature] = useState(true);
+  const signatureImage = useNewSignature ? drawnSignature : savedSignature;
   // Show the passwords as typed (as Change Password does).
   const [showPasswords, setShowPasswords] = useState(false);
   const passwordInputProps = { type: showPasswords ? 'text' : 'password', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false };
@@ -105,26 +116,28 @@ export default function SignedFormStep({
   const savedId = workmateId || adobeId;
   // With no digital ID yet, the signer makes one here.
   const shownMode = mode === 'saved' && workmateId !== undefined && !savedId ? 'create' : mode;
+  // WorkMate's digital ID is locked with the WorkMate password; an Adobe or PNPKI file, with its own.
+  const usesWorkmatePassword = shownMode === 'create' || (shownMode === 'saved' && Boolean(workmateId));
   const remarksNeeded = remarksRequiredFor && decision === remarksRequiredFor;
   const switchTo = next => {
     setMode(next);
     setPassword('');
-    setConfirmPassword('');
     setMessage({ text: '', error: false });
   };
 
   // The digital ID to sign with, from the chosen way (making and keeping a new one first).
   const digitalIdToUse = async () => {
-    const { createDigitalId, MIN_SIGNING_PASSWORD, readDigitalId } = await import('../utils/digitalIdSigning');
-    if (shownMode === 'create') {
-      if (password.length < MIN_SIGNING_PASSWORD) throw new Error(`The signing password needs at least ${MIN_SIGNING_PASSWORD} characters.`);
-      if (password !== confirmPassword) throw new Error('The two signing passwords do not match.');
+    const { createDigitalId, readDigitalId } = await import('../utils/digitalIdSigning');
+    // A new digital ID in the signer's name, locked with their WorkMate password, which the server
+    // checks before it keeps the ID.
+    const makeAndKeep = async () => {
       const made = await createDigitalId({ name: digitalSign.signerName, email: digitalSign.signerEmail, password });
-      await keepSigningId(made);
+      await keepSigningId(made, password);
       setWorkmateId(made);
       setMode('saved');
       return readDigitalId(made.bytes, password);
-    }
+    };
+    if (shownMode === 'create') return makeAndKeep();
     if (shownMode === 'file') {
       if (!idFile) throw new Error('Choose your Adobe digital ID file (.pfx or .p12).');
       const bytes = new Uint8Array(await idFile.arrayBuffer());
@@ -137,13 +150,25 @@ export default function SignedFormStep({
       }
       return digitalId;
     }
-    return readDigitalId(workmateId ? workmateId.bytes : fromBase64(adobeId.data), password);
+    if (workmateId) {
+      try {
+        return readDigitalId(workmateId.bytes, password);
+      } catch (error) {
+        // Locked with another password: a signing password from before, or the WorkMate password
+        // changed since. When this is the WorkMate password (the server checks it), a new digital
+        // ID takes the old one's place; what was signed with the old one stays valid.
+        if (/password/i.test(error.message || '')) return makeAndKeep();
+        throw error;
+      }
+    }
+    return readDigitalId(fromBase64(adobeId.data), password);
   };
 
   // Signs the form with the digital ID, shows it signed, then sends it as the signed PDF.
   const sign = async event => {
     event.preventDefault();
-    const problem = (!password ? (shownMode === 'create' ? 'Set a signing password for your digital ID.' : 'Enter the password of your digital ID.') : '')
+    const problem = (!signatureImage ? 'Add your signature first: draw it, or upload a picture of it.' : '')
+      || (!password ? (usesWorkmatePassword ? 'Enter your WorkMate password.' : 'Enter the password of your digital ID.') : '')
       || (remarksNeeded && !remarks.trim() ? 'Write the reason in the remarks.' : '');
     if (problem) {
       setMessage({ text: problem, error: true });
@@ -160,16 +185,19 @@ export default function SignedFormStep({
         digitalId,
         pageIndex: form.pageIndex || 0,
         marks: marksOfForm(form),
-        image: digitalSign.image || '',
+        image: signatureImage,
         reason: typeof digitalSign.reason === 'function' ? digitalSign.reason(choice) : digitalSign.reason || '',
         location: digitalSign.location || ''
       });
       show(signed);
       const file = new File([signed], form.fileName.replace(/(_to_sign)?\.pdf$/i, '_signed.pdf'), { type: 'application/pdf' });
       await onSubmit({ file, ...choice });
+      // A new signature is kept on the profile for next time, when the signer chose to.
+      if (useNewSignature && saveSignature && digitalSign.onSaveSignature) {
+        await Promise.resolve(digitalSign.onSaveSignature(drawnSignature)).catch(() => {});
+      }
       setRemarks('');
       setPassword('');
-      setConfirmPassword('');
       setMessage({ text: 'Signed.', error: false });
     } catch (error) {
       setMessage({ text: error.message || 'Unable to sign the form.', error: true });
@@ -191,20 +219,15 @@ export default function SignedFormStep({
     if (shownMode === 'create') {
       return (
         <>
-          <p className="text-xs font-semibold text-slate-700">
-            {workmateId ? 'Make a new digital ID (the old one cannot be opened without its password; what you signed with it stays valid).' : 'You have no digital ID yet. WorkMate makes one for you now, in your name; it then works on any device.'}
-          </p>
+          <p className="text-xs font-semibold text-slate-700">You have no digital ID yet. WorkMate makes one in your name now, locked with your WorkMate password, so it works on any device.</p>
           <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">Name on the digital ID: <span className="font-black">{digitalSign.signerName || 'Your name'}</span></p>
-          <label className="block text-[11px] font-black text-slate-700">Set a signing password (at least 8 characters)
-            <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete="new-password" className={fieldClass} />
+          <label className="block text-[11px] font-black text-slate-700">Your WorkMate password
+            <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" className={fieldClass} />
           </label>
-          <label className="block text-[11px] font-black text-slate-700">Type the signing password again
-            <input {...passwordInputProps} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" className={fieldClass} />
-          </label>
-          <p className="text-[11px] font-semibold text-slate-500">Only you know this password. WorkMate keeps your digital ID locked with it and cannot open it, so it cannot be reset; if you forget it, you make a new digital ID.</p>
+          <p className="text-[11px] font-semibold text-slate-500">The password you log in with. WorkMate keeps your digital ID locked with it and cannot open it.</p>
           <div className="flex flex-wrap gap-3">
             {savedId && <button type="button" onClick={() => switchTo('saved')} className={linkClass}>Back</button>}
-            <button type="button" onClick={() => switchTo('file')} className={linkClass}>I have an Adobe digital ID file (.pfx)</button>
+            <button type="button" onClick={() => switchTo('file')} className={linkClass}>Use an Adobe or PNPKI digital ID file instead</button>
           </div>
         </>
       );
@@ -212,7 +235,7 @@ export default function SignedFormStep({
     if (shownMode === 'file') {
       return (
         <>
-          <label className="block text-[11px] font-black text-slate-700">Adobe digital ID file (.pfx or .p12)
+          <label className="block text-[11px] font-black text-slate-700">Adobe or PNPKI digital ID file (.pfx or .p12)
             <input type="file" accept=".pfx,.p12,application/x-pkcs12" onChange={event => setIdFile(event.target.files?.[0] || null)} className={fieldClass} />
           </label>
           <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
@@ -232,13 +255,12 @@ export default function SignedFormStep({
           <p className="text-xs font-bold text-indigo-900">Signing as <span className="font-black">{savedId.name || savedId.fileName}</span>{workmateId ? '' : ' (Adobe digital ID on this device)'}</p>
           {!workmateId && <button type="button" onClick={forgetAdobeId} className={linkClass}>Use another digital ID</button>}
         </div>
-        <label className="block text-[11px] font-black text-slate-700">{workmateId ? 'Your signing password' : 'Password of the digital ID'}
-          <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete="off" className={fieldClass} />
+        <label className="block text-[11px] font-black text-slate-700">{workmateId ? 'Your WorkMate password' : 'Password of the digital ID'}
+          <input {...passwordInputProps} value={password} onChange={event => setPassword(event.target.value)} autoComplete={workmateId ? 'current-password' : 'off'} className={fieldClass} />
         </label>
         {workmateId && (
           <div className="flex flex-wrap gap-3">
-            <button type="button" onClick={() => switchTo('create')} className={linkClass}>Forgot your signing password? Make a new digital ID</button>
-            <button type="button" onClick={() => switchTo('file')} className={linkClass}>Use an Adobe digital ID file instead</button>
+            <button type="button" onClick={() => switchTo('file')} className={linkClass}>Use an Adobe or PNPKI digital ID file instead</button>
           </div>
         )}
       </>
@@ -290,8 +312,30 @@ export default function SignedFormStep({
             {showPasswords ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} {showPasswords ? 'Hide' : 'Show'} password
           </button>
         </div>
+        <div className="space-y-2">
+          <p className="text-[11px] font-black text-slate-700">Your signature</p>
+          {!useNewSignature ? (
+            <>
+              <div className="flex h-24 items-center justify-center rounded-xl border border-slate-200 bg-white p-2">
+                <img src={savedSignature} alt="Your saved signature" className="max-h-full max-w-full object-contain" />
+              </div>
+              <button type="button" onClick={() => setUseNewSignature(true)} className={linkClass}>Use a different signature</button>
+            </>
+          ) : (
+            <>
+              <SignaturePad onChange={setDrawnSignature} />
+              {digitalSign?.onSaveSignature && (
+                <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600">
+                  <input type="checkbox" checked={saveSignature} onChange={event => setSaveSignature(event.target.checked)} className="h-3.5 w-3.5 accent-indigo-700" />
+                  Save this signature on my profile for next time
+                </label>
+              )}
+              {savedSignature && <button type="button" onClick={() => setUseNewSignature(false)} className={linkClass}>Use my saved signature</button>}
+            </>
+          )}
+        </div>
         {signingBox()}
-        <p className="text-[11px] font-semibold text-slate-500">Your signature goes on the form above where it belongs{digitalSign?.image ? ', with your saved signature' : ''}. Adobe Reader shows it as signed by you.</p>
+        <p className="text-[11px] font-semibold text-slate-500">Your signature goes on the form above where it belongs, with "Digitally signed by" your name and the date under it. Adobe Reader shows the form as signed by you.</p>
       </div>
 
       {disabledReason && <p className="text-xs font-bold text-amber-700">{disabledReason}</p>}

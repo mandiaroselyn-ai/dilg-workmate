@@ -71,18 +71,17 @@ export const readDigitalId = (fileBytes, password) => {
   };
 };
 
-// The smallest signing password WorkMate takes for a digital ID it makes.
-export const MIN_SIGNING_PASSWORD = 8;
 // How hard the password is made to guess from the locked file (PBKDF2 rounds).
 const LOCK_ROUNDS = 20000;
 
 // A new digital ID for `name` (and `email`), like the one Adobe makes: an RSA 2048-bit key and a
-// self-signed certificate valid for 5 years, in a PKCS #12 file locked (AES-256) with `password`.
-// The key is made by the browser's own crypto. Returns { bytes, name }.
+// self-signed certificate valid for 5 years, in a PKCS #12 file locked (AES-256) with `password`
+// (the signer's WorkMate password, which the server checks when it keeps the file). The key is
+// made by the browser's own crypto. Returns { bytes, name }.
 export const createDigitalId = async ({ name, email = '', password }) => {
   const signer = String(name || '').trim();
   if (!signer) throw new DigitalIdError('Your name is needed for the digital ID.');
-  if (String(password || '').length < MIN_SIGNING_PASSWORD) throw new DigitalIdError(`The signing password needs at least ${MIN_SIGNING_PASSWORD} characters.`);
+  if (!password) throw new DigitalIdError('Enter your WorkMate password.');
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) throw new DigitalIdError('This browser cannot make a digital ID. Use an up-to-date browser over https.');
   const pair = await subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);

@@ -85,7 +85,8 @@ const Detail = ({ label, value, icon: Icon = FileText }) => <div className="flex
 const Stat = ({ label, value, icon: Icon, tone, onClick }) => <button type="button" onClick={onClick} className="rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-blue-300 hover:shadow-md"><div className="flex items-center justify-between"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${tone}`}><Icon className="h-4 w-4" /></span><strong className="text-2xl font-black text-slate-900">{value}</strong></div><p className="mt-3 text-xs font-black uppercase tracking-wide text-slate-500">{label}</p><span className="mt-1 block text-xs font-bold text-blue-600">View requests</span></button>;
 
 // `user` is the signed-in HR/Admin, whose `hrTask` says which HR step they take.
-export default function HRAdminRequestsView({ user = {}, requests = [], employees = [], onEmployeesChange, onUpdateRequests, onUpdateRequestStatus, onUploadSignedForm, focusRequestId }) {
+// `onUpdateUser` saves HR's profile changes, such as a new signature to sign with.
+export default function HRAdminRequestsView({ user = {}, requests = [], employees = [], onEmployeesChange, onUpdateRequests, onUpdateRequestStatus, onUploadSignedForm, onUpdateUser, focusRequestId }) {
   // A notification's button opens this request first.
   const focusedRequest = focusRequestId ? requests.find(request => request.id === focusRequestId) || null : null;
   const [screen, setScreen] = useState(focusedRequest ? 'details' : 'dashboard');
@@ -241,6 +242,7 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
                 signerName: user?.name || '',
                 signerEmail: user?.email || '',
                 image: user?.signatureImage || '',
+                onSaveSignature: onUpdateUser ? image => onUpdateUser({ signatureImage: image }) : null,
                 reason: `Certified leave credits (7.A) and recommendation (7.B), leave ${selected.id}`,
                 location: 'DILG Marinduque'
               }}

@@ -20,8 +20,9 @@ const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('
 // their digital ID (here, or in Adobe and uploading it), or returns it to the employee with
 // remarks. `signatureImage` is the Supervisor's saved signature, shown with their digital signature;
 // `signerKey` is their account (email or ID), under which this device remembers their digital ID;
-// `signerName` and `signerEmail` go on a digital ID they make here.
-export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '', signerKey = '', signerName = '', signerEmail = '' }) {
+// `signerName` and `signerEmail` go on a digital ID they make here; `onSaveSignature(image)` keeps a
+// new signature on their profile.
+export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, onReload, onUploadSignedForm, signatureImage = '', signerKey = '', signerName = '', signerEmail = '', onSaveSignature = null }) {
   const [tab, setTab] = useState('Submitted');
   const [viewer, setViewer] = useState(null);
   const [verifying, setVerifying] = useState(null);
@@ -123,6 +124,7 @@ export default function SupervisorDtrDesk({ submissions = [], onReview, onOpen, 
                     signerName,
                     signerEmail,
                     image: signatureImage,
+                    onSaveSignature,
                     reason: `Verified as to the prescribed office hours (In-charge), DTR ${monthText(submission.month)}`,
                     location: 'DILG Marinduque'
                   }}
