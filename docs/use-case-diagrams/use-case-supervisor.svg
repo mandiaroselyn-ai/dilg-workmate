@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1290 930" width="1290" height="930" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="DILG WorkMate use case diagram: Supervisor">
+<rect x="0" y="0" width="1290" height="930" fill="#ffffff"/>
+<rect x="320" y="30" width="780" height="870" fill="#ffffff" stroke="#111111" stroke-width="1.6"/>
+<text x="710" y="60" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">DILG WorkMate (Supervisor)</text>
+<polyline points="191.0,442.0 355.0,115.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,195.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,275.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,365.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,455.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,545.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,635.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,715.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="191.0,442.0 355.0,795.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="1120.0,761.1 705.0,795.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="1120.0,841.6 705.0,795.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="639.1,389.2 837.8,433.4" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="825.1,436.0 837.8,433.4 827.4,425.7" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="738.5" y="411.3" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="705.0,455.0 795.0,455.0" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="783.1,460.3 795.0,455.0 783.1,449.7" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="750.0" y="455.0" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="639.1,520.8 837.8,476.6" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="827.4,484.3 837.8,476.6 825.1,474.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="738.5" y="498.7" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="935.0,522.0 935.0,485.0" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="940.3,496.9 935.0,485.0 929.7,496.9" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="935.0" y="503.5" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«extend»</text>
+<polyline points="702.2,640.5 796.5,643.6" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="784.5,648.5 796.5,643.6 784.9,637.9" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="749.4" y="642.0" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<ellipse cx="530" cy="115" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="120.5" text-anchor="middle" font-size="16" fill="#111111">Log In and Log Out</text>
+<ellipse cx="530" cy="195" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="191.0" text-anchor="middle" font-size="16" fill="#111111">Manage Profile</text>
+<text x="530" y="210.0" text-anchor="middle" font-size="16" fill="#111111">and Password</text>
+<ellipse cx="530" cy="275" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="271.0" text-anchor="middle" font-size="16" fill="#111111">View Supervisor</text>
+<text x="530" y="290.0" text-anchor="middle" font-size="16" fill="#111111">Dashboard</text>
+<ellipse cx="530" cy="365" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="361.0" text-anchor="middle" font-size="16" fill="#111111">Decide Leave</text>
+<text x="530" y="380.0" text-anchor="middle" font-size="16" fill="#111111">Application</text>
+<ellipse cx="530" cy="455" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="460.5" text-anchor="middle" font-size="16" fill="#111111">Decide Travel Order</text>
+<ellipse cx="530" cy="545" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="541.0" text-anchor="middle" font-size="16" fill="#111111">Verify Monthly</text>
+<text x="530" y="560.0" text-anchor="middle" font-size="16" fill="#111111">DTR Report</text>
+<ellipse cx="530" cy="635" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="631.0" text-anchor="middle" font-size="16" fill="#111111">Forward Report to</text>
+<text x="530" y="650.0" text-anchor="middle" font-size="16" fill="#111111">Regional Office</text>
+<ellipse cx="530" cy="715" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="711.0" text-anchor="middle" font-size="16" fill="#111111">View Announcements</text>
+<text x="530" y="730.0" text-anchor="middle" font-size="16" fill="#111111">and Calendar</text>
+<ellipse cx="530" cy="795" rx="175" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="530" y="800.5" text-anchor="middle" font-size="16" fill="#111111">Receive Notifications</text>
+<ellipse cx="935" cy="455" rx="140" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="935" y="451.0" text-anchor="middle" font-size="16" fill="#111111">Sign with</text>
+<text x="935" y="470.0" text-anchor="middle" font-size="16" fill="#111111">Digital ID</text>
+<ellipse cx="935" cy="552" rx="140" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="935" y="548.0" text-anchor="middle" font-size="16" fill="#111111">Create Digital ID</text>
+<text x="935" y="567.0" text-anchor="middle" font-size="16" fill="#111111">(first signing)</text>
+<ellipse cx="935" cy="648" rx="140" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="935" y="644.0" text-anchor="middle" font-size="16" fill="#111111">Download Signed</text>
+<text x="935" y="663.0" text-anchor="middle" font-size="16" fill="#111111">Report and DTRs</text>
+<g fill="none" stroke="#111111" stroke-width="1.6" stroke-linecap="round"><circle cx="170" cy="421" r="11" fill="#ffffff"/><line x1="170" y1="432" x2="170" y2="462"/><line x1="151" y1="442" x2="189" y2="442"/><line x1="170" y1="462" x2="154" y2="486"/><line x1="170" y1="462" x2="186" y2="486"/></g>
+<text x="179" y="505" text-anchor="end" font-size="15" font-weight="700" fill="#111111">Supervisor</text>
+<text x="179" y="522" text-anchor="end" font-size="15" font-weight="400" fill="#111111">(Provincial Director)</text>
+<rect x="1120" y="727" width="150" height="56" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="1195" y="744" text-anchor="middle" font-size="12" fill="#444444">«system»</text>
+<text x="1195" y="762" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">SMS Gateway</text>
+<rect x="1120" y="817" width="150" height="66" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="1195" y="834" text-anchor="middle" font-size="12" fill="#444444">«system»</text>
+<text x="1195" y="852" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">Push Notification</text>
+<text x="1195" y="868" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">Service</text>
+</svg>

@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1350" width="1180" height="1350" font-family="Arial, Helvetica, sans-serif" role="img" aria-label="DILG WorkMate use case diagram: Employee">
+<rect x="0" y="0" width="1180" height="1350" fill="#ffffff"/>
+<rect x="330" y="30" width="820" height="1300" fill="#ffffff" stroke="#111111" stroke-width="1.6"/>
+<text x="740" y="60" text-anchor="middle" font-size="19" font-weight="700" fill="#111111">DILG WorkMate (Employee)</text>
+<polyline points="206.0,672.0 365.0,115.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,195.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,275.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,355.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,435.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,530.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,625.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,705.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,785.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,865.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,945.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,1025.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,1105.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,1185.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="206.0,672.0 365.0,1265.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="255.0,137.6 365.0,115.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="255.0,172.4 365.0,195.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="255.0,283.5 365.0,275.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="255.0,1165.3 365.0,1185.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="217.5,1178.0 365.0,1265.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="255.0,1276.3 365.0,1265.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<polyline points="626.4,501.3 899.0,415.8" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="889.2,424.5 899.0,415.8 886.1,414.3" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="795.4" y="448.3" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="669.5,509.2 861.8,479.5" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="850.9,486.5 861.8,479.5 849.3,476.1" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="788.7" y="490.8" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="705.0,530.8 830.0,531.3" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="818.1,536.6 830.0,531.3 818.2,526.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="782.5" y="531.1" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="666.6,551.5 864.4,583.9" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="851.8,587.2 864.4,583.9 853.5,576.7" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="789.2" y="571.6" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="896.1,649.0 623.2,559.1" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="636.1,557.7 623.2,559.1 632.8,567.8" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="792.4" y="614.8" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«extend»</text>
+<polyline points="677.9,721.2 847.0,740.5" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="834.6,744.4 847.0,740.5 835.8,733.8" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="762.4" y="730.8" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="693.6,774.2 836.9,764.4" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="825.4,770.5 836.9,764.4 824.7,759.9" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="765.2" y="769.3" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«include»</text>
+<polyline points="846.9,816.9 682.1,800.0" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="694.4,796.0 682.1,800.0 693.4,806.5" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="764.5" y="808.5" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«extend»</text>
+<polyline points="840.9,840.7 690.0,852.7" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="701.4,846.4 690.0,852.7 702.2,857.0" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="765.5" y="846.7" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«extend»</text>
+<polyline points="835.9,1007.9 697.7,1015.8" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="709.3,1009.8 697.7,1015.8 709.9,1020.4" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="766.8" y="1011.8" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«extend»</text>
+<polyline points="830.0,1105.0 705.0,1105.0" fill="none" stroke="#111111" stroke-width="1.3" stroke-dasharray="7 5"/>
+<polyline points="716.9,1099.7 705.0,1105.0 716.9,1110.3" fill="none" stroke="#111111" stroke-width="1.3"/>
+<text x="767.5" y="1105.0" text-anchor="middle" font-size="13" fill="#111111" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" paint-order="stroke">«extend»</text>
+<ellipse cx="535" cy="115" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="120.5" text-anchor="middle" font-size="16" fill="#111111">Register Account</text>
+<ellipse cx="535" cy="195" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="200.5" text-anchor="middle" font-size="16" fill="#111111">Log In and Log Out</text>
+<ellipse cx="535" cy="275" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="280.5" text-anchor="middle" font-size="16" fill="#111111">Manage Profile and Password</text>
+<ellipse cx="535" cy="355" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="360.5" text-anchor="middle" font-size="16" fill="#111111">View Dashboard</text>
+<ellipse cx="535" cy="435" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="440.5" text-anchor="middle" font-size="16" fill="#111111">Enroll Biometrics</text>
+<ellipse cx="535" cy="530" rx="170" ry="34" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="526.0" text-anchor="middle" font-size="16" fill="#111111">Record Attendance</text>
+<text x="535" y="545.0" text-anchor="middle" font-size="16" fill="#111111">(Time In, Lunch, Time Out)</text>
+<ellipse cx="535" cy="625" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="630.5" text-anchor="middle" font-size="16" fill="#111111">View and Export DTR</text>
+<ellipse cx="535" cy="705" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="710.5" text-anchor="middle" font-size="16" fill="#111111">Sign and Submit Monthly DTR</text>
+<ellipse cx="535" cy="785" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="790.5" text-anchor="middle" font-size="16" fill="#111111">File Leave Application</text>
+<ellipse cx="535" cy="865" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="870.5" text-anchor="middle" font-size="16" fill="#111111">Request Travel Order</text>
+<ellipse cx="535" cy="945" rx="170" ry="30" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="950.5" text-anchor="middle" font-size="16" fill="#111111">Submit Post-Activity Report</text>
+<ellipse cx="535" cy="1025" rx="170" ry="32" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="1021.0" text-anchor="middle" font-size="16" fill="#111111">Track Requests and</text>
+<text x="535" y="1040.0" text-anchor="middle" font-size="16" fill="#111111">Leave Credits</text>
+<ellipse cx="535" cy="1105" rx="170" ry="32" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="1101.0" text-anchor="middle" font-size="16" fill="#111111">View Announcements</text>
+<text x="535" y="1120.0" text-anchor="middle" font-size="16" fill="#111111">and Calendar</text>
+<ellipse cx="535" cy="1185" rx="170" ry="32" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="1181.0" text-anchor="middle" font-size="16" fill="#111111">Message HR and</text>
+<text x="535" y="1200.0" text-anchor="middle" font-size="16" fill="#111111">Request Help</text>
+<ellipse cx="535" cy="1265" rx="170" ry="32" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="535" y="1261.0" text-anchor="middle" font-size="16" fill="#111111">Receive Notifications</text>
+<text x="535" y="1280.0" text-anchor="middle" font-size="16" fill="#111111">and Reminders</text>
+<ellipse cx="975" cy="392" rx="145" ry="28" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="397.5" text-anchor="middle" font-size="16" fill="#111111">Choose Work Location</text>
+<ellipse cx="975" cy="462" rx="145" ry="28" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="467.5" text-anchor="middle" font-size="16" fill="#111111">Verify GPS Location</text>
+<ellipse cx="975" cy="532" rx="145" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="528.0" text-anchor="middle" font-size="16" fill="#111111">Verify Selfie</text>
+<text x="975" y="547.0" text-anchor="middle" font-size="16" fill="#111111">(Face Match)</text>
+<ellipse cx="975" cy="602" rx="145" ry="28" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="607.5" text-anchor="middle" font-size="16" fill="#111111">Verify Fingerprint</text>
+<ellipse cx="975" cy="675" rx="145" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="671.0" text-anchor="middle" font-size="16" fill="#111111">Record Offline</text>
+<text x="975" y="690.0" text-anchor="middle" font-size="16" fill="#111111">and Sync Later</text>
+<ellipse cx="975" cy="755" rx="145" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="751.0" text-anchor="middle" font-size="16" fill="#111111">Sign with Signature</text>
+<text x="975" y="770.0" text-anchor="middle" font-size="16" fill="#111111">and Password</text>
+<ellipse cx="975" cy="830" rx="145" ry="28" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="835.5" text-anchor="middle" font-size="16" fill="#111111">Save as Draft</text>
+<ellipse cx="975" cy="1000" rx="145" ry="28" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="1005.5" text-anchor="middle" font-size="16" fill="#111111">Withdraw Request</text>
+<ellipse cx="975" cy="1105" rx="145" ry="31" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="975" y="1101.0" text-anchor="middle" font-size="16" fill="#111111">Acknowledge</text>
+<text x="975" y="1120.0" text-anchor="middle" font-size="16" fill="#111111">Announcement</text>
+<rect x="85" y="127" width="170" height="56" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="170" y="144" text-anchor="middle" font-size="12" fill="#444444">«system»</text>
+<text x="170" y="162" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">Google Sign-In</text>
+<rect x="85" y="262" width="170" height="56" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="170" y="279" text-anchor="middle" font-size="12" fill="#444444">«system»</text>
+<text x="170" y="297" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">Email Service</text>
+<g fill="none" stroke="#111111" stroke-width="1.6" stroke-linecap="round"><circle cx="185" cy="651" r="11" fill="#ffffff"/><line x1="185" y1="662" x2="185" y2="692"/><line x1="166" y1="672" x2="204" y2="672"/><line x1="185" y1="692" x2="169" y2="716"/><line x1="185" y1="692" x2="201" y2="716"/></g>
+<text x="194" y="735" text-anchor="end" font-size="15" font-weight="700" fill="#111111">Employee</text>
+<rect x="85" y="1122" width="170" height="56" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="170" y="1139" text-anchor="middle" font-size="12" fill="#444444">«system»</text>
+<text x="170" y="1157" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">SMS Gateway</text>
+<rect x="85" y="1252" width="170" height="66" fill="#ffffff" stroke="#111111" stroke-width="1.4"/>
+<text x="170" y="1269" text-anchor="middle" font-size="12" fill="#444444">«system»</text>
+<text x="170" y="1287" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">Push Notification</text>
+<text x="170" y="1303" text-anchor="middle" font-size="14" font-weight="700" fill="#111111">Service</text>
+</svg>
