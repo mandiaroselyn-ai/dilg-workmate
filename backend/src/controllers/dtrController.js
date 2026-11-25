@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { readVerificationProof } from '../utils/verificationProof.js';
 import { MISMATCH_ALERT_COUNT, mismatchesOn, shouldAlertOutside } from '../../../shared/attendanceAlerts.js';
 import { checkOfflineTimeIn, checkOfflineTimeOut, checkSignedOfflineTimeOut } from '../utils/offlineTimeIn.js';
-import { barangayPlaceName, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
+import { barangayPlaceName, currentAssignedArea, describePlace, isWithinAssignedLocation, resolveAssignedLocation } from '../services/assignedLocationService.js';
 import { normalizeAttendanceAssignment, timeOutLocationError } from '../utils/attendanceAssignment.js';
 import { sendAttendanceConfirmation } from '../services/smsService.js';
 import { attendanceReviewNotices, noticeEmployee } from '../services/employeeNotices.js';
@@ -560,7 +560,8 @@ export const clockInOut = async (req, res) => {
       }
       const isEmployee = req.user?.accessLevel === 'employee';
       if (isEmployee) {
-        const locationError = timeOutLocationError(activeLog.assignmentSite, record);
+        // Checked against the area as it is now (a field site HR set since Time In applies).
+        const locationError = timeOutLocationError(await currentAssignedArea(activeLog.assignmentSite), record);
         if (locationError) return res.status(400).json({ success: false, error: locationError });
       }
       // An offline Time In reaches the server after it happened, so its record is created
@@ -633,7 +634,7 @@ export const clockInOut = async (req, res) => {
       if (refusal) return res.status(400).json({ success: false, error: refusal });
 
       const location = { latitude: record.latitude, longitude: record.longitude, accuracy: record.gpsAccuracy };
-      const locationError = timeOutLocationError(activeLog.assignmentSite, {
+      const locationError = timeOutLocationError(await currentAssignedArea(activeLog.assignmentSite), {
         timeOutLatitude: location.latitude,
         timeOutLongitude: location.longitude,
         timeOutGpsAccuracy: location.accuracy
@@ -710,8 +711,9 @@ export const updateLocationTracking = async (req, res) => {
     const distance = computeDistanceMeters(Number(latitude), Number(longitude), Number(assignedCoords.lat), Number(assignedCoords.lon));
     // Use the same assignment area as Time In (a field assignment covers the whole
     // barangay, not just the geofence distance around its center).
-    const withinGeofence = Number.isFinite(Number(activeLog?.assignmentSite?.latitude))
-      ? isWithinAssignedLocation(latitude, longitude, activeLog.assignmentSite)
+    const area = await currentAssignedArea(activeLog?.assignmentSite);
+    const withinGeofence = Number.isFinite(Number(area?.latitude))
+      ? isWithinAssignedLocation(latitude, longitude, area)
       : distance <= GEO_THRESHOLD_METERS;
 
     const locationData = {
@@ -782,10 +784,13 @@ export const getActiveLocationTracking = async (_req, res) => {
   try {
     // Each position's barangay comes from the PSA map on the server, so HR's screen does
     // not have to ask for a place name every time an employee moves.
-    const locations = (await DtrLog.getActiveLocationTracking()).map(entry => ({
+    // The area each open shift is checked against now (see currentAssignedArea), which the map
+    // outlines.
+    const locations = await Promise.all((await DtrLog.getActiveLocationTracking()).map(async entry => ({
       ...entry,
+      assignmentArea: await currentAssignedArea(entry.assignmentArea),
       place: barangayPlaceName(Number(entry.latitude), Number(entry.longitude))
-    }));
+    })));
     res.status(200).json({ success: true, locations });
   } catch (error) {
     console.error('Get active location tracking error:', error);

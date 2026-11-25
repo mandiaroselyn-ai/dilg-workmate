@@ -96,6 +96,10 @@ const areaLayerFor = area => {
   const hasCenter = Number.isFinite(area.latitude) && Number.isFinite(area.longitude);
   const circle = () => (hasCenter ? L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: ALLOWANCE_METERS }) : null);
   if (area.mode !== 'field') return circle();
+  // A barangay's field site HR set: the circle it counts within.
+  if (Number(area.radiusMeters) > 0 && hasCenter) {
+    return L.circle([area.latitude, area.longitude], { ...AREA_STYLE, radius: Number(area.radiusMeters) });
+  }
   const type = area.geometry?.type;
   if (type === 'Polygon' || type === 'MultiPolygon') {
     const polygons = type === 'Polygon' ? [area.geometry.coordinates] : area.geometry.coordinates;

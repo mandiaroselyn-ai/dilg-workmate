@@ -89,6 +89,12 @@ export const isWithinAssignedLocation = (latitude, longitude, location, bufferMe
     return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= bufferMeters;
   }
 
+  // A barangay's field site that HR set (shared/fieldSites.js) counts within its own radius.
+  const siteRadius = Number(location.radiusMeters);
+  if (siteRadius > 0 && Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude))) {
+    return distanceMeters(lat, lon, Number(location.latitude), Number(location.longitude)) <= siteRadius;
+  }
+
   const geometry = location.geometry;
   if (!geometry || !['Polygon', 'MultiPolygon'].includes(geometry.type)) {
     if (!location.fallbackToRadius) return false;

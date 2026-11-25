@@ -84,19 +84,31 @@ export const signOfflineTimeOut = async ({ employeeId, keyId, latitude, longitud
   return { recordedAt, nonce, signature, publicKey };
 };
 
-// An office or WFH address is found on the map by the server, so the app keeps the last
-// answer for each one to check the assignment area without internet.
+// An office or WFH address is found on the map by the server, and a barangay may have a field
+// site HR set (shared/fieldSites.js), so the app keeps the last answer for each assignment to
+// check its area without internet.
 const siteKey = site => `dilg_site_location:${['mode', 'municipality', 'barangay', 'officeId', 'street', 'landmark']
   .map(field => String(site?.[field] ?? '').trim().toLowerCase()).join('|')}`;
 export const rememberSiteLocation = (site, location) => {
-  if (site?.mode !== 'field' && location) writeStored(siteKey(site), JSON.stringify(location));
+  if (location) writeStored(siteKey(site), JSON.stringify(location));
 };
 
-// The assignment area without internet: a field assignment's barangay, or the Provincial
-// Capitol Compound, from the maps in the app, or an office or WFH address found the last time
-// the app was online. Null when the app does not have it.
+const storedSiteLocation = site => {
+  try {
+    return JSON.parse(readStored(siteKey(site)) || 'null');
+  } catch {
+    return null;
+  }
+};
+
+// The assignment area without internet: a field assignment's area as the server last gave it
+// (its field site, if HR set one), else its barangay from the maps in the app; the Provincial
+// Capitol Compound from the app's map; or an office or WFH address found the last time the app
+// was online. Null when the app does not have it.
 export const resolveSiteOffline = async site => {
   if (site?.mode === 'field') {
+    const stored = storedSiteLocation(site);
+    if (stored?.mode === 'field') return stored;
     const { resolveFieldAssignment } = await import('../../shared/fieldAssignmentArea.js');
     return resolveFieldAssignment(site);
   }
@@ -105,9 +117,5 @@ export const resolveSiteOffline = async site => {
     const area = resolveOfficeArea(site.officeId);
     if (area) return area;
   }
-  try {
-    return JSON.parse(readStored(siteKey(site)) || 'null');
-  } catch {
-    return null;
-  }
+  return storedSiteLocation(site);
 };

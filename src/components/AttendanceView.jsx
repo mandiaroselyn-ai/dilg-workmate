@@ -992,11 +992,16 @@ export default function AttendanceView({
     : false;
   const isAssignmentVerified = isWithinAssignment && gpsAccuracy !== null && gpsAccuracy <= 50;
   const geofenceDescription = assignmentMode === 'field'
-    ? siteLocation?.fallbackToRadius && siteLocation.bounds
-      ? `Approximate assigned-area map extent + ${GEOFENCE_METERS}m GPS tolerance`
-      : siteLocation?.fallbackToRadius
-        ? `${GEOFENCE_METERS}m from approximate assigned-area map pin`
-        : `Barangay boundary + ${GEOFENCE_METERS}m GPS tolerance`
+    // The barangay's field site HR set, or Brgy. Tanza's campus; else the whole barangay.
+    ? siteLocation?.radiusMeters
+      ? `Within ${siteLocation.radiusMeters}m of the ${siteLocation.areaName || 'field site'}`
+      : siteLocation?.areaName && siteLocation.areaMarginMeters === 0
+        ? `Inside the ${siteLocation.areaName}`
+        : siteLocation?.fallbackToRadius && siteLocation.bounds
+          ? `Approximate assigned-area map extent + ${GEOFENCE_METERS}m GPS tolerance`
+          : siteLocation?.fallbackToRadius
+            ? `${GEOFENCE_METERS}m from approximate assigned-area map pin`
+            : `Barangay boundary + ${GEOFENCE_METERS}m GPS tolerance`
     // A DILG office's own grounds: the Provincial Capitol Compound, or a town hall and 50 m.
     : siteLocation?.geometry
       ? siteLocation.areaMarginMeters ? `${siteLocation.areaName} + ${siteLocation.areaMarginMeters}m GPS tolerance` : `Inside the ${siteLocation.areaName}`

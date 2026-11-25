@@ -7,6 +7,7 @@ import travelRoutes from './routes/travelRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import holidayRoutes from './routes/holidayRoutes.js';
+import fieldSiteRoutes from './routes/fieldSiteRoutes.js';
 import overtimeOrderRoutes from './routes/overtimeOrderRoutes.js';
 import downloadRoutes from './routes/downloadRoutes.js';
 import dtrSubmissionRoutes from './routes/dtrSubmissionRoutes.js';
@@ -97,6 +98,7 @@ export function createApiApp() {
   app.use('/api', announcementRoutes);
   app.use('/api', supportRoutes);
   app.use('/api', holidayRoutes);
+  app.use('/api', fieldSiteRoutes);
   app.use('/api', overtimeOrderRoutes);
   app.use('/api', downloadRoutes);
   app.use('/api', dtrSubmissionRoutes);
