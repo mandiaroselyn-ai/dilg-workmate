@@ -820,12 +820,10 @@ This cannot be undone.`
                 </select>
               </label>
             )}
-            {fillFields.includes('mobile number') && (
-              <label className="text-[11px] font-black text-slate-600">Mobile Number<RequiredMark />
-                <input name="phoneNumber" type="tel" value={form.phoneNumber} onChange={handleChange} required maxLength={20} placeholder="09XX XXX XXXX" className={inputClass} />
-              </label>
-            )}
           </div>
+          {/* The mobile number is the employee's to give at sign-up, so it is not asked here; one
+              still missing is added in the full Edit form, as approval needs it. */}
+          {fillFields.includes('mobile number') && <p className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Their mobile number is missing, and approval needs it. Add it in the full Edit form below.</p>}
           <p className="text-[11px] font-semibold text-slate-500">An approved Work From Home location is pinned on a map in the full Edit form, when the employee has one.</p>
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={busy} className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">{busy ? 'Saving...' : 'Save & Approve'}</button>
