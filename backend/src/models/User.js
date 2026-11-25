@@ -541,6 +541,19 @@ export const User = {
     return MongoUser.findOne({ $and: [{ $or: [{ email: emailPattern }, { employeeId: value }] }, employeeOnly] });
   },
 
+  // The active employee accounts that can Time In (biometric enrollment approved by HR), with
+  // what the attendance reminders need: who they are, where they work, and when they were hired.
+  findAttendanceReminderRecipients: async () => {
+    ensureConnected();
+    return MongoUser.find({
+      $and: [
+        { $or: [{ accessLevel: 'employee' }, { accessLevel: { $exists: false } }, { accessLevel: null }] },
+        { $or: [{ accountStatus: { $regex: /^active$/i } }, { accountStatus: { $exists: false } }, { accountStatus: null }] },
+        { biometricEnrollmentStatus: 'hr-approved' }
+      ]
+    }).select('employeeId email name office assignedStation dateHired').lean();
+  },
+
   // Employee accounts that can log in, for the supervisor's dashboard.
   countActiveEmployees: async () => {
     ensureConnected();

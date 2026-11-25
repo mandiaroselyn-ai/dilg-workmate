@@ -15,6 +15,10 @@ const pushSubscriptionSchema = new mongoose.Schema({
   // Expo Push token
   expoToken: { type: String, default: '' },
 
+  // The Android notification channels the phone app has made beyond the default one, such as
+  // the ringing 'attendance-reminders' (pushService.js). Empty for an app from before them.
+  androidChannels: { type: [String], default: [] },
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });

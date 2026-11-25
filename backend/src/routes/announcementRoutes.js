@@ -54,7 +54,7 @@ router.get('/push/vapid-public-key', (req, res) => {
 
 router.post('/push/subscribe', async (req, res) => {
   try {
-    const { type, subscription, expoToken } = req.body;
+    const { type, subscription, expoToken, androidChannels } = req.body;
     const user = req.user;
     await savePushSubscription({
       employeeEmail: user.email || '',
@@ -62,7 +62,8 @@ router.post('/push/subscribe', async (req, res) => {
       accessLevel: user.accessLevel || 'employee',
       type,
       subscription: type === 'web' ? subscription : null,
-      expoToken: type === 'expo' ? expoToken : ''
+      expoToken: type === 'expo' ? expoToken : '',
+      androidChannels
     });
     res.json({ success: true });
   } catch (error) {

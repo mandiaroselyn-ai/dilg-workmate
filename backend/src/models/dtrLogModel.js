@@ -427,6 +427,13 @@ export const DtrLog = {
     return MongoDtrLog.findOne(filter).sort({ createdAt: -1 });
   },
 
+  // Every attendance record dated `date` (YYYY-MM-DD), with only whose it is and its punches,
+  // for the attendance reminders.
+  findPunchesOnDate: async date => {
+    ensureConnected();
+    return MongoDtrLog.find({ date }).select('employeeId employeeEmail timeIn lunchOut lunchIn timeOut').lean();
+  },
+
   // True when the employee already has an attendance record dated `date`.
   hasLogOnDate: async (employeeId, date) => {
     ensureConnected();

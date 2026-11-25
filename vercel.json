@@ -45,6 +45,28 @@
       ]
     }
   ],
+  "schedules": {
+    "attendance-reminders-monday-time-in": {
+      "schedule": "30 6 * * 1",
+      "timezone": "Asia/Manila",
+      "path": "/api/attendance-reminders"
+    },
+    "attendance-reminders-flexitime-time-in": {
+      "schedule": "30 8 * * 2-5",
+      "timezone": "Asia/Manila",
+      "path": "/api/attendance-reminders"
+    },
+    "attendance-reminders-lunch": {
+      "schedule": "0,45 12 * * 1-5",
+      "timezone": "Asia/Manila",
+      "path": "/api/attendance-reminders"
+    },
+    "attendance-reminders-time-out": {
+      "schedule": "*/15 15-18 * * 1-5",
+      "timezone": "Asia/Manila",
+      "path": "/api/attendance-reminders"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/employees/:path*",

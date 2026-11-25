@@ -24,6 +24,12 @@
     },
     "plugins": [
       [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/reminder_ring.wav"]
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/splash.png",

@@ -289,15 +289,20 @@ export const Announcement = {
     const obj = item.toObject();
     obj.id = obj.customId;
 
-    sendPushNotification({
+    const push = sendPushNotification({
       title: notifData.title,
       body: notifData.message,
       // Tapping the phone notification opens this page (see openNotificationTarget in App.jsx).
       data: { type: notifData.type, view: notifData.view || '', action: notifData.action, targetId: notifData.targetId },
       recipientRole: notifData.recipientRole || '',
       employeeEmail: notifData.employeeEmail || '',
-      employeeId: notifData.employeeId || ''
+      employeeId: notifData.employeeId || '',
+      // An attendance reminder rings and vibrates (see pushService.js).
+      ring: Boolean(notifData.ring)
     }).catch(() => {});
+    // A scheduled job (the attendance reminders) answers only when everything is sent, since
+    // the server may stop right after it answers.
+    if (notifData.waitForPush) await push;
 
     return obj;
   },

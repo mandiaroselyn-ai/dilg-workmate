@@ -46,6 +46,12 @@ const WATCH_FOR_DASHBOARD_JS = `(function(){
 	setTimeout(report, ${SIGN_IN_COVER_MAX_MS});
 })(); true;`;
 
+// The attendance reminders (Time In, Lunch, Time Out) ring and vibrate on a channel of their own,
+// with the sound in assets/sounds (app.json, expo-notifications `sounds`). The phone tells the
+// server it has the channel when it registers, since a phone with an older app has none, and
+// Android does not show a notification sent to a channel the phone lacks.
+const REMINDER_CHANNEL = 'attendance-reminders';
+
 // Registers this phone's push token for whoever is signed in to the page, using the page's
 // saved session, so it works however the person signed in (password, Google, or a saved session).
 const registerPushTokenJs = token => `(function(){
@@ -56,7 +62,7 @@ const registerPushTokenJs = token => `(function(){
 	fetch('/api/push/subscribe', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session },
-		body: JSON.stringify({ type: 'expo', expoToken: window.__expoPushToken })
+		body: JSON.stringify({ type: 'expo', expoToken: window.__expoPushToken, androidChannels: ${JSON.stringify(Platform.OS === 'android' ? [REMINDER_CHANNEL] : [])} })
 	}).catch(function(){});
 })(); true;`;
 
@@ -192,6 +198,15 @@ export default function App() {
 					await Notifications.setNotificationChannelAsync('default', {
 						name: 'WorkMate',
 						importance: Notifications.AndroidImportance.HIGH
+					});
+					await Notifications.setNotificationChannelAsync(REMINDER_CHANNEL, {
+						name: 'Attendance Reminders',
+						description: 'Time In, Lunch Out, Lunch In, and Time Out reminders. They ring and vibrate.',
+						importance: Notifications.AndroidImportance.MAX,
+						sound: 'reminder_ring.wav',
+						enableVibrate: true,
+						vibrationPattern: [0, 700, 300, 700, 300, 700],
+						lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC
 					});
 				}
 				const { status } = await Notifications.requestPermissionsAsync();

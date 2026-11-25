@@ -14,6 +14,7 @@ import signedDocumentRoutes from './routes/signedDocumentRoutes.js';
 import signingIdRoutes from './routes/signingIdRoutes.js';
 import travelDocumentRoutes from './routes/travelDocumentRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
+import reminderRoutes from './routes/reminderRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
 import { createRateLimits } from './middleware/rateLimits.js';
@@ -82,7 +83,9 @@ export function createApiApp() {
       req.method === 'POST' && apiPath === '/sms/webhook',
       req.method === 'GET' && apiPath === '/push/vapid-public-key',
       // The phone's download manager fetches the file with its link only (see downloadRoutes).
-      req.method === 'GET' && apiPath === '/downloads'
+      req.method === 'GET' && apiPath === '/downloads',
+      // Vercel's scheduler, which has no sign-in (see reminderRoutes).
+      req.method === 'POST' && apiPath === '/attendance-reminders'
     ];
     if (publicRoutes.some(Boolean)) return next();
     return authenticate(req, res, next);
@@ -103,6 +106,7 @@ export function createApiApp() {
   app.use('/api', signedDocumentRoutes);
   app.use('/api', signingIdRoutes);
   app.use('/api', travelDocumentRoutes);
+  app.use('/api', reminderRoutes);
   app.use('/api/auth', googleAuthRoutes);
   app.use('/api', apiNotFound);
   app.use(apiErrorHandler);

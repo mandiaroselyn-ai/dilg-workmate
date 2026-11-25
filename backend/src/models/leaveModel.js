@@ -136,6 +136,21 @@ export const Leave = {
     });
   },
 
+  // Every approved leave and Travel Order whose dates include `date` (YYYY-MM-DD), for the
+  // attendance reminders: no Time In is due on those days (shared/travelStatus.js noTimeInOn).
+  findApprovedAbsencesOn: async date => {
+    ensureConnected();
+    const list = await MongoRequest.find({
+      type: { $in: ['Leave Request', 'Travel Order'] },
+      status: { $regex: /\bapproved\b/i },
+      startDate: { $lte: `${date}~` },
+      $or: [{ endDate: { $gte: date } }, { endDate: { $in: [null, ''] } }, { endDate: { $exists: false } }]
+    })
+      .select('customId type status startDate endDate employeeId employeeEmail companions')
+      .lean();
+    return list.map(item => ({ ...item, id: item.customId }));
+  },
+
   // One employee's leave requests and travel orders (any status), and the travel orders that
   // include them, for checking that their dates do not overlap and whether they are on travel.
   findAbsencesOfEmployee: async ({ employeeId, email }) => {

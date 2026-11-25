@@ -32,12 +32,22 @@ self.addEventListener('push', event => {
   try { data = event.data.json(); } catch { return; }
 
   const { title = 'DILG WorkMate', body = '', icon = '/icons/dilg-logo-192.png' } = data;
+  // An attendance reminder (`ring`) vibrates, with the device's notification sound (a browser
+  // cannot play its own), and stays shown until it is tapped or dismissed.
+  const reminder = data.ring ? {
+    vibrate: [700, 300, 700, 300, 700],
+    requireInteraction: true,
+    silent: false,
+    tag: 'attendance-reminder',
+    renotify: true
+  } : {};
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
       icon,
       badge: '/icons/dilg-logo-192.png',
-      data: data.data || {}
+      data: data.data || {},
+      ...reminder
     })
   );
 });
