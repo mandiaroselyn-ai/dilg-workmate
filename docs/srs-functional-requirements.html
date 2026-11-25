@@ -65,7 +65,7 @@ const modules = [
     'The system reminds employees of the days in the current and previous month whose records still lack a time-out or lunch break entry, so they can ask HR/Admin to correct them before signing their DTR.',
     'The system allows employees to sign their monthly DTR (CSC Form No. 48) with their signature (drawn, uploaded, or kept from an earlier signing) confirmed by their password and submit it to HR/Admin, and HR/Admin to check it or return it to the employee with remarks.',
     'The system allows HR/Admin to prepare the monthly DTR report listing every employee’s DTR and send it with the checked DTRs and the month’s Consolidated Report of Attendance to the supervisor, who signs the report, verifies each DTR as In-charge, and certifies the Consolidated Report of Attendance with one digital signature, or returns the report to HR/Admin with remarks, and then downloads the signed report, Consolidated Report of Attendance, and DTRs to forward to the Regional Office and records that it was forwarded.',
-    'The system allows HR/Admin to view, monitor, and manage employee attendance records, including those from earlier months, with a list of each employee’s time-in, lunch break, and time-out for the day, marking an entry that is missing, their attendance status, and their location.',
+    'The system allows HR/Admin to view, monitor, and manage employee attendance records, including those from earlier months, with a list for today or a chosen earlier day of each employee’s time-in, lunch break, and time-out, marking a missing entry, their attendance status, where they timed in, and, while on duty, whether they are inside their assigned area.',
     'The system allows HR/Admin to verify attendance records one at a time or all at once, and to correct a record with a reason, keeping the originally recorded times for audit.',
     'The system allows HR/Admin to compare an employee’s attendance selfies with their enrollment selfie.',
     'The system lists attendance records that need attention, such as a missing time-in, time-out, lunch break entry, selfie verification, or fingerprint verification, or an offline record waiting for review.',
@@ -114,15 +114,15 @@ const modules = [
     'The system allows users to view their notification history, mark notifications as read or unread, and clear them.'
   ]],
   ['Announcements and Calendar', [
-    'The system allows HR/Admin to post, edit, and delete announcements and calendar events, giving each event its date, time, category (Meeting, Training, or LGU Event), location, and details, and users to view them.',
+    'The system allows HR/Admin to post, edit, and delete announcements and calendar events, giving each event a title, date, time, category (Meeting, Training, or LGU Event), location, and description, and users to view them.',
     'The system allows HR/Admin to file each announcement under a category, such as Memorandum Circular, Department Order, Advisory, or Special Order, and users to filter announcements.',
     'The system allows employees to acknowledge receipt of an announcement.',
-    'The system shows on the calendar the national and local holidays and each day’s events in order of time, lists upcoming events before past ones, and shows upcoming events on the dashboard.'
+    'The system shows on the calendar the national and local holidays and each day’s events in order of time, lists the events for HR/Admin with the upcoming ones before the past ones, and shows upcoming events on the dashboard.'
   ]],
   ['Dashboard Monitoring', [
     'The system displays dashboard information based on the user’s assigned role, including relevant attendance, leave, and travel order transactions.',
     'The system displays on the employee’s dashboard their attendance status for the day, attendance summary for the month, days still missing a log, leave balances, recent requests, announcements, and upcoming events.',
-    'The system displays on the HR/Admin dashboard the number of active employees, DTR issues, geofence alerts, and pending leave applications and travel orders; today’s attendance overview beside the last five working days; the employees who need attention today (absent, not yet timed in past the latest on-time arrival, late, or with an incomplete or unverified record); and the employees’ latest time-ins, time-outs, and requests.',
+    'The system displays on the HR/Admin dashboard the number of active employees, DTR issues, geofence alerts, and pending leave applications and travel orders; today’s attendance (on time, late, absent, on leave or travel, and not yet in) beside the last five working days; the employees who need attention today (absent, with no time-in after the latest on-time arrival, late, or with a record missing a log, selfie verification, or fingerprint verification, or an offline record waiting for review); and the employees’ latest time-ins, time-outs, and requests.',
     'The system displays on the supervisor’s dashboard the leave applications, travel orders, and monthly DTR reports waiting for the supervisor’s action.'
   ]],
   ['Report Management', [
