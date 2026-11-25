@@ -27,6 +27,19 @@ const emptyEvent = () => ({
   description: ''
 });
 
+// "2026-11-20" as "Nov 20, 2026", and with its weekday for an event: "Sat, Nov 28, 2026".
+const dateText = (date, { weekday = false } = {}) => (/^\d{4}-\d{2}-\d{2}$/.test(date || '')
+  ? new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { ...(weekday ? { weekday: 'short' } : {}), month: 'short', day: 'numeric', year: 'numeric' })
+  : date || '');
+// "09:00 AM" as "9:00 AM".
+const timeText = time => String(time || '').trim().replace(/^0(\d)/, '$1');
+// "01:30 PM" as minutes after midnight, to order a day's events (a time that does not read as one comes last).
+const minutesOf = time => {
+  const match = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(time || '').trim());
+  return match ? ((Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0)) * 60 + Number(match[2]) : 24 * 60;
+};
+const badgeClass = 'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-black';
+
 const inputClass = 'mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white';
 const labelClass = 'block text-xs font-black uppercase tracking-wide text-slate-500';
 
@@ -50,7 +63,7 @@ export default function HRAnnouncementsManager({
 
   const isAnnouncements = tab === 'announcements';
   const sortedAnnouncements = [...announcements].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const sortedEvents = [...events].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
+  const sortedEvents = [...events].sort((a, b) => (a.date || '').localeCompare(b.date || '') || minutesOf(a.time) - minutesOf(b.time));
   const today = getManilaDateString();
 
   const startCreate = () => {
@@ -152,7 +165,7 @@ export default function HRAnnouncementsManager({
               <label className={labelClass}>Time
                 <input name="time" value={form.time} onChange={updateField} required maxLength={20} placeholder="09:00 AM" className={inputClass} />
               </label>
-              <label className={labelClass}>Type
+              <label className={labelClass}>Category
                 <select name="type" value={form.type} onChange={updateField} className={inputClass}>
                   {EVENT_TYPES.map(type => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
@@ -177,7 +190,46 @@ export default function HRAnnouncementsManager({
     );
   };
 
-  const items = isAnnouncements ? sortedAnnouncements : sortedEvents;
+  // Events: the upcoming ones first, soonest first; then the past ones, the latest first.
+  const upcomingEvents = sortedEvents.filter(item => (item.date || '') >= today);
+  const pastEvents = sortedEvents.filter(item => (item.date || '') < today).reverse();
+  const groups = isAnnouncements
+    ? [{ key: 'all', items: sortedAnnouncements }]
+    : [{ key: 'upcoming', title: 'Upcoming', items: upcomingEvents }, { key: 'past', title: 'Past events', items: pastEvents }];
+  const total = isAnnouncements ? sortedAnnouncements.length : sortedEvents.length;
+
+  const renderItem = item => {
+    const isPast = !isAnnouncements && (item.date || '') < today;
+    const category = isAnnouncements ? item.category : EVENT_TYPES.find(type => type.value === item.type)?.label || item.type;
+    return (
+      <div key={item.id} className={`flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-3 last:border-0 ${isPast ? 'opacity-70' : ''}`}>
+        <div className="min-w-0 flex-1">
+          <p className="flex flex-wrap items-center gap-2 font-black text-slate-800">
+            <span>{item.title}</span>
+            {isAnnouncements && item.important && <span className={`${badgeClass} bg-amber-100 uppercase text-amber-800`}>Urgent</span>}
+            {!isAnnouncements && item.date === today && <span className={`${badgeClass} bg-blue-100 uppercase text-blue-800`}>Today</span>}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+            {category && <span className={`${badgeClass} bg-slate-100 text-slate-700`}>{category}</span>}
+            {isAnnouncements
+              ? [item.referenceNo, dateText(item.date), item.author && `by ${item.author}`].filter(Boolean).join(' · ')
+              : [dateText(item.date, { weekday: true }), timeText(item.time), item.location].filter(Boolean).join(' · ')}
+          </p>
+          {(item.content || item.description) && (
+            <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.content || item.description}</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => startEdit(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1 text-xs font-black text-slate-700">
+            <Pencil className="h-3 w-3" /> Edit
+          </button>
+          <button type="button" onClick={() => remove(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">
+            <Trash2 className="h-3 w-3" /> Delete
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-5 animate-fadeIn">
@@ -202,36 +254,20 @@ export default function HRAnnouncementsManager({
       {editing && editing.kind === tab && renderForm()}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        {items.length === 0 && (
+        {total === 0 && (
           <p className="p-6 text-center text-sm font-semibold text-slate-500">
             {isAnnouncements ? 'No circulars yet. Click Post Circular to publish one.' : 'No events yet. Click Add Event to schedule one.'}
           </p>
         )}
-        {items.map(item => (
-          <div key={item.id} className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-3 last:border-0">
-            <div className="min-w-0 flex-1">
-              <p className="font-black text-slate-800">
-                {item.title}
-                {isAnnouncements && item.important && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black uppercase text-amber-800">Urgent</span>}
-                {!isAnnouncements && item.date < today && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black uppercase text-slate-500">Past</span>}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {isAnnouncements
-                  ? [item.category, item.referenceNo, item.date, item.author && `by ${item.author}`].filter(Boolean).join(' • ')
-                  : [item.date, item.time, EVENT_TYPES.find(type => type.value === item.type)?.label || item.type, item.location].filter(Boolean).join(' • ')}
-              </p>
-              {(item.content || item.description) && (
-                <p className="mt-1 line-clamp-2 text-xs text-slate-600">{item.content || item.description}</p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => startEdit(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1 text-xs font-black text-slate-700">
-                <Pencil className="h-3 w-3" /> Edit
-              </button>
-              <button type="button" onClick={() => remove(tab, item)} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-black text-rose-700">
-                <Trash2 className="h-3 w-3" /> Delete
-              </button>
-            </div>
+        {total > 0 && groups.map(group => (
+          <div key={group.key}>
+            {group.title && (group.items.length > 0 || group.key === 'upcoming') && (
+              <p className="px-3 pb-1 pt-3 text-[11px] font-black uppercase tracking-wide text-slate-500">{group.title} ({group.items.length})</p>
+            )}
+            {group.key === 'upcoming' && group.items.length === 0 && (
+              <p className="px-3 pb-3 text-xs font-semibold text-slate-500">No upcoming events. Click Add Event to schedule one.</p>
+            )}
+            {group.items.map(renderItem)}
           </div>
         ))}
       </div>
