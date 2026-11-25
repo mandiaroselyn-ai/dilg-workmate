@@ -9,11 +9,13 @@ import { toRequesterProfile } from '../utils/passwordSecurity.js';
 import { monthLabel } from '../utils/leaveCredits.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
 import { travelOrderCovers } from '../../../shared/travelStatus.js';
+import { checksDtrs, reportOpenToHr } from '../../../shared/dtrReport.js';
+import { DtrReport } from '../models/dtrReportModel.js';
 
-// Monthly DTR submission (CSC Form No. 48) through WorkMate. The employee certifies their DTR
-// for an ended month with their e-signature and password, and the Supervisor, as the In-charge,
-// verifies it by signing it in Adobe and uploading it (signedDocumentController), or returns it
-// with remarks. Under the Electronic Commerce
+// Monthly DTR submission (CSC Form No. 48) through WorkMate (see shared/dtrReport.js). The
+// employee certifies their DTR for an ended month with their e-signature and password; HR checks
+// it or returns it with remarks; the Supervisor (the PD), as the In-charge, verifies it by signing
+// it with their digital ID when signing the month's report (signedDocumentController). Under the Electronic Commerce
 // Act (RA 8792, Sec. 8) an electronic signature counts as a signature when it shows who signed
 // and that they approved: here the signer's own account, their password at the moment of
 // signing, and the time are kept with the signature.
@@ -93,7 +95,7 @@ export const getDtrSubmissions = async (req, res) => {
 };
 
 // The employee signs and submits their DTR for an ended month: { month, signature, password }.
-// A returned one is signed and submitted again. The Supervisor is told.
+// A returned one is signed and submitted again. HR is told.
 export const submitDtr = async (req, res) => {
   try {
     if (req.user?.accessLevel !== 'employee') {
@@ -115,61 +117,80 @@ export const submitDtr = async (req, res) => {
     const submission = await DtrSubmission.submit({ employee: req.user, month, signature, contentHash: dtrContentHash(records, month) });
     if (!submission) {
       const existing = await DtrSubmission.findOne(req.user.employeeId, month);
-      return res.status(409).json({ success: false, error: existing?.status === 'Verified' ? `Your DTR for ${monthLabel(month)} is already verified.` : `Your DTR for ${monthLabel(month)} is already submitted and waiting for the Supervisor.` });
+      const already = {
+        Verified: `Your DTR for ${monthLabel(month)} is already verified.`,
+        Checked: `Your DTR for ${monthLabel(month)} is already checked by HR and waiting for the Provincial Director's signature.`
+      };
+      return res.status(409).json({ success: false, error: already[existing?.status] || `Your DTR for ${monthLabel(month)} is already submitted and waiting for HR.` });
     }
     await Announcement.createNotification({
-      title: 'DTR for Verification',
-      message: `${req.user.name || 'An employee'} signed and submitted their DTR for ${monthLabel(month)} for your verification.`,
+      title: 'DTR to Check',
+      message: `${req.user.name || 'An employee'} signed and submitted their DTR for ${monthLabel(month)}. Check it in DTR Records.`,
       type: 'attendance',
-      recipientRole: 'supervisor',
-      view: 'supervisor'
-    }).catch(error => console.error('Unable to notify the Supervisor about a DTR:', error));
+      recipientRole: 'hr_admin'
+    }).catch(error => console.error('Unable to notify HR about a DTR:', error));
     res.status(201).json({ success: true, submission });
   } catch (error) {
     sendServerError(res, error);
   }
 };
 
-// The Supervisor returns a submitted DTR to the employee ({ id, action: 'return', remarks }).
-// Verifying it is signing it in Adobe as the In-charge and uploading it (signedDocumentController),
-// which also refuses a DTR whose attendance changed after the employee signed it.
+// HR checks a submitted DTR ({ id, action: 'check' }), which then waits for the month's report,
+// or returns it to the employee with remarks ({ id, action: 'return', remarks }). Neither is
+// allowed once the month's report is with the PD (unless the PD returned it). The Supervisor (PD)
+// verifies DTRs by signing them with the month's report (signedDocumentController).
 export const reviewDtrSubmission = async (req, res) => {
   try {
-    if (req.user?.accessLevel !== 'supervisor') {
-      return res.status(403).json({ success: false, error: 'Only the Supervisor (In-charge) verifies DTRs.' });
+    if (!checksDtrs(req.user)) {
+      return res.status(403).json({
+        success: false,
+        error: req.user?.accessLevel === 'supervisor'
+          ? 'HR checks and returns DTRs. Sign the month\'s DTR report, or return it to HR with what to fix.'
+          : 'Only HR (the HR/Admin desk) checks and returns DTRs.'
+      });
     }
     const { id, action } = req.body || {};
     const submission = typeof id === 'string' ? await DtrSubmission.findById(id) : null;
     if (!submission) return res.status(404).json({ success: false, error: 'DTR submission not found.' });
-    if (submission.status !== 'Submitted') {
+    if (!['Submitted', 'Checked'].includes(submission.status)) {
       return res.status(409).json({ success: false, error: `This DTR is already ${submission.status.toLowerCase()}.` });
     }
     const label = monthLabel(submission.month);
+    const report = await DtrReport.findByMonth(submission.month);
+    if (!reportOpenToHr(report)) {
+      return res.status(409).json({ success: false, error: `The DTR report for ${label} is already with the Provincial Director (${report.status}), so its DTRs can no longer be changed.` });
+    }
     const employee = await employeeOf(submission);
     const person = employee || { employeeId: submission.employeeId, email: submission.employeeEmail };
+    const by = req.user.name || 'HR';
 
-    // The Supervisor verifies a DTR by signing it in Adobe as the In-charge and uploading it
-    // (see signedDocumentController).
-    if (action === 'verify') {
-      return res.status(409).json({ success: false, error: 'Download the DTR, sign it in Adobe as the In-charge, and upload the signed PDF to verify it.' });
+    if (action === 'check') {
+      if (submission.status !== 'Submitted') return res.status(409).json({ success: false, error: 'This DTR is already checked.' });
+      const records = await DtrLog.findMonthForEmployee({ employeeId: person.employeeId, email: person.email }, submission.month);
+      if (dtrContentHash(records, submission.month) !== submission.contentHash) {
+        return res.status(409).json({ success: false, error: 'This DTR changed after the employee signed it (for example, a record was corrected). Return it so the employee signs the corrected DTR.' });
+      }
+      const checked = await DtrSubmission.check(id, by);
+      if (!checked) return res.status(409).json({ success: false, error: 'This DTR is no longer waiting for HR.' });
+      return res.status(200).json({ success: true, submission: checked });
     }
 
     if (action === 'return') {
       const remarks = typeof req.body.remarks === 'string' ? req.body.remarks.trim() : '';
       if (!remarks) return res.status(400).json({ success: false, error: 'Write in the remarks what the employee needs to fix.' });
       if (remarks.length > 300) return res.status(400).json({ success: false, error: 'The remarks must be 300 characters or fewer.' });
-      const returned = await DtrSubmission.returnToEmployee(id, { by: req.user.name || 'Supervisor', remarks });
-      if (!returned) return res.status(409).json({ success: false, error: 'This DTR is no longer waiting for verification.' });
+      const returned = await DtrSubmission.returnToEmployee(id, { by, remarks });
+      if (!returned) return res.status(409).json({ success: false, error: 'This DTR is no longer with HR.' });
       await noticeEmployee(person, {
         title: 'DTR Returned',
-        message: `Your DTR for ${label} was returned by ${req.user.name || 'the Supervisor'}. Fix it, then sign and submit it again in Documents. Remarks: ${remarks}`,
+        message: `Your DTR for ${label} was returned by ${by}. Fix it, then sign and submit it again in Documents. Remarks: ${remarks}`,
         type: 'attendance',
         view: 'documents'
       });
       return res.status(200).json({ success: true, submission: returned });
     }
 
-    res.status(400).json({ success: false, error: 'Choose to verify the DTR or return it to the employee.' });
+    res.status(400).json({ success: false, error: 'Choose to check the DTR or return it to the employee.' });
   } catch (error) {
     sendServerError(res, error);
   }

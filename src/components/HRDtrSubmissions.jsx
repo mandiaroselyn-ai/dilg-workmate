@@ -11,10 +11,11 @@ const lastEndedMonth = () => {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-const tone = { Verified: 'bg-emerald-50 text-emerald-700', Submitted: 'bg-blue-50 text-blue-700', Returned: 'bg-orange-50 text-orange-700' };
+const tone = { Verified: 'bg-emerald-50 text-emerald-700', Checked: 'bg-indigo-50 text-indigo-700', Submitted: 'bg-blue-50 text-blue-700', Returned: 'bg-orange-50 text-orange-700' };
 
-// HR's view of a month's DTRs signed through WorkMate: who has signed and submitted theirs, who
-// the Supervisor verified, and who has not submitted yet. The signed DTR itself is in each
+// HR's view of a month's DTRs signed through WorkMate: who has signed and submitted theirs, which
+// HR checked, which the Provincial Director verified, and who has not submitted yet. HR checks
+// them and sends the month's report in DTR Records (HRDtrDesk). The signed DTR itself is in each
 // employee's documents (Employee Management). `initialMonth` (YYYY-MM) is the month it starts
 // at; the month before this one when not given.
 export default function HRDtrSubmissions({ employees = [], submissions = [], initialMonth = '' }) {
@@ -35,14 +36,14 @@ export default function HRDtrSubmissions({ employees = [], submissions = [], ini
           <PenLine className="h-5 w-5 shrink-0 text-blue-700" />
           <span>
             <span className="block text-sm font-black text-slate-900">Signed DTRs</span>
-            <span className="block text-xs text-slate-500">{monthText(month)}: {count('Verified')} verified, {count('Submitted')} waiting for the Supervisor, {count('Returned')} returned, {count('Not submitted')} not submitted.</span>
+            <span className="block text-xs text-slate-500">{monthText(month)}: {count('Verified')} verified, {count('Checked')} checked by HR, {count('Submitted')} waiting for HR, {count('Returned')} returned, {count('Not submitted')} not submitted.</span>
           </span>
         </span>
         <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
-          <p className="text-xs text-slate-500">Each employee signs their DTR (CSC Form No. 48) for a month that has ended, and the Supervisor verifies it as the In-charge. Open an employee in Employee Management to view or download their signed DTR.</p>
+          <p className="text-xs text-slate-500">Each employee signs their DTR (CSC Form No. 48) for a month that has ended. HR checks it in DTR Records and sends it with the month's report to the Provincial Director, who verifies it as the In-charge. Open an employee in Employee Management to view or download their signed DTR.</p>
           <label className="text-[11px] font-black text-slate-600">Month
             <input type="month" value={month} max={lastEndedMonth()} onChange={event => event.target.value && setMonth(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
           </label>

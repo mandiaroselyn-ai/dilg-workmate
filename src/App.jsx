@@ -104,6 +104,7 @@ export default function App() {
   const [adminSmsAlerts, setAdminSmsAlerts] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [dtrSubmissions, setDtrSubmissions] = useState([]);
+  const [dtrReports, setDtrReports] = useState([]);
   // An employee's own holidays: the national and province-wide ones, and their town's.
   const myHolidays = useMemo(() => (activeRole === 'employee' ? holidaysFor(holidays, user) : holidays), [activeRole, holidays, user]);
   // Attendance as the DTR reads it, which the pages show. What is saved stays as it came. A record
@@ -1273,15 +1274,40 @@ export default function App() {
     if (saveSignature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
     return submission;
   };
-  // The Supervisor returns a DTR with remarks. Verifying one is signing it in Adobe and uploading
-  // it (handleUploadSignedForm).
+  // HR checks a DTR, or returns it with remarks. The PD verifies DTRs by signing them with the
+  // month's report (handleUploadSignedForm).
   const handleReviewDtr = async ({ id, action, remarks }) => sendDtrSubmission('PATCH', { id, action, remarks });
+  // The monthly DTR reports (see shared/dtrReport.js), for HR and the PD.
+  const loadDtrReports = useCallback(async () => {
+    const response = await apiFetch('/api/dtr-reports');
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.success) setDtrReports(Array.isArray(data.reports) ? data.reports : []);
+  }, []);
+  useEffect(() => {
+    if (!authToken || !['hr_admin', 'supervisor'].includes(activeRole)) return;
+    loadDtrReports().catch(error => console.warn('Unable to load DTR reports:', error));
+  }, [authToken, activeRole, loadDtrReports]);
+  const keepDtrReport = report => setDtrReports(previous => [report, ...previous.filter(item => item.id !== report.id)].sort((a, b) => b.month.localeCompare(a.month)));
+  // The PD returns a report to HR with remarks, or marks a signed one forwarded.
+  const handleReviewDtrReport = async body => {
+    const response = await apiFetch('/api/dtr-reports', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success || !data.report) throw new Error(data.error || 'Unable to save the DTR report.');
+    keepDtrReport(data.report);
+    return data.report;
+  };
+  const reloadDtrDesk = useCallback(() => Promise.all([loadDtrSubmissions(), loadDtrReports()]), [loadDtrSubmissions, loadDtrReports]);
   // A form signed with a digital ID, in Adobe or in WorkMate (HR 2's leave form, or the Head's leave form, Travel Order
   // or DTR): the request or DTR it belongs to is saved as the server returns it, and the next
   // reviewer is told, as a status change tells them.
   const handleUploadSignedForm = async args => {
     const data = await uploadSignedForm(args);
     if (data.submission) setDtrSubmissions(previous => [data.submission, ...previous.filter(item => item.id !== data.submission.id)]);
+    if (data.report) keepDtrReport(data.report);
     const saved = data.request;
     if (saved) {
       setRequests(previous => previous.map(request => (request.id === saved.id ? saved : request)));
@@ -1771,9 +1797,10 @@ export default function App() {
               onUpdateUser={handleUpdateUser}
               focus={focus}
               dtrSubmissions={dtrSubmissions}
-              onReviewDtr={handleReviewDtr}
+              dtrReports={dtrReports}
+              onReviewDtrReport={handleReviewDtrReport}
               onOpenDtr={openDtrSubmission}
-              onReloadDtrSubmissions={loadDtrSubmissions}
+              onReloadDtrSubmissions={reloadDtrDesk}
               onUploadSignedForm={handleUploadSignedForm}
             />
           )}
@@ -1808,6 +1835,9 @@ export default function App() {
               user={user}
               employees={employees}
               dtrSubmissions={dtrSubmissions}
+              dtrReports={dtrReports}
+              onReviewDtr={handleReviewDtr}
+              onOpenDtr={openDtrSubmission}
               attendanceHistory={dtrAttendance}
               attendanceFrom={attendanceWindowStart()}
               loadedAttendanceMonths={loadedAttendanceMonths}

@@ -10,7 +10,7 @@ export const dtrSubmissionFor = (submissions = [], employee, month) =>
   submissions.find(item => item.month === month && item.employeeId === employee?.employeeId) || null;
 
 // An employee's DTR (CSC Form No. 48) for `month` (YYYY-MM), as { fileName, fileType, bytes }.
-// A DTR the Supervisor verified is the copy they signed in Adobe; any other is filled in from
+// A DTR the Provincial Director verified is the copy they signed; any other is filled in from
 // the employee's attendance and Travel Orders, with the signatures it has so far.
 export const makeEmployeeDtr = async ({ employee, month, attendance = [], requests = [], submission = null }) => {
   const signed = submission?.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;

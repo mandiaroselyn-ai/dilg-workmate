@@ -44,7 +44,8 @@ const statusTone = status => ({
   Verified: 'bg-emerald-100 text-emerald-700',
   Rejected: 'bg-rose-100 text-rose-700',
   Returned: 'bg-orange-100 text-orange-700',
-  Submitted: 'bg-blue-100 text-blue-700'
+  Submitted: 'bg-blue-100 text-blue-700',
+  Checked: 'bg-indigo-100 text-indigo-700'
 }[status] || 'bg-amber-100 text-amber-700');
 
 const formatDate = value => {
@@ -132,7 +133,7 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
   };
 
   const makeDtr = async month => {
-    // A DTR the Supervisor verified is the copy they signed in Adobe.
+    // A DTR the Provincial Director verified is the copy they signed.
     const submission = submissionOf(month);
     const signed = submission?.status === 'Verified' && submission.signedForm ? await fetchSignedForm('dtr-incharge', submission.id) : null;
     if (signed) return { fileName: signed.fileName || `DTR_${month}_signed.pdf`, fileType: 'application/pdf', bytes: signed.bytes };
@@ -265,7 +266,8 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
             <ul className="space-y-2">
               {shown.map(({ month, days }) => {
                 const submission = submissionOf(month);
-                // A month that has ended is signed and submitted to the Supervisor (In-charge);
+                // A month that has ended is signed and submitted to HR, which sends it with the month's
+                // report to the Provincial Director (In-charge, see shared/dtrReport.js);
                 // a returned one is fixed and signed again.
                 const canSign = onSubmitDtr && month < thisMonth && (!submission || submission.status === 'Returned');
                 return (
@@ -292,11 +294,11 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
           onCancel={() => setSigning('')}
           onConfirm={async ({ signature, password, saveSignature }) => {
             await onSubmitDtr({ month: signing, signature, password, saveSignature });
-            setSignedNote(`Your DTR for ${formatMonth(signing)} was signed and sent to the Supervisor for verification.`);
+            setSignedNote(`Your DTR for ${formatMonth(signing)} was signed and sent to HR. HR checks it and sends it to the Provincial Director for verification.`);
             setSigning('');
           }}
         >
-          {submissionOf(signing)?.remarks && <p className="rounded-xl bg-orange-50 p-3 text-xs font-bold text-orange-800">Returned by the Supervisor: {submissionOf(signing).remarks}</p>}
+          {submissionOf(signing)?.remarks && <p className="rounded-xl bg-orange-50 p-3 text-xs font-bold text-orange-800">Returned by HR: {submissionOf(signing).remarks}</p>}
           <button type="button" onClick={() => view(`Daily Time Record – ${formatMonth(signing)}`, () => makeDtr(signing))} className="text-xs font-black text-blue-700 underline">Check the DTR before you sign it</button>
         </SignDtrDialog>
       )}

@@ -48,13 +48,19 @@ import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import HRFaceComparison from './HRFaceComparison';
 import { describeFingerprintCheck } from '../utils/fingerprintMessages';
 import { hasSelfie } from '../utils/hrAttendance';
+import { checksDtrs } from '../../shared/dtrReport';
 
 export default function HRAdminView({
   section = 'hr_dashboard',
   user = {},
   employees = [],
-  // The DTRs employees signed through WorkMate.
+  // The DTRs employees signed through WorkMate, and the monthly reports HR sends with them to the
+  // PD (see shared/dtrReport.js): HR checks or returns each DTR (onReviewDtr) and opens one with
+  // what it is made from (onOpenDtr).
   dtrSubmissions = [],
+  dtrReports = [],
+  onReviewDtr,
+  onOpenDtr,
   attendanceHistory = [],
   attendanceFrom,
   loadedAttendanceMonths = [],
@@ -422,6 +428,21 @@ export default function HRAdminView({
       {activeTab === 'dtr_records' && <HRAdminDTRRecordsView
         focus={dtrRecordsFocus}
         dtrSubmissions={dtrSubmissions}
+        dtrDesk={{
+          reports: dtrReports,
+          canAct: checksDtrs(user),
+          onReview: onReviewDtr,
+          onOpen: onOpenDtr,
+          onUploadSignedForm,
+          signer: {
+            image: user?.signatureImage || '',
+            key: user?.email || user?.employeeId || '',
+            name: user?.name || '',
+            email: user?.email || '',
+            position: user?.role || '',
+            onSaveSignature: onUpdateUser ? image => onUpdateUser({ signatureImage: image }) : null
+          }
+        }}
         employees={employees}
         attendanceHistory={attendanceHistory}
         attendanceFrom={attendanceFrom}

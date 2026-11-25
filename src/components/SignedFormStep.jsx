@@ -23,7 +23,8 @@ import { fetchSigningId, keepSigningId } from '../utils/signingId';
 // height }); owner is the signer's account (email or ID); signerName and signerEmail go on a
 // digital ID made here; image is the signer's saved signature (a data URL, or ''), and
 // onSaveSignature(image) saves a new one on their profile; reason is text or a function of
-// { decision, remarks }.
+// { decision, remarks }. An optional alsoSign() returns more forms to sign with the same digital
+// ID and password; onSubmit then also gets them signed as `also` ([{ ...form, file }]).
 //
 // As in Adobe's "Add signature", the signer puts their own signature on the form: the one saved on
 // their profile, or one they draw or upload now. It shows over their name in black ink (see
@@ -193,8 +194,26 @@ export default function SignedFormStep({
         location: digitalSign.location || ''
       });
       show(signed);
-      const file = new File([signed], form.fileName.replace(/(_to_sign)?\.pdf$/i, '_signed.pdf'), { type: 'application/pdf' });
-      await onSubmit({ file, ...choice });
+      const signedName = name => name.replace(/(_to_sign)?\.pdf$/i, '_signed.pdf');
+      const file = new File([signed], signedName(form.fileName), { type: 'application/pdf' });
+      // More forms signed with the same digital ID and signature, one password for all (such as
+      // the DTRs of a month's report): [{ bytes, fileName, marks or spot, pageIndex?, reason?, label? }].
+      const also = [];
+      const more = digitalSign.alsoSign ? await digitalSign.alsoSign() : [];
+      for (const [index, extra] of more.entries()) {
+        setMessage({ text: `Signing ${index + 1} of ${more.length}${extra.label ? `: ${extra.label}` : ''}…`, error: false });
+        const bytes = await signPdfWithDigitalId(extra.bytes, {
+          digitalId,
+          pageIndex: extra.pageIndex || 0,
+          marks: marksOfForm(extra),
+          image: ink,
+          reason: extra.reason || (typeof digitalSign.reason === 'function' ? digitalSign.reason(choice) : digitalSign.reason || ''),
+          location: digitalSign.location || ''
+        });
+        also.push({ ...extra, file: new File([bytes], signedName(extra.fileName), { type: 'application/pdf' }) });
+      }
+      if (more.length) setMessage({ text: 'Saving the signed forms…', error: false });
+      await onSubmit({ file, also, ...choice });
       // A new signature is kept on the profile for next time, when the signer chose to.
       if (useNewSignature && saveSignature && digitalSign.onSaveSignature) {
         await Promise.resolve(digitalSign.onSaveSignature(drawnSignature)).catch(() => {});

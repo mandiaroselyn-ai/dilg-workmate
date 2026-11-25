@@ -15,6 +15,7 @@ import signingIdRoutes from './routes/signingIdRoutes.js';
 import travelDocumentRoutes from './routes/travelDocumentRoutes.js';
 import googleAuthRoutes from './routes/googleAuthRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
+import dtrReportRoutes from './routes/dtrReportRoutes.js';
 import { authenticate } from './middleware/auth.js';
 import helmet from 'helmet';
 import { createRateLimits } from './middleware/rateLimits.js';
@@ -103,6 +104,7 @@ export function createApiApp() {
   app.use('/api', overtimeOrderRoutes);
   app.use('/api', downloadRoutes);
   app.use('/api', dtrSubmissionRoutes);
+  app.use('/api', dtrReportRoutes);
   app.use('/api', signedDocumentRoutes);
   app.use('/api', signingIdRoutes);
   app.use('/api', travelDocumentRoutes);

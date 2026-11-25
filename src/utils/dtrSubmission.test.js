@@ -15,7 +15,8 @@ test('the form carries the employee\'s signature, and the In-charge\'s once veri
 
 test('where a signed DTR stands, in a few words', () => {
   assert.equal(dtrStatusText(null), '');
-  assert.equal(dtrStatusText({ status: 'Submitted', employeeSignature }), 'Signed Nov 2, 2026, waiting for the Supervisor\'s verification');
+  assert.equal(dtrStatusText({ status: 'Submitted', employeeSignature }), 'Signed Nov 2, 2026, with HR for checking');
+  assert.equal(dtrStatusText({ status: 'Checked', employeeSignature, checked: { name: 'Ma. Joane O. Salcedo', at: '2026-11-03T01:00:00Z' } }), 'Checked by Ma. Joane O. Salcedo on Nov 3, 2026, for the Provincial Director\'s signature');
   assert.equal(dtrStatusText({ status: 'Verified', employeeSignature, verification }), 'Verified by Ivan Stephen F. Fadri, CESE on Nov 3, 2026');
   assert.equal(dtrStatusText({ status: 'Returned', remarks: 'Oct 6 has no Time Out.' }), 'Returned: Oct 6 has no Time Out.');
 });

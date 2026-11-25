@@ -15,10 +15,12 @@ const when = value => (value
   ? new Date(value).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })
   : '');
 
-// Where a submission stands, in a few words ('' when there is none).
+// Where a submission stands, in a few words ('' when there is none): with HR, checked by HR (for
+// the PD's signature with the month's report), verified, or returned (see shared/dtrReport.js).
 export const dtrStatusText = submission => {
   if (!submission) return '';
-  if (submission.status === 'Verified') return `Verified by ${submission.verification?.name || 'the Supervisor'} on ${when(submission.verification?.signedAt)}`;
+  if (submission.status === 'Verified') return `Verified by ${submission.verification?.name || 'the Provincial Director'} on ${when(submission.verification?.signedAt)}`;
   if (submission.status === 'Returned') return `Returned: ${submission.remarks || 'fix it and sign again'}`;
-  return `Signed ${when(submission.employeeSignature?.signedAt)}, waiting for the Supervisor's verification`;
+  if (submission.status === 'Checked') return `Checked by ${submission.checked?.name || 'HR'} on ${when(submission.checked?.at)}, for the Provincial Director's signature`;
+  return `Signed ${when(submission.employeeSignature?.signedAt)}, with HR for checking`;
 };

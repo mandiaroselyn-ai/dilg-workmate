@@ -4,11 +4,12 @@ import { isConnected } from '../config/db.js';
 import { ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // An employee's DTR (CSC Form No. 48) for one month, signed through WorkMate: the employee
-// certifies it ("I CERTIFY on my honor...") and the Supervisor, as the In-charge, verifies it
-// ("VERIFIED as to the prescribed office hours"). `status` is 'Submitted' (signed by the
-// employee, waiting for the Supervisor), 'Verified', or 'Returned' (sent back to the employee
-// with remarks, to fix and sign again). `contentHash` is the month's attendance as the employee
-// signed it (see dtrContentHash), so the Supervisor cannot verify a DTR that changed since.
+// certifies it ("I CERTIFY on my honor..."), HR checks it, and the Supervisor (the PD), as the
+// In-charge, verifies it ("VERIFIED as to the prescribed office hours") when signing the month's
+// report (see shared/dtrReport.js). `status` is 'Submitted' (signed by the employee, with HR),
+// 'Checked' (checked by HR, for the month's report), 'Verified', or 'Returned' (sent back to the
+// employee with remarks, to fix and sign again). `contentHash` is the month's attendance as the
+// employee signed it (see dtrContentHash), so a DTR that changed since cannot be checked or verified.
 const SignatureSchema = new mongoose.Schema({
   image: { type: String, default: '' }, // data:image/png or jpeg
   name: { type: String, default: '' },
@@ -24,6 +25,11 @@ const DtrSubmissionSchema = new mongoose.Schema({
   month: { type: String, required: true }, // YYYY-MM
   status: { type: String, required: true },
   employeeSignature: { type: SignatureSchema, default: null },
+  // HR's check: who checked it and when.
+  checked: {
+    type: new mongoose.Schema({ name: { type: String, default: '' }, at: { type: Date, default: null } }, { _id: false }),
+    default: null
+  },
   verification: { type: SignatureSchema, default: null },
   remarks: { type: String, default: '' },
   contentHash: { type: String, default: '' },
@@ -31,7 +37,7 @@ const DtrSubmissionSchema = new mongoose.Schema({
   signedForm: { type: mongoose.Schema.Types.Mixed, default: null },
   history: {
     type: [{
-      action: String, // submitted, verified, returned
+      action: String, // submitted, checked, verified, returned
       by: String,
       at: { type: Date, default: Date.now },
       remarks: { type: String, default: '' }
@@ -97,6 +103,12 @@ export const DtrSubmission = {
     return found ? toClient(found) : null;
   },
 
+  // Everyone's submissions for `month` (YYYY-MM).
+  findMonth: async month => {
+    ensureConnected();
+    return (await MongoDtrSubmission.find({ month }).sort({ employeeName: 1 }).lean()).map(toClient);
+  },
+
   findOne: async (employeeId, month) => {
     ensureConnected();
     const found = await MongoDtrSubmission.findOne({ employeeId, month }).lean();
@@ -113,6 +125,7 @@ export const DtrSubmission = {
       employeeName: employee.name || '',
       status: 'Submitted',
       employeeSignature: signature,
+      checked: null,
       verification: null,
       remarks: '',
       contentHash,
@@ -144,23 +157,37 @@ export const DtrSubmission = {
     }
   },
 
-  // The Supervisor's verification of a Submitted DTR, with the note of the DTR they signed in
-  // Adobe (`signedForm`). Null when it is no longer waiting.
+  // HR's check of a Submitted DTR: it waits for the month's report. Null when it is no longer
+  // waiting for HR.
+  check: async (id, by) => {
+    ensureConnected();
+    const at = new Date();
+    const updated = await MongoDtrSubmission.findOneAndUpdate(
+      { customId: id, status: 'Submitted' },
+      { $set: { status: 'Checked', checked: { name: by, at }, remarks: '' }, $push: { history: { action: 'checked', by, at } } },
+      { new: true }
+    );
+    return updated ? toClient(updated) : null;
+  },
+
+  // The Supervisor's verification of a DTR HR checked, with the note of the DTR they signed
+  // (`signedForm`). Null when it is no longer waiting.
   verify: async (id, signature, signedForm = null) => {
     ensureConnected();
     const updated = await MongoDtrSubmission.findOneAndUpdate(
-      { customId: id, status: 'Submitted' },
+      { customId: id, status: 'Checked' },
       { $set: { status: 'Verified', verification: signature, remarks: '', signedForm }, $push: { history: { action: 'verified', by: signature.name, at: signature.signedAt } } },
       { new: true }
     );
     return updated ? toClient(updated) : null;
   },
 
-  // Sends a Submitted DTR back to the employee with remarks. Null when it is no longer waiting.
+  // HR sends a Submitted or Checked DTR back to the employee with remarks. Null when it is no
+  // longer with HR.
   returnToEmployee: async (id, { by, remarks }) => {
     ensureConnected();
     const updated = await MongoDtrSubmission.findOneAndUpdate(
-      { customId: id, status: 'Submitted' },
+      { customId: id, status: { $in: ['Submitted', 'Checked'] } },
       { $set: { status: 'Returned', remarks }, $push: { history: { action: 'returned', by, at: new Date(), remarks } } },
       { new: true }
     );

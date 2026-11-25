@@ -71,9 +71,11 @@ export default function SupervisorView({
   onUploadSignedForm,
   // From a notification's button: { requestId } of the request to open.
   focus = null,
-  // The DTRs employees signed through WorkMate, for the Supervisor to verify as the In-charge.
+  // The DTRs employees signed through WorkMate, and the monthly reports HR sends with them, for
+  // the Supervisor (the PD) to sign as the In-charge (see shared/dtrReport.js).
   dtrSubmissions = [],
-  onReviewDtr,
+  dtrReports = [],
+  onReviewDtrReport,
   onOpenDtr,
   onReloadDtrSubmissions,
   // Saves the Supervisor's profile changes, such as a new signature to sign with.
@@ -228,12 +230,12 @@ export default function SupervisorView({
           }`}
         >
           <Clock className="w-4 h-4" />
-          <span>DTR to Verify ({dtrSubmissions.filter(item => item.status === 'Submitted').length})</span>
+          <span>DTR Reports ({dtrReports.filter(item => item.status === 'For PD').length})</span>
         </button>
       </div>
 
       {activeMainTab === 'dtr' ? (
-        <SupervisorDtrDesk submissions={dtrSubmissions} onReview={onReviewDtr} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} signerKey={user?.email || user?.employeeId || ''} signerName={user?.name || ''} signerEmail={user?.email || ''} onSaveSignature={saveSignature} />
+        <SupervisorDtrDesk reports={dtrReports} submissions={dtrSubmissions} onReviewReport={onReviewDtrReport} onOpen={onOpenDtr} onReload={onReloadDtrSubmissions} onUploadSignedForm={onUploadSignedForm} signatureImage={user?.signatureImage || ''} signerKey={user?.email || user?.employeeId || ''} signerName={user?.name || ''} signerEmail={user?.email || ''} onSaveSignature={saveSignature} />
       ) : (<>
       {/* Row 1: Quick Insights Counters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 text-left">

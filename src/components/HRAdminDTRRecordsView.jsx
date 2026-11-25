@@ -9,7 +9,7 @@ import { dayEntry } from '../utils/dtrMonth';
 import { BROWSER_FINGERPRINT_CAUTION, describeFingerprintCheck, usedBrowserFingerprint } from '../utils/fingerprintMessages';
 import HRFaceComparison from './HRFaceComparison';
 import HRHolidays from './HRHolidays';
-import HRDtrSubmissions from './HRDtrSubmissions';
+import HRDtrDesk from './HRDtrDesk';
 import HROvertimeOrders from './HROvertimeOrders';
 import OlderAttendanceLoader from './OlderAttendanceLoader';
 
@@ -272,7 +272,9 @@ const isVerified = record => Boolean(record?.verificationAudit?.verifiedAt);
 
 // HR 1's DTR desk. Leave credits (their start and the monthly crediting and charging) are HR 2's,
 // on its Leave Credits page. `onSaveRecord` saves one record's update, `onSaveRecords` several.
-export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
+// `dtrDesk` is what HR's desk for the month's DTRs and report needs (see HRDtrDesk): { reports,
+// canAct, onReview, onOpen, onUploadSignedForm, signer }.
+export default function HRAdminDTRRecordsView({ dtrSubmissions = [], dtrDesk = {}, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('All Months');
   const [dateFilter, setDateFilter] = useState('All Dates');
@@ -497,7 +499,7 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], employees =
         <h2 className="text-xl font-black text-slate-900">DTR Records</h2>
       </div>
       <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
-      <HRDtrSubmissions employees={employees} submissions={dtrSubmissions} />
+      <HRDtrDesk employees={employees} submissions={dtrSubmissions} {...dtrDesk} />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
       <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
