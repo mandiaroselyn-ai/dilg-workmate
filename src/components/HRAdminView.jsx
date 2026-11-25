@@ -434,7 +434,9 @@ export default function HRAdminView({
           canAct: checksDtrs(user),
           onReview: onReviewDtr,
           onOpen: onOpenDtr,
-          onSendReport: onSendDtrReport
+          onSendReport: onSendDtrReport,
+          // The month's leave and Travel Orders, for the Consolidated Report of Attendance.
+          requests
         }}
         employees={employees}
         attendanceHistory={attendanceHistory}

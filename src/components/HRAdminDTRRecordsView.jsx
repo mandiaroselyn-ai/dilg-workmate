@@ -273,7 +273,7 @@ const isVerified = record => Boolean(record?.verificationAudit?.verifiedAt);
 // HR 1's DTR desk. Leave credits (their start and the monthly crediting and charging) are HR 2's,
 // on its Leave Credits page. `onSaveRecord` saves one record's update, `onSaveRecords` several.
 // `dtrDesk` is what HR's desk for the month's DTRs and report needs (see HRDtrDesk): { reports,
-// canAct, onReview, onOpen, onSendReport }.
+// canAct, onReview, onOpen, onSendReport, requests }.
 export default function HRAdminDTRRecordsView({ dtrSubmissions = [], dtrDesk = {}, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('All Months');
@@ -499,7 +499,16 @@ export default function HRAdminDTRRecordsView({ dtrSubmissions = [], dtrDesk = {
         <h2 className="text-xl font-black text-slate-900">DTR Records</h2>
       </div>
       <OlderAttendanceLoader from={attendanceFrom} loadedMonths={loadedAttendanceMonths} onLoadMonth={onLoadAttendanceMonth} />
-      <HRDtrDesk employees={employees} submissions={dtrSubmissions} {...dtrDesk} />
+      <HRDtrDesk
+        employees={employees}
+        submissions={dtrSubmissions}
+        attendanceHistory={attendanceHistory}
+        holidays={holidays}
+        attendanceFrom={attendanceFrom}
+        loadedAttendanceMonths={loadedAttendanceMonths}
+        onLoadAttendanceMonth={onLoadAttendanceMonth}
+        {...dtrDesk}
+      />
       <HRHolidays holidays={holidays} onHolidaysChange={onHolidaysChange} />
       <HROvertimeOrders employees={employees} orders={overtimeOrders} onOrdersChange={onOvertimeOrdersChange} />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

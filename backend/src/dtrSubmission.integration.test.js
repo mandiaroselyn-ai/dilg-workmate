@@ -191,6 +191,32 @@ test('HR sends the month\'s report with the checked DTRs to the PD, signing noth
   t.mock.restoreAll();
   t.mock.timers.reset();
 
+  // The Consolidated Report of Attendance goes with it, kept as HR's page made it, cleaned.
+  signIn(t, { as: hr });
+  t.mock.method(DtrSubmission, 'findMonth', async () => month.submissions);
+  t.mock.method(DtrReport, 'findByMonth', async () => null);
+  const sendAgain = t.mock.method(DtrReport, 'send', async details => ({ id: 'rep-1', status: 'For PD', ...details }));
+  const consolidated = {
+    director: 'Ivan Stephen F. Fadri, CESE',
+    vacant: '1; drop table',
+    counts: { personnel: 2, male: 1, female: -4 },
+    rows: [
+      { no: 7, name: 'Dela Cruz, Juan', position: 'LGOO II', station: 'DILG-Boac', vl: '12-15', tardy: '30 min - October 5', remarks: 'SPL - 21', extra: 'dropped' },
+      { name: '', remarks: 42 }
+    ]
+  };
+  const withConsolidated = await request(app).post('/api/dtr-reports').set({ Authorization: `Bearer ${createAuthToken(hr)}` }).send({ month: '2026-10', rows, consolidated });
+  assert.equal(withConsolidated.status, 200, JSON.stringify(withConsolidated.body));
+  const kept = sendAgain.mock.calls[0].arguments[0].consolidated;
+  assert.equal(kept.director, 'Ivan Stephen F. Fadri, CESE');
+  assert.equal(kept.vacant, '');
+  assert.deepEqual(kept.counts, { personnel: 2, male: 1, female: 0 });
+  assert.deepEqual(kept.rows.map(row => [row.no, row.name, row.vl, row.sl, row.remarks]), [[1, 'Dela Cruz, Juan', '12-15', '', 'SPL - 21'], [2, 'Employee', '', '', '']]);
+  assert.equal('extra' in kept.rows[0], false);
+  assert.match(Announcement.createNotification.mock.calls.at(-1).arguments[0].message, /with 1 DTR and the Consolidated Report of Attendance\./);
+  t.mock.restoreAll();
+  t.mock.timers.reset();
+
   for (const as of [hr2, supervisor, employee]) {
     signIn(t, { as });
     const refused = await request(app).post('/api/dtr-reports').set({ Authorization: `Bearer ${createAuthToken(as)}` }).send({ month: '2026-10', rows });
@@ -242,6 +268,60 @@ test('the PD signs each DTR of the report as the In-charge, then the report, and
   assert.equal(approve.mock.calls[0].arguments[1].approvedBy.name, 'Ivan Stephen F. Fadri, CESE');
   assert.equal(saved.mock.calls.at(-1).arguments[0].kind, 'dtr-report-pd');
   assert.equal(Announcement.createNotification.mock.calls.at(-1).arguments[0].recipientRole, 'hr_admin');
+});
+
+test('the PD certifies the Consolidated Report of Attendance sent with the report before signing the report', async t => {
+  const session = signIn(t, { as: supervisor });
+  const dtr = { id: 'dtr-1', employeeId: 'EMP-61', month: '2026-10', status: 'Verified' };
+  const consolidated = { director: 'Ivan Stephen F. Fadri, CESE', vacant: '1', counts: { personnel: 1, male: 1, female: 0 }, rows: [{ no: 1, name: 'Dela Cruz, Juan' }] };
+  const state = { report: { id: 'rep-1', month: '2026-10', status: 'For PD', submissionIds: ['dtr-1'], consolidated, signedForms: {} } };
+  t.mock.method(DtrSubmission, 'findMonth', async () => [dtr]);
+  t.mock.method(DtrReport, 'findByMonth', async () => state.report);
+  const saved = t.mock.method(SignedDocument, 'save', async () => {});
+  const signConsolidated = t.mock.method(DtrReport, 'signConsolidated', async (id, note) => ({ ...state.report, signedForms: { consolidated: note } }));
+  const approve = t.mock.method(DtrReport, 'approve', async (id, details) => ({ ...state.report, status: 'Signed by PD', ...details }));
+  const upload = (kind, bytes) => session.upload({ kind, ref: '2026-10', fileName: 'signed.pdf', data: bytes.toString('base64') });
+
+  // The report waits for the Consolidated Report of Attendance.
+  const early = await upload('dtr-report-pd', await signedForm('dtr-report', '2026-10'));
+  assert.equal(early.status, 409);
+  assert.match(early.body.error, /Sign the Consolidated Report of Attendance sent with this report first/);
+  assert.equal(approve.mock.callCount(), 0);
+
+  // It must be this month's, signed.
+  assert.match((await upload('dtr-consolidated-pd', await signedForm('dtr-consolidated-pd', '2026-09'))).body.error, /not the form WorkMate made/);
+  assert.match((await upload('dtr-consolidated-pd', await signedForm('dtr-consolidated-pd', '2026-10', { signed: false }))).body.error, /no digital signature/);
+  const certified = await upload('dtr-consolidated-pd', await signedForm('dtr-consolidated-pd', '2026-10'));
+  assert.equal(certified.status, 200, JSON.stringify(certified.body));
+  assert.equal(saved.mock.calls.at(-1).arguments[0].kind, 'dtr-consolidated-pd');
+  assert.equal(signConsolidated.mock.calls[0].arguments[1].uploadedBy, 'Ivan Stephen F. Fadri, CESE');
+  assert.ok(certified.body.report.signedForms.consolidated);
+
+  state.report = { ...state.report, signedForms: { consolidated: { uploadedBy: 'Ivan Stephen F. Fadri, CESE' } } };
+  const done = await upload('dtr-report-pd', await signedForm('dtr-report', '2026-10'));
+  assert.equal(done.status, 200, JSON.stringify(done.body));
+  assert.equal(approve.mock.callCount(), 1);
+  t.mock.restoreAll();
+  t.mock.timers.reset();
+
+  // Only the PD signs it, and only a report sent with one.
+  const hrSession = signIn(t, { as: hr });
+  t.mock.method(DtrReport, 'findByMonth', async () => state.report);
+  assert.equal((await hrSession.upload({ kind: 'dtr-consolidated-pd', ref: '2026-10', fileName: 'x.pdf', data: (await signedForm('dtr-consolidated-pd', '2026-10')).toString('base64') })).status, 403);
+  t.mock.restoreAll();
+  t.mock.timers.reset();
+  const pdSession = signIn(t, { as: supervisor });
+  t.mock.method(DtrReport, 'findByMonth', async () => ({ ...state.report, consolidated: null }));
+  assert.equal((await pdSession.upload({ kind: 'dtr-consolidated-pd', ref: '2026-10', fileName: 'x.pdf', data: (await signedForm('dtr-consolidated-pd', '2026-10')).toString('base64') })).status, 404);
+  t.mock.restoreAll();
+  t.mock.timers.reset();
+
+  // An employee cannot open it.
+  signIn(t, { as: employee });
+  const find = t.mock.method(SignedDocument, 'find', async () => ({ data: Buffer.from('%PDF-') }));
+  const opened = await request(app).get('/api/signed-documents?kind=dtr-consolidated-pd&ref=2026-10').set({ Authorization: `Bearer ${createAuthToken(employee)}` });
+  assert.equal(opened.status, 404);
+  assert.equal(find.mock.callCount(), 0);
 });
 
 test('the PD verifies a DTR only from a report with them, and only if it did not change', async t => {

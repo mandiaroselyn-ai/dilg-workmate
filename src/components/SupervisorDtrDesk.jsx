@@ -3,7 +3,7 @@ import { CheckCircle2, ChevronDown, Clock, Download, Eye, MessageSquare, PenLine
 import { DTR_REPORT_STATUS, DTR_STATUS } from '../../shared/dtrReport';
 import { dtrInChargeMarks } from '../utils/dtrForm';
 import { dtrStatusText } from '../utils/dtrSubmission';
-import { downloadReportZip, makeSubmissionDtr, monthText, reportCover } from '../utils/dtrReport';
+import { consolidatedDocument, downloadReportZip, makeSubmissionDtr, monthText, reportCover } from '../utils/dtrReport';
 import { dtrReportMarks } from '../utils/dtrReportForm';
 import { stampForSigning } from '../utils/signedForms';
 import DocumentViewer from './DocumentViewer';
@@ -19,9 +19,10 @@ const when = value => (value ? new Date(value).toLocaleDateString('en-US', { tim
 
 // The Provincial Director's desk for the monthly DTR reports (see shared/dtrReport.js). HR sends
 // each month's report, a cover list of every employee's DTR, with the DTRs it checked (HR signs
-// nothing; the DTRs carry the employees' signatures). The PD opens them and
-// signs once, with their digital ID and password: the report as "Approved by" and every DTR as the
-// In-charge ("VERIFIED as to the prescribed office hours"). Or the PD returns the report to HR
+// nothing; the DTRs carry the employees' signatures), and the month's Consolidated Report of
+// Attendance. The PD opens them and signs once, with their digital ID and password: the report as
+// "Approved by", every DTR as the In-charge ("VERIFIED as to the prescribed office hours"), and the
+// Consolidated Report of Attendance as the PD who certifies it. Or the PD returns the report to HR
 // with what to fix. A signed report downloads as one ZIP (the report and the signed DTRs) to send
 // to the Regional Office, and the PD marks it forwarded.
 // `signatureImage` is the PD's saved signature; `signerKey` is their account, under which this
@@ -55,6 +56,13 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
     title: `DTR Report – ${monthText(report.month)}`,
     load: () => reportCover(report)
   });
+  const viewConsolidated = report => setViewer({
+    key: Date.now(),
+    title: `Consolidated Report of Attendance – ${monthText(report.month)}`,
+    load: () => consolidatedDocument(report)
+  });
+  // Whether the report came with a Consolidated Report of Attendance that is not signed yet.
+  const consolidatedToSign = report => Boolean(report.consolidated) && !report.signedForms?.consolidated;
 
   // The report made from the list HR sent, tagged for the upload, to sign as "Approved by" on its
   // last page.
@@ -68,6 +76,7 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
     for (const submission of dtrsOf(report).filter(item => item.status === DTR_STATUS.checked)) {
       const made = await makeSubmissionDtr(submission, onOpen);
       forms.push({
+        kind: 'dtr-incharge',
         ref: submission.id,
         label: submission.employeeName,
         bytes: await stampForSigning(made.bytes, 'dtr-incharge', submission.id),
@@ -76,16 +85,31 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
         reason: `Verified as to the prescribed office hours (In-charge), DTR ${monthText(submission.month)}`
       });
     }
+    // The Consolidated Report of Attendance sent with it, certified above the PD's name.
+    if (consolidatedToSign(report)) {
+      const made = await consolidatedDocument(report);
+      forms.push({
+        kind: 'dtr-consolidated-pd',
+        ref: report.month,
+        label: 'Consolidated Report of Attendance',
+        bytes: await stampForSigning(made.bytes, 'dtr-consolidated-pd', report.month),
+        pageIndex: made.pageIndex,
+        fileName: made.fileName.replace(/\.pdf$/i, '_to_sign.pdf'),
+        marks: made.marks,
+        reason: `Certified the Consolidated Report of Attendance for ${monthText(report.month)}`
+      });
+    }
     return forms;
   };
-  // Saves the signed DTRs first (the report waits for them), then the report.
+  // Saves the signed DTRs and the Consolidated Report of Attendance first (the report waits for
+  // them), then the report.
   const saveSigned = async (report, { file, also = [] }) => {
     for (const [index, item] of also.entries()) {
-      say(`Saving DTR ${index + 1} of ${also.length}: ${item.label}…`);
-      await onUploadSignedForm({ kind: 'dtr-incharge', ref: item.ref, file: item.file });
+      say(`Saving ${index + 1} of ${also.length}: ${item.label}…`);
+      await onUploadSignedForm({ kind: item.kind || 'dtr-incharge', ref: item.ref, file: item.file });
     }
     await onUploadSignedForm({ kind: 'dtr-report-pd', ref: report.month, file });
-    say(`The DTR report for ${monthText(report.month)} and its ${report.submissionIds.length} DTR${report.submissionIds.length === 1 ? '' : 's'} are signed. Download them for the Regional Office under To Forward.`);
+    say(`The DTR report for ${monthText(report.month)}, its ${report.submissionIds.length} DTR${report.submissionIds.length === 1 ? '' : 's'}${report.consolidated ? ', and the Consolidated Report of Attendance' : ''} are signed. Download them for the Regional Office under To Forward.`);
     setSigning(null);
   };
 
@@ -121,7 +145,7 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
     <section className="space-y-4 text-left">
       <div>
         <h2 className="text-lg font-black text-slate-900">Monthly DTR Reports</h2>
-        <p className="text-xs font-semibold text-slate-500">HR sends each month's report with the DTRs (CSC Form No. 48) the employees signed and HR checked. Sign once with your digital ID: the report as Approved by, and every DTR as the In-charge. Then send it to the Regional Office.</p>
+        <p className="text-xs font-semibold text-slate-500">HR sends each month's report with the DTRs (CSC Form No. 48) the employees signed and HR checked, and the Consolidated Report of Attendance. Sign once with your digital ID: the report as Approved by, every DTR as the In-charge, and the Consolidated Report of Attendance above your name. Then send them to the Regional Office.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {TABS.map(item => (
@@ -147,6 +171,7 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => viewCover(report)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View Report</button>
+                  {report.consolidated && <button type="button" onClick={() => viewConsolidated(report)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View Consolidated Report</button>}
                   {report.status === DTR_REPORT_STATUS.forPd && (
                     <>
                       <button type="button" onClick={() => { say(''); setReturning(null); setSigning(report); }} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white"><PenLine className="h-3.5 w-3.5" />Sign Report &amp; DTRs</button>
@@ -185,7 +210,7 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
                   <SignedFormStep
                     key={report.id}
                     title="Approve the report and verify its DTRs"
-                    description={`One signature for the report and the ${dtrs.filter(item => item.status === DTR_STATUS.checked).length} DTR(s) still to sign: you sign each DTR as the In-charge, verified as to the prescribed office hours.`}
+                    description={`One signature for the report and the ${dtrs.filter(item => item.status === DTR_STATUS.checked).length} DTR(s) still to sign: you sign each DTR as the In-charge, verified as to the prescribed office hours.${consolidatedToSign(report) ? ' You also certify the Consolidated Report of Attendance, signed above your name.' : ''}`}
                     signLabel="Sign the Report & DTRs"
                     digitalSign={{
                       getForm: () => coverToSign(report),

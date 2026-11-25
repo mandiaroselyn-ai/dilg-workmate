@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { FileSpreadsheet, Printer, RotateCcw } from 'lucide-react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import bagongPilipinasLogo from '../assets/Bagong_Pilipinas-logo.png';
 import dilgSeal from '../assets/dilg-seal.png';
 import consolidatedTemplateUrl from '../assets/template/consolidated-attendance-template.xlsx?url';
-import { apiFetch } from '../utils/api.js';
-import { provincialDirectorName } from '../utils/consolidatedAttendance';
 import { consolidatedHtml, fillConsolidatedXlsx } from '../utils/consolidatedReportFiles';
 import { downloadBytes } from '../utils/documentFiles';
 import {
@@ -18,6 +16,7 @@ import {
   reportCsv,
   reportHtml
 } from '../utils/reports';
+import { useProvincialDirector } from '../utils/useProvincialDirector';
 
 // The screen shows this many rows; the downloaded and printed reports have them all.
 const PREVIEW_ROWS = 100;
@@ -39,20 +38,9 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
   // make the report again.
   const [vacant, setVacant] = useState('');
   const [message, setMessage] = useState('');
-  // The supervisor and HR/Admin accounts, to find the Provincial Director who signs the
-  // attendance report.
-  const [staff, setStaff] = useState([]);
   const isAttendance = type === 'attendance';
-
-  useEffect(() => {
-    let current = true;
-    apiFetch('/api/staff')
-      .then(response => (response.ok ? response.json() : null))
-      .then(data => { if (current && Array.isArray(data?.staff)) setStaff(data.staff); })
-      .catch(() => {});
-    return () => { current = false; };
-  }, []);
-  const director = provincialDirectorName([...staff, ...employees]);
+  // The Provincial Director who certifies the attendance report, from WorkMate's accounts.
+  const director = useProvincialDirector(employees);
 
   const sortedEmployees = useMemo(
     () => [...employees].filter(employee => employeeKey(employee)).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
@@ -266,7 +254,7 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
         {isAttendance && (
           <p className={`mt-2 text-[11px] font-semibold ${director ? 'text-slate-600' : 'text-amber-700'}`}>
             {director
-              ? `Certified by ${director.toUpperCase()}, Provincial Director, from that WorkMate account. The PD signs above the name.`
+              ? `Certified by ${director.toUpperCase()}, Provincial Director, from that WorkMate account. The PD signs it in WorkMate with the month's DTR report: it goes with the report HR sends in DTR Records.`
               : 'No active WorkMate account has the position title Provincial Director, so the name above "Provincial Director" is left blank. Set the PD\'s position title in Employee Directory > Supervisors & HR/Admin, or write the name on the report.'}
           </p>
         )}

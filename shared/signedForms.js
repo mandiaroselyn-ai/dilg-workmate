@@ -16,7 +16,10 @@ export const SIGNED_FORM_KINDS = {
   'dtr-incharge': { label: 'Daily Time Record (CSC Form No. 48)', role: 'supervisor', signatures: 1 },
   // The month's DTR report (its cover list), which HR sends unsigned, signed by the Head as
   // "Approved by". HR signs nothing (the user, 2026-11-25: "walang pirma ang hr 1").
-  'dtr-report-pd': { label: 'Monthly DTR Report (approved by the Head)', role: 'supervisor', signatures: 1 }
+  'dtr-report-pd': { label: 'Monthly DTR Report (approved by the Head)', role: 'supervisor', signatures: 1 },
+  // The month's Consolidated Report of Attendance (DILG Marinduque's template), which HR sends
+  // unsigned with the DTR report, certified and signed by the Head.
+  'dtr-consolidated-pd': { label: 'Consolidated Report of Attendance (certified by the Head)', role: 'supervisor', signatures: 1 }
 };
 
 // A short tag WorkMate writes into the PDF it makes, so an uploaded file can be matched to the

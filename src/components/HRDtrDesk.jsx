@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { CheckCircle2, ChevronDown, Download, Eye, MessageSquare, PenLine, RotateCcw, Send } from 'lucide-react';
-import { getManilaDateString } from '../../shared/localDate';
+import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
 import { employeesInServiceSince } from '../../shared/separation';
 import { DTR_REPORT_STATUS, DTR_STATUS, reportNotReady, reportOpenToHr } from '../../shared/dtrReport';
 import { dtrStatusText } from '../utils/dtrSubmission';
-import { downloadReportZip, makeSubmissionDtr, monthText, reportCover, reportRows } from '../utils/dtrReport';
+import { consolidatedDocument, consolidatedToSend, downloadReportZip, makeConsolidatedPdf, makeSubmissionDtr, monthText, reportCover, reportRows } from '../utils/dtrReport';
 import { dtrReportFilename, fillDtrReport } from '../utils/dtrReportForm';
+import { buildReport } from '../utils/reports';
+import { useProvincialDirector } from '../utils/useProvincialDirector';
 import DocumentViewer from './DocumentViewer';
 
 // The month before this one, as YYYY-MM: the latest DTR that can be submitted.
@@ -27,16 +29,22 @@ const statusLabel = status => ({ [DTR_STATUS.submitted]: 'To check', [DTR_STATUS
 // as they signed it, which HR checks or returns with remarks; then the month's report (a cover
 // list of everyone's DTR), which HR sends with the checked DTRs to the Provincial Director. HR signs
 // nothing: the DTRs carry the employees' signatures, and the PD signs them and the report. Once the
-// PD signs it, HR downloads it for the Regional Office too. `canAct` is false for an HR account
-// that only views (HR 2's desk). `onSendReport({ month, rows })` sends the report.
-export default function HRDtrDesk({ employees = [], submissions = [], reports = [], canAct = true, onReview, onOpen, onSendReport }) {
+// PD signs it, HR downloads it for the Regional Office too. The month's Consolidated Report of
+// Attendance (DILG Marinduque's template, see utils/consolidatedAttendance.js) goes with it, made
+// from the month's attendance and leave (`attendanceHistory`, `requests`, `holidays`; an earlier
+// month is loaded first with `onLoadAttendanceMonth`), for the PD to certify and sign too.
+// `canAct` is false for an HR account that only views (HR 2's desk).
+// `onSendReport({ month, rows, consolidated })` sends the report.
+export default function HRDtrDesk({ employees = [], submissions = [], reports = [], canAct = true, onReview, onOpen, onSendReport, attendanceHistory = [], requests = [], holidays = [], attendanceFrom = '', loadedAttendanceMonths = [], onLoadAttendanceMonth }) {
   const [open, setOpen] = useState(true);
   const [month, setMonth] = useState(lastEndedMonth);
   const [viewer, setViewer] = useState(null);
   const [returning, setReturning] = useState(null);
   const [remarks, setRemarks] = useState('');
+  const [vacant, setVacant] = useState('');
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState({ text: '', error: false });
+  const director = useProvincialDirector(employees);
 
   const staff = employeesInServiceSince(employees, `${month}-01`);
   const rows = reportRows(staff, submissions, month);
@@ -46,6 +54,36 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
   const notReady = reportNotReady(ofMonth, month);
   const count = status => rows.filter(row => (row.submission?.status || 'Not submitted') === status).length;
   const say = (text, error = false) => setNote({ text, error });
+  // Whether the month's attendance is on this page: the loaded months, or an earlier one loaded.
+  const monthLoaded = !attendanceFrom || month >= attendanceFrom.slice(0, 7) || loadedAttendanceMonths.includes(month);
+  // The month's Consolidated Report of Attendance as it would go now, made only when it is needed.
+  const consolidatedNow = () => consolidatedToSend(buildReport({
+    type: 'attendance',
+    records: attendanceHistory,
+    requests,
+    employees,
+    holidays,
+    filters: { month },
+    from: loadedAttendanceMonths.includes(month) ? '' : attendanceFrom,
+    today: getManilaDateString(),
+    minutes: getManilaMinutesOfDay()
+  }), { director, vacant });
+  const viewConsolidated = () => setViewer({
+    key: Date.now(),
+    title: `Consolidated Report of Attendance – ${monthText(month)}`,
+    load: () => (report && !openToHr ? consolidatedDocument(report) : makeConsolidatedPdf(month, consolidatedNow()))
+  });
+  const loadMonth = async () => {
+    setBusy('load');
+    say('');
+    try {
+      await onLoadAttendanceMonth(month);
+    } catch (error) {
+      say(error.message || 'Unable to load that month.', true);
+    } finally {
+      setBusy('');
+    }
+  };
 
   const view = submission => setViewer({ key: Date.now(), title: `DTR of ${submission.employeeName} – ${monthText(submission.month)}`, load: () => makeSubmissionDtr(submission, onOpen) });
   // The report: as sent (signed by the PD once they sign it), or as it would go now.
@@ -85,16 +123,21 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
     }
   };
 
-  // Sends the month's report with its checked DTRs to the PD (HR signs nothing).
+  // Sends the month's report with its checked DTRs and the Consolidated Report of Attendance to
+  // the PD (HR signs nothing).
   const send = async () => {
-    if (busy) return;
+    if (busy || !monthLoaded) return;
     const checkedCount = ofMonth.filter(item => item.status === DTR_STATUS.checked).length;
-    if (!window.confirm(`Send the DTR report for ${monthText(month)} with ${checkedCount} checked DTR${checkedCount === 1 ? '' : 's'} to the Provincial Director? Its DTRs cannot be changed while the PD has it.`)) return;
+    if (!window.confirm(`Send the DTR report for ${monthText(month)} with ${checkedCount} checked DTR${checkedCount === 1 ? '' : 's'} and the Consolidated Report of Attendance to the Provincial Director? Its DTRs cannot be changed while the PD has it.`)) return;
     setBusy('send');
     say('');
     try {
-      await onSendReport({ month, rows: rows.map(({ employeeId, name, position, office }) => ({ employeeId, name, position, office })) });
-      say(`The DTR report for ${monthText(month)} was sent to the Provincial Director.`);
+      await onSendReport({
+        month,
+        rows: rows.map(({ employeeId, name, position, office }) => ({ employeeId, name, position, office })),
+        consolidated: consolidatedNow()
+      });
+      say(`The DTR report and the Consolidated Report of Attendance for ${monthText(month)} were sent to the Provincial Director.`);
     } catch (error) {
       say(error.message || 'Unable to send the report.', true);
     } finally {
@@ -119,7 +162,7 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
     : {
       [DTR_REPORT_STATUS.forPd]: `Sent to the Provincial Director on ${when(report.sentBy?.at)} with ${report.submissionIds.length} DTR${report.submissionIds.length === 1 ? '' : 's'}. Waiting for the signature.`,
       [DTR_REPORT_STATUS.returned]: `Returned by the Provincial Director: ${report.remarks || 'fix it and send it again'}`,
-      [DTR_REPORT_STATUS.signed]: `Signed by ${report.approvedBy?.name || 'the Provincial Director'} on ${when(report.approvedBy?.at)}. Ready for the Regional Office.`,
+      [DTR_REPORT_STATUS.signed]: `Signed by ${report.approvedBy?.name || 'the Provincial Director'} on ${when(report.approvedBy?.at)}${report.consolidated ? ', with the Consolidated Report of Attendance' : ''}. Ready for the Regional Office.`,
       [DTR_REPORT_STATUS.forwarded]: `Forwarded to the Regional Office on ${when(report.forwarded?.at)}${report.forwarded?.reference ? ` (${report.forwarded.reference})` : ''}.`
     }[report.status] || report.status;
 
@@ -137,7 +180,7 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
       </button>
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
-          <p className="text-xs text-slate-500">Employees sign their DTR (CSC Form No. 48) when a month ends, and it comes here. Check each one, or return it with what to fix. Then send the month's report with the checked DTRs to the Provincial Director, who signs them and forwards them to the Regional Office. HR does not sign: only the employees and the PD do.</p>
+          <p className="text-xs text-slate-500">Employees sign their DTR (CSC Form No. 48) when a month ends, and it comes here. Check each one, or return it with what to fix. Then send the month's report with the checked DTRs and the Consolidated Report of Attendance to the Provincial Director, who signs them and forwards them to the Regional Office. HR does not sign: only the employees and the PD do.</p>
           <label className="text-[11px] font-black text-slate-600">Month
             <input type="month" value={month} max={lastEndedMonth()} onChange={event => { if (event.target.value) { setMonth(event.target.value); say(''); } }} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
           </label>
@@ -145,16 +188,28 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
           <div className={`rounded-xl border p-3 text-xs ${report?.status === DTR_REPORT_STATUS.returned ? 'border-orange-200 bg-orange-50 text-orange-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
             <p className="font-black">Report for {monthText(month)}{report ? `: ${report.status}` : ''}</p>
             <p className="mt-0.5 font-semibold">{reportLine}</p>
+            {canAct && openToHr && (
+              <label className="mt-2 block text-[11px] font-black text-slate-600">No. of vacant positions (Consolidated Report of Attendance)
+                <input type="number" min="0" inputMode="numeric" value={vacant} onChange={event => setVacant(event.target.value)} placeholder="Leave blank if none to report" className="mt-1 block w-48 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-800" />
+              </label>
+            )}
             <div className="mt-2 flex flex-wrap gap-2">
               {(!openToHr || !notReady) && <button type="button" onClick={viewCover} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View Report</button>}
+              {(openToHr ? monthLoaded : Boolean(report?.consolidated)) && <button type="button" onClick={viewConsolidated} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View Consolidated Report</button>}
               {[DTR_REPORT_STATUS.signed, DTR_REPORT_STATUS.forwarded].includes(report?.status) && (
                 <button type="button" disabled={busy === 'zip'} onClick={download} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 disabled:opacity-60"><Download className="h-3.5 w-3.5" />{busy === 'zip' ? 'Downloading…' : 'Download Report and DTRs (ZIP)'}</button>
               )}
               {canAct && openToHr && (
-                <button type="button" disabled={Boolean(notReady) || busy === 'send'} onClick={send} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"><Send className="h-3.5 w-3.5" />{busy === 'send' ? 'Sending…' : report ? 'Send the Report Again' : 'Send the Report to the PD'}</button>
+                <button type="button" disabled={Boolean(notReady) || !monthLoaded || busy === 'send'} onClick={send} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"><Send className="h-3.5 w-3.5" />{busy === 'send' ? 'Sending…' : report ? 'Send the Report Again' : 'Send the Report to the PD'}</button>
               )}
             </div>
             {canAct && openToHr && notReady && <p className="mt-2 text-[11px] font-semibold text-slate-500">{notReady}</p>}
+            {canAct && openToHr && !monthLoaded && (
+              <p className="mt-2 text-[11px] font-semibold text-amber-800">
+                The attendance of {monthText(month)} is not loaded, so its Consolidated Report of Attendance cannot be made yet.
+                {onLoadAttendanceMonth && <button type="button" disabled={busy === 'load'} onClick={loadMonth} className="ml-2 rounded-lg border border-amber-300 bg-white px-2 py-1 text-[11px] font-black text-amber-800 disabled:opacity-60">{busy === 'load' ? 'Loading…' : `Load ${monthText(month)}`}</button>}
+              </p>
+            )}
           </div>
 
           {note.text && <p role={note.error ? 'alert' : 'status'} className={`rounded-xl p-3 text-xs font-bold ${note.error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{note.text}</p>}

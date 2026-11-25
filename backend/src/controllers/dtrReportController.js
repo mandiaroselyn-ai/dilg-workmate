@@ -31,11 +31,39 @@ export const getDtrReports = async (req, res) => {
 
 const MAX_ROWS = 500;
 const text = (value, max) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+const tally = value => (Number.isInteger(value) && value >= 0 && value <= 10000 ? value : 0);
 
-// POST { month, rows: [{ employeeId, name, position, office }] }: HR sends the month's report to
-// the PD with the month's checked DTRs. `rows` are the employees in service that month, as HR's
-// list shows them; what each row says of the DTR is the server's. None may still wait for HR's
-// check, and each DTR sent must still be the one its employee signed.
+// The month's Consolidated Report of Attendance as HR's page made it (see
+// src/utils/consolidatedAttendance.js), kept as sent so the PD certifies what HR saw: the PD's name
+// from WorkMate's accounts, the vacant positions HR typed, the counts, and a row per organic
+// employee. Null when none was sent.
+const consolidatedOf = given => {
+  if (!given || typeof given !== 'object' || !Array.isArray(given.rows) || given.rows.length > MAX_ROWS) return null;
+  const vacant = text(given.vacant, 6);
+  return {
+    director: text(given.director, 150),
+    vacant: /^\d+$/.test(vacant) ? vacant : '',
+    counts: { personnel: tally(given.counts?.personnel), male: tally(given.counts?.male), female: tally(given.counts?.female) },
+    rows: given.rows.map((row, index) => ({
+      no: index + 1,
+      name: text(row?.name, 150) || 'Employee',
+      position: text(row?.position, 150),
+      station: text(row?.station, 100),
+      vl: text(row?.vl, 300),
+      sl: text(row?.sl, 300),
+      tardy: text(row?.tardy, 2000),
+      undertime: text(row?.undertime, 2000),
+      halfDay: text(row?.halfDay, 300),
+      remarks: text(row?.remarks, 2000)
+    }))
+  };
+};
+
+// POST { month, rows: [{ employeeId, name, position, office }], consolidated }: HR sends the
+// month's report to the PD with the month's checked DTRs and the Consolidated Report of
+// Attendance. `rows` are the employees in service that month, as HR's list shows them; what each
+// row says of the DTR is the server's. None may still wait for HR's check, and each DTR sent must
+// still be the one its employee signed.
 export const sendDtrReport = async (req, res) => {
   try {
     if (!checksDtrs(req.user)) return res.status(403).json({ success: false, error: 'Only HR (the HR/Admin desk) sends the DTR report.' });
@@ -70,16 +98,18 @@ export const sendDtrReport = async (req, res) => {
         dtr: dtrColumn(employeeId ? submissions.find(item => item.employeeId === employeeId) : null)
       };
     });
+    const consolidated = consolidatedOf(req.body?.consolidated);
     const report = await DtrReport.send({
       month,
       submissionIds: checked.map(item => item.id),
       rows,
+      consolidated,
       sentBy: { name: req.user.name || '', position: req.user.role || '', at: new Date() }
     });
     if (!report) return res.status(409).json({ success: false, error: `The DTR report for ${monthLabel(month)} was already sent.` });
     await Announcement.createNotification({
       title: 'DTR Report to Sign',
-      message: `${req.user.name || 'HR'} sent the DTR report for ${monthLabel(month)} with ${checked.length} DTR${checked.length === 1 ? '' : 's'}. Sign the report and the DTRs, or return it to HR.`,
+      message: `${req.user.name || 'HR'} sent the DTR report for ${monthLabel(month)} with ${checked.length} DTR${checked.length === 1 ? '' : 's'}${consolidated ? ' and the Consolidated Report of Attendance' : ''}. Sign them, or return the report to HR.`,
       type: 'attendance',
       recipientRole: 'supervisor',
       view: 'supervisor'

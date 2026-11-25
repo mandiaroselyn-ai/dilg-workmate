@@ -1313,7 +1313,7 @@ export default function App() {
     keepDtrReport(data.report);
     return data.report;
   };
-  // HR sends a month's report to the PD ({ month, rows }); HR signs nothing.
+  // HR sends a month's report to the PD ({ month, rows, consolidated }); HR signs nothing.
   const handleSendDtrReport = body => sendDtrReportChange('POST', body);
   // The PD returns a report to HR with remarks, or marks a signed one forwarded.
   const handleReviewDtrReport = body => sendDtrReportChange('PATCH', body);

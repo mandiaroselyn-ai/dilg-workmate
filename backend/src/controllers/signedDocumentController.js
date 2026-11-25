@@ -21,7 +21,8 @@ import { Announcement } from '../models/announcementModel.js';
 //   comes straight to the Head) signed to approve it, or an employee's DTR signed as the In-charge
 //   to verify it;
 // - the Head uploads the month's DTR report, which HR sent unsigned, signed as "Approved by" (see
-//   shared/dtrReport.js).
+//   shared/dtrReport.js), after the Consolidated Report of Attendance HR sent with it, which the
+//   Head certifies and signs.
 // The upload is the official copy that the employee and HR then view and download.
 
 const FINAL_KINDS = ['leave-head', 'travel-head', 'dtr-incharge'];
@@ -201,6 +202,9 @@ const uploadDtrReportPd = async (req, res, { ref: month, bytes, fileName }) => {
   if (unsigned.length) {
     return res.status(409).json({ success: false, error: `Sign these DTRs as the In-charge first: ${unsigned.map(item => item.employeeName || item.employeeId).join(', ')}.` });
   }
+  if (report.consolidated && !report.signedForms?.consolidated) {
+    return res.status(409).json({ success: false, error: 'Sign the Consolidated Report of Attendance sent with this report first.' });
+  }
   const problem = await signedPdfProblem(bytes, { kind: 'dtr-report-pd', ref: month, minSignatures: 1 });
   if (problem) return res.status(400).json({ success: false, error: problem });
   const signatures = countSignatures(bytes);
@@ -217,6 +221,23 @@ const uploadDtrReportPd = async (req, res, { ref: month, bytes, fileName }) => {
   return res.status(200).json({ success: true, report: approved });
 };
 
+// The PD certifies and signs the month's Consolidated Report of Attendance (made from what HR sent
+// with the DTR report; HR signs nothing), before signing the report itself.
+const uploadDtrConsolidatedPd = async (req, res, { ref: month, bytes, fileName }) => {
+  if (req.user?.accessLevel !== 'supervisor') return res.status(403).json({ success: false, error: 'Only the Provincial Director signs the Consolidated Report of Attendance.' });
+  const report = isReportMonth(month) ? await DtrReport.findByMonth(month) : null;
+  if (!report?.consolidated) return res.status(404).json({ success: false, error: 'No Consolidated Report of Attendance was sent with this DTR report.' });
+  if (report.status !== DTR_REPORT_STATUS.forPd) return res.status(409).json({ success: false, error: `This DTR report is ${report.status.toLowerCase()}.` });
+  const problem = await signedPdfProblem(bytes, { kind: 'dtr-consolidated-pd', ref: month, minSignatures: 1 });
+  if (problem) return res.status(400).json({ success: false, error: problem });
+  const signatures = countSignatures(bytes);
+  await SignedDocument.save({ kind: 'dtr-consolidated-pd', ref: month, fileName, bytes, signatures, sha256: sha256(bytes), uploadedBy: uploader(req.user) });
+  const note = signedNote({ fileName, size: bytes.length, signatures, uploadedBy: uploader(req.user), uploadedAt: new Date() });
+  const signed = await DtrReport.signConsolidated(report.id, note);
+  if (!signed) return res.status(409).json({ success: false, error: 'This DTR report is no longer waiting for your signature.' });
+  return res.status(200).json({ success: true, report: signed });
+};
+
 // POST { kind, ref, fileName, data (base64 PDF), decision?, remarks? }.
 export const uploadSignedDocument = async (req, res) => {
   try {
@@ -229,6 +250,7 @@ export const uploadSignedDocument = async (req, res) => {
     if (kind === 'leave-hr') return await uploadHrLeave(req, res, args);
     if (kind === 'dtr-incharge') return await uploadDtrVerification(req, res, args);
     if (kind === 'dtr-report-pd') return await uploadDtrReportPd(req, res, args);
+    if (kind === 'dtr-consolidated-pd') return await uploadDtrConsolidatedPd(req, res, args);
     return await uploadHeadDecision(req, res, args);
   } catch (error) {
     sendServerError(res, error);

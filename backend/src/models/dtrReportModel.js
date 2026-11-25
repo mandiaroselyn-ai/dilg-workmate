@@ -6,7 +6,10 @@ import { isConnected } from '../config/db.js';
 // in service that month) with the checked DTRs (`submissionIds`) to the PD, who signs it as
 // "Approved by" (and each DTR as the In-charge) or returns it to HR, then forwards it to the
 // Regional Office. HR signs nothing. One per month. The signed cover is a SignedDocument
-// ('dtr-report-pd') under the month; here is only a short note of it.
+// ('dtr-report-pd') under the month; here is only a short note of it. The month's Consolidated
+// Report of Attendance goes with it (`consolidated`: what HR's page made of it, the PD's name, and
+// the number of vacant positions HR typed), which the PD certifies and signs too
+// ('dtr-consolidated-pd', noted as `signedForms.consolidated`).
 const PersonSchema = new mongoose.Schema({
   name: { type: String, default: '' },
   position: { type: String, default: '' },
@@ -28,6 +31,9 @@ const DtrReportSchema = new mongoose.Schema({
     }, { _id: false })],
     default: []
   },
+  // { director, vacant, counts: { personnel, male, female }, rows: [{ no, name, position, station,
+  // vl, sl, tardy, undertime, halfDay, remarks }] }, or null for a report sent without one.
+  consolidated: { type: mongoose.Schema.Types.Mixed, default: null },
   sentBy: { type: PersonSchema, default: null },
   approvedBy: { type: PersonSchema, default: null },
   signedForms: { type: mongoose.Schema.Types.Mixed, default: {} },
@@ -86,10 +92,10 @@ export const DtrReport = {
 
   // HR sends the month's report to the PD: a new one, or one the PD returned. Returns it, or
   // null when one is already with the PD or past it.
-  send: async ({ month, submissionIds, rows, sentBy }) => {
+  send: async ({ month, submissionIds, rows, consolidated = null, sentBy }) => {
     ensureConnected();
     const entry = { action: 'sent', by: sentBy.name, at: sentBy.at };
-    const fields = { status: 'For PD', submissionIds, rows, sentBy, approvedBy: null, signedForms: {}, remarks: '', forwarded: null };
+    const fields = { status: 'For PD', submissionIds, rows, consolidated, sentBy, approvedBy: null, signedForms: {}, remarks: '', forwarded: null };
     const existing = await MongoDtrReport.findOne({ month });
     if (existing) {
       if (existing.status !== 'Returned to HR') return null;
@@ -114,6 +120,18 @@ export const DtrReport = {
     const updated = await MongoDtrReport.findOneAndUpdate(
       { customId: id, status: 'For PD' },
       { $set: { status: 'Returned to HR', remarks }, $push: { history: { action: 'returned', by, at: new Date(), remarks } } },
+      { new: true }
+    );
+    return updated ? toClient(updated) : null;
+  },
+
+  // The PD's signature on the Consolidated Report of Attendance sent with the report. Null when
+  // the report is no longer with the PD.
+  signConsolidated: async (id, signedForm) => {
+    ensureConnected();
+    const updated = await MongoDtrReport.findOneAndUpdate(
+      { customId: id, status: 'For PD' },
+      { $set: { 'signedForms.consolidated': signedForm } },
       { new: true }
     );
     return updated ? toClient(updated) : null;
