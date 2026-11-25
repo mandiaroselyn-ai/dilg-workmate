@@ -32,7 +32,7 @@ import { createAuthToken, sessionLengthFor, sessionLengthOf } from '../utils/aut
 import { getFrontendOrigin } from '../utils/frontendOrigin.js';
 import { readGoogleSignUpToken } from '../utils/googleSignUp.js';
 import { normalizeApprovedWfhLocation } from '../utils/attendanceAssignment.js';
-import { carryRecordsOrWarn } from '../services/employeeIdentity.js';
+import { carryRecordsOrWarn, detachRecordsOfDeletedAccount } from '../services/employeeIdentity.js';
 import { normalizeSeparation } from '../../../shared/separation.js';
 import { isAgencyEmailAddress } from '../utils/agencyEmail.js';
 
@@ -693,8 +693,9 @@ export const deleteEmployee = async (req, res) => {
   try {
     // The one account HR chose, by its database ID (old accounts can share an Employee ID), once
     // it is no longer Active. Its attendance, requests, and signed DTRs are separate documents and
-    // stay in the database; HR's pages and reports list only current accounts, so they no longer
-    // show there.
+    // stay in the database, set apart under a deleted owner (see detachRecordsOfDeletedAccount):
+    // HR's pages and reports list only current accounts, and an account made again with the same
+    // email or Employee ID does not get them back.
     const account = await User.findEmployeeAccount(req.params.identifier);
     if (!account) return res.status(404).json({ success: false, error: 'Employee account not found.' });
     if ((account.accountStatus || 'Active').toString().trim().toLowerCase() === 'active') {
@@ -704,6 +705,7 @@ export const deleteEmployee = async (req, res) => {
     if (!deleted) {
       return res.status(409).json({ success: false, error: 'The account changed while it was being deleted. Refresh the employee list and try again.' });
     }
+    const warning = await detachRecordsOfDeletedAccount(account);
     const reviewer = req.user?.name || req.user?.email || 'HR/Admin';
     await Announcement.createNotification({
       title: 'Employee Account Deleted',
@@ -711,7 +713,7 @@ export const deleteEmployee = async (req, res) => {
       type: 'employee_management',
       recipientRole: 'hr_admin'
     }).catch(error => console.error('Unable to record the employee deletion notice:', error));
-    res.status(200).json({ success: true, id: String(deleted._id || ''), employeeId: deleted.employeeId || '', email: deleted.email || '' });
+    res.status(200).json({ success: true, id: String(deleted._id || ''), employeeId: deleted.employeeId || '', email: deleted.email || '', ...(warning ? { warning } : {}) });
   } catch (error) {
     sendServerError(res, error);
   }

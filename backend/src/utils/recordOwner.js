@@ -19,6 +19,16 @@ export const ownRecordsFilter = ({ employeeId = '', email = '', name = '' } = {}
   return { ...owner, $or: [{ [nameField]: exactly(name) }, { [nameField]: { $in: ['', null] } }] };
 };
 
+// How one account's own records are found, as `$or` choices: by its Employee ID, and by its email
+// only for records with no Employee ID (made by an account that had none). A record with another
+// Employee ID is not the account's, though its email is the same: it belongs to an earlier account
+// with that email, deleted since. This matches how HR's pages tell records apart (Employee ID
+// first, see src/utils/attendanceIdentity.js).
+export const ownByIdOrEmail = ({ employeeId = '', email = '' } = {}, { idField = 'employeeId', emailField = 'employeeEmail' } = {}) => [
+  ...(employeeId ? [{ [idField]: employeeId }] : []),
+  ...(email ? [employeeId ? { [emailField]: email, [idField]: { $in: ['', null] } } : { [emailField]: email }] : [])
+];
+
 // The `$set` for a record's owner fields: the new Employee ID and name that changed.
 export const ownerChanges = ({ employeeId, name } = {}, { idField = 'employeeId', nameField = 'employeeName' } = {}) => ({
   ...(employeeId ? { [idField]: employeeId } : {}),

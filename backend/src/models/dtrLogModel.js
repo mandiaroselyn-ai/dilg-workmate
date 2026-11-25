@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
 import { clockTextMinutes, isLateLunchIn, isLateTimeText } from '../utils/attendanceTime.js';
-import { ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
+import { ownByIdOrEmail, ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // A Time In or Time Out made in the phone app without internet and sent later.
 const OfflineEntrySchema = new mongoose.Schema({
@@ -295,19 +295,13 @@ export const DtrLog = {
   // An employee's own records, newest first and shaped for lists (see toListLog).
   // An employee's records for one month (`month` YYYY-MM), shaped for lists.
   findMonthForEmployee: async ({ employeeId, email }, month) => {
-    const owners = [
-      ...(employeeId ? [{ employeeId }] : []),
-      ...(email ? [{ employeeEmail: email }] : [])
-    ];
+    const owners = ownByIdOrEmail({ employeeId, email });
     if (!owners.length || !/^\d{4}-\d{2}$/.test(String(month || ''))) return [];
     return findListLogs({ $and: [{ $or: owners }, { date: { $regex: `^${month}-` } }] });
   },
 
   findListForEmployee: async ({ employeeId, email }) => {
-    const owners = [
-      ...(employeeId ? [{ employeeId }] : []),
-      ...(email ? [{ employeeEmail: email }] : [])
-    ];
+    const owners = ownByIdOrEmail({ employeeId, email });
     return owners.length ? findListLogs({ $or: owners }) : [];
   },
 
@@ -453,10 +447,7 @@ export const DtrLog = {
   // Records belonging to one employee, matched by employee ID or email in the database.
   findForEmployee: async ({ employeeId, email }, { includeEvidence = true } = {}) => {
     ensureConnected();
-    const owners = [
-      ...(employeeId ? [{ employeeId }] : []),
-      ...(email ? [{ employeeEmail: email }] : [])
-    ];
+    const owners = ownByIdOrEmail({ employeeId, email });
     if (!owners.length) return [];
     const query = MongoDtrLog.find({ $or: owners }).sort({ createdAt: -1 });
     if (!includeEvidence) query.select(EVIDENCE_FIELDS);

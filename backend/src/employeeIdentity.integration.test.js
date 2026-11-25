@@ -19,7 +19,7 @@ const { DtrSubmission } = await import('./models/dtrSubmissionModel.js');
 const { TravelDocument } = await import('./models/travelDocumentModel.js');
 const { OvertimeOrder } = await import('./models/overtimeOrderModel.js');
 const { createAuthToken } = await import('./utils/authToken.js');
-const { ownRecordsFilter, ownerChanges } = await import('./utils/recordOwner.js');
+const { ownByIdOrEmail, ownRecordsFilter, ownerChanges } = await import('./utils/recordOwner.js');
 const { carryRecordsToNewIdentity, RECORDS_NOT_MOVED } = await import('./services/employeeIdentity.js');
 
 const app = createApiApp();
@@ -165,6 +165,43 @@ test('an Inactive account is deleted, with records or without; an Active one is 
   find.mock.mockImplementation(async () => null);
   assert.equal((await request(app).delete('/api/employees/64b000000000000000000009').set(...auth)).status, 404);
   assert.equal(remove.mock.callCount(), 1);
+});
+
+test('a deleted account\'s records are set apart, so an account made again starts with none', async t => {
+  const inactive = { ...roselyn, accountStatus: 'Inactive' };
+  t.mock.method(User, 'findByEmail', async () => hr);
+  t.mock.method(User, 'findEmployeeAccount', async () => inactive);
+  t.mock.method(Announcement, 'createNotification', async data => data);
+  t.mock.method(User, 'deleteEmployee', async () => inactive);
+  const moves = mockMoves(t);
+
+  const deleted = await request(app).delete(`/api/employees/${roselyn._id}`).set('Authorization', `Bearer ${createAuthToken(hr)}`);
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  assert.equal(deleted.body.warning, undefined);
+  // Every kind of record moves from the account's Employee ID to a deleted owner's, which still
+  // says whose they were.
+  const setApart = `deleted:${roselyn.employeeId}:${roselyn._id}`;
+  for (const move of [moves.dtr, moves.leave, moves.submissions, moves.documents]) {
+    const [owner, changes] = move.mock.calls[0].arguments;
+    assert.deepEqual(owner, { employeeId: roselyn.employeeId, email: roselyn.email, name: roselyn.name });
+    assert.equal(changes.employeeId, setApart);
+  }
+  assert.deepEqual(moves.overtime.mock.calls[0].arguments, [roselyn.employeeId, setApart]);
+  // A failure to move them is said, and the account stays deleted.
+  moves.dtr.mock.mockImplementation(async () => { throw new Error('database down'); });
+  const failed = await request(app).delete(`/api/employees/${roselyn._id}`).set('Authorization', `Bearer ${createAuthToken(hr)}`);
+  assert.equal(failed.status, 200);
+  assert.match(failed.body.warning, /could not be set apart/);
+});
+
+test('an account\'s own records are found by its Employee ID, and by email only when a record has no ID', () => {
+  assert.deepEqual(ownByIdOrEmail({ employeeId: 'DILG-2026-111111', email: 'rose@x.test' }), [
+    { employeeId: 'DILG-2026-111111' },
+    { employeeEmail: 'rose@x.test', employeeId: { $in: ['', null] } }
+  ]);
+  // An account with no Employee ID goes by its email.
+  assert.deepEqual(ownByIdOrEmail({ email: 'rose@x.test' }), [{ employeeEmail: 'rose@x.test' }]);
+  assert.deepEqual(ownByIdOrEmail({}), []);
 });
 
 test('HR deletes the very account chosen, even when another account shares its Employee ID', async t => {

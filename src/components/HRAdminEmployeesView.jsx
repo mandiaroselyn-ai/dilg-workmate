@@ -643,7 +643,8 @@ This cannot be undone.`
       onEmployeesChange?.(previous => previous.filter(employee => employeeKey(employee) !== key));
       setSelectedId(null);
       setScreen('list');
-      notify(`${name}'s account was deleted.`);
+      // The server says when the account's records could not all be set apart from it.
+      notify(data.warning ? `${name}'s account was deleted. ${data.warning}` : `${name}'s account was deleted.`, Boolean(data.warning));
     } catch (error) {
       notify(error.message || 'Unable to delete the employee account.', true);
     } finally {

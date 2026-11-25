@@ -32,6 +32,25 @@ export const carryRecordsToNewIdentity = async (before, after) => {
   return counts.reduce((total, count) => total + (Number(count) || 0), 0);
 };
 
+// The Employee ID a deleted account's records are left under, such as
+// "deleted:DILG-2026-123456:6650f0c2...": they stay in the database (RA 9470), still saying whose
+// they were, but no account matches it, so a new account made again with the same email or
+// Employee ID starts with no records.
+export const deletedOwnerId = account => `deleted:${clean(account?.employeeId) || clean(account?.email).toLowerCase() || 'account'}:${clean(account?._id)}`;
+
+// Leaves a deleted account's records (attendance, requests and its place among Travel Order
+// companions, signed DTRs, travel reports, and overtime office orders) under deletedOwnerId.
+// Returns a warning when they could not all be moved, or ''.
+export const detachRecordsOfDeletedAccount = async account => {
+  try {
+    await carryRecordsToNewIdentity(account, { employeeId: deletedOwnerId(account), name: clean(account?.name) });
+    return '';
+  } catch (error) {
+    console.error('Unable to set apart the records of a deleted account:', error);
+    return 'The account was deleted, but some of its records could not be set apart, so they may show for a new account made with the same email or Employee ID.';
+  }
+};
+
 // What to tell HR or the employee when the account was saved but its records could not be moved.
 // Saving again changes nothing (the account already has the new name or ID), so moving them is
 // retried by changing it back, saving, and changing it again.

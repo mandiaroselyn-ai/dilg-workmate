@@ -5,16 +5,13 @@ import { createRecordId } from '../utils/recordId.js';
 import { User } from './User.js';
 import { pickReviewUpdate } from '../utils/requestFields.js';
 import { stampOf } from '../utils/updateStamp.js';
-import { exactTextPattern, ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
+import { exactTextPattern, ownByIdOrEmail, ownerChanges, ownRecordsFilter } from '../utils/recordOwner.js';
 
 // The requests one person sees: an employee's own, or all of them for HR and supervisors.
 // Returns null for an employee with neither an employee ID nor an email.
 export const visibleRequestFilter = user => {
   if (user?.accessLevel !== 'employee') return {};
-  const owners = [
-    ...(user.employeeId ? [{ employeeId: user.employeeId }] : []),
-    ...(user.email ? [{ employeeEmail: user.email }] : [])
-  ];
+  const owners = ownByIdOrEmail({ employeeId: user.employeeId, email: user.email });
   return owners.length ? { $or: owners } : null;
 };
 
@@ -141,8 +138,8 @@ export const Leave = {
   findAbsencesOfEmployee: async ({ employeeId, email }) => {
     ensureConnected();
     const owners = [
-      ...(employeeId ? [{ employeeId }, { 'companions.employeeId': employeeId }] : []),
-      ...(email ? [{ employeeEmail: email }] : [])
+      ...ownByIdOrEmail({ employeeId, email }),
+      ...(employeeId ? [{ 'companions.employeeId': employeeId }] : [])
     ];
     if (!owners.length) return [];
     const list = await MongoRequest.find({ type: { $in: ['Leave Request', 'Travel Order'] }, $or: owners })

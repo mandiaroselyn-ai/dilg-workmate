@@ -63,7 +63,9 @@ test('the update check needs a login', async () => {
 });
 
 test('employees are matched to their own requests only', () => {
-  assert.deepEqual(visibleRequestFilter(employee), { $or: [{ employeeId: 'DILG-2026-1' }, { employeeEmail: 'juan@dilg.gov.ph' }] });
+  // By Employee ID, and by email only for requests with no Employee ID: one with another ID is an
+  // earlier, deleted account's, though its email is the same.
+  assert.deepEqual(visibleRequestFilter(employee), { $or: [{ employeeId: 'DILG-2026-1' }, { employeeEmail: 'juan@dilg.gov.ph', employeeId: { $in: ['', null] } }] });
   assert.deepEqual(visibleRequestFilter({ ...employee, employeeId: '' }), { $or: [{ employeeEmail: 'juan@dilg.gov.ph' }] });
   assert.equal(visibleRequestFilter({ accessLevel: 'employee' }), null);
   assert.deepEqual(visibleRequestFilter(hr), {});

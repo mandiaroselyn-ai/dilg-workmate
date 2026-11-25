@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { isConnected } from '../config/db.js';
 import { createRecordId } from '../utils/recordId.js';
+import { ownByIdOrEmail } from '../utils/recordOwner.js';
 import { stampOf } from '../utils/updateStamp.js';
 import { sendPushNotification } from '../services/pushService.js';
 
@@ -113,10 +114,7 @@ export const notificationReaderKey = user => String(user?.employeeId || user?.em
 // The texts sent to or received from one employee, matched by employee ID or email.
 // An account with neither matches nothing.
 export const ownSmsFilter = user => {
-  const own = [
-    ...(user?.employeeId ? [{ employeeId: user.employeeId }] : []),
-    ...(user?.email ? [{ employeeEmail: String(user.email).trim().toLowerCase() }] : [])
-  ];
+  const own = ownByIdOrEmail({ employeeId: user?.employeeId || '', email: user?.email ? String(user.email).trim().toLowerCase() : '' });
   return own.length ? { $or: own } : { _id: null };
 };
 
