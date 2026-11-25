@@ -63,12 +63,12 @@ test('a phone position is checked against the barangay the employee timed in for
   assert.deepEqual(saved.mock.calls.map(call => [call.arguments[1].withinGeofence, call.arguments[1].accuracy]), [[true, 20], [false, 20]]);
 });
 
-test('field work is watched within 100 m of where the employee timed in, not the whole barangay', async t => {
+test('field work is watched within 50 m of where the employee timed in, not the whole barangay', async t => {
   const { send, saved } = await onDuty(t);
-  // Still in Brgy. Pawa, 80 m and 150 m north of the Time In.
-  const near = await send({ latitude: insidePawa.latitude + 80 / 110574, longitude: insidePawa.longitude, accuracy: 10 });
+  // Still in Brgy. Pawa, 40 m and 80 m north of the Time In.
+  const near = await send({ latitude: insidePawa.latitude + 40 / 110574, longitude: insidePawa.longitude, accuracy: 10 });
   assert.equal(near.body.geofenceStatus, 'In Range');
-  const far = await send({ latitude: insidePawa.latitude + 150 / 110574, longitude: insidePawa.longitude, accuracy: 10 });
+  const far = await send({ latitude: insidePawa.latitude + 80 / 110574, longitude: insidePawa.longitude, accuracy: 10 });
   assert.equal(far.body.geofenceStatus, 'Out of Range');
   assert.deepEqual(saved.mock.calls.map(call => call.arguments[1].withinGeofence), [true, false]);
 });

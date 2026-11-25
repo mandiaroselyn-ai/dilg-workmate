@@ -99,7 +99,7 @@ const halfDiagonalMeters = ({ south, north, west, east }) => {
   return Math.hypot((north - south) * 110574, (east - west) * 111320 * Math.cos(latitude * Math.PI / 180)) / 2;
 };
 
-// An employee's range, drawn as it is checked (shared/dutyRange.js): a circle (field work, 100 m
+// An employee's range, drawn as it is checked (shared/dutyRange.js): a circle (field work, 50 m
 // around the Time In; a work-from-home address, 50 m), an office's grounds (a town hall with its
 // 50 m drawn as a circle around it), the Marinduque State University campus, or a whole barangay's
 // outline when nothing smaller is known. Nothing when its shape is not known.

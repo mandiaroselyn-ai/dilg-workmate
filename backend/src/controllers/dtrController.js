@@ -711,7 +711,7 @@ export const updateLocationTracking = async (req, res) => {
 
     const distance = computeDistanceMeters(Number(latitude), Number(longitude), Number(assignedCoords.lat), Number(assignedCoords.lon));
     // The range the employee is watched in while on duty (shared/dutyRange.js): their area as it
-    // is now, or, for field work in a whole barangay, 100 m around where they timed in.
+    // is now, or, for field work in a whole barangay, 50 m around where they timed in.
     const area = dutyRangeOf(await currentAssignedArea(activeLog?.assignmentSite), { latitude: activeLog?.latitude, longitude: activeLog?.longitude });
     const withinGeofence = Number.isFinite(Number(area?.latitude))
       ? isWithinAssignedLocation(latitude, longitude, area)

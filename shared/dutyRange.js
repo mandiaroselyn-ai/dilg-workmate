@@ -3,10 +3,11 @@
 // one). An office's range is its grounds, a work-from-home address's is 50 m around it, and Brgy.
 // Tanza's is the Marinduque State University campus. A field assignment's area is the whole
 // barangay, often 1 to 3 km across, so field work is watched within FIELD_RANGE_METERS of where
-// the employee timed in instead. Time In itself is still anywhere in the barangay (WorkMate has
-// no other way to know the field site), and so are Lunch and Time Out.
+// the employee timed in instead: 50 m, as small as a work-from-home address's (the user's choice,
+// 2026-11-26, after 100 m seemed too big). Time In itself is still anywhere in the barangay
+// (WorkMate has no other way to know the field site), and so are Lunch and Time Out.
 
-export const FIELD_RANGE_METERS = 100;
+export const FIELD_RANGE_METERS = 50;
 
 // Whether `area` is a whole barangay: field work with no site of its own.
 const isWholeBarangay = area => area?.mode === 'field' && !area.areaName && !(Number(area.radiusMeters) > 0);
