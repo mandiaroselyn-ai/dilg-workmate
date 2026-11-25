@@ -401,6 +401,8 @@ export default function HRAdminAttendanceView({ employees = [], attendanceHistor
       longitude,
       state,
       noSignal: row.noSignal,
+      // How far off the phone said this GPS could be, in meters (null when not known).
+      accuracy: Number(record.gpsAccuracy) > 0 ? Number(record.gpsAccuracy) : null,
       // Only the picked employee's area is outlined, so only theirs is passed (shapes are large).
       area: row === pickedRow ? area : null,
       place: currentPlaceOf(row),

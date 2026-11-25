@@ -120,7 +120,10 @@ const areaBoundsFor = area => {
 };
 
 // points: [{ key, name, latitude, longitude, state: 'inside' | 'outside' | 'lunch' | 'done',
-//            noSignal, area, place, details: [lines for the popup] }]
+//            noSignal, accuracy, area, place, details: [lines for the popup] }]
+// `accuracy` is how far off the phone said its GPS could be (meters). It is drawn as a light
+// circle around the dot: each phone's GPS has its own error, so two people standing together
+// can show apart, and their circles overlapping shows they may be at the same place.
 export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
@@ -195,6 +198,20 @@ export default function HRLiveGpsMap({ points, selectedKey, onSelect }) {
     const picked = points.find(point => point.key === selectedKey);
     const area = picked ? areaLayerFor(picked.area) : null;
     if (area) area.addTo(layer);
+
+    // Each GPS's accuracy circle, under all the dots.
+    points.forEach(point => {
+      if (!(point.accuracy > 0)) return;
+      L.circle([point.latitude, point.longitude], {
+        radius: point.accuracy,
+        color: COLORS[point.state],
+        weight: 1,
+        opacity: point.noSignal ? 0.3 : 0.6,
+        fillColor: COLORS[point.state],
+        fillOpacity: point.noSignal ? 0.05 : 0.1,
+        interactive: false
+      }).addTo(layer);
+    });
 
     points.forEach(point => {
       const isSelected = point.key === selectedKey;
