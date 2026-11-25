@@ -93,12 +93,12 @@ test('an entry without location history still has its Time In position', () => {
   assert.equal(entry.lastGpsAgeSeconds, 60);
 });
 
-test('a saved live GPS less precise than 50 m is not shown; HR sees the Time In position instead', () => {
-  const rough = liveLocationFromLog({ ...openLog, ...trackedOutside, currentAccuracy: 75 }, at('2026-09-30T02:03:00Z'));
+test('a saved live GPS less precise than 30 m is not shown; HR sees the Time In position instead', () => {
+  const rough = liveLocationFromLog({ ...openLog, ...trackedOutside, currentAccuracy: 45 }, at('2026-09-30T02:03:00Z'));
   assert.equal(rough.latitude, openLog.latitude);
   assert.equal(rough.longitude, openLog.longitude);
   assert.equal(rough.gpsAccuracy, 12);
-  const precise = liveLocationFromLog({ ...openLog, ...trackedOutside, currentAccuracy: 50 }, at('2026-09-30T02:03:00Z'));
+  const precise = liveLocationFromLog({ ...openLog, ...trackedOutside, currentAccuracy: 30 }, at('2026-09-30T02:03:00Z'));
   assert.equal(precise.latitude, trackedOutside.currentLatitude);
-  assert.equal(precise.gpsAccuracy, 50);
+  assert.equal(precise.gpsAccuracy, 30);
 });

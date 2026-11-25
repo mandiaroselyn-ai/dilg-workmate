@@ -40,14 +40,14 @@ const onDuty = async t => {
 
 test('rough or missing GPS accuracy is not used for live tracking', async t => {
   const { send, saved } = await onDuty(t);
-  // Live GPS needs 50 m or better, as Time In does.
-  for (const accuracy of [850, 101, 75, 51, undefined, null, 'about 20', -5]) {
+  // Live GPS needs 30 m or better (Time In takes 50 m).
+  for (const accuracy of [850, 101, 50, 31, undefined, null, 'about 20', -5]) {
     const response = await send({ ...insidePawa, accuracy });
     assert.equal(response.status, 422, `accuracy ${accuracy}`);
-    if (typeof accuracy === 'number' && accuracy > 50) assert.match(response.body.error, /accurate to 50 meters or better/);
+    if (typeof accuracy === 'number' && accuracy > 30) assert.match(response.body.error, /accurate to 30 meters or better/);
   }
   assert.equal(saved.mock.callCount(), 0);
-  assert.equal((await send({ ...insidePawa, accuracy: 50 })).status, 200);
+  assert.equal((await send({ ...insidePawa, accuracy: 30 })).status, 200);
 });
 
 test('a phone position is checked against the barangay the employee timed in for', async t => {

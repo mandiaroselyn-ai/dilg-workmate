@@ -771,11 +771,12 @@ export const hrUpdateOperations = (updates, reviewer = '', now = new Date()) => 
   });
 };
 
-// Positions less precise than this are not used for live tracking: 50 m, as Time In needs, so a
-// weak phone GPS does not put the employee tens of meters from where they are on HR's map (and
-// a laptop or desktop browser, which only estimates its location from the internet connection,
-// is left out).
-export const MAX_TRACKING_ACCURACY_METERS = 50;
+// Positions less precise than this are not used for live tracking: 30 m (the user found 50 m too
+// wide, 2026-11-25), so a weak phone GPS does not put the employee tens of meters from where they
+// are on HR's map (and a laptop or desktop browser, which only estimates its location from the
+// internet connection, is left out). Time In still takes 50 m, for GPS inside offices; until a
+// position this precise arrives, the map shows the Time In one.
+export const MAX_TRACKING_ACCURACY_METERS = 30;
 
 // One entry of HR's live map from an open attendance record (with its first location
 // point, the one recorded at Time In, and its latest geofence event). The position is the

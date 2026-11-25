@@ -40,9 +40,9 @@ const LoginView = lazy(() => import('./components/LoginView'));
 const PasswordResetView = lazy(() => import('./components/PasswordResetView'));
 
 const fetch = apiFetch;
-// Positions less precise than this are not sent while a shift is open: 50 m, as Time In needs,
-// so a weak GPS does not put the employee tens of meters from where they are on HR's map.
-const MAX_TRACKING_ACCURACY_METERS = 50;
+// Positions less precise than this are not sent while a shift is open: 30 m, so a weak GPS does
+// not put the employee tens of meters from where they are on HR's map (as the server checks).
+const MAX_TRACKING_ACCURACY_METERS = 30;
 
 const belongsToEmployee = (item, account) => {
   const hasRecipient = item?.employeeId || item?.employeeEmail;
