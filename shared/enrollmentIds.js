@@ -13,7 +13,10 @@ export const ENROLLMENT_ID_TYPES = [
   { value: 'umid', label: 'UMID / GSIS ID', backNeeded: true },
   { value: 'sss', label: 'SSS ID', backNeeded: true },
   { value: 'prc', label: 'PRC ID', backNeeded: true },
-  { value: 'drivers-license', label: 'Driver\'s License', backNeeded: true }
+  { value: 'drivers-license', label: 'Driver\'s License', backNeeded: true },
+  // TEMPORARY (2026-11-25): a student ID, for the project team and testers who have none of the
+  // IDs above. It is not a government ID, so remove it before DILG personnel enroll.
+  { value: 'student-id', label: 'Student ID', backNeeded: true }
 ];
 
 export const enrollmentIdType = value => ENROLLMENT_ID_TYPES.find(type => type.value === value) || null;

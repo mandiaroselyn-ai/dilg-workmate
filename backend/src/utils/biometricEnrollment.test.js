@@ -44,3 +44,9 @@ test('allows employees to resubmit while pending, after an approval made with th
     ]
   });
 });
+
+test('a student ID can be submitted for now, with its back', () => {
+  assert.equal(enrollmentIdType('student-id')?.label, 'Student ID');
+  assert.equal(enrollmentIdNeedsBack('student-id'), true);
+  assert.equal(normalizeEnrollmentIdNumber(' 2021-00123 '), '2021-00123');
+});
