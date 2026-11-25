@@ -1,30 +1,19 @@
-import { minutesToLeaveDays } from '../../shared/leaveConversion.js';
 import { matchesAttendanceEmployee } from './attendanceIdentity.js';
-import { durationText } from './dtrDay.js';
-import { dtrEntry } from './dtrMonth.js';
-import { absentDays, dtrStatusOf, totalHoursWorked } from './hrAttendance.js';
-import { travelDayCount } from './travelDuration.js';
+import { consolidatedAttendance, monthText } from './consolidatedAttendance.js';
 import { separationText } from '../../shared/separation.js';
 
-// HR's reports: attendance, leave, travel orders, absences, and the employee masterlist,
-// filtered by employee, date range, office (department), and status, shown on screen and
-// exported as CSV or printed.
+// HR's reports: the monthly Consolidated Report of Attendance (DILG Marinduque's template, see
+// consolidatedAttendance.js) and the employee masterlist, filtered by employee, month
+// (attendance) or account status (masterlist), and office (department), shown on screen and
+// downloaded or printed.
 
 export const REPORT_TYPES = [
   { id: 'attendance', label: 'Attendance' },
-  { id: 'leave', label: 'Leave' },
-  { id: 'travel', label: 'Travel Order' },
-  { id: 'absence', label: 'Absences' },
   { id: 'masterlist', label: 'Employee Masterlist' }
 ];
 
-export const ATTENDANCE_STATUSES = ['Complete', 'Late', 'Incomplete', 'On Duty'];
 // The masterlist is filtered by account status.
 export const ACCOUNT_STATUSES = ['Active', 'Inactive', 'Pending', 'Rejected'];
-export const REQUEST_STATUSES = ['Pending', 'Pending Review', 'For Pre-approval', 'For Supervisor', 'Returned', 'Approved', 'Rejected', 'Withdrawn'];
-// A draft the employee has not submitted, or one they discarded, is not a transaction.
-const UNSUBMITTED = ['Draft', 'Cancelled'];
-const AWAITING_DECISION = ['Pending', 'Pending Review', 'For Supervisor'];
 
 // An employee's key in the employee filter: the account's own (its database ID, else its email),
 // as old accounts can share the default Employee ID (DILG-2026-7689). Their records are told
@@ -33,13 +22,11 @@ export const employeeKey = employee => String(employee?._id || employee?.email |
 // An employee as the filters and lists name them.
 export const employeeLabel = employee => employee?.name || employee?.employeeId || employee?.email || 'Unnamed employee';
 
-const accountFor = (item, employees) => employees.find(employee => matchesAttendanceEmployee(item, employee)) || null;
-const nameOf = (item, account) => account?.name || item.employeeName || item.employee?.name || 'Unknown employee';
 const officeOf = (item, account) => account?.office || item.employeeOffice || item.employee?.office || '';
 
-// True when a record or request passes the employee and office filters.
-// An account itself (an absence, a masterlist line) is the chosen one by its key; a record or
-// request, by its Employee ID and name.
+// True when a record or account passes the employee and office filters.
+// An account itself (a masterlist line) is the chosen one by its key; an attendance record, by
+// its Employee ID and name.
 const isFor = (item, account, { employee, office }, employees) => {
   if (employee) {
     if (employees.includes(item)) {
@@ -52,225 +39,45 @@ const isFor = (item, account, { employee, office }, employees) => {
   return !office || officeOf(item, account) === office;
 };
 
-// True when start..end (YYYY-MM-DD; end defaults to start) overlaps from..to (either may be empty).
-const overlaps = (start, end, from, to) => {
-  const first = String(start || '').slice(0, 10);
-  const last = String(end || '').slice(0, 10) || first;
-  return Boolean(first) && (!from || last >= from) && (!to || first <= to);
-};
-
-const byDateThenName = (a, b) => String(b.sortDate).localeCompare(String(a.sortDate)) || a.employee.localeCompare(b.employee);
-const countOf = (rows, status) => rows.filter(row => row.status === status).length;
-
-const minutesCell = minutes => (minutes ? durationText(minutes) : '');
-const NO_DTR_TIME = { late: 0, early: 0, undertime: 0, overtime: 0, noOrder: 0 };
-const totalOf = (rows, field) => rows.reduce((total, row) => total + row.dtr[field], 0);
-
-// The days the rows' tardiness and undertime convert to. The CSC table rounds each value, so
-// each employee's month is converted as a whole, as HR charges it, and this total can differ by
-// a little from adding up the days of the rows.
-const deductionDays = rows => {
-  const months = {};
-  for (const row of rows) {
-    const key = `${row.employeeId || row.employee} ${row.date.slice(0, 7)}`;
-    months[key] = (months[key] || 0) + row.dtr.undertime;
-  }
-  return Object.values(months).reduce((total, minutes) => total + minutesToLeaveDays(minutes), 0);
-};
-
-const attendanceReport = ({ records, employees, filters, today }) => {
-  const rows = records
-    .map(record => ({ record, account: accountFor(record, employees) }))
-    .filter(({ record, account }) => account && isFor(record, account, filters, employees)
-      && overlaps(record.date, record.date, filters.from, filters.to))
-    .map(({ record, account }) => {
-      const dtr = dtrEntry(record) || NO_DTR_TIME;
-      const { status, label, lateToo } = dtrStatusOf(record, today);
-      return {
-        sortDate: record.date || '',
-        date: record.date || '',
-        employee: nameOf(record, account),
-        employeeId: account.employeeId || record.employeeId || '',
-        office: officeOf(record, account),
-        timeIn: record.timeIn || '',
-        lunchOut: record.lunchOut || '',
-        lunchIn: record.lunchIn || '',
-        timeOut: record.timeOut || '',
-        hours: totalHoursWorked(record),
-        dtr,
-        late: minutesCell(dtr.late),
-        undertime: minutesCell(dtr.early),
-        deduction: dtr.undertime ? minutesToLeaveDays(dtr.undertime).toFixed(3) : '',
-        overtime: minutesCell(dtr.overtime),
-        // `status` is what the filter and counts go by; `statusText` is what the report shows: the
-        // log an incomplete record lacks, and Late when it is late too.
-        status,
-        lateToo,
-        statusText: lateToo ? `${label}, Late` : label,
-        location: record.location || ''
-      };
-    })
-    // Late lists every late record, an incomplete or open one too.
-    .filter(row => !filters.status || row.status === filters.status || (filters.status === 'Late' && row.lateToo))
-    .sort(byDateThenName);
-  return {
-    title: 'Attendance Report',
-    note: 'Late and undertime are charged to vacation leave by the CSC table (1 min = 0.002 day, 1 hour = 0.125 day), and without pay when there is no vacation leave to charge. Saturdays, Sundays, and holidays have none. Overtime is work outside office hours or on those days, within the hours of an office order: it is not deducted and cannot offset late or undertime. Work from home and days on a Travel Order earn no overtime.',
-    columns: [
-      { key: 'date', label: 'Date' },
-      { key: 'employee', label: 'Employee' },
-      { key: 'employeeId', label: 'Employee ID' },
-      { key: 'office', label: 'Office' },
-      { key: 'timeIn', label: 'Time In' },
-      { key: 'lunchOut', label: 'Lunch Out' },
-      { key: 'lunchIn', label: 'Lunch In' },
-      { key: 'timeOut', label: 'Time Out' },
-      { key: 'hours', label: 'Hours' },
-      { key: 'late', label: 'Late' },
-      { key: 'undertime', label: 'Undertime' },
-      { key: 'deduction', label: 'Deduction (day)' },
-      { key: 'overtime', label: 'Overtime' },
-      { key: 'statusText', label: 'Status' },
-      { key: 'location', label: 'Location' }
-    ],
-    rows,
-    summary: [
-      { label: 'Records', value: rows.length },
-      { label: 'Employees', value: new Set(rows.map(row => row.employeeId || row.employee)).size },
-      ...ATTENDANCE_STATUSES.map(status => ({ label: status, value: status === 'Late' ? rows.filter(row => row.status === 'Late' || row.lateToo).length : countOf(rows, status) })),
-      { label: 'Total late', value: durationText(totalOf(rows, 'late')) },
-      { label: 'Total undertime', value: durationText(totalOf(rows, 'early')) },
-      { label: 'Total deduction', value: `${deductionDays(rows).toFixed(3)} day` },
-      { label: 'Total overtime', value: durationText(totalOf(rows, 'overtime')) },
-      { label: 'After hours, no office order', value: durationText(totalOf(rows, 'noOrder')) }
-    ]
-  };
-};
-
-const requestSummary = (rows, noun, dayLabel) => [
-  { label: noun, value: rows.length },
-  { label: 'Approved', value: countOf(rows, 'Approved') },
-  { label: 'Awaiting decision', value: rows.filter(row => AWAITING_DECISION.includes(row.status)).length },
-  { label: 'Returned', value: countOf(rows, 'Returned') },
-  { label: 'Rejected', value: countOf(rows, 'Rejected') },
-  { label: 'Withdrawn', value: countOf(rows, 'Withdrawn') },
-  { label: dayLabel, value: rows.filter(row => row.status === 'Approved').reduce((total, row) => total + (Number(row.days) || 0), 0) }
-];
-
-const requestRows = ({ requests, employees, filters, type, toRow }) => requests
-  .filter(request => request.type === type && !UNSUBMITTED.includes(request.status))
-  .map(request => ({ request, account: accountFor(request, employees) }))
-  .filter(({ request, account }) => account && isFor(request, account, filters, employees)
-    && overlaps(request.startDate, request.endDate, filters.from, filters.to)
-    && (!filters.status || request.status === filters.status))
-  .map(({ request, account }) => ({
-    sortDate: request.startDate || '',
-    id: request.id || '',
-    employee: nameOf(request, account),
-    employeeId: account.employeeId || request.employeeId || '',
-    office: officeOf(request, account),
-    startDate: request.startDate || '',
-    endDate: request.endDate || request.startDate || '',
-    filed: request.submissionDate || '',
-    status: request.status || 'Pending',
-    ...toRow(request)
-  }))
-  .sort(byDateThenName);
-
-const leaveReport = ({ requests, employees, filters }) => {
-  const rows = requestRows({
-    requests,
+// The Consolidated Report of Attendance for the month `filters.month` (YYYY-MM).
+const attendanceReport = ({ records, requests, employees, holidays, filters, from, today, minutes }) => {
+  const month = filters.month || today.slice(0, 7);
+  const { rows, counts } = consolidatedAttendance({
+    month,
     employees,
-    filters,
-    type: 'Leave Request',
-    toRow: request => ({
-      leaveType: request.leaveType || 'Leave',
-      days: Number(request.workingDays) || 0,
-      remarks: request.supervisorRemarks || request.remarks || ''
-    })
+    records,
+    requests,
+    holidays,
+    from,
+    today,
+    minutes,
+    include: person => isFor(person, person, filters, employees)
   });
   return {
-    title: 'Leave Report',
+    title: 'Consolidated Report of Attendance',
+    month,
+    monthLabel: monthText(month),
+    counts,
+    note: 'Based on the DTR (CS Form 48) and the approved leave in WorkMate. VL and SL are the days of vacation and sick leave; Remarks have the other leave (CTO, SPL, Wellness, MFL, and so on) and the days absent with no Time In and no approved leave or Travel Order. Tardy and Under Time are each day\'s minutes; a morning (AM) or afternoon (PM) missed is a Half Day. Job order and contract of service workers are not organic personnel and are not listed. Anything WorkMate does not know, such as ON TRAINING, can be typed into the downloaded Excel file. The PD signs above the name.',
     columns: [
-      { key: 'id', label: 'Request ID' },
-      { key: 'employee', label: 'Employee' },
-      { key: 'employeeId', label: 'Employee ID' },
-      { key: 'office', label: 'Office' },
-      { key: 'leaveType', label: 'Leave Type' },
-      { key: 'startDate', label: 'Start Date' },
-      { key: 'endDate', label: 'End Date' },
-      { key: 'days', label: 'Working Days' },
-      { key: 'filed', label: 'Date Filed' },
-      { key: 'status', label: 'Status' },
+      { key: 'no', label: 'No' },
+      { key: 'name', label: 'Name' },
+      { key: 'position', label: 'Position/Designation' },
+      { key: 'station', label: 'Station' },
+      { key: 'vl', label: 'VL' },
+      { key: 'sl', label: 'SL' },
+      { key: 'tardy', label: 'Tardy' },
+      { key: 'undertime', label: 'Under Time' },
+      { key: 'halfDay', label: 'Half Day' },
       { key: 'remarks', label: 'Remarks' }
     ],
     rows,
-    summary: requestSummary(rows, 'Applications', 'Approved leave days')
-  };
-};
-
-const travelReport = ({ requests, employees, filters }) => {
-  const rows = requestRows({
-    requests,
-    employees,
-    filters,
-    type: 'Travel Order',
-    toRow: request => ({
-      subject: request.travelActivity || String(request.purpose || '').replace(/^Official Travel\.\s*/, ''),
-      destination: request.travelVenue || '',
-      days: travelDayCount(request.startDate, request.endDate),
-      time: request.travelTime || ''
-    })
-  });
-  return {
-    title: 'Travel Order Report',
-    columns: [
-      { key: 'id', label: 'Request ID' },
-      { key: 'employee', label: 'Employee' },
-      { key: 'employeeId', label: 'Employee ID' },
-      { key: 'office', label: 'Office' },
-      { key: 'subject', label: 'Subject / Purpose' },
-      { key: 'destination', label: 'Destination' },
-      { key: 'startDate', label: 'Activity Date' },
-      { key: 'endDate', label: 'Return Date' },
-      { key: 'days', label: 'Days' },
-      { key: 'time', label: 'Activity Time' },
-      { key: 'filed', label: 'Date Filed' },
-      { key: 'status', label: 'Status' }
-    ],
-    rows,
-    summary: requestSummary(rows, 'Travel orders', 'Approved travel days')
-  };
-};
-
-// Every working day an employee was absent: no Time In, and no approved leave or Travel Order
-// (see absentDays). `from` is the first loaded day of attendance, and `minutes` the time now.
-const absenceReport = ({ records, requests, employees, holidays, filters, from, today, minutes }) => {
-  const rows = absentDays({ employees, records, requests, holidays, from, today, minutes })
-    .filter(({ date, employee }) => isFor(employee, employee, filters, employees) && overlaps(date, date, filters.from, filters.to))
-    .map(({ date, employee }) => ({
-      sortDate: date,
-      date,
-      employee: employee.name || 'Unnamed employee',
-      employeeId: employee.employeeId || '',
-      office: employee.office || '',
-      note: 'No Time In, and no approved leave or Travel Order'
-    }))
-    .sort(byDateThenName);
-  return {
-    title: 'Absence Report',
-    note: 'Working days (not Saturdays, Sundays, or holidays) with no Time In and no approved leave or Travel Order, today once its office hours end. A half day missed is not an absence: the DTR counts a missed morning as tardiness and a missed afternoon as undertime (CSC MC No. 17, s. 2010). Counted from the first day attendance was recorded in WorkMate and from each employee\'s hiring. Days before the loaded months are not included.',
-    columns: [
-      { key: 'date', label: 'Date' },
-      { key: 'employee', label: 'Employee' },
-      { key: 'employeeId', label: 'Employee ID' },
-      { key: 'office', label: 'Office' },
-      { key: 'note', label: 'Remarks' }
-    ],
-    rows,
     summary: [
-      { label: 'Absent days', value: rows.length },
-      { label: 'Employees', value: new Set(rows.map(row => row.employeeId || row.employee)).size }
+      { label: 'Organic personnel', value: counts.personnel },
+      { label: 'Male', value: counts.male },
+      { label: 'Female', value: counts.female },
+      ...(counts.noGender ? [{ label: 'No gender on profile', value: counts.noGender }] : []),
+      { label: 'Days absent', value: rows.reduce((total, row) => total + row.absentDays, 0) }
     ]
   };
 };
@@ -343,28 +150,24 @@ const masterlistReport = ({ employees, filters }) => {
   };
 };
 
-// The report of `type` ('attendance', 'leave', 'travel', 'absence', or 'masterlist') for these filters:
-// { employee (employeeKey), from, to (YYYY-MM-DD), office, status }, any of them empty.
-// Only records and requests of current employee accounts are included.
-export const buildReport = ({ type, records = [], requests = [], employees = [], filters = {}, today = '', holidays = [], from = '', minutes = 24 * 60 }) => {
+// The report of `type` ('attendance' or 'masterlist') for these filters:
+// { employee (employeeKey), month (YYYY-MM, attendance), office, status (masterlist) }, any of
+// them empty. `records` are DTR days, `requests` leave and Travel Orders, `from` the first loaded
+// day of attendance, and `today` and `minutes` the time now (for the days absent).
+export const buildReport = ({ type, records = [], requests = [], employees = [], filters = {}, holidays = [], from = '', today = '', minutes = 24 * 60 }) => {
   if (type === 'masterlist') return masterlistReport({ employees, filters });
-  if (type === 'absence') return absenceReport({ records, requests, employees, holidays, filters, from, today, minutes });
-  if (type === 'leave') return leaveReport({ requests, employees, filters });
-  if (type === 'travel') return travelReport({ requests, employees, filters });
-  return attendanceReport({ records, employees, filters, today });
+  return attendanceReport({ records, requests, employees, holidays, filters, from, today, minutes });
 };
 
-// The filters in words, for the report's heading. Without `dates` (the masterlist), it says
-// the day it is `asOf` instead of the date range.
-export const describeFilters = (filters = {}, employees = [], { dates: byDates = true, asOf = '' } = {}) => {
+// The filters in words, for the report's heading: the employee, the `period` (the month, or the
+// day the masterlist is as of), the office, and the status when the report has one.
+export const describeFilters = (filters = {}, employees = [], { period = '', status = true } = {}) => {
   const chosen = filters.employee ? employees.find(employee => employeeKey(employee) === filters.employee) : null;
-  const dates = filters.from && filters.to ? `${filters.from} to ${filters.to}`
-    : filters.from ? `From ${filters.from}` : filters.to ? `Up to ${filters.to}` : 'All dates';
   return [
     chosen ? `Employee: ${employeeLabel(chosen)}` : 'All employees',
-    byDates ? dates : asOf ? `As of ${asOf}` : '',
+    period,
     filters.office ? `Office: ${filters.office}` : 'All offices',
-    filters.status ? `Status: ${filters.status}` : 'All statuses'
+    status ? (filters.status ? `Status: ${filters.status}` : 'All statuses') : ''
   ].filter(Boolean).join(' · ');
 };
 

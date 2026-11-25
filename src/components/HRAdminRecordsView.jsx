@@ -920,6 +920,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
           attendanceHistory={allAttendance}
           requests={allRequests}
           attendanceFrom={attendanceFrom}
+          loadedAttendanceMonths={loadedAttendanceMonths}
           generatedBy={reportGeneratedBy}
         />
       )}

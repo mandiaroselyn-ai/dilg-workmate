@@ -3,7 +3,7 @@ import { DOWNLOAD_LINK_MINUTES, Download } from '../models/downloadModel.js';
 
 // Types sent as themselves; anything else is sent as a plain download, so a file never opens
 // as a page of the app.
-const SERVED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'text/csv'];
+const SERVED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 // Vercel takes at most 4.5 MB in a request and in a response, and the file goes up as base64
 // (a third larger).
 export const MAX_DOWNLOAD_BYTES = 3 * 1024 * 1024;

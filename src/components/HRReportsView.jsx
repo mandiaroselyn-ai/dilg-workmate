@@ -1,12 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FileSpreadsheet, Printer, RotateCcw } from 'lucide-react';
 import { getManilaDateString, getManilaMinutesOfDay } from '../../shared/localDate';
+import bagongPilipinasLogo from '../assets/Bagong_Pilipinas-logo.png';
+import dilgSeal from '../assets/dilg-seal.png';
+import consolidatedTemplateUrl from '../assets/template/consolidated-attendance-template.xlsx?url';
+import { apiFetch } from '../utils/api.js';
+import { provincialDirectorName } from '../utils/consolidatedAttendance';
+import { consolidatedHtml, fillConsolidatedXlsx } from '../utils/consolidatedReportFiles';
 import { downloadBytes } from '../utils/documentFiles';
 import {
   ACCOUNT_STATUSES,
-  ATTENDANCE_STATUSES,
   REPORT_TYPES,
-  REQUEST_STATUSES,
   buildReport,
   describeFilters,
   employeeKey,
@@ -15,23 +19,37 @@ import {
   reportHtml
 } from '../utils/reports';
 
-// The screen shows this many rows; the CSV and the printed report have them all.
+// The screen shows this many rows; the downloaded and printed reports have them all.
 const PREVIEW_ROWS = 100;
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const fieldClass = 'mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500';
 const labelClass = 'block text-[10px] font-black uppercase tracking-wide text-slate-500';
 
-// HR's reports on attendance, leave, travel orders, absences, and the employee masterlist:
-// filtered by employee, dates, office (department), and status, previewed here, and exported as
-// CSV or printed (or saved as PDF from the print dialog). Attendance covers the months loaded on
-// this page. The masterlist is as of today, so it has no dates to choose.
-export default function HRReportsView({ employees = [], attendanceHistory = [], requests = [], attendanceFrom = '', generatedBy = '', holidays = [] }) {
+// HR's two reports, previewed here. The attendance report is DILG Marinduque's monthly
+// Consolidated Report of Attendance: downloaded as the office's own Excel template, or printed
+// (or saved as PDF from the print dialog). The employee masterlist is as of today, exported as
+// CSV or printed. Attendance covers the months loaded on this page.
+export default function HRReportsView({ employees = [], attendanceHistory = [], requests = [], holidays = [], attendanceFrom = '', loadedAttendanceMonths = [], generatedBy = '' }) {
   const today = getManilaDateString();
-  const firstOfMonth = `${today.slice(0, 7)}-01`;
-  const emptyFilters = { employee: '', from: firstOfMonth, to: today, office: '', status: '' };
+  const emptyFilters = { employee: '', month: today.slice(0, 7), office: '', status: '', vacant: '' };
   const [type, setType] = useState('attendance');
   const [filters, setFilters] = useState(emptyFilters);
   const [message, setMessage] = useState('');
+  // The supervisor and HR/Admin accounts, to find the Provincial Director who signs the
+  // attendance report.
+  const [staff, setStaff] = useState([]);
+  const isAttendance = type === 'attendance';
+
+  useEffect(() => {
+    let current = true;
+    apiFetch('/api/staff')
+      .then(response => (response.ok ? response.json() : null))
+      .then(data => { if (current && Array.isArray(data?.staff)) setStaff(data.staff); })
+      .catch(() => {});
+    return () => { current = false; };
+  }, []);
+  const director = provincialDirectorName([...staff, ...employees]);
 
   const sortedEmployees = useMemo(
     () => [...employees].filter(employee => employeeKey(employee)).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
@@ -41,32 +59,52 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
     () => [...new Set(employees.map(employee => employee.office).filter(Boolean))].sort(),
     [employees]
   );
-  // An absence has no status to filter by; the masterlist is filtered by account status.
-  const statuses = type === 'attendance' ? ATTENDANCE_STATUSES : type === 'absence' ? [] : type === 'masterlist' ? ACCOUNT_STATUSES : REQUEST_STATUSES;
-  const byDates = type !== 'masterlist';
+  // An earlier month loaded on this page is counted from its first day; otherwise attendance
+  // starts with the first loaded day.
+  const monthLoaded = !attendanceFrom || filters.month >= attendanceFrom.slice(0, 7) || loadedAttendanceMonths.includes(filters.month);
+  const from = loadedAttendanceMonths.includes(filters.month) ? '' : attendanceFrom;
 
   const report = useMemo(
-    () => buildReport({ type, records: attendanceHistory, requests, employees, filters, today, holidays, from: attendanceFrom, minutes: getManilaMinutesOfDay() }),
-    [type, attendanceHistory, requests, employees, filters, today, holidays, attendanceFrom]
+    () => buildReport({ type, records: attendanceHistory, requests, employees, holidays, filters, from, today, minutes: getManilaMinutesOfDay() }),
+    [type, attendanceHistory, requests, employees, holidays, filters, from, today]
   );
-  const filtersText = describeFilters(filters, employees, { dates: byDates, asOf: today });
+  const filtersText = describeFilters(filters, employees, isAttendance ? { period: report.monthLabel, status: false } : { period: `As of ${today}` });
 
   const change = field => event => setFilters(previous => ({ ...previous, [field]: event.target.value }));
   const chooseType = next => {
     setType(next);
-    // Statuses differ between attendance, requests, and accounts.
     setFilters(previous => ({ ...previous, status: '' }));
     setMessage('');
   };
 
-  const fileName = extension => (byDates
-    ? `DILG-${report.title.replace(/\s+/g, '-')}-${filters.from || 'start'}-to-${filters.to || today}.${extension}`
+  const fileName = extension => (isAttendance
+    ? `DILG-Consolidated-Report-of-Attendance-${report.month}.${extension}`
     : `DILG-${report.title.replace(/\s+/g, '-')}-${today}.${extension}`);
+
+  const download = async (bytes, name, mimeType) => {
+    await downloadBytes(bytes, name, mimeType);
+    setMessage(`Downloaded ${name}.`);
+  };
+
+  const downloadExcel = async () => {
+    try {
+      let template;
+      try {
+        const response = await fetch(consolidatedTemplateUrl);
+        if (!response.ok) throw new Error();
+        template = new Uint8Array(await response.arrayBuffer());
+      } catch {
+        throw new Error('The report template could not be loaded. Check your internet connection and try again.');
+      }
+      await download(fillConsolidatedXlsx(template, report, { vacant: filters.vacant, director }), fileName('xlsx'), XLSX_TYPE);
+    } catch (downloadError) {
+      setMessage(downloadError.message || 'Unable to download the report.');
+    }
+  };
 
   const exportCsv = async () => {
     try {
-      await downloadBytes(new TextEncoder().encode(reportCsv(report)), fileName('csv'), 'text/csv');
-      setMessage(`Exported ${report.rows.length} row${report.rows.length === 1 ? '' : 's'} as ${fileName('csv')}.`);
+      await download(new TextEncoder().encode(reportCsv(report)), fileName('csv'), 'text/csv');
     } catch (exportError) {
       setMessage(exportError.message || 'Unable to export the report.');
     }
@@ -78,15 +116,19 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
       setMessage('The report could not open in a new tab. Allow pop-ups for this site, then try again.');
       return;
     }
-    page.document.write(reportHtml(report, {
-      filtersText,
-      generatedAt: new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }),
-      generatedBy
-    }));
+    page.document.write(isAttendance
+      ? consolidatedHtml(report, { vacant: filters.vacant, director, logos: [dilgSeal, bagongPilipinasLogo].map(src => new URL(src, window.location.href).href) })
+      : reportHtml(report, {
+        filtersText,
+        generatedAt: new Date().toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }),
+        generatedBy
+      }));
     page.document.close();
     page.focus();
-    // Printed once the page has been laid out. "Save as PDF" in the print dialog makes a PDF.
-    window.setTimeout(() => page.print(), 300);
+    // Printed once the page and its logos have loaded. "Save as PDF" in the print dialog makes a PDF.
+    const images = [...page.document.images];
+    Promise.all(images.map(image => (image.complete ? null : new Promise(resolve => { image.onload = resolve; image.onerror = resolve; }))))
+      .then(() => window.setTimeout(() => page.print(), 300));
     setMessage('The report opened in a new tab for printing. Choose "Save as PDF" in the print dialog for a PDF copy.');
   };
 
@@ -94,7 +136,11 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
     <section className="space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-black text-slate-900">Generate a report</h3>
-        <p className="mt-1 text-xs text-slate-500">Choose the report and filters, check the preview, then export it as CSV (opens in Excel) or print it.</p>
+        <p className="mt-1 text-xs text-slate-500">
+          {isAttendance
+            ? 'Choose the month, check the preview, then download it as Excel in DILG\'s Consolidated Report of Attendance template, or print it.'
+            : 'Choose the filters, check the preview, then export it as CSV (opens in Excel) or print it.'}
+        </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
           {REPORT_TYPES.map(option => (
@@ -111,7 +157,7 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
           ))}
         </div>
 
-        <div className={`mt-4 grid gap-3 sm:grid-cols-2 ${byDates ? 'lg:grid-cols-5' : 'lg:grid-cols-3'}`}>
+        <div className={`mt-4 grid gap-3 sm:grid-cols-2 ${isAttendance ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
           <label className={labelClass}>Employee
             <select value={filters.employee} onChange={change('employee')} className={fieldClass}>
               <option value="">All employees</option>
@@ -120,15 +166,10 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
               ))}
             </select>
           </label>
-          {byDates && (
-            <>
-              <label className={labelClass}>From
-                <input type="date" value={filters.from} max={filters.to || undefined} onChange={change('from')} className={fieldClass} />
-              </label>
-              <label className={labelClass}>To
-                <input type="date" value={filters.to} min={filters.from || undefined} onChange={change('to')} className={fieldClass} />
-              </label>
-            </>
+          {isAttendance && (
+            <label className={labelClass}>Month
+              <input type="month" value={filters.month} max={today.slice(0, 7)} onChange={change('month')} className={fieldClass} />
+            </label>
           )}
           <label className={labelClass}>Office / Department
             <select value={filters.office} onChange={change('office')} className={fieldClass}>
@@ -136,18 +177,30 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
               {offices.map(office => <option key={office}>{office}</option>)}
             </select>
           </label>
-          <label className={labelClass}>Status
-            <select value={filters.status} onChange={change('status')} className={fieldClass}>
-              <option value="">All statuses</option>
-              {statuses.map(status => <option key={status}>{status}</option>)}
-            </select>
-          </label>
+          {isAttendance ? (
+            <label className={labelClass}>No. of vacant positions
+              <input type="number" min="0" inputMode="numeric" value={filters.vacant} onChange={change('vacant')} placeholder="Leave blank to write it in" className={fieldClass} />
+            </label>
+          ) : (
+            <label className={labelClass}>Status
+              <select value={filters.status} onChange={change('status')} className={fieldClass}>
+                <option value="">All statuses</option>
+                {ACCOUNT_STATUSES.map(status => <option key={status}>{status}</option>)}
+              </select>
+            </label>
+          )}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700">
-            <FileSpreadsheet className="h-4 w-4" /> Export CSV (Excel)
-          </button>
+          {isAttendance ? (
+            <button type="button" onClick={downloadExcel} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700">
+              <FileSpreadsheet className="h-4 w-4" /> Download Excel
+            </button>
+          ) : (
+            <button type="button" onClick={exportCsv} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700">
+              <FileSpreadsheet className="h-4 w-4" /> Export CSV (Excel)
+            </button>
+          )}
           <button type="button" onClick={printReport} className="inline-flex items-center gap-1.5 rounded-xl bg-blue-700 px-3 py-2 text-xs font-black text-white hover:bg-blue-800">
             <Printer className="h-4 w-4" /> Print / Save as PDF
           </button>
@@ -156,16 +209,16 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
           </button>
         </div>
         {message && <p role="status" className="mt-2 rounded-lg bg-slate-50 p-2 text-xs font-semibold text-slate-700">{message}</p>}
-        {type === 'attendance' && attendanceFrom && filters.from && filters.from < attendanceFrom && (
+        {isAttendance && !monthLoaded && (
           <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-800">
-            Attendance before {attendanceFrom} is included only for the earlier months loaded above. Load those months first for a complete report.
+            The attendance of {report.monthLabel} is not loaded. Load that month above first for a complete report.
           </p>
         )}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-black text-slate-900">{report.title}</h3>
+          <h3 className="text-sm font-black text-slate-900">{report.title}{isAttendance ? ` · ${report.monthLabel}` : ''}</h3>
           <p className="text-[11px] font-semibold text-slate-500">{filtersText}</p>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -184,8 +237,8 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
               {report.rows.length === 0 ? (
                 <tr><td colSpan={report.columns.length} className="px-2 py-6 text-center font-semibold text-slate-500">No records match these filters.</td></tr>
               ) : report.rows.slice(0, PREVIEW_ROWS).map((row, index) => (
-                <tr key={`${row.id || row.date}-${row.employeeId}-${index}`} className="border-t border-slate-100">
-                  {report.columns.map(column => <td key={column.key} className="px-2 py-1.5 align-top text-slate-700">{row[column.key] === '' ? '—' : row[column.key]}</td>)}
+                <tr key={`${row.employeeId}-${index}`} className="border-t border-slate-100">
+                  {report.columns.map(column => <td key={column.key} className="whitespace-pre-line px-2 py-1.5 align-top text-slate-700">{row[column.key] === '' ? '—' : row[column.key]}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -193,7 +246,14 @@ export default function HRReportsView({ employees = [], attendanceHistory = [], 
         </div>
         {report.rows.length > PREVIEW_ROWS && (
           <p className="mt-2 text-[11px] font-semibold text-slate-500">
-            Showing the first {PREVIEW_ROWS} of {report.rows.length} rows. The CSV and the printed report include all of them.
+            Showing the first {PREVIEW_ROWS} of {report.rows.length} rows. The downloaded and printed reports include all of them.
+          </p>
+        )}
+        {isAttendance && (
+          <p className={`mt-2 text-[11px] font-semibold ${director ? 'text-slate-600' : 'text-amber-700'}`}>
+            {director
+              ? `Certified by ${director.toUpperCase()}, Provincial Director, from that WorkMate account. The PD signs above the name.`
+              : 'No active WorkMate account has the position title Provincial Director, so the name above "Provincial Director" is left blank. Set the PD\'s position title in Employee Directory > Supervisors & HR/Admin, or write the name on the report.'}
           </p>
         )}
         {report.note && <p className="mt-2 text-[11px] font-semibold text-slate-500">{report.note}</p>}
