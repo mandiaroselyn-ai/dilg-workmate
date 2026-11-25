@@ -93,6 +93,10 @@ test('a form signed in WorkMate carries a valid signature, in its box, that the 
   // The box, with a point to spare around it.
   assert.deepEqual(widget.lookup(PDFName.of('Rect')).asArray().map(value => Math.round(value.asNumber())), [rect[0] - 1, rect[1] - 1, rect[2] + 1, rect[3] + 1].map(Math.round));
   assert.equal(reread.getPages()[0].node.lookup(PDFName.of('Annots')).size(), 1);
+  // Only the signature shows on the page; the digital signature is in the file.
+  const appearance = await appearanceTextOf(signed, 0);
+  assert.match(appearance, /\/Im1 Do/);
+  assert.doesNotMatch(appearance, /Digitally signed/);
 });
 
 test('a second signature keeps the first one valid, as the Head signs after HR 2', async () => {
@@ -184,11 +188,15 @@ test('a DTR is signed as the In-charge on both copies', async () => {
   stamped.setKeywords([signedFormMarker('dtr-incharge', 'DTR-1')]);
   const form = await stamped.save({ useObjectStreams: false });
   const id = readDigitalId(makeDigitalId('IVAN STEPHEN F. FADRI', 'pw'), 'pw');
-  const signed = await signPdfWithDigitalId(form, { digitalId: id, marks: dtrInChargeMarks() });
+  const image = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const signed = await signPdfWithDigitalId(form, { digitalId: id, marks: dtrInChargeMarks(), image });
   assert.equal(await signedPdfProblem(signed, { kind: 'dtr-incharge', ref: 'DTR-1', minSignatures: 1 }), '');
   const [left, , right] = await widgetRectOf(signed, 0);
-  assert.ok(left < 85 && right > 440, 'the box spans both copies');
-  assert.equal((await appearanceTextOf(signed, 0)).match(/Verified and digitally signed by IVAN STEPHEN F\. FADRI as In-charge/g).length, 2);
+  assert.ok(left < 180 && right > 495, 'the box spans both copies\' In-charge lines');
+  // The signature alone on each copy, with no "Digitally signed by" text.
+  const appearance = await appearanceTextOf(signed, 0);
+  assert.equal(appearance.match(/\/Im1 Do/g).length, 2);
+  assert.doesNotMatch(appearance, /Digitally signed/);
 });
 
 test('WorkMate makes a digital ID in the signer\'s name, locked with their WorkMate password, that signs', async () => {

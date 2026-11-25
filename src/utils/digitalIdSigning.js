@@ -166,8 +166,9 @@ const fitSize = (font, text, size, maxWidth = Infinity) => {
 
 // What the signature shows on the page, as marks in page points:
 // - { type: 'signature', center, bottom, width, height, caption? }: the signer's signature image,
-//   with "Digitally signed by NAME" and the date under it (`caption`, by default when the box is
-//   at least 20 pt tall; always when there is no image);
+//   filling the box; with `caption`, "Digitally signed by NAME" and the date under it. Without an
+//   image, the box shows that caption instead. (The digital signature itself is in the PDF either
+//   way, and Adobe Reader lists it in its Signatures panel.)
 // - { type: 'text', text, x or center, y (baseline), size, maxWidth? }: a line of text, such as a
 //   leave's decision at 7.C, where "{name}" and "{date}" become the signer's name and date;
 // - { type: 'paragraph', text, size, lines: [{ x, y, maxWidth }] }: text written word by word on
@@ -236,7 +237,7 @@ const appearanceContent = (placed, origin, { font, image, name, date }) => place
     y: mark.bottom - origin.y,
     width: mark.width,
     height: mark.height,
-    caption: mark.caption ?? mark.height >= 20,
+    caption: Boolean(mark.caption),
     font,
     image,
     name,

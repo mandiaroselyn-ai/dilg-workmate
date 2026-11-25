@@ -3,6 +3,7 @@ import { Eye, EyeOff, FileSignature, KeyRound } from 'lucide-react';
 import AdobePdfView from './AdobePdfView';
 import PdfPreview from './PdfPreview';
 import SignaturePad from './SignaturePad';
+import { toBlackInk } from '../utils/signatureInk';
 import { fetchSigningId, keepSigningId } from '../utils/signingId';
 
 // One signing step on a form WorkMate made, as in Adobe: the form is open here (in Adobe's own
@@ -25,8 +26,8 @@ import { fetchSigningId, keepSigningId } from '../utils/signingId';
 // { decision, remarks }.
 //
 // As in Adobe's "Add signature", the signer puts their own signature on the form: the one saved on
-// their profile, or one they draw or upload now. It shows over their name with "Digitally signed
-// by" and the date under it.
+// their profile, or one they draw or upload now. It shows over their name in black ink (see
+// utils/signatureInk.js), alone: the digital signature is in the PDF, where Adobe Reader shows it.
 
 // The Adobe digital ID this device remembers for `owner`: { name, fileName, data (base64) }, or
 // null. Browser storage may be unavailable (a private window, blocked site data), so every read
@@ -181,11 +182,13 @@ export default function SignedFormStep({
       const { marksOfForm, signPdfWithDigitalId } = await import('../utils/digitalIdSigning');
       const choice = { decision: decision || undefined, remarks: remarks.trim() };
       const form = await digitalSign.getForm(choice);
+      // The signature goes on the form in black ink, on a clear background.
+      const ink = await toBlackInk(signatureImage);
       const signed = await signPdfWithDigitalId(form.bytes, {
         digitalId,
         pageIndex: form.pageIndex || 0,
         marks: marksOfForm(form),
-        image: signatureImage,
+        image: ink,
         reason: typeof digitalSign.reason === 'function' ? digitalSign.reason(choice) : digitalSign.reason || '',
         location: digitalSign.location || ''
       });
@@ -335,7 +338,7 @@ export default function SignedFormStep({
           )}
         </div>
         {signingBox()}
-        <p className="text-[11px] font-semibold text-slate-500">Your signature goes on the form above where it belongs, with "Digitally signed by" your name and the date under it. Adobe Reader shows the form as signed by you.</p>
+        <p className="text-[11px] font-semibold text-slate-500">Your signature goes on the form above where it belongs, in black ink. Adobe Reader shows the form as digitally signed by you.</p>
       </div>
 
       {disabledReason && <p className="text-xs font-bold text-amber-700">{disabledReason}</p>}

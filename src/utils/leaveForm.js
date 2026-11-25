@@ -94,10 +94,12 @@ export const LEAVE_FORM_LAYOUT = {
 };
 
 // Where digital signatures show on the form when they are made in WorkMate (see
-// utils/digitalIdSigning.js). HR 2's one signature shows at both 7.A and 7.B.
+// utils/digitalIdSigning.js). HR 2's one signature shows at both 7.A and 7.B, as large as the
+// space between the table (or 7.B's last line) and the name allows, a little over the name as a
+// signature by hand is.
 export const leaveHrMarks = () => [
-  { type: 'signature', ...LEAVE_FORM_LAYOUT.certifierSignature },
-  { type: 'signature', ...LEAVE_FORM_LAYOUT.recommenderSignature }
+  { type: 'signature', center: LEAVE_FORM_LAYOUT.certifierSignature.center, bottom: 172, width: 130, height: 32 },
+  { type: 'signature', center: LEAVE_FORM_LAYOUT.recommenderSignature.center, bottom: 172, width: 130, height: 31 }
 ];
 
 // The template's 7.C blanks ("_______ days with pay", then "without pay"; x = the blank's centre,
@@ -114,7 +116,8 @@ const dayCount = value => String(Math.round(Number(value) * 1000) / 1000);
 // leave's working days, less the days HR 2's certification found the credits do not cover); or
 // disapproved, the reason. The signature goes over the approving official's name.
 export const leaveHeadMarks = ({ decision, request = {}, reason = '' }) => {
-  const marks = [{ type: 'signature', ...LEAVE_FORM_LAYOUT.approverSignature }];
+  // From a little over the approving official's name up to under 7.C and 7.D's last lines.
+  const marks = [{ type: 'signature', center: LEAVE_FORM_LAYOUT.approverSignature.center, bottom: 66, width: 170, height: 40 }];
   if (decision === 'Approved') {
     const days = Number(request.workingDays) || 0;
     const withoutPay = Math.min(days, Number(request.creditCertification?.withoutPayDays) || 0);
