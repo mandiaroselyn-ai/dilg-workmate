@@ -18,6 +18,31 @@ import {
   Megaphone
 } from 'lucide-react';
 
+// An event's category: its name, and the color of its dot.
+const CATEGORIES = {
+  meeting: { label: 'Meeting', dot: 'bg-indigo-600', chip: 'bg-indigo-50 text-indigo-700 border-indigo-100' },
+  training: { label: 'Training', dot: 'bg-purple-600', chip: 'bg-purple-50 text-purple-700 border-purple-100' },
+  event: { label: 'LGU Event', dot: 'bg-amber-500', chip: 'bg-amber-50 text-amber-700 border-amber-100' }
+};
+const categoryOf = event => CATEGORIES[event?.type] || CATEGORIES.event;
+
+// "09:00 AM" as minutes after midnight, to list a day's events in order (an event with no time
+// that reads as one comes last).
+const minutesOf = time => {
+  const match = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(time || '').trim());
+  if (!match) return 24 * 60;
+  return ((Number(match[1]) % 12) + (match[3].toUpperCase() === 'PM' ? 12 : 0)) * 60 + Number(match[2]);
+};
+// "09:00 AM" as "9:00 AM".
+const shortTime = time => String(time || '').trim().replace(/^0(\d)/, '$1');
+// "09:00 AM" as "9am" and "01:30 PM" as "1:30pm", to fit a day's box; other text stays as typed.
+const compactTime = time => {
+  const match = /^0?(\d{1,2}):(\d{2})\s*([AP])M$/i.exec(String(time || '').trim());
+  return match ? `${match[1]}${match[2] === '00' ? '' : `:${match[2]}`}${match[3].toLowerCase()}m` : String(time || '').trim();
+};
+// "2026-11-26" as "Thursday, November 26, 2026".
+const longDate = date => new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
 // `holidays`: the national holidays WorkMate adds and HR's local ones, each { date, name, kind },
 // shown on their days for everyone.
 export default function CalendarView({ events, holidays = [], onAddEvent }) {
@@ -120,8 +145,9 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
     }, 3050);
   };
 
-  // Get events on selected day
-  const selectedDayEvents = evtList.filter(evt => evt.date === selectedDayStr);
+  // A day's events, earliest first.
+  const byTime = (a, b) => minutesOf(a.time) - minutesOf(b.time);
+  const selectedDayEvents = evtList.filter(evt => evt.date === selectedDayStr).sort(byTime);
   const selectedHoliday = holidayOn(selectedDayStr);
   const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-`;
   const monthHolidays = holidays.filter(holiday => holiday.date.startsWith(monthPrefix));
@@ -130,7 +156,7 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
   const getEventsForDay = (day) => {
     if (!day) return [];
     const dateStr = formatDayString(day);
-    return evtList.filter(evt => evt.date === dateStr);
+    return evtList.filter(evt => evt.date === dateStr).sort(byTime);
   };
 
   return (
@@ -197,6 +223,8 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
 
                 const isToday = dateStr === today;
                 const holiday = holidayOn(dateStr);
+                // On a wide screen a day lists its first events by name (one when it is a holiday).
+                const named = dayEvents.slice(0, holiday ? 1 : 2);
 
                 return (
                   <button
@@ -204,8 +232,8 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
                     id={`cal-day-cell-${day}`}
                     onClick={() => handleDaySelect(day)}
                     title={holiday ? holiday.name : undefined}
-                    aria-label={holiday ? `${day}, ${holiday.name}` : undefined}
-                    className={`aspect-square rounded-xl p-1.5 relative flex flex-col justify-between hover:bg-slate-100 transition-all cursor-pointer ${
+                    aria-label={[String(day), holiday?.name, hasEvents && `${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`].filter(Boolean).join(', ')}
+                    className={`aspect-square min-w-0 overflow-hidden rounded-xl p-1.5 relative flex flex-col justify-between sm:justify-start sm:gap-0.5 sm:text-left hover:bg-slate-100 transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-[#1e40af] text-white hover:bg-blue-800 shadow-sm font-extrabold'
                         : isToday
@@ -216,21 +244,27 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
                     }`}
                   >
                     <span>{day}</span>
-                    {holiday && <span aria-hidden="true" className={`mx-auto h-1 w-4 rounded-full ${isSelected ? 'bg-white' : 'bg-rose-500'}`}></span>}
-                    
-                    {/* Events Mini Dots indicators */}
+                    {/* On a phone: a mark for a holiday and a dot for each event. */}
+                    {holiday && <span aria-hidden="true" className={`mx-auto h-1 w-4 rounded-full sm:hidden ${isSelected ? 'bg-white' : 'bg-rose-500'}`}></span>}
                     {hasEvents && (
-                      <div className="flex gap-1 justify-center w-full mt-1 shrink-0">
+                      <div aria-hidden="true" className="flex gap-1 justify-center w-full mt-1 shrink-0 sm:hidden">
                         {dayEvents.slice(0, 3).map((evt) => (
-                          <span
-                            key={evt.id}
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              evt.type === 'meeting' ? 'bg-indigo-600' :
-                              evt.type === 'training' ? 'bg-purple-600' : 'bg-amber-500'
-                            } ${isSelected ? 'bg-white' : ''}`}
-                          ></span>
+                          <span key={evt.id} className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : categoryOf(evt).dot}`}></span>
                         ))}
                       </div>
+                    )}
+                    {/* On a wide screen: the holiday's name and the first events' time and title. */}
+                    {holiday && (
+                      <span aria-hidden="true" className={`hidden truncate text-[10px] font-bold leading-tight sm:block ${isSelected ? 'text-white' : 'text-rose-700'}`}>{holiday.name}</span>
+                    )}
+                    {named.map(evt => (
+                      <span key={evt.id} aria-hidden="true" className={`hidden min-w-0 items-center gap-1 text-[10px] font-semibold leading-tight sm:flex ${isSelected ? 'text-white' : 'text-slate-700'}`}>
+                        <i className={`h-1.5 w-1.5 shrink-0 rounded-full ${isSelected ? 'bg-white' : categoryOf(evt).dot}`} />
+                        <span className="truncate">{[compactTime(evt.time), evt.title].filter(Boolean).join(' ')}</span>
+                      </span>
+                    ))}
+                    {dayEvents.length > named.length && (
+                      <span aria-hidden="true" className={`hidden text-[10px] font-bold leading-tight sm:block ${isSelected ? 'text-blue-100' : 'text-slate-500'}`}>+{dayEvents.length - named.length} more</span>
                     )}
                   </button>
                 );
@@ -257,18 +291,12 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
               <span>Holiday</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-              <span>Administrative Meetings</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-              <span>Capacity Trainings</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-              <span>Barangay / LGU Events</span>
-            </div>
+            {Object.entries(CATEGORIES).map(([key, category]) => (
+              <div key={key} className="flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${category.dot}`}></span>
+                <span>{category.label}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -278,8 +306,8 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
           {/* Day's Agenda Card */}
           <div className="bg-white border border-slate-200 p-6 shadow-sm rounded-2xl space-y-5">
             <div className="border-b border-slate-100 pb-3">
-              <span className="text-[10px] text-[#1e40af] uppercase font-mono font-bold tracking-widest">{selectedDayStr} Details</span>
-              <h3 className="font-extrabold text-slate-800 text-sm mt-0.5">Focus Agenda</h3>
+              <h3 className="font-extrabold text-slate-800 text-sm">{longDate(selectedDayStr)}</h3>
+              {selectedDayStr === today && <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-[#1e40af]">Today</span>}
             </div>
 
             <div className="space-y-4 max-h-56 overflow-y-auto pr-1">
@@ -290,28 +318,26 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
                 </div>
               )}
               {selectedDayEvents.length === 0 && selectedHoliday ? null : selectedDayEvents.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 font-bold text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50">
-                  No official agendas scheduled for this calendar date.
+                <div className="p-8 text-center text-slate-500 font-bold text-xs border border-dashed border-slate-200 rounded-xl bg-slate-50">
+                  No events on this day.
                 </div>
               ) : (
                 selectedDayEvents.map((evt) => (
-                  <div key={evt.id} className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-3">
+                  <div key={evt.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                     <div className="flex gap-2.5 items-start justify-between">
                       <h4 className="font-extrabold text-xs text-slate-800 leading-tight flex-1">{evt.title}</h4>
-                      <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${
-                        evt.type === 'meeting' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                        evt.type === 'training' ? 'bg-purple-50 text-purple-700 border border-purple-100' : 'bg-amber-50 text-amber-700 border border-amber-100'
-                      }`}>
-                        {evt.type}
+                      <span className={`shrink-0 border text-[9px] font-extrabold uppercase px-2 py-0.5 rounded ${categoryOf(evt).chip}`}>
+                        {categoryOf(evt).label}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-650 leading-normal font-sans font-medium">{evt.description}</p>
-                    {evt.location && (
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold font-sans">
-                        <MapPin className="w-3 h-3 text-rose-600 shrink-0" />
-                        <span>{evt.location}</span>
+                    {/* When and where. */}
+                    {(evt.time || evt.location) && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-slate-600">
+                        {evt.time && <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3 shrink-0 text-[#1e40af]" />{shortTime(evt.time)}</span>}
+                        {evt.location && <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0 text-rose-600" />{evt.location}</span>}
                       </div>
                     )}
+                    {evt.description && <p className="text-[11px] text-slate-600 leading-normal font-medium">{evt.description}</p>}
                   </div>
                 ))
               )}
@@ -323,13 +349,13 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
           <div className="bg-white border border-slate-200 p-6 shadow-sm rounded-2xl">
             <form onSubmit={handleCreateEvent} className="space-y-4">
               <div className="border-b border-slate-100 pb-3">
-                <h4 className="font-extrabold text-xs text-slate-705 uppercase tracking-wider">Book Official Event Context</h4>
-                <p className="text-[10px] text-slate-505 mt-0.5">Inject dynamic items into the highlighted day ({selectedDayStr}).</p>
+                <h4 className="font-extrabold text-sm text-slate-800">Add an event</h4>
+                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">On {longDate(selectedDayStr)}. Pick another day on the calendar to add it there.</p>
               </div>
 
               {/* Title Input */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-505 block uppercase">Agenda Subject</label>
+                <label htmlFor="input-cal-title" className="text-[10px] font-bold text-slate-500 block uppercase">Title</label>
                 <input
                   id="input-cal-title"
                   type="text"
@@ -344,7 +370,7 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
               {/* Grid 2x2 Form Section */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-550 block uppercase">Timing</label>
+                  <label htmlFor="input-cal-time" className="text-[10px] font-bold text-slate-500 block uppercase">Time</label>
                   <input
                     id="input-cal-time"
                     type="text"
@@ -357,23 +383,23 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-550 block uppercase">Category</label>
+                  <label htmlFor="select-cal-cat" className="text-[10px] font-bold text-slate-500 block uppercase">Category</label>
                   <select
                     id="select-cal-cat"
                     value={newType}
                     onChange={(e) => setNewType(e.target.value)}
                     className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none font-semibold focus:border-[#1e40af]"
                   >
-                    <option value="meeting" className="bg-white text-slate-800 font-semibold">Meeting</option>
-                    <option value="training" className="bg-white text-slate-800 font-semibold">Training</option>
-                    <option value="event" className="bg-white text-slate-800 font-semibold">LGU Event</option>
+                    {Object.entries(CATEGORIES).map(([key, category]) => (
+                      <option key={key} value={key} className="bg-white text-slate-800 font-semibold">{category.label}</option>
+                    ))}
                   </select>
                 </div>
               </div>
 
               {/* Location Input */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-550 block uppercase">Location Address</label>
+                <label htmlFor="input-cal-loc" className="text-[10px] font-bold text-slate-500 block uppercase">Location</label>
                 <input
                   id="input-cal-loc"
                   type="text"
@@ -386,14 +412,14 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
 
               {/* Description Input */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-550 block uppercase">Brief Summary</label>
+                <label htmlFor="textarea-cal-desc" className="text-[10px] font-bold text-slate-500 block uppercase">Details</label>
                 <textarea
                   id="textarea-cal-desc"
                   required
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                   rows={2}
-                  placeholder="Agenda tasks, indicators targeted or attendees requested..."
+                  placeholder="What it is about and who should attend"
                   className="w-full text-xs font-medium rounded-lg border border-slate-200 p-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500/10 focus:border-[#1e40af] bg-slate-50 text-slate-800 placeholder:text-slate-400 font-semibold leading-normal"
                 />
               </div>
@@ -401,7 +427,7 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
               {formSuccess && (
                 <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-2 text-[10px] rounded font-bold flex items-center gap-1">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Integrated event added to calendar!</span>
+                  <span>Event added to the calendar.</span>
                 </div>
               )}
 
@@ -411,7 +437,7 @@ export default function CalendarView({ events, holidays = [], onAddEvent }) {
                 className="w-full py-3 bg-[#1e40af] hover:bg-blue-800 transition-all text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-sm animate-none font-semibold"
               >
                 <Plus className="w-4 h-4" />
-                <span>Schedule On Calendar</span>
+                <span>Add to Calendar</span>
               </button>
             </form>
           </div>
