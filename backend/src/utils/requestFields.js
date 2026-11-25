@@ -181,9 +181,11 @@ export const buildEmployeeDraftUpdate = (existing, body, user, today = getManila
     update.submissionDate = today;
     // Received again: the stamp of the date of receipt shows this submission.
     update.submittedAt = now.toISOString();
-    // Submitted again, the request goes through HR's steps again, with its dates as they are now.
+    // Submitted again, the request goes through HR's steps again, with its dates as they are now,
+    // and the employee signs the leave application again (it may have changed).
     update.creditCertification = null;
     update.recommendation = null;
+    update.applicantSignature = null;
   }
   if (status !== existing.status) {
     update.statusHistory = [

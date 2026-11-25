@@ -97,9 +97,13 @@ const Empty = ({ children }) => (
 );
 
 // `dtrSubmissions` are the employee's DTRs signed through WorkMate; `onSubmitDtr` signs and submits one.
-export default function DocumentsView({ user, requests = [], attendanceHistory = [], dtrSubmissions = [], onSubmitDtr }) {
+// `onSignLeave({ id, signature, password, saveSignature })` signs a filed leave application (6.D of
+// CSC Form No. 6) with the same e-signature, before HR 2 certifies it.
+export default function DocumentsView({ user, requests = [], attendanceHistory = [], dtrSubmissions = [], onSubmitDtr, onSignLeave }) {
   const [signing, setSigning] = useState(''); // the month being signed
   const [signedNote, setSignedNote] = useState('');
+  const [signingLeave, setSigningLeave] = useState(null); // the leave being signed
+  const [leaveNote, setLeaveNote] = useState('');
   const submissionOf = month => dtrSubmissions.find(item => item.month === month) || null;
   const [openCategory, setOpenCategory] = useState(null);
   const [year, setYear] = useState('all');
@@ -220,15 +224,22 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
 
           {category.id === 'leave' && (shown.length ? (
             <ul className="space-y-2">
-              {shown.map(request => (
+              {shown.map(request => {
+                // A filed leave waits for the employee's signature (6.D) before HR 2 certifies it.
+                const canSignLeave = onSignLeave && request.status === 'Pending' && !request.applicantSignature?.image;
+                const signedText = request.applicantSignature?.signedAt
+                  ? `Signed by you ${formatDate(String(request.applicantSignature.signedAt).slice(0, 10))}`
+                  : canSignLeave ? 'Not signed yet: sign it so HR can process it' : '';
+                return (
                 <Row
                   key={request.id}
                   icon={CalendarDays}
                   title={request.leaveType || 'Leave application'}
                   status={request.status}
-                  meta={[dateRange(request), request.workingDays && plural(Number(request.workingDays), 'working day'), `Filed ${formatDate(request.submissionDate)}`].filter(Boolean).join(' · ')}
+                  meta={[dateRange(request), request.workingDays && plural(Number(request.workingDays), 'working day'), `Filed ${formatDate(request.submissionDate)}`, signedText].filter(Boolean).join(' · ')}
                 >
-                  <ActionButton icon={FileText} primary onClick={() => setFormPreview(request)}>CSC Form 6</ActionButton>
+                  {canSignLeave && <ActionButton icon={PenLine} primary onClick={() => { setLeaveNote(''); setSigningLeave(request); }}>Sign</ActionButton>}
+                  <ActionButton icon={FileText} primary={!canSignLeave} onClick={() => setFormPreview(request)}>CSC Form 6</ActionButton>
                   {(request.attachments || []).filter(file => file?.dataUrl).map(file => (
                     <ActionButton key={file.id || file.name} icon={Paperclip} onClick={() => view(file.name, () => {
                       const { type, bytes } = dataUrlToFile(file.dataUrl);
@@ -236,9 +247,11 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
                     })}>{file.type ? `${file.type}: ` : ''}{file.name}</ActionButton>
                   ))}
                 </Row>
-              ))}
+                );
+              })}
             </ul>
           ) : <Empty>Leave applications you file in Requests appear here.</Empty>)}
+          {category.id === 'leave' && leaveNote && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-center text-xs font-bold text-emerald-700">{leaveNote}</p>}
 
           {category.id === 'travel' && (shown.length ? (
             <ul className="space-y-2">
@@ -301,6 +314,20 @@ export default function DocumentsView({ user, requests = [], attendanceHistory =
           {submissionOf(signing)?.remarks && <p className="rounded-xl bg-orange-50 p-3 text-xs font-bold text-orange-800">Returned by HR: {submissionOf(signing).remarks}</p>}
           <button type="button" onClick={() => view(`Daily Time Record – ${formatMonth(signing)}`, () => makeDtr(signing))} className="text-xs font-black text-blue-700 underline">Check the DTR before you sign it</button>
         </SignDtrDialog>
+      )}
+      {signingLeave && (
+        <SignDtrDialog
+          title={`Sign your leave application${signingLeave.leaveType ? ` (${signingLeave.leaveType})` : ''}`}
+          statement={`I sign this Application for Leave (CSC Form No. 6) for ${dateRange(signingLeave)} as the applicant. My signature goes on 6.D, Signature of Applicant.`}
+          savedSignature={user?.signatureImage || ''}
+          confirmLabel="Sign"
+          onCancel={() => setSigningLeave(null)}
+          onConfirm={async ({ signature, password, saveSignature }) => {
+            await onSignLeave({ id: signingLeave.id, signature, password, saveSignature });
+            setLeaveNote('Your leave application is signed. HR can now certify your leave credits.');
+            setSigningLeave(null);
+          }}
+        />
       )}
       {formPreview?.type === 'Leave Request' && <CSCForm6Preview request={formPreview} user={user} onClose={() => setFormPreview(null)} />}
       {formPreview?.type === 'Travel Order' && <TravelOrderPreview request={formPreview} user={user} onClose={() => setFormPreview(null)} />}

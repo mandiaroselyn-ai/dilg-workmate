@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { CheckCircle2, ChevronDown, Download, Eye, FileSignature, MessageSquare, PenLine, RotateCcw } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Download, Eye, MessageSquare, PenLine, RotateCcw, Send } from 'lucide-react';
 import { getManilaDateString } from '../../shared/localDate';
 import { employeesInServiceSince } from '../../shared/separation';
 import { DTR_REPORT_STATUS, DTR_STATUS, reportNotReady, reportOpenToHr } from '../../shared/dtrReport';
 import { dtrStatusText } from '../utils/dtrSubmission';
-import { downloadReportZip, fetchReportCover, makeSubmissionDtr, monthText, reportRows } from '../utils/dtrReport';
-import { dtrReportFilename, dtrReportMarks, fillDtrReport } from '../utils/dtrReportForm';
-import { stampForSigning } from '../utils/signedForms';
+import { downloadReportZip, makeSubmissionDtr, monthText, reportCover, reportRows } from '../utils/dtrReport';
+import { dtrReportFilename, fillDtrReport } from '../utils/dtrReportForm';
 import DocumentViewer from './DocumentViewer';
-import SignedFormStep from './SignedFormStep';
 
 // The month before this one, as YYYY-MM: the latest DTR that can be submitted.
 const lastEndedMonth = () => {
@@ -27,17 +25,16 @@ const statusLabel = status => ({ [DTR_STATUS.submitted]: 'To check', [DTR_STATUS
 
 // HR's desk for the month's DTRs (see shared/dtrReport.js), in DTR Records: each employee's DTR
 // as they signed it, which HR checks or returns with remarks; then the month's report (a cover
-// list of everyone's DTR), which HR signs as "Prepared by" to send it with the checked DTRs to the
-// Provincial Director. Once the PD signs it, HR downloads it for the Regional Office too.
-// `canAct` is false for an HR account that only views (HR 2's desk). `signer` is
-// { image, key, name, email, position, onSaveSignature } for signing (see SignedFormStep).
-export default function HRDtrDesk({ employees = [], submissions = [], reports = [], canAct = true, onReview, onOpen, onUploadSignedForm, signer = {} }) {
+// list of everyone's DTR), which HR sends with the checked DTRs to the Provincial Director. HR signs
+// nothing: the DTRs carry the employees' signatures, and the PD signs them and the report. Once the
+// PD signs it, HR downloads it for the Regional Office too. `canAct` is false for an HR account
+// that only views (HR 2's desk). `onSendReport({ month, rows })` sends the report.
+export default function HRDtrDesk({ employees = [], submissions = [], reports = [], canAct = true, onReview, onOpen, onSendReport }) {
   const [open, setOpen] = useState(true);
   const [month, setMonth] = useState(lastEndedMonth);
   const [viewer, setViewer] = useState(null);
   const [returning, setReturning] = useState(null);
   const [remarks, setRemarks] = useState('');
-  const [signing, setSigning] = useState(false);
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState({ text: '', error: false });
 
@@ -51,14 +48,13 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
   const say = (text, error = false) => setNote({ text, error });
 
   const view = submission => setViewer({ key: Date.now(), title: `DTR of ${submission.employeeName} – ${monthText(submission.month)}`, load: () => makeSubmissionDtr(submission, onOpen) });
+  // The report: as sent (signed by the PD once they sign it), or as it would go now.
   const viewCover = () => setViewer({
     key: Date.now(),
     title: `DTR Report – ${monthText(month)}`,
-    load: async () => {
-      const cover = await fetchReportCover(report);
-      if (!cover) throw new Error('The signed report is not available.');
-      return { fileName: cover.fileName, fileType: 'application/pdf', bytes: cover.bytes };
-    }
+    load: async () => (report && !openToHr
+      ? reportCover(report)
+      : { fileName: dtrReportFilename(month), fileType: 'application/pdf', bytes: (await fillDtrReport({ month, rows })).bytes })
   });
 
   const check = async submission => {
@@ -89,14 +85,21 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
     }
   };
 
-  // The cover to sign as "Prepared by", tagged for the upload.
-  const coverToSign = async () => {
-    const made = await fillDtrReport({
-      month,
-      rows,
-      preparedBy: { name: signer.name || 'HR/Admin', position: signer.position || 'HR/Admin' }
-    });
-    return { bytes: await stampForSigning(made.bytes, 'dtr-report-hr', month), pageIndex: made.pageIndex, fileName: dtrReportFilename(month).replace(/\.pdf$/, '_to_sign.pdf'), marks: dtrReportMarks('hr') };
+  // Sends the month's report with its checked DTRs to the PD (HR signs nothing).
+  const send = async () => {
+    if (busy) return;
+    const checkedCount = ofMonth.filter(item => item.status === DTR_STATUS.checked).length;
+    if (!window.confirm(`Send the DTR report for ${monthText(month)} with ${checkedCount} checked DTR${checkedCount === 1 ? '' : 's'} to the Provincial Director? Its DTRs cannot be changed while the PD has it.`)) return;
+    setBusy('send');
+    say('');
+    try {
+      await onSendReport({ month, rows: rows.map(({ employeeId, name, position, office }) => ({ employeeId, name, position, office })) });
+      say(`The DTR report for ${monthText(month)} was sent to the Provincial Director.`);
+    } catch (error) {
+      say(error.message || 'Unable to send the report.', true);
+    } finally {
+      setBusy('');
+    }
   };
 
   const download = async () => {
@@ -114,7 +117,7 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
   const reportLine = !report
     ? 'Not sent to the Provincial Director yet.'
     : {
-      [DTR_REPORT_STATUS.forPd]: `Sent to the Provincial Director on ${when(report.preparedBy?.at)} with ${report.submissionIds.length} DTR${report.submissionIds.length === 1 ? '' : 's'}. Waiting for the signature.`,
+      [DTR_REPORT_STATUS.forPd]: `Sent to the Provincial Director on ${when(report.sentBy?.at)} with ${report.submissionIds.length} DTR${report.submissionIds.length === 1 ? '' : 's'}. Waiting for the signature.`,
       [DTR_REPORT_STATUS.returned]: `Returned by the Provincial Director: ${report.remarks || 'fix it and send it again'}`,
       [DTR_REPORT_STATUS.signed]: `Signed by ${report.approvedBy?.name || 'the Provincial Director'} on ${when(report.approvedBy?.at)}. Ready for the Regional Office.`,
       [DTR_REPORT_STATUS.forwarded]: `Forwarded to the Regional Office on ${when(report.forwarded?.at)}${report.forwarded?.reference ? ` (${report.forwarded.reference})` : ''}.`
@@ -134,52 +137,25 @@ export default function HRDtrDesk({ employees = [], submissions = [], reports = 
       </button>
       {open && (
         <div className="space-y-3 border-t border-slate-100 p-4">
-          <p className="text-xs text-slate-500">Employees sign their DTR (CSC Form No. 48) when a month ends, and it comes here. Check each one, or return it with what to fix. Then sign the month's report and send it with the checked DTRs to the Provincial Director, who signs them and forwards them to the Regional Office.</p>
+          <p className="text-xs text-slate-500">Employees sign their DTR (CSC Form No. 48) when a month ends, and it comes here. Check each one, or return it with what to fix. Then send the month's report with the checked DTRs to the Provincial Director, who signs them and forwards them to the Regional Office. HR does not sign: only the employees and the PD do.</p>
           <label className="text-[11px] font-black text-slate-600">Month
-            <input type="month" value={month} max={lastEndedMonth()} onChange={event => { if (event.target.value) { setMonth(event.target.value); setSigning(false); say(''); } }} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
+            <input type="month" value={month} max={lastEndedMonth()} onChange={event => { if (event.target.value) { setMonth(event.target.value); say(''); } }} className="mt-1 block rounded-lg border border-slate-200 px-2 py-2 text-xs font-bold text-slate-800" />
           </label>
 
           <div className={`rounded-xl border p-3 text-xs ${report?.status === DTR_REPORT_STATUS.returned ? 'border-orange-200 bg-orange-50 text-orange-800' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
             <p className="font-black">Report for {monthText(month)}{report ? `: ${report.status}` : ''}</p>
             <p className="mt-0.5 font-semibold">{reportLine}</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {report && !openToHr && <button type="button" onClick={viewCover} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View Report</button>}
+              {(!openToHr || !notReady) && <button type="button" onClick={viewCover} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-700"><Eye className="h-3.5 w-3.5" />View Report</button>}
               {[DTR_REPORT_STATUS.signed, DTR_REPORT_STATUS.forwarded].includes(report?.status) && (
                 <button type="button" disabled={busy === 'zip'} onClick={download} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 disabled:opacity-60"><Download className="h-3.5 w-3.5" />{busy === 'zip' ? 'Downloading…' : 'Download Report and DTRs (ZIP)'}</button>
               )}
-              {canAct && openToHr && !signing && (
-                <button type="button" disabled={Boolean(notReady)} onClick={() => { say(''); setSigning(true); }} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"><FileSignature className="h-3.5 w-3.5" />{report ? 'Sign & Send the Report Again' : 'Sign & Send the Report to the PD'}</button>
+              {canAct && openToHr && (
+                <button type="button" disabled={Boolean(notReady) || busy === 'send'} onClick={send} className="inline-flex items-center gap-1 rounded-lg bg-blue-700 px-2.5 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"><Send className="h-3.5 w-3.5" />{busy === 'send' ? 'Sending…' : report ? 'Send the Report Again' : 'Send the Report to the PD'}</button>
               )}
             </div>
             {canAct && openToHr && notReady && <p className="mt-2 text-[11px] font-semibold text-slate-500">{notReady}</p>}
           </div>
-
-          {signing && (
-            <div>
-              <SignedFormStep
-                key={month}
-                title="Sign the report as Prepared by"
-                description={`The report lists every employee's DTR for ${monthText(month)}. The checked DTRs go with it to the Provincial Director.`}
-                signLabel="Sign & Send to the PD"
-                digitalSign={{
-                  getForm: coverToSign,
-                  owner: signer.key,
-                  signerName: signer.name,
-                  signerEmail: signer.email,
-                  image: signer.image || '',
-                  onSaveSignature: signer.onSaveSignature,
-                  reason: `Prepared the DTR report for ${monthText(month)}`,
-                  location: 'DILG Marinduque'
-                }}
-                onSubmit={async ({ file }) => {
-                  await onUploadSignedForm({ kind: 'dtr-report-hr', ref: month, file });
-                  say(`The DTR report for ${monthText(month)} was signed and sent to the Provincial Director.`);
-                  setSigning(false);
-                }}
-              />
-              <button type="button" onClick={() => setSigning(false)} className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600">Cancel</button>
-            </div>
-          )}
 
           {note.text && <p role={note.error ? 'alert' : 'status'} className={`rounded-xl p-3 text-xs font-bold ${note.error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{note.text}</p>}
 

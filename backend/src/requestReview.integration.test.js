@@ -16,6 +16,7 @@ const { AppSetting } = await import('./models/appSettingModel.js');
 const { SignedDocument } = await import('./models/signedDocumentModel.js');
 const { PDFDocument } = await import('pdf-lib');
 const { signedFormMarker } = await import('../../shared/signedForms.js');
+const { buildEmployeeDraftUpdate } = await import('./utils/requestFields.js');
 // No start month for leave credits unless a test sets one.
 mock.method(AppSetting, 'get', async () => '');
 
@@ -51,7 +52,9 @@ const hr2 = { _id: 'hr-2', email: 'erick@dilg.gov.ph', name: 'John Erick J. Mati
 const requests = {
   // A leave waiting for HR 2, one HR 1 certified when HR 1 still did that step (waiting for
   // HR 2), and a Travel Order filed before Travel Orders went straight to the Head.
-  'REQ-PENDING': { id: 'REQ-PENDING', status: 'Pending', type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1' },
+  // A leave the employee signed (6.D) in Documents, and one they have not signed yet.
+  'REQ-PENDING': { id: 'REQ-PENDING', status: 'Pending', type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1', applicantSignature: { image: 'data:image/png;base64,iVBORw0KGgo=', name: 'Juan Dela Cruz', signedAt: '2026-11-02T01:00:00Z' } },
+  'REQ-UNSIGNED': { id: 'REQ-UNSIGNED', status: 'Pending', type: 'Leave Request', leaveType: 'Vacation Leave', startDate: '2026-11-09', endDate: '2026-11-10', employeeId: 'E1', employeeName: 'Juan Dela Cruz' },
   'REQ-CERTIFIED': { id: 'REQ-CERTIFIED', status: 'For Pre-approval', type: 'Leave Request', leaveType: 'Vacation Leave', employeeId: 'E1', creditCertification: { asOf: '2026-11-02', certifiedBy: { name: 'Ma. Joane O. Salcedo' } } },
   'REQ-TRAVEL': { id: 'REQ-TRAVEL', status: 'Pending', type: 'Travel Order', employeeId: 'E1' },
   'REQ-APPROVED': { id: 'REQ-APPROVED', status: 'Approved', type: 'Leave Request', employeeId: 'E1' },
@@ -139,6 +142,59 @@ test('a certified leave goes to the Head when HR 2 uploads its form signed in Ad
   // Only HR 2 signs 7.A and 7.B.
   const hr1 = signInAsHr(t, { as: hr, employee: juan });
   assert.equal((await hr1.upload(asUpload('leave-hr', 'REQ-CERTIFIED', await signedForm('leave', 'REQ-CERTIFIED')))).status, 403);
+});
+
+test('HR 2 certifies a leave only after the employee signed it (6.D) in Documents', async t => {
+  const session = signInAsHr(t, { as: hr2, employee: juan });
+  const refused = await session.patch('REQ-UNSIGNED', certify);
+  assert.equal(refused.status, 400);
+  assert.match(refused.body.error, /Juan Dela Cruz has not signed this leave application yet\. They sign it in Documents/);
+  assert.equal(session.saves.mock.callCount(), 0);
+  // HR 2 may still return it with remarks.
+  const returned = await session.patch('REQ-UNSIGNED', { status: 'Returned', remarks: 'Please attach the travel authority.' });
+  assert.equal(returned.status, 200, JSON.stringify(returned.body));
+});
+
+test('the employee signs their own filed leave with their signature and password, once, and HR 2 is told', async t => {
+  const employee = { _id: 'emp-1', email: 'juan@dilg.gov.ph', employeeId: 'E1', name: 'Juan Dela Cruz', accessLevel: 'employee', accountStatus: 'Active', password: 'hash' };
+  const other = { ...employee, _id: 'emp-2', email: 'ana@dilg.gov.ph', employeeId: 'E2', name: 'Ana Cruz' };
+  const state = { unsigned: { ...requests['REQ-UNSIGNED'] } };
+  t.mock.method(User, 'findByEmail', async email => [employee, other].find(person => person.email === email) || null);
+  t.mock.method(User, 'verifyPassword', async (user, typed) => typed === 'right-password');
+  t.mock.method(Announcement, 'createNotification', async notice => notice);
+  t.mock.method(Leave, 'findByCustomId', async id => (id === 'REQ-UNSIGNED' ? state.unsigned : requests[id] || null));
+  const sign = t.mock.method(Leave, 'signAsApplicant', async (id, signature) => ({ ...state.unsigned, customId: id, applicantSignature: signature }));
+  const as = person => (id, body) => request(app).patch(`/api/requests/${id}`).set('Authorization', `Bearer ${createAuthToken(person)}`).send({ action: 'sign', ...body });
+  const juanSigns = as(employee);
+  const signature = 'data:image/png;base64,iVBORw0KGgo=';
+
+  assert.match((await juanSigns('REQ-UNSIGNED', { signature, password: 'wrong' })).body.error, /password is incorrect/);
+  assert.match((await juanSigns('REQ-UNSIGNED', { signature: '', password: 'right-password' })).body.error, /Add your signature/);
+  assert.equal((await as(other)('REQ-UNSIGNED', { signature, password: 'right-password' })).status, 403);
+  assert.equal(sign.mock.callCount(), 0);
+
+  const signed = await juanSigns('REQ-UNSIGNED', { signature, password: 'right-password' });
+  assert.equal(signed.status, 200, JSON.stringify(signed.body));
+  const [id, saved] = sign.mock.calls[0].arguments;
+  assert.equal(id, 'REQ-UNSIGNED');
+  assert.equal(saved.image, signature);
+  assert.equal(saved.name, 'Juan Dela Cruz');
+  const notice = Announcement.createNotification.mock.calls.at(-1).arguments[0];
+  assert.equal(notice.recipientRole, 'hr_admin');
+  assert.match(notice.message, /Juan Dela Cruz signed their leave application REQ-UNSIGNED/);
+
+  // Signed once; a draft or a leave past HR is not signed here.
+  assert.match((await juanSigns('REQ-PENDING', { signature, password: 'right-password' })).body.error, /already signed/);
+  assert.match((await juanSigns('REQ-DRAFT', { signature, password: 'right-password' })).body.error, /Submit the leave first/);
+  assert.match((await juanSigns('REQ-CERTIFIED', { signature, password: 'right-password' })).body.error, /already past HR/);
+});
+
+test('a returned leave submitted again is signed again', () => {
+  const employee = { employeeId: 'E1', email: 'juan@dilg.gov.ph', name: 'Juan Dela Cruz' };
+  const returned = { ...requests['REQ-PENDING'], status: 'Returned' };
+  const update = buildEmployeeDraftUpdate(returned, { status: 'Pending', purpose: 'Family trip' }, employee);
+  assert.equal(update.status, 'Pending');
+  assert.equal(update.applicantSignature, null);
 });
 
 test('once WorkMate counts leave credits from a start month, HR 2 certifies only after the starting balance', async t => {
@@ -335,7 +391,7 @@ test('HR does not receive employee drafts', async t => {
   const session = signInAsHr(t);
   const response = await session.get('/api/requests');
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.map(item => item.id).sort(), ['REQ-APPROVED', 'REQ-CERTIFIED', 'REQ-PENDING', 'REQ-TRAVEL', 'REQ-WITHDRAWN']);
+  assert.deepEqual(response.body.map(item => item.id).sort(), ['REQ-APPROVED', 'REQ-CERTIFIED', 'REQ-PENDING', 'REQ-TRAVEL', 'REQ-UNSIGNED', 'REQ-WITHDRAWN']);
 });
 
 // Turns on SMS with a fake gateway for one test. Returns the gateway and the saved texts.

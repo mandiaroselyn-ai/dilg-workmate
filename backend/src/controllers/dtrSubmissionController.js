@@ -11,34 +11,18 @@ import { getManilaDateString } from '../../../shared/localDate.js';
 import { travelOrderCovers } from '../../../shared/travelStatus.js';
 import { checksDtrs, reportOpenToHr } from '../../../shared/dtrReport.js';
 import { DtrReport } from '../models/dtrReportModel.js';
+import { signerProblem } from '../utils/eSignature.js';
 
 // Monthly DTR submission (CSC Form No. 48) through WorkMate (see shared/dtrReport.js). The
 // employee certifies their DTR for an ended month with their e-signature and password; HR checks
 // it or returns it with remarks; the Supervisor (the PD), as the In-charge, verifies it by signing
-// it with their digital ID when signing the month's report (signedDocumentController). Under the Electronic Commerce
-// Act (RA 8792, Sec. 8) an electronic signature counts as a signature when it shows who signed
-// and that they approved: here the signer's own account, their password at the moment of
-// signing, and the time are kept with the signature.
+// it with their digital ID when signing the month's report (signedDocumentController). The
+// employee's e-signature is as utils/eSignature.js describes it (RA 8792).
 
-const MAX_SIGNATURE_LENGTH = 300 * 1024;
-const isSignatureImage = value => typeof value === 'string'
-  && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(value)
-  && value.length <= MAX_SIGNATURE_LENGTH;
 const isMonth = value => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || ''));
 
 // The month a year before `month`, so lists stay short.
 const yearBefore = month => `${Number(month.slice(0, 4)) - 1}${month.slice(4)}`;
-
-// Why the signer's e-signature cannot be taken, or '' when it can: a signature image, and the
-// signer's own password (an account made with Google sign-in sets one in Settings first).
-const signerProblem = async (user, { signature, password }) => {
-  if (!isSignatureImage(signature)) return 'Add your signature (draw it or upload a PNG or JPG under 300 KB).';
-  if (!user?.password) return 'Set a WorkMate password in Settings first. You confirm your e-signature with it.';
-  if (typeof password !== 'string' || !password || !(await User.verifyPassword(user, password))) {
-    return 'Your password is incorrect. Enter it to confirm your e-signature.';
-  }
-  return '';
-};
 
 // Records whose offline Time In or Time Out still waits for HR's decision.
 const pendingDays = records => records

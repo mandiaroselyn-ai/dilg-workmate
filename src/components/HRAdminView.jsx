@@ -55,11 +55,12 @@ export default function HRAdminView({
   user = {},
   employees = [],
   // The DTRs employees signed through WorkMate, and the monthly reports HR sends with them to the
-  // PD (see shared/dtrReport.js): HR checks or returns each DTR (onReviewDtr) and opens one with
-  // what it is made from (onOpenDtr).
+  // PD (see shared/dtrReport.js): HR checks or returns each DTR (onReviewDtr), opens one with what
+  // it is made from (onOpenDtr), and sends the month's report, unsigned (onSendDtrReport).
   dtrSubmissions = [],
   dtrReports = [],
   onReviewDtr,
+  onSendDtrReport,
   onOpenDtr,
   attendanceHistory = [],
   attendanceFrom,
@@ -433,15 +434,7 @@ export default function HRAdminView({
           canAct: checksDtrs(user),
           onReview: onReviewDtr,
           onOpen: onOpenDtr,
-          onUploadSignedForm,
-          signer: {
-            image: user?.signatureImage || '',
-            key: user?.email || user?.employeeId || '',
-            name: user?.name || '',
-            email: user?.email || '',
-            position: user?.role || '',
-            onSaveSignature: onUpdateUser ? image => onUpdateUser({ signatureImage: image }) : null
-          }
+          onSendReport: onSendDtrReport
         }}
         employees={employees}
         attendanceHistory={attendanceHistory}

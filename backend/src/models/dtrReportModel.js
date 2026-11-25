@@ -2,11 +2,11 @@ import mongoose from 'mongoose';
 import crypto from 'crypto';
 import { isConnected } from '../config/db.js';
 
-// A month's DTR report (see shared/dtrReport.js): HR signs its cover list as "Prepared by" and
-// sends it with the checked DTRs (`submissionIds`) to the PD, who signs it as "Approved by" (and
-// each DTR as the In-charge) or returns it to HR, then forwards it to the Regional Office. One per
-// month. The signed covers are SignedDocuments ('dtr-report-hr', 'dtr-report-pd') under the month;
-// here are only short notes of them.
+// A month's DTR report (see shared/dtrReport.js): HR sends its cover list (`rows`, one per employee
+// in service that month) with the checked DTRs (`submissionIds`) to the PD, who signs it as
+// "Approved by" (and each DTR as the In-charge) or returns it to HR, then forwards it to the
+// Regional Office. HR signs nothing. One per month. The signed cover is a SignedDocument
+// ('dtr-report-pd') under the month; here is only a short note of it.
 const PersonSchema = new mongoose.Schema({
   name: { type: String, default: '' },
   position: { type: String, default: '' },
@@ -18,7 +18,17 @@ const DtrReportSchema = new mongoose.Schema({
   month: { type: String, required: true, unique: true }, // YYYY-MM
   status: { type: String, required: true },
   submissionIds: { type: [String], default: [] },
-  preparedBy: { type: PersonSchema, default: null },
+  rows: {
+    type: [new mongoose.Schema({
+      employeeId: { type: String, default: '' },
+      name: { type: String, default: '' },
+      position: { type: String, default: '' },
+      office: { type: String, default: '' },
+      dtr: { type: String, default: '' }
+    }, { _id: false })],
+    default: []
+  },
+  sentBy: { type: PersonSchema, default: null },
   approvedBy: { type: PersonSchema, default: null },
   signedForms: { type: mongoose.Schema.Types.Mixed, default: {} },
   remarks: { type: String, default: '' },
@@ -76,10 +86,10 @@ export const DtrReport = {
 
   // HR sends the month's report to the PD: a new one, or one the PD returned. Returns it, or
   // null when one is already with the PD or past it.
-  send: async ({ month, submissionIds, preparedBy, signedForm }) => {
+  send: async ({ month, submissionIds, rows, sentBy }) => {
     ensureConnected();
-    const entry = { action: 'sent', by: preparedBy.name, at: preparedBy.at };
-    const fields = { status: 'For PD', submissionIds, preparedBy, approvedBy: null, signedForms: { hr: signedForm }, remarks: '', forwarded: null };
+    const entry = { action: 'sent', by: sentBy.name, at: sentBy.at };
+    const fields = { status: 'For PD', submissionIds, rows, sentBy, approvedBy: null, signedForms: {}, remarks: '', forwarded: null };
     const existing = await MongoDtrReport.findOne({ month });
     if (existing) {
       if (existing.status !== 'Returned to HR') return null;

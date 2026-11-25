@@ -14,10 +14,9 @@ export const SIGNED_FORM_KINDS = {
   'travel-head': { label: 'Travel Order', role: 'supervisor', signatures: 1 },
   // The employee's DTR, verified and signed by the Head as the In-charge.
   'dtr-incharge': { label: 'Daily Time Record (CSC Form No. 48)', role: 'supervisor', signatures: 1 },
-  // The month's DTR report (its cover list), signed by HR as "Prepared by" to send it to the Head.
-  'dtr-report-hr': { label: 'Monthly DTR Report (prepared by HR)', role: 'hr_admin', signatures: 1 },
-  // The same report, signed by the Head as "Approved by", on top of HR's signature.
-  'dtr-report-pd': { label: 'Monthly DTR Report (approved by the Head)', role: 'supervisor', signatures: 2 }
+  // The month's DTR report (its cover list), which HR sends unsigned, signed by the Head as
+  // "Approved by". HR signs nothing (the user, 2026-11-25: "walang pirma ang hr 1").
+  'dtr-report-pd': { label: 'Monthly DTR Report (approved by the Head)', role: 'supervisor', signatures: 1 }
 };
 
 // A short tag WorkMate writes into the PDF it makes, so an uploaded file can be matched to the
@@ -25,10 +24,10 @@ export const SIGNED_FORM_KINDS = {
 export const signedFormMarker = (kind, ref) => `workmate:${kind}:${ref}`;
 
 // The tag of the form that is signed in a later step on the same PDF (the leave form is made
-// for HR 2's step, and the Head signs that same file; the DTR report, for HR's step).
+// for HR 2's step, and the Head signs that same file).
 export const markerKindOf = kind => {
   if (kind === 'leave-head' || kind === 'leave-hr') return 'leave';
-  if (kind === 'dtr-report-hr' || kind === 'dtr-report-pd') return 'dtr-report';
+  if (kind === 'dtr-report-pd') return 'dtr-report';
   return kind;
 };
 

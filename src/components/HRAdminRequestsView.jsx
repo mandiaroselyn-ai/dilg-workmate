@@ -169,7 +169,9 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
   };
   const allChecked = validationItems.every(item => checks[item]);
   const recommendationReady = recommendation.decision === 'approval' || recommendation.reason.trim();
-  const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee));
+  // A leave is certified only once the employee signed it (6.D) in Documents (requestController).
+  const awaitingApplicant = certifying && selected?.type === 'Leave Request' && !selected?.applicantSignature?.image;
+  const canSendOn = myStep && (!firstStep || allChecked) && recommendationReady && (!certifying || Boolean(selectedEmployee)) && !awaitingApplicant;
   // A certified leave waits for HR 2 to sign its form in Adobe and upload it (shared/hrSteps.js).
   const signing = myStep && needsHrSignedUpload(selected) && selected?.status === FOR_PRE_APPROVAL && Boolean(selected?.creditCertification);
   // The CSC Form No. 6 with HR 2's certification (7.A) and recommendation (7.B), to sign, with
@@ -219,6 +221,9 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
     const stepPanel = step && myStep ? (
       <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
         <div className="flex items-center gap-2"><ClipboardCheck className="h-5 w-5 text-blue-700" /><h3 className="text-sm font-black text-blue-900">{stepTitle}</h3></div>
+        {selected.type === 'Leave Request' && (selected.applicantSignature?.image
+          ? <p className="mt-2 rounded-xl bg-white/80 p-3 text-xs font-bold text-emerald-700">Signed by {selected.applicantSignature.name || employeeName(selected)} (6.D) on {new Date(selected.applicantSignature.signedAt).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' })}.</p>
+          : awaitingApplicant && <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">Waiting for {employeeName(selected)} to sign the leave application (6.D) in Documents. You can certify it once they sign, or return it with remarks.</p>)}
         {firstStep && <div className="mt-3 space-y-2">{validationItems.map(item => <label key={item} className="flex items-center gap-2 rounded-xl bg-white/80 p-3 text-xs font-bold text-blue-950"><input type="checkbox" checked={Boolean(checks[item])} onChange={event => setChecks(previous => ({ ...previous, [item]: event.target.checked }))} className="h-4 w-4 accent-blue-700" />{item}</label>)}</div>}
         {certifying && (
           <div className="mt-3 rounded-xl bg-white/80 p-3">
@@ -261,7 +266,7 @@ export default function HRAdminRequestsView({ user = {}, requests = [], employee
         <textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Add HR remarks..." className="mt-3 min-h-24 w-full rounded-xl border border-blue-200 bg-white p-3 text-xs font-semibold outline-none focus:border-blue-600" />
         {!signing && <>
           <button type="button" onClick={handleSendOn} disabled={!canSendOn || isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 px-4 py-3 text-xs font-black text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck className="h-4 w-4" />{isUpdating ? 'Saving…' : needsHrSignedUpload(selected) ? 'Certify Credits & Make the Form to Sign' : 'Pre-approve & Send to the Head'}</button>
-          <p className="mt-2 text-center text-xs font-bold text-blue-700">{firstStep && !allChecked ? 'Check every item above first.' : !recommendationReady ? 'Write why it is recommended for disapproval.' : needsHrSignedUpload(selected) ? 'Next, you sign 7.A and 7.B in Adobe and upload the form.' : 'The Head (Supervisor) makes the final decision.'}</p>
+          <p className="mt-2 text-center text-xs font-bold text-blue-700">{awaitingApplicant ? 'Waiting for the employee\'s signature.' : firstStep && !allChecked ? 'Check every item above first.' : !recommendationReady ? 'Write why it is recommended for disapproval.' : needsHrSignedUpload(selected) ? 'Next, you sign 7.A and 7.B in Adobe and upload the form.' : 'The Head (Supervisor) makes the final decision.'}</p>
         </>}
         <button type="button" onClick={handleReturnToEmployee} disabled={isUpdating} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"><MessageSquare className="h-4 w-4" />{isUpdating ? 'Saving…' : 'Return to Employee'}</button>
         <p className="mt-2 text-center text-xs font-bold text-rose-700">Something to fix or missing? Write it in the remarks and return the request. The employee is notified.</p>

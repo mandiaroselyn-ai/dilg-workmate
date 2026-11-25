@@ -2,7 +2,8 @@ import { Leave } from '../models/leaveModel.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import { toRequesterProfile } from '../utils/passwordSecurity.js';
-import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, pickReviewUpdate, reviewUpdateProblem, routeSubmittedTravelOrder } from '../utils/requestFields.js';
+import { buildEmployeeDraftUpdate, buildEmployeeRequest, buildEmployeeWithdrawal, isRequestOwner, pickReviewUpdate, reviewUpdateProblem, routeSubmittedTravelOrder } from '../utils/requestFields.js';
+import { signerProblem } from '../utils/eSignature.js';
 import { leaveCreditDeduction } from '../utils/leaveCredits.js';
 import { Announcement } from '../models/announcementModel.js';
 import { sendSupervisorReviewSms } from '../services/smsService.js';
@@ -113,6 +114,11 @@ const hrStepRecord = async (existing, update, req) => {
   const signer = signatory(req.user);
   const fields = { recommendation: { ...recommendation.value, recommendedBy: signer, recommendedAt: at } };
   if (needsCreditCertification(existing)) {
+    // The employee signs their leave application (6.D) in Documents before HR 2 certifies it, so
+    // HR 2's signature on the form comes after theirs.
+    if (existing.type === 'Leave Request' && !existing.applicantSignature?.image) {
+      return { error: `${existing.employeeName || 'The employee'} has not signed this leave application yet. They sign it in Documents (Leave Applications), then you can certify it.` };
+    }
     const employee = (existing.employeeId && await User.findByEmployeeId(existing.employeeId))
       || (existing.employeeEmail && await User.findByEmail(existing.employeeEmail));
     if (!employee) return { error: "The employee's account was not found, so their leave credits cannot be certified." };
@@ -331,6 +337,38 @@ export const finishReview = async ({ id, existing, update, req }) => {
   return updated;
 };
 
+// The employee signs their leave application (CSC Form No. 6, 6.D, Signature of Applicant) in
+// Documents with their e-signature and password (utils/eSignature.js), after filing it and before
+// HR 2 certifies it (see hrStepRecord). HR 2 is told it is ready.
+const signLeaveApplication = async (req, res, existing) => {
+  if (req.user?.accessLevel !== 'employee' || !isRequestOwner(existing, req.user) || existing.type !== 'Leave Request') {
+    return res.status(403).json({ success: false, error: 'Only the employee who filed this leave signs it.' });
+  }
+  if (existing.status !== 'Pending') {
+    return res.status(409).json({
+      success: false,
+      error: ['Draft', 'Returned'].includes(existing.status)
+        ? 'Submit the leave first, then sign it.'
+        : 'This leave is already past HR, so it can no longer be signed.'
+    });
+  }
+  if (existing.applicantSignature?.image) return res.status(409).json({ success: false, error: 'You already signed this leave application.' });
+  const problem = await signerProblem(req.user, req.body || {});
+  if (problem) return res.status(400).json({ success: false, error: problem });
+  const { id } = req.params;
+  const signed = await Leave.signAsApplicant(id, { image: req.body.signature, name: req.user.name || '', signedAt: new Date().toISOString() });
+  if (!signed) return res.status(409).json({ success: false, error: 'This leave is no longer waiting for HR, so it can no longer be signed.' });
+  await Announcement.createNotification({
+    title: 'Leave Signed by the Employee',
+    message: `${req.user.name || 'An employee'} signed their leave application ${id}${requestDates(signed) ? ` (${requestDates(signed)})` : ''}. It is ready for certification.`,
+    type: 'request',
+    recipientRole: 'hr_admin',
+    action: 'review_request',
+    targetId: id
+  }).catch(error => console.error('Unable to notify HR about a signed leave:', error));
+  return res.status(200).json({ success: true, request: signed });
+};
+
 export const updateRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
@@ -338,6 +376,8 @@ export const updateRequestStatus = async (req, res) => {
     let update;
     const existing = await Leave.findByCustomId(id);
     if (!existing) return res.status(404).json({ success: false, error: 'Request ID not found.' });
+    // The employee signs their own leave application ({ action: 'sign', signature, password }).
+    if (req.body?.action === 'sign') return await signLeaveApplication(req, res, existing);
     if (role === 'employee') {
       // Employees may edit, submit, or discard their own drafts, fix and submit again a
       // request returned to them, and withdraw their own requests that have not been

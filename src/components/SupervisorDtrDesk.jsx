@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { PDFDocument } from 'pdf-lib';
 import { CheckCircle2, ChevronDown, Clock, Download, Eye, MessageSquare, PenLine, RotateCcw, Send } from 'lucide-react';
 import { DTR_REPORT_STATUS, DTR_STATUS } from '../../shared/dtrReport';
 import { dtrInChargeMarks } from '../utils/dtrForm';
 import { dtrStatusText } from '../utils/dtrSubmission';
-import { downloadReportZip, fetchReportCover, makeSubmissionDtr, monthText } from '../utils/dtrReport';
+import { downloadReportZip, makeSubmissionDtr, monthText, reportCover } from '../utils/dtrReport';
 import { dtrReportMarks } from '../utils/dtrReportForm';
-import { fetchSignedForm, stampForSigning } from '../utils/signedForms';
+import { stampForSigning } from '../utils/signedForms';
 import DocumentViewer from './DocumentViewer';
 import SignedFormStep from './SignedFormStep';
 
@@ -19,7 +18,8 @@ const TABS = [
 const when = value => (value ? new Date(value).toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric' }) : '');
 
 // The Provincial Director's desk for the monthly DTR reports (see shared/dtrReport.js). HR sends
-// each month's report, a cover list it signed, with the DTRs it checked. The PD opens them and
+// each month's report, a cover list of every employee's DTR, with the DTRs it checked (HR signs
+// nothing; the DTRs carry the employees' signatures). The PD opens them and
 // signs once, with their digital ID and password: the report as "Approved by" and every DTR as the
 // In-charge ("VERIFIED as to the prescribed office hours"). Or the PD returns the report to HR
 // with what to fix. A signed report downloads as one ZIP (the report and the signed DTRs) to send
@@ -53,19 +53,14 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
   const viewCover = report => setViewer({
     key: Date.now(),
     title: `DTR Report – ${monthText(report.month)}`,
-    load: async () => {
-      const cover = await fetchReportCover(report);
-      if (!cover) throw new Error('The signed report is not available.');
-      return { fileName: cover.fileName, fileType: 'application/pdf', bytes: cover.bytes };
-    }
+    load: () => reportCover(report)
   });
 
-  // The cover HR signed, to sign on the same file as "Approved by" on its last page.
+  // The report made from the list HR sent, tagged for the upload, to sign as "Approved by" on its
+  // last page.
   const coverToSign = async report => {
-    const hrCopy = await fetchSignedForm('dtr-report-hr', report.month);
-    if (!hrCopy) throw new Error('HR\'s signed report is missing. Ask HR to send it again.');
-    const pages = (await PDFDocument.load(hrCopy.bytes, { updateMetadata: false })).getPageCount();
-    return { bytes: hrCopy.bytes, pageIndex: pages - 1, fileName: (hrCopy.fileName || `DTR_Report_${report.month}.pdf`).replace(/_signed\.pdf$/i, '.pdf'), marks: dtrReportMarks('pd') };
+    const made = await reportCover(report);
+    return { bytes: await stampForSigning(made.bytes, 'dtr-report-pd', report.month), pageIndex: made.pageIndex, fileName: made.fileName.replace(/\.pdf$/i, '_to_sign.pdf'), marks: dtrReportMarks() };
   };
   // The report's DTRs still to sign as the In-charge, each tagged for its upload.
   const dtrsToSign = async report => {
@@ -145,7 +140,7 @@ export default function SupervisorDtrDesk({ reports = [], submissions = [], onRe
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-black text-slate-900">DTR Report – {monthText(report.month)}</p>
-                  <p className="text-xs font-semibold text-slate-600">Prepared by {report.preparedBy?.name || 'HR'} on {when(report.preparedBy?.at)} · {report.submissionIds.length} DTR{report.submissionIds.length === 1 ? '' : 's'}{report.status === DTR_REPORT_STATUS.forPd && signedCount ? ` · ${signedCount} signed so far` : ''}</p>
+                  <p className="text-xs font-semibold text-slate-600">Sent by {report.sentBy?.name || 'HR'} on {when(report.sentBy?.at)} · {report.submissionIds.length} DTR{report.submissionIds.length === 1 ? '' : 's'}{report.status === DTR_REPORT_STATUS.forPd && signedCount ? ` · ${signedCount} signed so far` : ''}</p>
                   {report.status === DTR_REPORT_STATUS.signed && <p className="mt-0.5 text-[11px] font-bold text-emerald-700">Signed on {when(report.approvedBy?.at)}. Not forwarded yet.</p>}
                   {report.status === DTR_REPORT_STATUS.forwarded && <p className="mt-0.5 text-[11px] font-bold text-emerald-700">Forwarded to the Regional Office on {when(report.forwarded?.at)}{report.forwarded?.reference ? ` · ${report.forwarded.reference}` : ''}</p>}
                   {report.status === DTR_REPORT_STATUS.returned && <p className="mt-0.5 text-[11px] font-bold text-orange-700">Returned: {report.remarks}</p>}

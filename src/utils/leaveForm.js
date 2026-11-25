@@ -61,6 +61,8 @@ export const LEAVE_FORM_LAYOUT = {
   notRequested: 337,
   requested: 323.5,
   applicantName: { center: 437.3, y: 309.4, maxWidth: 185 },
+  // The employee's e-signature (signed in Documents), just over their name on the line.
+  applicantSignature: { center: 437.3, bottom: 313, width: 120, height: 22 },
 
   // 7.A: HR 2's certification of the leave credits: the date on the "As of" line, each figure in
   // the table's Vacation Leave and Sick Leave columns (x = the column's centre) and rows (y = the
@@ -280,6 +282,7 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
   box(L.detailBoxX, L.notRequested, request.commutation !== 'Requested');
   box(L.detailBoxX, L.requested, request.commutation === 'Requested');
   write([name.first, name.middle, name.last].filter(Boolean).join(' ').toUpperCase(), L.applicantName);
+  await drawSignature(pdf, page, request.applicantSignature?.image, L.applicantSignature);
 
   // A signatory's name and position, written over the template's own (covered in white) at the
   // template's sizes, shrinking only when a long name does not fit.

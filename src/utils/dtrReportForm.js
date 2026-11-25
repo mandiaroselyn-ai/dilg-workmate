@@ -1,10 +1,9 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 // The cover of a month's DTR report (see shared/dtrReport.js): the list of the office's employees
-// with whether their DTR (CSC Form No. 48), signed by them, is attached, then "Prepared by" (HR)
-// and "Approved by" (the Provincial Director). HR signs it to send it to the PD, and the PD signs
-// the same file. Both signatures go in fixed boxes on the last page, so the PD's place is known
-// from the file alone.
+// with whether their DTR (CSC Form No. 48), signed by them, is attached, then "Approved by" (the
+// Provincial Director). HR sends it unsigned; the PD's signature is its only one, in a fixed box
+// on the last page.
 
 const PAGE = [595.28, 841.89]; // A4
 const MARGIN = 48;
@@ -12,10 +11,7 @@ const ROW = 15;
 const TOP = PAGE[1] - MARGIN;
 // The signature area at the bottom of the last page, and where the table must stop above it.
 const SIGNATURE_AREA_TOP = 190;
-const BLOCKS = {
-  hr: { label: 'Prepared by:', x: MARGIN + 6, center: 170 },
-  pd: { label: 'Approved by:', x: 322, center: 430 }
-};
+const APPROVED = { label: 'Approved by:', x: 322, center: 430 };
 const BOX = { bottom: 128, width: 160, height: 34 };
 const NAME_Y = 118;
 const POSITION_Y = 107;
@@ -30,8 +26,12 @@ const COLUMNS = [
   { key: 'dtr', title: 'DTR (CSC Form No. 48)', x: MARGIN + 400, width: 99 }
 ];
 
-// Text the PDF's standard font can write (it has no characters past Latin-1).
-const writable = value => String(value ?? '').replace(/[^ -~ -ÿ]/g, '?');
+// Text the PDF's standard font can write: it has only the Latin-1 characters, so any other
+// character (such as an emoji) becomes "?".
+const writable = value => [...String(value ?? '')].map(character => {
+  const code = character.charCodeAt(0);
+  return (code >= 32 && code <= 126) || (code >= 160 && code <= 255) ? character : '?';
+}).join('');
 // `text` cut to fit `width` at `size`, ending in "..." when cut.
 const fit = (font, text, size, width) => {
   const full = writable(text);
@@ -42,28 +42,24 @@ const fit = (font, text, size, width) => {
 };
 const monthText = month => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-// Where each signer's signature shows on the last page (see utils/digitalIdSigning.js), with the
-// date of signing written by the signature itself: HR's over their printed name, and the PD's
-// with their name too (the report is made before the PD signs).
-export const dtrReportMarks = role => {
-  const block = BLOCKS[role];
-  return [
-    { type: 'signature', center: block.center, bottom: BOX.bottom, width: BOX.width, height: BOX.height },
-    ...(role === 'pd' ? [{ type: 'text', text: '{name}', center: block.center, y: NAME_Y, size: 9, maxWidth: 200 }] : []),
-    { type: 'text', text: 'Date: {date}', center: block.center, y: DATE_Y, size: 7.5, maxWidth: 200 }
-  ];
-};
+// Where the PD's signature shows on the last page (see utils/digitalIdSigning.js), with their name
+// and the date of signing written by the signature itself.
+export const dtrReportMarks = () => [
+  { type: 'signature', center: APPROVED.center, bottom: BOX.bottom, width: BOX.width, height: BOX.height },
+  { type: 'text', text: '{name}', center: APPROVED.center, y: NAME_Y, size: 9, maxWidth: 200 },
+  { type: 'text', text: 'Date: {date}', center: APPROVED.center, y: DATE_Y, size: 7.5, maxWidth: 200 }
+];
 
-// The cover as PDF bytes, with the index of its last page (where both sign):
-// { month (YYYY-MM), rows: [{ name, position, office, dtr }], preparedBy: { name, position } }.
-// `dtr` is what the row's last column says ("Attached", "Not submitted"...).
-export const fillDtrReport = async ({ month, rows = [], preparedBy = {} }) => {
+// The cover as PDF bytes, with the index of its last page (where the PD signs):
+// { month (YYYY-MM), rows: [{ name, position, office, dtr }] }. `dtr` is what the row's last
+// column says ("Attached", "Not submitted"...).
+export const fillDtrReport = async ({ month, rows = [] }) => {
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
   const ink = rgb(0, 0, 0);
   const grey = rgb(0.4, 0.4, 0.4);
-  pdf.setTitle(`Monthly DTR Report – ${monthText(month)}`);
+  pdf.setTitle(`Monthly DTR Report - ${monthText(month)}`);
   pdf.setAuthor('DILG Marinduque Provincial Office');
 
   const centered = (page, text, y, size, face = font) => {
@@ -88,10 +84,9 @@ export const fillDtrReport = async ({ month, rows = [], preparedBy = {} }) => {
       centered(page, 'MONTHLY REPORT ON THE DAILY TIME RECORDS', y - 70, 12, bold);
       centered(page, `For the month of ${monthText(month)}`, y - 86, 10);
       const note = 'Attached are the Daily Time Records (CSC Form No. 48) of the personnel below, each signed by the employee and verified by the In-charge as to the prescribed office hours.';
-      const words = note.split(' ');
       let line = '';
       let lineY = y - 110;
-      for (const word of words) {
+      for (const word of note.split(' ')) {
         const next = line ? `${line} ${word}` : word;
         if (font.widthOfTextAtSize(next, 8.5) > PAGE[0] - MARGIN * 2) {
           page.drawText(line, { x: MARGIN, y: lineY, size: 8.5, font, color: ink });
@@ -123,20 +118,13 @@ export const fillDtrReport = async ({ month, rows = [], preparedBy = {} }) => {
     y -= ROW;
   }
   const attached = rows.filter(row => /^attached/i.test(row.dtr || '')).length;
-  // The count and the signatures go below the table, on a page of their own when there is no
-  // room left above the signature area.
+  // The count and the signature go below the table, on a page of their own when there is no room
+  // left above the signature area.
   if (y - 6 < SIGNATURE_AREA_TOP) ({ page, y } = newPage(false, false));
   page.drawText(writable(`DTRs attached: ${attached} of ${rows.length} employee${rows.length === 1 ? '' : 's'}.`), { x: MARGIN, y: y - 6, size: 8.5, font: bold, color: ink });
-  for (const role of ['hr', 'pd']) {
-    const block = BLOCKS[role];
-    page.drawText(block.label, { x: block.x, y: BOX.bottom + BOX.height + 10, size: 8.5, font, color: ink });
-  }
-  const hrName = writable(preparedBy.name || 'HR/Admin');
-  page.drawText(hrName, { x: BLOCKS.hr.center - font.widthOfTextAtSize(hrName, 9) / 2, y: NAME_Y, size: 9, font, color: ink });
-  const hrPosition = writable(preparedBy.position || 'HR/Admin');
-  page.drawText(hrPosition, { x: BLOCKS.hr.center - font.widthOfTextAtSize(hrPosition, 8) / 2, y: POSITION_Y, size: 8, font, color: ink });
-  const pdPosition = 'Provincial Director';
-  page.drawText(pdPosition, { x: BLOCKS.pd.center - font.widthOfTextAtSize(pdPosition, 8) / 2, y: POSITION_Y, size: 8, font, color: ink });
+  page.drawText(APPROVED.label, { x: APPROVED.x, y: BOX.bottom + BOX.height + 10, size: 8.5, font, color: ink });
+  const position = 'Provincial Director';
+  page.drawText(position, { x: APPROVED.center - font.widthOfTextAtSize(position, 8) / 2, y: POSITION_Y, size: 8, font, color: ink });
 
   return { bytes: await pdf.save({ useObjectStreams: false }), pageIndex: pdf.getPageCount() - 1 };
 };

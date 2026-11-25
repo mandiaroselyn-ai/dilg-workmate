@@ -1,7 +1,8 @@
 import { zipSync } from 'fflate';
 import dtrTemplate from '../assets/template/dtr-template.pdf';
-import { DTR_STATUS } from '../../shared/dtrReport';
+import { DTR_STATUS, dtrColumn } from '../../shared/dtrReport';
 import { dtrFilename, fillDTR } from './dtrForm';
+import { dtrReportFilename, fillDtrReport } from './dtrReportForm';
 import { dtrSignatures } from './dtrSubmission';
 import { markDtrDay } from './hrAttendance';
 import { fetchSignedForm } from './signedForms';
@@ -9,14 +10,6 @@ import { fetchSignedForm } from './signedForms';
 // The month's DTR report on the HR and PD desks (see shared/dtrReport.js).
 
 export const monthText = month => new Date(`${month}-01T00:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-// What the report's cover says of each employee's DTR, from their submission (or none).
-const dtrColumn = submission => {
-  if (!submission) return 'Not submitted';
-  if ([DTR_STATUS.checked, DTR_STATUS.verified].includes(submission.status)) return 'Attached';
-  if (submission.status === DTR_STATUS.returned) return 'Returned to employee';
-  return 'With HR';
-};
 
 // The cover's rows for the employees in service in the month (`staff`), in name order.
 export const reportRows = (staff = [], submissions = [], month) => [...staff]
@@ -48,9 +41,14 @@ export const makeSubmissionDtr = async (submission, openSubmission) => {
   return { fileName: dtrFilename(employee?.name || submission.employeeName, year, month), fileType: 'application/pdf', bytes };
 };
 
-// The report's signed cover: the PD's copy once signed, else HR's. Null when there is none.
-export const fetchReportCover = async report => (report.signedForms?.pd ? await fetchSignedForm('dtr-report-pd', report.month) : null)
-  || (report.signedForms?.hr ? await fetchSignedForm('dtr-report-hr', report.month) : null);
+// The report's cover as { fileName, fileType, bytes }: the copy the PD signed, or before that the
+// cover made from the list HR sent (unsigned; HR signs nothing).
+export const reportCover = async report => {
+  const signed = report.signedForms?.pd ? await fetchSignedForm('dtr-report-pd', report.month) : null;
+  if (signed) return { fileName: signed.fileName || dtrReportFilename(report.month), fileType: 'application/pdf', bytes: signed.bytes, signed: true };
+  const made = await fillDtrReport({ month: report.month, rows: report.rows || [] });
+  return { fileName: dtrReportFilename(report.month), fileType: 'application/pdf', bytes: made.bytes, pageIndex: made.pageIndex, signed: false };
+};
 
 const fileSafe = value => String(value || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').trim() || 'file';
 
@@ -60,8 +58,8 @@ const fileSafe = value => String(value || '').replace(/[\\/:*?"<>|\u0000-\u001f]
 export const downloadReportZip = async (report, submissions = [], onProgress = () => {}) => {
   const files = {};
   onProgress('Getting the signed report…');
-  const cover = await fetchReportCover(report);
-  if (!cover) throw new Error('The signed report is not available yet.');
+  const cover = await reportCover(report);
+  if (!cover.signed) throw new Error('The report is not signed by the Provincial Director yet.');
   files[fileSafe(cover.fileName || `DTR_Report_${report.month}_signed.pdf`)] = cover.bytes;
   const included = report.submissionIds.map(id => submissions.find(item => item.id === id)).filter(Boolean);
   for (const [index, submission] of included.entries()) {

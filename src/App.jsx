@@ -1274,6 +1274,20 @@ export default function App() {
     if (saveSignature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
     return submission;
   };
+  // The employee signs a filed leave application (6.D of CSC Form No. 6) with the same e-signature,
+  // and may keep the new signature on their profile. Throws with the server's message.
+  const handleSignLeave = async ({ id, signature, password, saveSignature }) => {
+    const response = await apiFetch(`/api/requests/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sign', signature, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.success || !data.request) throw new Error(data.error || 'Unable to sign the leave application.');
+    setRequests(previous => previous.map(request => (request.id === data.request.id ? { ...request, ...data.request } : request)));
+    if (saveSignature && signature !== user?.signatureImage) await handleUpdateUser({ signatureImage: signature });
+    return data.request;
+  };
   // HR checks a DTR, or returns it with remarks. The PD verifies DTRs by signing them with the
   // month's report (handleUploadSignedForm).
   const handleReviewDtr = async ({ id, action, remarks }) => sendDtrSubmission('PATCH', { id, action, remarks });
@@ -1288,10 +1302,9 @@ export default function App() {
     loadDtrReports().catch(error => console.warn('Unable to load DTR reports:', error));
   }, [authToken, activeRole, loadDtrReports]);
   const keepDtrReport = report => setDtrReports(previous => [report, ...previous.filter(item => item.id !== report.id)].sort((a, b) => b.month.localeCompare(a.month)));
-  // The PD returns a report to HR with remarks, or marks a signed one forwarded.
-  const handleReviewDtrReport = async body => {
+  const sendDtrReportChange = async (method, body) => {
     const response = await apiFetch('/api/dtr-reports', {
-      method: 'PATCH',
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
@@ -1300,6 +1313,10 @@ export default function App() {
     keepDtrReport(data.report);
     return data.report;
   };
+  // HR sends a month's report to the PD ({ month, rows }); HR signs nothing.
+  const handleSendDtrReport = body => sendDtrReportChange('POST', body);
+  // The PD returns a report to HR with remarks, or marks a signed one forwarded.
+  const handleReviewDtrReport = body => sendDtrReportChange('PATCH', body);
   const reloadDtrDesk = useCallback(() => Promise.all([loadDtrSubmissions(), loadDtrReports()]), [loadDtrSubmissions, loadDtrReports]);
   // A form signed with a digital ID, in Adobe or in WorkMate (HR 2's leave form, or the Head's leave form, Travel Order
   // or DTR): the request or DTR it belongs to is saved as the server returns it, and the next
@@ -1837,6 +1854,7 @@ export default function App() {
               dtrSubmissions={dtrSubmissions}
               dtrReports={dtrReports}
               onReviewDtr={handleReviewDtr}
+              onSendDtrReport={handleSendDtrReport}
               onOpenDtr={openDtrSubmission}
               attendanceHistory={dtrAttendance}
               attendanceFrom={attendanceWindowStart()}
@@ -1882,6 +1900,7 @@ export default function App() {
               attendanceHistory={visibleEmployeeRecords}
               dtrSubmissions={dtrSubmissions}
               onSubmitDtr={handleSubmitDtr}
+              onSignLeave={handleSignLeave}
             />
           )}
           {currentView === 'office_directory' && <OfficeDirectoryView />}

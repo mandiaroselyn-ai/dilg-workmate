@@ -11,7 +11,7 @@ import { monthLabel } from '../utils/leaveCredits.js';
 import { MAX_SIGNED_PDF_BYTES, SIGNED_FORM_KINDS } from '../../../shared/signedForms.js';
 import { FOR_PRE_APPROVAL, awaitsHead, doesHrStep } from '../../../shared/hrSteps.js';
 import { getManilaDateString } from '../../../shared/localDate.js';
-import { DTR_REPORT_STATUS, DTR_STATUS, checksDtrs, isReportMonth, reportNotReady, reportOpenToHr } from '../../../shared/dtrReport.js';
+import { DTR_REPORT_STATUS, DTR_STATUS, isReportMonth } from '../../../shared/dtrReport.js';
 import { DtrReport } from '../models/dtrReportModel.js';
 import { Announcement } from '../models/announcementModel.js';
 
@@ -20,8 +20,8 @@ import { Announcement } from '../models/announcementModel.js';
 // - the Head uploads that form signed at 7.C and 7.D with the decision, or a Travel Order (which
 //   comes straight to the Head) signed to approve it, or an employee's DTR signed as the In-charge
 //   to verify it;
-// - HR uploads the month's DTR report signed as "Prepared by", which sends it to the Head, and the
-//   Head uploads that report signed as "Approved by" (see shared/dtrReport.js).
+// - the Head uploads the month's DTR report, which HR sent unsigned, signed as "Approved by" (see
+//   shared/dtrReport.js).
 // The upload is the official copy that the employee and HR then view and download.
 
 const FINAL_KINDS = ['leave-head', 'travel-head', 'dtr-incharge'];
@@ -42,7 +42,7 @@ const ownsRequest = (user, request) => request.employeeId === user.employeeId
 
 const uploader = user => ({ name: user?.name || '', position: user?.role || '', email: user?.email || '' });
 
-const employeeOfSubmission = async submission => (await User.findByEmployeeId(submission.employeeId))
+export const employeeOfSubmission = async submission => (await User.findByEmployeeId(submission.employeeId))
   || (submission.employeeEmail && await User.findByEmail(submission.employeeEmail))
   || { employeeId: submission.employeeId, email: submission.employeeEmail };
 
@@ -149,7 +149,7 @@ const uploadHeadDecision = async (req, res, { kind, ref, bytes, fileName }) => {
 
 // Why DTR `submission` cannot be verified now, or '': the employee's records changed since they
 // signed it. `person` is its employee.
-const dtrChanged = async (submission, person) => {
+export const dtrChanged = async (submission, person) => {
   const records = await DtrLog.findMonthForEmployee({ employeeId: person.employeeId, email: person.email }, submission.month);
   return dtrContentHash(records, submission.month) !== submission.contentHash;
 };
@@ -187,53 +187,8 @@ const uploadDtrVerification = async (req, res, { ref, bytes, fileName }) => {
   return res.status(200).json({ success: true, submission: verified });
 };
 
-// HR signs the cover of the month's DTR report (`ref` is the month) as "Prepared by": it goes to
-// the PD with the month's checked DTRs. None may still wait for HR's check, and each one sent must
-// still be the DTR its employee signed.
-const uploadDtrReportHr = async (req, res, { ref: month, bytes, fileName }) => {
-  if (!checksDtrs(req.user)) return res.status(403).json({ success: false, error: 'Only HR (the HR/Admin desk) prepares the DTR report.' });
-  if (!isReportMonth(month) || month >= getManilaDateString().slice(0, 7)) {
-    return res.status(400).json({ success: false, error: 'Choose a month that has ended.' });
-  }
-  const existing = await DtrReport.findByMonth(month);
-  if (!reportOpenToHr(existing)) {
-    return res.status(409).json({ success: false, error: `The DTR report for ${monthLabel(month)} is already ${existing.status === DTR_REPORT_STATUS.forPd ? 'with the Provincial Director' : existing.status.toLowerCase()}.` });
-  }
-  const submissions = await DtrSubmission.findMonth(month);
-  const notReady = reportNotReady(submissions, month);
-  if (notReady) return res.status(409).json({ success: false, error: notReady });
-  const checked = submissions.filter(item => item.status === DTR_STATUS.checked);
-  const changed = [];
-  for (const submission of checked) {
-    if (await dtrChanged(submission, await employeeOfSubmission(submission))) changed.push(submission.employeeName || submission.employeeId);
-  }
-  if (changed.length) {
-    return res.status(409).json({ success: false, error: `These DTRs changed after the employee signed them (for example, a record was corrected): ${changed.join(', ')}. Return them so the employees sign the corrected DTR.` });
-  }
-  const problem = await signedPdfProblem(bytes, { kind: 'dtr-report-hr', ref: month, minSignatures: 1 });
-  if (problem) return res.status(400).json({ success: false, error: problem });
-  const signatures = countSignatures(bytes);
-  await SignedDocument.save({ kind: 'dtr-report-hr', ref: month, fileName, bytes, signatures, sha256: sha256(bytes), uploadedBy: uploader(req.user) });
-  const note = signedNote({ fileName, size: bytes.length, signatures, uploadedBy: uploader(req.user), uploadedAt: new Date() });
-  const report = await DtrReport.send({
-    month,
-    submissionIds: checked.map(item => item.id),
-    preparedBy: { name: req.user.name || '', position: req.user.role || '', at: new Date() },
-    signedForm: note
-  });
-  if (!report) return res.status(409).json({ success: false, error: `The DTR report for ${monthLabel(month)} was already sent.` });
-  await Announcement.createNotification({
-    title: 'DTR Report to Sign',
-    message: `${req.user.name || 'HR'} sent the DTR report for ${monthLabel(month)} with ${checked.length} DTR${checked.length === 1 ? '' : 's'}. Sign the report and the DTRs, or return it to HR.`,
-    type: 'attendance',
-    recipientRole: 'supervisor',
-    view: 'supervisor'
-  }).catch(error => console.error('Unable to notify the Supervisor about a DTR report:', error));
-  return res.status(200).json({ success: true, report });
-};
-
-// The PD signs the report HR signed (the same file) as "Approved by", after signing each of its
-// DTRs as the In-charge: the report is ready for the Regional Office.
+// The PD signs the month's report (made from the list HR sent; HR signs nothing) as "Approved by",
+// after signing each of its DTRs as the In-charge: the report is ready for the Regional Office.
 const uploadDtrReportPd = async (req, res, { ref: month, bytes, fileName }) => {
   if (req.user?.accessLevel !== 'supervisor') return res.status(403).json({ success: false, error: 'Only the Provincial Director signs the DTR report.' });
   const report = isReportMonth(month) ? await DtrReport.findByMonth(month) : null;
@@ -246,13 +201,7 @@ const uploadDtrReportPd = async (req, res, { ref: month, bytes, fileName }) => {
   if (unsigned.length) {
     return res.status(409).json({ success: false, error: `Sign these DTRs as the In-charge first: ${unsigned.map(item => item.employeeName || item.employeeId).join(', ')}.` });
   }
-  const before = await SignedDocument.find('dtr-report-hr', month);
-  const problem = await signedPdfProblem(bytes, {
-    kind: 'dtr-report-pd',
-    ref: month,
-    minSignatures: before ? countSignatures(before.data) + 1 : 1,
-    before: before?.data || null
-  });
+  const problem = await signedPdfProblem(bytes, { kind: 'dtr-report-pd', ref: month, minSignatures: 1 });
   if (problem) return res.status(400).json({ success: false, error: problem });
   const signatures = countSignatures(bytes);
   await SignedDocument.save({ kind: 'dtr-report-pd', ref: month, fileName, bytes, signatures, sha256: sha256(bytes), uploadedBy: uploader(req.user) });
@@ -279,7 +228,6 @@ export const uploadSignedDocument = async (req, res) => {
     const args = { kind, ref, bytes: upload.bytes, fileName: safeFileName(req.body?.fileName) };
     if (kind === 'leave-hr') return await uploadHrLeave(req, res, args);
     if (kind === 'dtr-incharge') return await uploadDtrVerification(req, res, args);
-    if (kind === 'dtr-report-hr') return await uploadDtrReportHr(req, res, args);
     if (kind === 'dtr-report-pd') return await uploadDtrReportPd(req, res, args);
     return await uploadHeadDecision(req, res, args);
   } catch (error) {

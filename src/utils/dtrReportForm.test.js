@@ -4,7 +4,7 @@ import forge from 'node-forge';
 import { PDFDocument } from 'pdf-lib';
 import { readDigitalId, signPdfWithDigitalId } from './digitalIdSigning.js';
 import { dtrReportMarks, fillDtrReport } from './dtrReportForm.js';
-import { countSignatures, keepsEarlierBytes, signedPdfProblem } from '../../backend/src/utils/signedPdf.js';
+import { countSignatures, signedPdfProblem } from '../../backend/src/utils/signedPdf.js';
 import { markerKindOf, signedFormMarker } from '../../shared/signedForms.js';
 import { reportNotReady, reportOpenToHr, checksDtrs } from '../../shared/dtrReport.js';
 
@@ -24,35 +24,27 @@ const makeDigitalId = (name, password) => {
   return readDigitalId(Uint8Array.from(forge.asn1.toDer(p12).getBytes(), character => character.charCodeAt(0)), password);
 };
 
-// The cover tagged as WorkMate tags it for HR's upload (utils/signedForms.js stampForSigning).
+// The cover tagged as WorkMate tags it for the PD's upload (utils/signedForms.js stampForSigning).
 const stamped = async bytes => {
   const pdf = await PDFDocument.load(bytes);
-  pdf.setKeywords([signedFormMarker(markerKindOf('dtr-report-hr'), '2026-10')]);
+  pdf.setKeywords([signedFormMarker(markerKindOf('dtr-report-pd'), '2026-10')]);
   return pdf.save({ useObjectStreams: false });
 };
 const row = index => ({ name: `Employee ${index}`, position: 'LGOO II', office: 'Office of the MLGOO - Boac', dtr: index % 3 ? 'Attached' : 'Not submitted' });
 
-test('HR signs the report as Prepared by, then the PD signs the same file as Approved by', async () => {
-  const made = await fillDtrReport({ month: '2026-10', rows: [row(1), row(2), row(3)], preparedBy: { name: 'Ma. Joane O. Salcedo', position: 'ADAS II' }, preparedAt: new Date('2026-11-03T02:00:00Z') });
+test('the PD signs the report as Approved by; its only signature, as HR signs nothing', async () => {
+  const made = await fillDtrReport({ month: '2026-10', rows: [row(1), row(2), row(3)] });
   assert.equal(made.pageIndex, 0);
-  const toSign = await stamped(made.bytes);
-
-  const hrSigned = await signPdfWithDigitalId(toSign, { digitalId: makeDigitalId('Ma. Joane O. Salcedo', 'hr-pass'), pageIndex: made.pageIndex, marks: dtrReportMarks('hr') });
-  assert.equal(await signedPdfProblem(Buffer.from(hrSigned), { kind: 'dtr-report-hr', ref: '2026-10', minSignatures: 1 }), '');
-
-  // The PD's place is the last page of HR's file, found from the file alone.
-  const pages = (await PDFDocument.load(hrSigned, { updateMetadata: false })).getPageCount();
-  const pdSigned = await signPdfWithDigitalId(hrSigned, { digitalId: makeDigitalId('Ivan Stephen F. Fadri, CESE', 'pd-pass'), pageIndex: pages - 1, marks: dtrReportMarks('pd') });
-  assert.equal(countSignatures(pdSigned), 2);
-  assert.ok(keepsEarlierBytes(Buffer.from(pdSigned), Buffer.from(hrSigned)));
-  assert.equal(await signedPdfProblem(Buffer.from(pdSigned), { kind: 'dtr-report-pd', ref: '2026-10', minSignatures: 2, before: Buffer.from(hrSigned) }), '');
+  const signed = await signPdfWithDigitalId(await stamped(made.bytes), { digitalId: makeDigitalId('Ivan Stephen F. Fadri, CESE', 'pd-pass'), pageIndex: made.pageIndex, marks: dtrReportMarks() });
+  assert.equal(countSignatures(signed), 1);
+  assert.equal(await signedPdfProblem(Buffer.from(signed), { kind: 'dtr-report-pd', ref: '2026-10', minSignatures: 1 }), '');
   // Another month's report is not this one.
-  assert.match(await signedPdfProblem(Buffer.from(pdSigned), { kind: 'dtr-report-pd', ref: '2026-09', minSignatures: 2 }), /not the form WorkMate made/);
+  assert.match(await signedPdfProblem(Buffer.from(signed), { kind: 'dtr-report-pd', ref: '2026-09', minSignatures: 1 }), /not the form WorkMate made/);
 });
 
-test('a long list goes on to more pages, and both sign on the last', async () => {
+test('a long list goes on to more pages, and the PD signs on the last', async () => {
   const rows = Array.from({ length: 70 }, (_, index) => row(index + 1));
-  const made = await fillDtrReport({ month: '2026-10', rows, preparedBy: { name: 'HR' } });
+  const made = await fillDtrReport({ month: '2026-10', rows });
   const pdf = await PDFDocument.load(made.bytes);
   assert.ok(pdf.getPageCount() >= 2);
   assert.equal(made.pageIndex, pdf.getPageCount() - 1);

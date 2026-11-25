@@ -150,7 +150,7 @@ test('HR cannot check a DTR that changed since it was signed, or change one whos
   assert.equal(check.mock.callCount(), 0);
 });
 
-test('HR signs the month\'s report and sends it with the checked DTRs to the PD', async t => {
+test('HR sends the month\'s report with the checked DTRs to the PD, signing nothing', async t => {
   const session = signIn(t, { as: hr });
   const hash = dtrContentHash(october, '2026-10');
   const month = { submissions: [
@@ -160,34 +160,44 @@ test('HR signs the month\'s report and sends it with the checked DTRs to the PD'
   t.mock.method(DtrReport, 'findByMonth', async () => null);
   const saved = t.mock.method(SignedDocument, 'save', async () => {});
   const send = t.mock.method(DtrReport, 'send', async details => ({ id: 'rep-1', status: 'For PD', ...details }));
-  const cover = await signedForm('dtr-report', '2026-10');
-  const upload = (bytes, ref = '2026-10') => session.upload({ kind: 'dtr-report-hr', ref, fileName: 'DTR_Report_2026-10_signed.pdf', data: bytes.toString('base64') });
+  const rows = [
+    { employeeId: 'EMP-61', name: 'Juan Dela Cruz', position: 'LGOO II', office: 'Office of the MLGOO - Boac', dtr: 'made up by the page' },
+    { employeeId: 'EMP-70', name: 'Ana Cruz', position: 'ADAS II', office: 'FAS' },
+    { employeeId: 'EMP-80', name: 'Ben Reyes', position: 'LGOO V', office: 'LGCDS' }
+  ];
+  const report = (month = '2026-10', list = rows) => request(app).post('/api/dtr-reports').set({ Authorization: `Bearer ${createAuthToken(hr)}` }).send({ month, rows: list });
 
   // A DTR still waiting for HR's check holds the report.
-  const waiting = await upload(cover);
+  const waiting = await report();
   assert.equal(waiting.status, 409);
   assert.match(waiting.body.error, /Check or return the DTR still waiting for you first: Juan Dela Cruz/);
-  // Only a month that has ended.
-  assert.match((await upload(await signedForm('dtr-report', '2026-11'), '2026-11')).body.error, /month that has ended/);
+  // Only a month that has ended, with the list of employees.
+  assert.match((await report('2026-11')).body.error, /month that has ended/);
+  assert.match((await report('2026-10', [])).body.error, /list of employees/);
 
   month.submissions = [{ ...month.submissions[0], status: 'Checked' }, { id: 'dtr-2', employeeId: 'EMP-70', employeeName: 'Ana Cruz', month: '2026-10', status: 'Returned' }];
-  // The cover must be this month's report, signed.
-  assert.match((await upload(await signedForm('dtr-report', '2026-09'))).body.error, /not the form WorkMate made/);
-  assert.match((await upload(await signedForm('dtr-report', '2026-10', { signed: false }))).body.error, /no digital signature/);
-  const sent = await upload(cover);
+  const sent = await report();
   assert.equal(sent.status, 200, JSON.stringify(sent.body));
-  assert.deepEqual(send.mock.calls[0].arguments[0].submissionIds, ['dtr-1']);
-  assert.equal(send.mock.calls[0].arguments[0].preparedBy.name, 'Ma. Joane O. Salcedo');
-  assert.equal(saved.mock.calls[0].arguments[0].kind, 'dtr-report-hr');
-  assert.equal(saved.mock.calls[0].arguments[0].ref, '2026-10');
+  const details = send.mock.calls[0].arguments[0];
+  assert.deepEqual(details.submissionIds, ['dtr-1']);
+  assert.equal(details.sentBy.name, 'Ma. Joane O. Salcedo');
+  // What each row says of the DTR is the server's.
+  assert.deepEqual(details.rows.map(row => row.dtr), ['Attached', 'Returned to employee', 'Not submitted']);
+  // No signed file from HR.
+  assert.equal(saved.mock.callCount(), 0);
   const notice = Announcement.createNotification.mock.calls.at(-1).arguments[0];
   assert.equal(notice.recipientRole, 'supervisor');
   assert.match(notice.message, /DTR report for October 2026 with 1 DTR\./);
   t.mock.restoreAll();
   t.mock.timers.reset();
 
-  const desk2 = signIn(t, { as: hr2 });
-  assert.equal((await desk2.upload({ kind: 'dtr-report-hr', ref: '2026-10', fileName: 'x.pdf', data: cover.toString('base64') })).status, 403);
+  for (const as of [hr2, supervisor, employee]) {
+    signIn(t, { as });
+    const refused = await request(app).post('/api/dtr-reports').set({ Authorization: `Bearer ${createAuthToken(as)}` }).send({ month: '2026-10', rows });
+    assert.equal(refused.status, 403);
+    t.mock.restoreAll();
+    t.mock.timers.reset();
+  }
 });
 
 test('the PD signs each DTR of the report as the In-charge, then the report, and the employee is told', async t => {
@@ -198,15 +208,14 @@ test('the PD signs each DTR of the report as the In-charge, then the report, and
   t.mock.method(DtrSubmission, 'findById', async () => state.dtr);
   t.mock.method(DtrSubmission, 'findMonth', async () => [state.dtr]);
   t.mock.method(DtrReport, 'findByMonth', async () => state.report);
-  const hrCover = await signedForm('dtr-report', '2026-10');
-  t.mock.method(SignedDocument, 'find', async kind => (kind === 'dtr-report-hr' ? { data: hrCover } : null));
+  const cover = await signedForm('dtr-report', '2026-10');
   const saved = t.mock.method(SignedDocument, 'save', async () => {});
   const verify = t.mock.method(DtrSubmission, 'verify', async (id, signed, note) => ({ ...state.dtr, status: 'Verified', verification: signed, signedForm: note }));
   const approve = t.mock.method(DtrReport, 'approve', async (id, details) => ({ ...state.report, status: 'Signed by PD', ...details }));
   const pdCover = bytes => session.upload({ kind: 'dtr-report-pd', ref: '2026-10', fileName: 'DTR_Report_2026-10_signed.pdf', data: bytes.toString('base64') });
 
   // The report waits until every DTR in it is signed.
-  const early = await pdCover(Buffer.concat([hrCover, SIGNATURE]));
+  const early = await pdCover(cover);
   assert.equal(early.status, 409);
   assert.match(early.body.error, /Sign these DTRs as the In-charge first: Juan Dela Cruz/);
 
@@ -225,9 +234,10 @@ test('the PD signs each DTR of the report as the In-charge, then the report, and
   assert.equal(told.title, 'DTR Verified');
 
   state.dtr = { ...dtr, status: 'Verified' };
-  // The PD signs HR's file: one without HR's signature is refused.
-  assert.equal((await pdCover(await signedForm('dtr-report', '2026-10'))).status, 400);
-  const done = await pdCover(Buffer.concat([hrCover, SIGNATURE]));
+  // The report must be this month's, signed by the PD (its only signature).
+  assert.match((await pdCover(await signedForm('dtr-report', '2026-09'))).body.error, /not the form WorkMate made/);
+  assert.match((await pdCover(await signedForm('dtr-report', '2026-10', { signed: false }))).body.error, /no digital signature/);
+  const done = await pdCover(cover);
   assert.equal(done.status, 200, JSON.stringify(done.body));
   assert.equal(approve.mock.calls[0].arguments[1].approvedBy.name, 'Ivan Stephen F. Fadri, CESE');
   assert.equal(saved.mock.calls.at(-1).arguments[0].kind, 'dtr-report-pd');

@@ -50,6 +50,10 @@ const RequestSchema = new mongoose.Schema({
   signatureData: { type: String, default: '' },
   employeeSignature: { type: String, default: '' },
   employeeSignedAt: { type: String, default: '' },
+  // The employee's e-signature on their leave application at 6.D of CSC Form No. 6, made in
+  // Documents (utils/eSignature.js): { image, name, signedAt }. Null until they sign; cleared when
+  // they submit it again after it was returned. (`employeeSignature` above holds only a name.)
+  applicantSignature: { type: mongoose.Schema.Types.Mixed, default: null },
   stage: { type: String, default: 'PM' },
   supervisorSignature: { type: String, default: '' },
   supervisorRemarks: { type: String, default: '' },
@@ -292,6 +296,18 @@ export const Leave = {
     ensureConnected();
     if (typeof id !== 'string' || !id) return null;
     return MongoRequest.findOne({ customId: id }).lean();
+  },
+
+  // The employee's e-signature on their leave application, while it waits for HR 2 (Pending).
+  // Null when it is not a leave waiting for HR 2.
+  signAsApplicant: async (id, signature) => {
+    ensureConnected();
+    const updated = await MongoRequest.findOneAndUpdate(
+      { customId: id, type: 'Leave Request', status: 'Pending' },
+      { $set: { applicantSignature: signature } },
+      { new: true }
+    ).lean();
+    return updated ? { ...updated, id: updated.customId } : null;
   },
 
   updateStatus: async (id, updateBody) => {

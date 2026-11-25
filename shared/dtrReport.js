@@ -3,8 +3,9 @@
 // regional"):
 // 1. The employee signs their DTR (CSC Form No. 48) for an ended month: it goes to HR.
 // 2. HR (the HR/Admin desk) checks it, or returns it to the employee with remarks.
-// 3. HR signs the month's report, a cover list of every employee's DTR, as "Prepared by" and
-//    sends it with the checked DTRs to the Provincial Director (PD).
+// 3. HR sends the month's report, a cover list of every employee's DTR, with the checked DTRs to
+//    the Provincial Director (PD). HR signs nothing: the only signatures are the employees' and the
+//    PD's (the user, 2026-11-25: "walang pirma ang hr 1 ... employees ... at sa supervisor").
 // 4. The PD signs the report as "Approved by" and each DTR as the In-charge, or returns the report
 //    to HR with remarks.
 // 5. The PD sends the signed report and DTRs to the Regional Office (outside WorkMate, which has
@@ -32,8 +33,16 @@ export const DTR_REPORT_STATUS = {
   forwarded: 'Forwarded to Regional Office'
 };
 
-// The report's reference: its month (YYYY-MM), so the PDF HR signs is tagged before it is saved.
+// The report's reference: its month (YYYY-MM), so the PDF the PD signs is tagged before it is saved.
 export const isReportMonth = value => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || ''));
+
+// What the report's cover says of an employee's DTR, from their submission (or none).
+export const dtrColumn = submission => {
+  if (!submission) return 'Not submitted';
+  if ([DTR_STATUS.checked, DTR_STATUS.verified].includes(submission.status)) return 'Attached';
+  if (submission.status === DTR_STATUS.returned) return 'Returned to employee';
+  return 'With HR';
+};
 
 // Whether HR may still check or return the DTRs of a month whose report is `report` (or none):
 // only before it goes to the PD, or after the PD returns it.

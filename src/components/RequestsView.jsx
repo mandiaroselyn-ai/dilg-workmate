@@ -312,7 +312,7 @@ export default function RequestsView({
     const bannerMessage = isDraftMode
       ? 'A draft copy has been securely logged to your draft tray.'
       : activeTab2 === 'Leave'
-        ? 'Leave application submitted to HR for review.'
+        ? 'Leave application submitted to HR. Sign it in Documents (My Leave Applications) so HR can process it.'
         : 'Travel Order submitted to the Provincial Director for approval.';
     
     setFormSuccessMessage(bannerMessage);
@@ -560,6 +560,9 @@ Reason (optional):`, '');
                         request.creditCharge.withoutPayDays && `${Number(request.creditCharge.withoutPayDays)} without pay${withoutPayAmount(user, request.creditCharge.withoutPayDays) ? ` (${pesoText(withoutPayAmount(user, request.creditCharge.withoutPayDays))})` : ''}`
                       ].filter(Boolean).join(', ') || 'nothing'}
                     </p>
+                  )}
+                  {request.status === 'Pending' && !request.applicantSignature?.image && (
+                    <p className="mt-0.5 text-[10px] font-black text-amber-700">Not signed yet: sign it in Documents (My Leave Applications) so HR can process it.</p>
                   )}
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-[9px] font-black ${request.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : request.status === 'Rejected' ? 'bg-rose-100 text-rose-700' : request.status === 'Draft' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}`}>{request.status}</span>

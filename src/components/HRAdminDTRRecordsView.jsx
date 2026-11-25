@@ -273,7 +273,7 @@ const isVerified = record => Boolean(record?.verificationAudit?.verifiedAt);
 // HR 1's DTR desk. Leave credits (their start and the monthly crediting and charging) are HR 2's,
 // on its Leave Credits page. `onSaveRecord` saves one record's update, `onSaveRecords` several.
 // `dtrDesk` is what HR's desk for the month's DTRs and report needs (see HRDtrDesk): { reports,
-// canAct, onReview, onOpen, onUploadSignedForm, signer }.
+// canAct, onReview, onOpen, onSendReport }.
 export default function HRAdminDTRRecordsView({ dtrSubmissions = [], dtrDesk = {}, employees = [], attendanceHistory = [], attendanceFrom, loadedAttendanceMonths = [], onLoadAttendanceMonth, reviewerName = 'HR/Admin', onSaveRecord, onSaveRecords, holidays = [], onHolidaysChange, overtimeOrders = [], onOvertimeOrdersChange, onBack, focus = null }) {
   const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState('All Months');
