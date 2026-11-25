@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import { PDFArray, PDFDocument, PDFName, decodePDFRawStream } from 'pdf-lib';
-import { LEAVE_FORM_LAYOUT, fillLeaveForm, leaveTypeKey, ownLeavePurpose, splitApplicantName } from './leaveForm.js';
+import { LEAVE_FORM_LAYOUT, fillLeaveForm, leaveTypeKey, ownLeavePurpose, receiptStamp, splitApplicantName } from './leaveForm.js';
 
 test('a leave\'s purpose is optional, and the form writes only the employee\'s own words', () => {
   assert.equal(ownLeavePurpose('Leave Type: Mandatory/Forced Leave.'), '');
@@ -123,4 +123,32 @@ test('every answer position is on the page', () => {
     assert.ok(x > 0 && x < 612, JSON.stringify(spot));
     if (spot.x2 !== undefined) assert.ok(spot.x2 > spot.x1 && spot.x2 < 612, JSON.stringify(spot));
   }
+});
+
+test('the stamp of the date of receipt shows when the leave was last submitted, in Philippine time', () => {
+  // 02:42 UTC is 10:42 AM in Manila.
+  assert.deepEqual(receiptStamp({ status: 'Pending', submittedAt: '2026-11-25T02:42:00.000Z', submissionDate: '2026-11-25' }), { date: 'NOV 25, 2026', time: '10:42 AM' });
+  // 17:30 UTC on Nov 25 is already Nov 26 in Manila.
+  assert.deepEqual(receiptStamp({ status: 'Approved', submittedAt: '2026-11-25T17:30:00.000Z' }), { date: 'NOV 26, 2026', time: '1:30 AM' });
+  // A leave from before the time was kept: its date only.
+  assert.deepEqual(receiptStamp({ status: 'For Supervisor', submissionDate: '2026-11-03' }), { date: 'NOV 3, 2026', time: '' });
+  // Not received yet: a draft, or no date at all.
+  assert.equal(receiptStamp({ status: 'Draft', submittedAt: '2026-11-25T02:42:00.000Z' }), null);
+  assert.equal(receiptStamp({ status: 'Pending' }), null);
+});
+
+test('a submitted leave\'s form carries the stamp; a draft\'s does not', async () => {
+  const template = fs.readFileSync(new URL('../assets/template/csc-form-6-template.pdf', import.meta.url));
+  const textOf = async bytes => {
+    const pdf = await PDFDocument.load(bytes);
+    const contents = pdf.getPages()[0].node.lookup(PDFName.of('Contents'));
+    const streams = contents instanceof PDFArray ? contents.asArray().map(ref => pdf.context.lookup(ref)) : [contents];
+    return streams.map(stream => Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1')).join('\n');
+  };
+  const leave = { type: 'Leave Request', leaveType: 'Vacation Leave', workingDays: 1, startDate: '2026-12-01', endDate: '2026-12-01', submissionDate: '2026-11-25', submittedAt: '2026-11-25T02:42:00.000Z' };
+  const hex = text => Buffer.from(text, 'latin1').toString('hex').toUpperCase();
+  const submitted = await textOf(await fillLeaveForm(template, { ...leave, status: 'Pending' }, { name: 'Juan Dela Cruz' }));
+  assert.ok(submitted.includes(hex('RECEIVED')) && submitted.includes(hex('NOV 25, 2026')));
+  const draft = await textOf(await fillLeaveForm(template, { ...leave, status: 'Draft' }, { name: 'Juan Dela Cruz' }));
+  assert.equal(draft.includes(hex('RECEIVED')), false);
 });

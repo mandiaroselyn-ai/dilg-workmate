@@ -22,14 +22,16 @@ const REVIEW_FIELDS = [
 const EMPLOYEE_STATUSES = ['Draft', 'Pending'];
 
 // Builds a new request from an employee's submission. The owner comes from the session,
-// and the request always starts as Draft or Pending with no reviewer decisions attached.
-export const buildEmployeeRequest = (body, user, today = getManilaDateString()) => {
+// and the request always starts as Draft or Pending with no reviewer decisions attached. A
+// submitted one keeps when it was submitted (`now`), for the stamp of the date of receipt.
+export const buildEmployeeRequest = (body, user, today = getManilaDateString(), now = new Date()) => {
   const request = { ...(body || {}) };
-  for (const field of [...REVIEW_FIELDS, 'id', 'customId']) delete request[field];
+  for (const field of [...REVIEW_FIELDS, 'id', 'customId', 'submittedAt']) delete request[field];
 
   const status = EMPLOYEE_STATUSES.includes(body?.status) ? body.status : 'Pending';
   return {
     ...request,
+    ...(status === 'Pending' ? { submittedAt: now.toISOString() } : {}),
     status,
     remarks: status === 'Draft'
       ? 'Draft request saved. Not yet submitted for reviews.'
@@ -164,7 +166,7 @@ export const isRequestOwner = (request, user) => Boolean(
 // (Cancelled) one of their own drafts, or fixing and submitting again (or saving as a
 // draft) a request HR or the supervisor returned to them. Returns null when the request is
 // not such a request of the employee's.
-export const buildEmployeeDraftUpdate = (existing, body, user, today = getManilaDateString()) => {
+export const buildEmployeeDraftUpdate = (existing, body, user, today = getManilaDateString(), now = new Date()) => {
   if (!isRequestOwner(existing, user) || !['Draft', 'Returned'].includes(existing.status)) return null;
   // A returned request is withdrawn rather than discarded.
   const allowed = existing.status === 'Returned' ? ['Draft', 'Pending'] : DRAFT_STATUSES;
@@ -177,6 +179,8 @@ export const buildEmployeeDraftUpdate = (existing, body, user, today = getManila
   }
   if (status === 'Pending') {
     update.submissionDate = today;
+    // Received again: the stamp of the date of receipt shows this submission.
+    update.submittedAt = now.toISOString();
     // Submitted again, the request goes through HR's steps again, with its dates as they are now.
     update.creditCertification = null;
     update.recommendation = null;

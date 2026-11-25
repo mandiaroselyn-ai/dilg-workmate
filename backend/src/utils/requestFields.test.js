@@ -237,3 +237,19 @@ test('an employee\'s Travel Order being submitted is saved as sent to the Provin
   assert.equal(routeSubmittedTravelOrder({ ...submitted, type: 'Leave Request' }).status, 'Pending');
   assert.equal(routeSubmittedTravelOrder({ ...submitted, status: 'Draft' }).status, 'Draft');
 });
+
+test('a submitted request keeps when it was submitted, set by the server, for the stamp of receipt', () => {
+  const owner = { name: 'Juan Dela Cruz', email: 'juan@dilg.gov.ph', employeeId: 'E1' };
+  const now = new Date('2026-11-25T02:42:00.000Z');
+  // Submitted: the server's time, not one the browser sent.
+  const submitted = buildEmployeeRequest({ type: 'Leave Request', status: 'Pending', submittedAt: '2020-01-01T00:00:00.000Z' }, owner, '2026-11-25', now);
+  assert.equal(submitted.submittedAt, '2026-11-25T02:42:00.000Z');
+  // A draft is not received yet.
+  assert.equal(buildEmployeeRequest({ type: 'Leave Request', status: 'Draft', submittedAt: '2020-01-01T00:00:00.000Z' }, owner, '2026-11-25', now).submittedAt, undefined);
+  // Submitted again after being returned: received again, now.
+  const later = new Date('2026-11-27T06:05:00.000Z');
+  const returned = { status: 'Returned', employeeEmail: owner.email, employeeId: owner.employeeId, submittedAt: '2026-11-25T02:42:00.000Z' };
+  assert.equal(buildEmployeeDraftUpdate(returned, { status: 'Pending' }, owner, '2026-11-27', later).submittedAt, '2026-11-27T06:05:00.000Z');
+  // Saved as a draft again: no new receipt.
+  assert.equal(buildEmployeeDraftUpdate(returned, { status: 'Draft' }, owner, '2026-11-27', later).submittedAt, undefined);
+});

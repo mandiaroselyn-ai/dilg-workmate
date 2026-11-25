@@ -19,6 +19,9 @@ const RequestSchema = new mongoose.Schema({
   customId: { type: String, required: true },
   type: { type: String, required: true, enum: ['Leave Request', 'Travel Order', 'Certified Copy Request'] },
   submissionDate: { type: String, required: true },
+  // When the employee last submitted it (ISO time, set by the server): CSC Form No. 6's stamp of
+  // the date of receipt. Requests from before it was kept have only submissionDate.
+  submittedAt: { type: String, default: '' },
   startDate: { type: String, required: true },
   endDate: { type: String, required: true },
   purpose: { type: String, required: true },
@@ -181,6 +184,7 @@ export const Leave = {
       customId,
       type: leaveData.type || 'Leave Request',
       submissionDate: leaveData.submissionDate || getManilaDateString(),
+      submittedAt: leaveData.submittedAt || '',
       startDate: leaveData.startDate,
       endDate: leaveData.endDate,
       purpose: leaveData.purpose,

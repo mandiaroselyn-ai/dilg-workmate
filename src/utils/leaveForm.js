@@ -91,6 +91,30 @@ export const LEAVE_FORM_LAYOUT = {
   // 7.C/7.D: the Supervisor's signature, just over the approving official's name that the
   // template prints at the bottom (its baseline is y 63.4), under 7.D's last line (y 107.6).
   approverSignature: { center: 309, bottom: 72, width: 150, height: 32 },
+
+  // The "Stamp of Date of Receipt" box at the top right (x 452 to 520, y 718 to 737): the stamp
+  // is centred on it and a little larger, as a rubber stamp is, inside the form's border (x 550).
+  receiptStamp: { center: 486.2, middle: 727.5, width: 96, height: 34 },
+};
+
+// When the office received the leave (CSC Form No. 6's stamp of the date of receipt): the time
+// the employee last submitted it in WorkMate, as { date: 'NOV 25, 2026', time: '10:42 AM' } in
+// Philippine time; for a leave from before that time was kept, its submission date only (time
+// ''). Null for a draft, or a leave with no date.
+export const receiptStamp = (request = {}) => {
+  if (!request.status || /^draft$/i.test(request.status)) return null;
+  const at = request.submittedAt ? new Date(request.submittedAt) : null;
+  if (at && !Number.isNaN(at.getTime())) {
+    const manila = { timeZone: 'Asia/Manila' };
+    return {
+      date: at.toLocaleDateString('en-US', { ...manila, month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(),
+      time: at.toLocaleTimeString('en-US', { ...manila, hour: 'numeric', minute: '2-digit' })
+    };
+  }
+  const day = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(request.submissionDate || ''));
+  if (!day) return null;
+  const date = new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+  return { date: date.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase(), time: '' };
 };
 
 // Where digital signatures show on the form when they are made in WorkMate (see
@@ -320,6 +344,26 @@ export async function fillLeaveForm(templateBytes, request = {}, applicant = {},
   // approving official's name. Before that the form has no signature.
   if (['Approved', 'Rejected'].includes(request.status)) {
     await drawSignature(pdf, page, request.supervisorSignature || request.signatureData, L.approverSignature);
+  }
+
+  // The stamp of the date of receipt, once the leave is submitted (see receiptStamp): a blue
+  // rubber-stamp box over the template's dashed box, with RECEIVED, the date, and the time.
+  const received = receiptStamp(request);
+  if (received) {
+    const { center, middle, width, height } = L.receiptStamp;
+    const ink = rgb(0.13, 0.24, 0.62);
+    const left = center - width / 2;
+    const bottom = middle - height / 2;
+    page.drawRectangle({ x: left, y: bottom, width, height, color: rgb(1, 1, 1), borderColor: ink, borderWidth: 1.2 });
+    page.drawRectangle({ x: left + 2, y: bottom + 2, width: width - 4, height: height - 4, borderColor: ink, borderWidth: 0.5 });
+    const line = (text, font, size, y) => {
+      let fitted = size;
+      while (fitted > 4 && font.widthOfTextAtSize(text, fitted) > width - 10) fitted -= 0.25;
+      page.drawText(text, { x: center - font.widthOfTextAtSize(text, fitted) / 2, y, size: fitted, font, color: ink });
+    };
+    line('RECEIVED', bold, 7.5, bottom + height - 10.5);
+    line(received.date, bold, 9.5, bottom + 12.5);
+    line([received.time, 'DILG Marinduque'].filter(Boolean).join('  ·  '), regular, 5.5, bottom + 5);
   }
 
   if (grid) drawGrid(page, regular);
