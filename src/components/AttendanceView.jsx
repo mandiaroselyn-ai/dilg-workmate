@@ -45,12 +45,13 @@ import {
   Utensils,
   LogIn,
   Plane,
+  CalendarCheck,
   ArrowLeft,
   ArrowRight
 } from 'lucide-react';
 import { matchesAttendanceEmployee } from '../utils/attendanceIdentity';
 import { assignmentOfShift, homeOfficeOf } from '../utils/shiftAssignment';
-import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn, travelOrderCovers } from '../../shared/travelStatus';
+import { approvedTravelOrderOn, noTimeInOn, travelOrderCovers } from '../../shared/travelStatus';
 
 // A Travel Order's dates as shown: "Nov 10" or "Nov 10 – Nov 12".
 const formatTravelDates = travel => {
@@ -307,19 +308,13 @@ export default function AttendanceView({
   const isCurrentlyActive = todayRecord && !todayRecord.timeOut;
   // One Time In and one Time Out per day: once today is timed out, Time In stays closed.
   const isDoneForToday = Boolean(todayRecord?.timeOut);
-  // An approved Travel Order for today: the employee is on official travel and needs no Time In.
-  // Field attendance is for field work without one, so Field is not offered today.
-  // Their own Travel Order, or one that includes them.
+  // An approved Travel Order for today (their own, or one that includes them) or their own
+  // approved leave: the employee is on official travel or on leave, so there is no Time In
+  // (the server refuses it too). A shift already open can still be closed.
   const travelOrderToday = approvedTravelOrderOn(requests.filter(request => travelOrderCovers(request, user)), today);
-  const fieldBlockedToday = Boolean(travelOrderToday) && !isCurrentlyActive;
-  useEffect(() => {
-    if (!fieldBlockedToday || assignmentMode !== 'field') return;
-    const office = MARINDUQUE_OFFICES.find(item => item.id === selectedOfficeId) || MARINDUQUE_OFFICES[0];
-    setAssignmentMode('office');
-    setSelectedOfficeId(office.id);
-    setSelectedMuni(office.municipality);
-    setBarangayLgu(office.barangay);
-  }, [fieldBlockedToday, assignmentMode]);
+  const awayToday = noTimeInOn(requests, user, today);
+  const leaveToday = awayToday?.kind === 'leave' ? awayToday.request : null;
+  const timeInBlockedToday = Boolean(awayToday) && !isCurrentlyActive;
   // While a shift is open, the page shows the assignment it was timed in at, so its Time Out,
   // Lunch Out, and Lunch In are checked against that area. (Opened again, the page would
   // otherwise start on its default choice, which can be another barangay.) It is applied again
@@ -1026,8 +1021,8 @@ export default function AttendanceView({
     [effectiveTask, 'task description']
   ].filter(([value]) => !String(value || '').trim()).map(([, label]) => label);
   // While timed in the form is locked to the shift's details, so only its map area is checked.
-  const formStepIssue = !isCurrentlyActive && fieldBlockedToday && assignmentMode === 'field'
-    ? FIELD_ON_TRAVEL_ERROR
+  const formStepIssue = timeInBlockedToday
+    ? awayToday.error
     : !isCurrentlyActive && missingDetails.length
       ? `Fill in your ${missingDetails.join(', ')}.`
       : !isCurrentlyActive && isWfhMode && !user?.approvedWfhLocation?.approvedAt
@@ -1109,8 +1104,8 @@ export default function AttendanceView({
   };
 
   const executeClockIn = async () => {
-    if (fieldBlockedToday && assignmentMode === 'field') {
-      setLocationError(FIELD_ON_TRAVEL_ERROR);
+    if (timeInBlockedToday) {
+      setLocationError(awayToday.error);
       return;
     }
     if (assignmentMode === 'wfh' && !user?.approvedWfhLocation?.approvedAt) {
@@ -1486,7 +1481,7 @@ export default function AttendanceView({
               </span>
             </div>
 
-            {/* On official travel today: no Time In needed, and no field attendance. */}
+            {/* On official travel or on leave today: no Time In. */}
             {travelOrderToday && (
               <div role="status" className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <Plane className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
@@ -1496,7 +1491,20 @@ export default function AttendanceView({
                     {[travelOrderToday.travelActivity, travelOrderToday.travelVenue].filter(Boolean).join(' · ') || 'Approved official travel'}
                     {' '}({formatTravelDates(travelOrderToday)})
                   </p>
-                  <p className="text-[11px] text-blue-800">No Time In is needed: your DTR shows today as official travel. Field attendance is only for field work without a Travel Order.</p>
+                  <p className="text-[11px] text-blue-800">No Time In today: your DTR shows today as official travel.</p>
+                </div>
+              </div>
+            )}
+            {!travelOrderToday && leaveToday && (
+              <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <CalendarCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+                <div className="space-y-1">
+                  <p className="text-xs font-black uppercase tracking-wider text-emerald-800">On Leave today</p>
+                  <p className="text-xs font-semibold text-emerald-900">
+                    {leaveToday.leaveType || 'Approved leave'}
+                    {' '}({formatTravelDates(leaveToday)})
+                  </p>
+                  <p className="text-[11px] text-emerald-800">No Time In today: you are on approved leave.</p>
                 </div>
               </div>
             )}
@@ -1588,7 +1596,7 @@ export default function AttendanceView({
                     }}
                     className="w-full text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-800 p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-[#1e40af] disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    <option value="field" disabled={fieldBlockedToday}>{fieldBlockedToday ? 'Field (not on a Travel Order day)' : 'Field'}</option>
+                    <option value="field">Field</option>
                     <option value="wfh">Work From Home</option>
                     <option value="office">Office</option>
                   </select>

@@ -35,7 +35,7 @@ const faqs = [
   {
     topic: 'Attendance',
     question: 'Why can I not Time In?',
-    answer: `The message on the Attendance page says which check failed. Common reasons: you are Out of Range (not at the site you chose: outside the barangay for Field, outside the Provincial Capitol Compound for the DILG Provincial Office, or more than ${GEOFENCE_METERS} meters from the town hall for a municipal office, or from your work-from-home address); your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; or you have no internet. Time In needs an internet connection.`
+    answer: `The message on the Attendance page says which check failed. Common reasons: you are Out of Range (not at the site you chose: outside the barangay for Field, outside the Provincial Capitol Compound for the DILG Provincial Office, or more than ${GEOFENCE_METERS} meters from the town hall for a municipal office, or from your work-from-home address); your GPS accuracy is weaker than 50 meters (move outdoors or near a window and wait); your selfie did not match your enrollment selfie (use good light and keep your face clearly visible); your fingerprint was not verified; HR has not approved your Biometric Enrollment yet; you have no internet (Time In needs an internet connection); or you are on an approved leave or Travel Order today, which has no Time In.`
   },
   {
     topic: 'Attendance',

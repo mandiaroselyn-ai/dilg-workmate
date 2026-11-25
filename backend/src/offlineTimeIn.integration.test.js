@@ -174,27 +174,52 @@ test('a shift from yesterday that was never timed out does not stop today\'s Tim
   assert.match(again.body.error, /already has an active attendance record/);
 });
 
-test('a field Time In on a day of an approved Travel Order is refused, but an office one is not', async t => {
+test('there is no Time In on a day of an approved Travel Order or leave, wherever the employee works', async t => {
   const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   const travel = { id: 'TO-7', type: 'Travel Order', status: 'Approved', startDate: today, endDate: today };
+  const leave = { id: 'LV-3', type: 'Leave Request', status: 'Approved', leaveType: 'Vacation Leave', startDate: today, endDate: today };
   const send = signIn(t, { travelOrders: [travel] });
   const fingerprintProof = createVerificationProof({ employeeId: employee.employeeId, type: 'fingerprint', method: 'phone-app' });
-  const field = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
-  assert.equal(field.status, 409);
-  assert.match(field.body.error, /approved Travel Order today/);
-
-  // At the office it goes on to the other checks (here, the face match).
   const [latitude, longitude] = [13.4419838, 121.8277131];
-  const office = await send({ action: 'clock-in', record: { ...timeInRecord(), latitude, longitude, dutyType: 'office', assignmentSite: { mode: 'office', municipality: 'Boac', officeId: 'provincial' }, fingerprintProof } });
-  assert.doesNotMatch(office.body.error || '', /Travel Order/);
-  assert.match(office.body.error, /cannot be used for face matching/);
-  // A Travel Order that is not approved, or for another day, does not stop field attendance.
-  for (const other of [{ ...travel, status: 'Pending' }, { ...travel, startDate: '2026-01-05', endDate: '2026-01-06' }]) {
+  const atOffice = { ...timeInRecord(), latitude, longitude, dutyType: 'office', assignmentSite: { mode: 'office', municipality: 'Boac', officeId: 'provincial' }, fingerprintProof };
+
+  // On official travel: refused in the field and at the office alike.
+  for (const record of [{ ...timeInRecord(), fingerprintProof }, atOffice]) {
+    const response = await send({ action: 'clock-in', record });
+    assert.equal(response.status, 409, record.dutyType);
+    assert.match(response.body.error, /on official travel today/);
+  }
+  // On approved leave: refused too.
+  Leave.findAbsencesOfEmployee.mock.mockImplementation(async () => [leave]);
+  const onLeave = await send({ action: 'clock-in', record: atOffice });
+  assert.equal(onLeave.status, 409);
+  assert.match(onLeave.body.error, /on approved leave today/);
+
+  // A leave or Travel Order that is not approved, or for another day, does not stop Time In: it
+  // goes on to the other checks (here, the face match).
+  const otherDay = { startDate: '2026-01-05', endDate: '2026-01-06' };
+  for (const other of [{ ...travel, status: 'Pending' }, { ...travel, ...otherDay }, { ...leave, status: 'For Supervisor' }, { ...leave, ...otherDay }]) {
     Leave.findAbsencesOfEmployee.mock.mockImplementation(async () => [other]);
-    const response = await send({ action: 'clock-in', record: { ...timeInRecord(), fingerprintProof } });
-    assert.doesNotMatch(response.body.error || '', /Travel Order/);
+    const response = await send({ action: 'clock-in', record: atOffice });
+    assert.doesNotMatch(response.body.error || '', /official travel|approved leave/, `${other.type} ${other.status} ${other.startDate}`);
+    assert.match(response.body.error, /cannot be used for face matching/);
   }
   assert.equal(DtrLog.create.mock.callCount(), 0);
+});
+
+test('an offline Time In on a day of approved leave goes to HR for review', async t => {
+  const send = signIn(t);
+  const record = timeInRecord();
+  const recordedAt = new Date('2026-10-05T01:30:00Z');
+  t.mock.timers.enable({ apis: ['Date'], now: recordedAt });
+  const offline = await signOnPhone(record);
+  t.mock.timers.setTime(recordedAt.getTime() + 60 * 60 * 1000);
+  Leave.findAbsencesOfEmployee.mock.mockImplementation(async () => [{ id: 'LV-4', type: 'Leave Request', status: 'Approved', startDate: '2026-10-05', endDate: '2026-10-06' }]);
+
+  const response = await send({ action: 'clock-in', record: { ...record, offlineTimeIn: offline }, sentAt: new Date().toISOString() });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const saved = DtrLog.create.mock.calls[0].arguments[0];
+  assert.match(saved.offlineTimeIn.reviewReasons.join(' '), /on a day of the approved leave LV-4/);
 });
 
 test('an offline Time In changed after it was signed is refused and not saved', async t => {

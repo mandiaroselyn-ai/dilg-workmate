@@ -1,7 +1,7 @@
 import { DtrLog, MAX_TRACKING_ACCURACY_METERS } from '../models/dtrLogModel.js';
 import { Announcement } from '../models/announcementModel.js';
 import { Leave } from '../models/leaveModel.js';
-import { FIELD_ON_TRAVEL_ERROR, approvedTravelOrderOn } from '../../../shared/travelStatus.js';
+import { noTimeInOn } from '../../../shared/travelStatus.js';
 import { sendServerError } from '../middleware/requestSecurity.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
@@ -351,12 +351,13 @@ export const clockInOut = async (req, res) => {
         assignmentSite: record.assignmentSite,
         user
       });
-      // On a day of an approved Travel Order the employee is on official travel and needs no
-      // Time In: field attendance is for field work without a Travel Order.
-      if (normalizedAssignment.dutyType === 'field') {
-        const travel = approvedTravelOrderOn(await Leave.findAbsencesOfEmployee({ employeeId: user.employeeId, email: user.email }), record.date);
-        if (travel && failCheck(409, FIELD_ON_TRAVEL_ERROR, `This field Time In is on a day of the approved Travel Order ${travel.id}.`)) return;
-      }
+      // On a day of an approved Travel Order or an approved leave the employee is on official
+      // travel or on leave, so there is no Time In, wherever they choose to work. An offline one
+      // goes to HR for review, as other failed checks do.
+      // findAbsencesOfEmployee finds only the employee's own leave and Travel Orders, and those
+      // that include them.
+      const away = noTimeInOn(await Leave.findAbsencesOfEmployee({ employeeId: user.employeeId, email: user.email }), null, record.date);
+      if (away && failCheck(409, away.error, `This Time In is on a day of the approved ${away.kind === 'travel' ? 'Travel Order' : 'leave'} ${away.request.id}.`)) return;
       const task = record.workAssignment?.task;
       if (typeof task !== 'string' || !task.trim() || task.trim().length > 500) {
         return res.status(400).json({ success: false, error: 'Provide an assignment task of 500 characters or fewer.' });
