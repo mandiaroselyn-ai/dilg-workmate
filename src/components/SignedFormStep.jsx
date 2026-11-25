@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { FileSignature, KeyRound } from 'lucide-react';
+import AdobePdfView from './AdobePdfView';
 import PdfPreview from './PdfPreview';
 
-// One signing step on a form WorkMate made, as in Adobe: the form is open here, and the signer
+// One signing step on a form WorkMate made, as in Adobe: the form is open here (in Adobe's own
+// viewer once WorkMate has an Adobe Client ID, see AdobePdfView), and the signer
 // signs it with their Adobe digital ID (the .pfx or .p12 file Adobe Acrobat or Reader made) and
 // its password. The digital ID is read only in this browser; this device remembers it for the
 // signer's account, so after the first time only the password is asked. The signed PDF goes to
@@ -146,7 +148,7 @@ export default function SignedFormStep({
 
       <div className="h-[60vh] min-h-[22rem] overflow-hidden rounded-xl border border-slate-300 bg-slate-700">
         {preview
-          ? <PdfPreview url={preview.url} bytes={preview.bytes} title={title} />
+          ? <AdobePdfView bytes={preview.bytes} fileName={`${title}.pdf`} fallback={<PdfPreview url={preview.url} bytes={preview.bytes} title={title} />} />
           : <p role="status" className={`p-4 text-center text-sm font-semibold ${previewError ? 'text-rose-200' : 'text-white'}`}>{previewError || 'Opening the form…'}</p>}
       </div>
 
