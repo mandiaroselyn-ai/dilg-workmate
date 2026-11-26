@@ -49,6 +49,12 @@ const shortDate = value => {
   const date = new Date(`${String(value || '').slice(0, 10)}T00:00:00`);
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
+// "Nov 24, 2026", or the value as saved when it is not a date.
+const readableDate = value => shortDate(value) || value || '—';
+// "Nov 24, 2026", or "Nov 24, 2026 – Nov 26, 2026" for more than one day.
+const dateSpan = (start, end) => (!end || end === start ? readableDate(start) : `${readableDate(start)} – ${readableDate(end)}`);
+// The CSC Form No. 6 word for a rejected request.
+const statusLabel = status => (status === 'Rejected' ? 'Disapproved' : status);
 
 // What happened to a request that is no longer waiting for the Supervisor.
 const decisionText = request => {
@@ -251,10 +257,10 @@ export default function SupervisorView({
             }`}
           >
             <div className="space-y-1.5">
-              <span className="text-[10px] text-amber-700 font-extrabold uppercase tracking-wider block">Pending Evaluative Reviews</span>
+              <span className="text-[11px] text-amber-700 font-extrabold uppercase tracking-wider block">Waiting for Your Decision</span>
               <span className="text-2xl font-black text-amber-800 tracking-tight block">{pendingRequests.length}</span>
               <span className="text-[11px] text-amber-800 font-extrabold block">Leave: {pendingLeave.length} · Travel: {pendingTravel.length}</span>
-              <span className="text-[10px] text-amber-600/80 font-bold block leading-relaxed">Awaiting Digital Signature & Endorsement</span>
+              <span className="text-[11px] text-amber-600/80 font-bold block leading-relaxed">To sign with your digital ID</span>
             </div>
             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-amber-200 shadow-sm shrink-0">
               <Clock className="w-5.5 h-5.5 text-amber-500 animate-pulse" />
@@ -272,34 +278,26 @@ export default function SupervisorView({
             }`}
           >
             <div className="space-y-1.5">
-              <span className="text-[10px] text-emerald-700 font-extrabold uppercase tracking-wider block">Completed Endorsements</span>
+              <span className="text-[11px] text-emerald-700 font-extrabold uppercase tracking-wider block">Approved</span>
               <span className="text-2xl font-black text-emerald-800 tracking-tight block">{approvedRequests.length}</span>
-              <span className="text-[10px] text-emerald-600/80 font-bold block leading-relaxed">Certified Civil Service Form 6 Documents</span>
+              <span className="text-[11px] text-emerald-600/80 font-bold block leading-relaxed">Leave applications and Travel Orders</span>
             </div>
             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-emerald-200 shadow-sm shrink-0">
               <FileCheck2 className="w-5.5 h-5.5 text-emerald-500" />
             </div>
           </button>
 
-          {/* Total Supervised Card */}
-          <button
-            type="button"
-            onClick={() => setStatusFilter('All')}
-            className={`p-5 rounded-2xl flex items-center justify-between text-left transition-all duration-200 border cursor-pointer ${
-              statusFilter === 'All'
-                ? 'border-blue-500 bg-blue-50/70 ring-2 ring-blue-500/10 shadow-sm'
-                : 'bg-gradient-to-br from-blue-50 to-blue-100/40 border-blue-200 hover:border-blue-400 hover:shadow-xs'
-            }`}
-          >
+          {/* Active employees: a count only, not a filter of the requests. */}
+          <div className="p-5 rounded-2xl flex items-center justify-between text-left border bg-gradient-to-br from-blue-50 to-blue-100/40 border-blue-200">
             <div className="space-y-1.5">
-              <span className="text-[10px] text-blue-700 font-extrabold uppercase tracking-wider block">Total Active Personnel Base</span>
-              <span className="text-2xl font-black text-blue-800 tracking-tight block">{activeEmployeeCount ?? '–'} Staff</span>
-              <span className="text-[10px] text-blue-600/80 font-bold block leading-relaxed">Active employee accounts</span>
+              <span className="text-[11px] text-blue-700 font-extrabold uppercase tracking-wider block">Active Employees</span>
+              <span className="text-2xl font-black text-blue-800 tracking-tight block">{activeEmployeeCount ?? '–'}</span>
+              <span className="text-[11px] text-blue-600/80 font-bold block leading-relaxed">Employee accounts in WorkMate</span>
             </div>
             <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center border border-blue-200 shadow-sm shrink-0">
               <Users className="w-5.5 h-5.5 text-blue-600" />
             </div>
-          </button>
+          </div>
           
         </div>
 
@@ -311,12 +309,13 @@ export default function SupervisorView({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
             <div>
               <h2 className="font-extrabold text-[#1e40af] text-sm uppercase tracking-wider">Leave & Travel Approvals Desk</h2>
-              <p className="text-[11px] text-slate-400 mt-0.5 font-semibold">Electronic verification portal for Supervisor and Approving Officers</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-semibold">Choose a request to review its details and sign it.</p>
             </div>
           </div>
 
           {/* Quick search and filter toggles */}
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between text-left">
+          {/* The search above the status tabs, so the tabs fit at a readable size. */}
+          <div className="flex flex-col gap-3 items-stretch text-left">
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -328,7 +327,7 @@ export default function SupervisorView({
               />
             </div>
 
-            <div className="flex bg-slate-100 border border-slate-200 rounded-lg p-0.5 text-[10px] font-bold text-slate-500 shrink-0 select-none self-start sm:self-auto">
+            <div className="flex flex-wrap bg-slate-100 border border-slate-200 rounded-lg p-0.5 text-[11px] font-bold text-slate-500 select-none self-start">
               {['For Supervisor', 'Pending', 'Approved', 'Rejected', 'All'].map(tab => {
                 const count = requests.filter(r => isShownType(r) && (tab === 'All' || r.status === tab)).length;
                 return (
@@ -339,7 +338,7 @@ export default function SupervisorView({
                       statusFilter === tab ? 'bg-blue-800 text-white font-bold shadow-xs' : 'hover:text-slate-700 bg-transparent'
                     }`}
                   >
-                    {tab} ({count})
+                    {statusLabel(tab)} ({count})
                   </button>
                 );
               })}
@@ -347,9 +346,9 @@ export default function SupervisorView({
           </div>
 
           {/* Leave applications and travel orders apart */}
-          <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500">
             <span className="uppercase tracking-wider text-slate-400">Show:</span>
-            <div className="flex bg-slate-100 border border-slate-200 rounded-lg p-0.5 select-none">
+            <div className="flex flex-wrap bg-slate-100 border border-slate-200 rounded-lg p-0.5 select-none">
               {[['All', 'All'], ['Leave Request', 'Leave'], ['Travel Order', 'Travel']].map(([value, label]) => (
                 <button
                   key={value}
@@ -359,7 +358,7 @@ export default function SupervisorView({
                     typeFilter === value ? 'bg-blue-800 text-white font-bold shadow-xs' : 'hover:text-slate-700 bg-transparent'
                   }`}
                 >
-                  {label} ({value === 'All' ? pendingRequests.length : value === 'Leave Request' ? pendingLeave.length : pendingTravel.length} pending)
+                  {label} ({requests.filter(r => (value === 'All' || r.type === value) && (statusFilter === 'All' || r.status === statusFilter)).length})
                 </button>
               ))}
             </div>
@@ -389,26 +388,26 @@ export default function SupervisorView({
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-extrabold text-[#1e40af] text-[9.5px] font-mono bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 uppercase">{req.id}</span>
+                        <span className="font-extrabold text-[#1e40af] text-[11px] font-mono bg-blue-50 border border-blue-100 rounded px-1.5 py-0.5 uppercase">{req.id}</span>
                         <h4 className="font-extrabold text-slate-800 text-sm">{req.type}</h4>
                         {req.leaveType && req.leaveType !== 'N/A' && (
-                          <span className="bg-slate-100 text-slate-600 font-bold text-[8.5px] px-1.5 py-0.5 rounded uppercase">
-                            {req.leaveType.split(' ')[0]}
+                          <span className="bg-slate-100 text-slate-600 font-bold text-[11px] px-1.5 py-0.5 rounded">
+                            {req.leaveType}
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 font-bold text-left">
-                        Filing: {req.submissionDate} • Inclusive Dates: {req.startDate} to {req.endDate}{req.type === 'Travel Order' && travelDurationLabel(req) ? ` (${travelDurationLabel(req)})` : ''}
+                      <p className="text-[11px] text-slate-400 font-bold text-left">
+                        Filing: {readableDate(req.submissionDate)} • Inclusive Dates: {dateSpan(req.startDate, req.endDate)}{req.type === 'Travel Order' && travelDurationLabel(req) ? ` (${travelDurationLabel(req)})` : ''}
                       </p>
                       <p className="text-[11px] font-black text-slate-700">
                         {requesterName(req)} <span className="font-semibold text-slate-400">· {requesterId(req)}</span>
                       </p>
-                      <p className="text-[10px] font-semibold text-slate-500">
+                      <p className="text-[11px] font-semibold text-slate-500">
                         {getRequester(req)?.role || req.role || 'Employee'} · {getRequester(req)?.office || req.office || 'Office not assigned'}
                       </p>
                     </div>
 
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold border shrink-0 ${
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border shrink-0 ${
                       req.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-150' :
                       req.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-150' :
                       req.status === 'Draft' ? 'bg-indigo-50 text-indigo-700 border-indigo-150' : 'bg-amber-50 text-amber-700 border-amber-150'
@@ -418,7 +417,7 @@ export default function SupervisorView({
                         req.status === 'Rejected' ? 'bg-rose-500' :
                         req.status === 'Draft' ? 'bg-indigo-500' : 'bg-amber-500 animate-pulse'
                       }`}></span>
-                      {req.status}
+                      {statusLabel(req.status)}
                     </span>
                   </div>
 
@@ -427,8 +426,8 @@ export default function SupervisorView({
                   </div>
 
                   {req.attachments && req.attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 items-center text-[9px] text-[#1e40af] font-semibold text-left">
-                      <span className="font-bold text-slate-400 uppercase text-[8px]">Attachments (tap to open):</span>
+                    <div className="flex flex-wrap gap-1.5 items-center text-[11px] text-[#1e40af] font-semibold text-left">
+                      <span className="font-bold text-slate-400 uppercase text-[11px]">Attachments (tap to open):</span>
                       <AttachmentList
                         attachments={req.attachments}
                         className="flex flex-wrap gap-1.5"
@@ -445,7 +444,7 @@ export default function SupervisorView({
                           e.stopPropagation();
                           setShowForm6Request(req);
                         }}
-                        className="flex items-center gap-1.5 text-[10px] font-black text-blue-800 hover:underline bg-blue-50/60 p-2 py-1 border border-blue-100 rounded cursor-pointer transition-colors font-semibold"
+                        className="flex items-center gap-1.5 text-[11px] font-black text-blue-800 hover:underline bg-blue-50/60 p-2 py-1 border border-blue-100 rounded cursor-pointer transition-colors font-semibold"
                       >
                         <FileDown className="w-3.5 h-3.5 shrink-0" />
                         <span>Review and Download {req.type === 'Leave Request' ? 'CSC Form 6' : 'Travel Order'} (PDF)</span>
@@ -462,10 +461,10 @@ export default function SupervisorView({
         <div className="lg:col-span-5 space-y-6 mt-0">
           <div className="bg-white border border-slate-200 shadow-xs rounded-2xl p-6 space-y-5 text-left md:mt-0">
             <div className="border-b border-slate-100 pb-3 flex items-center gap-2">
-              <PenTool className="w-5 h-5 text-indigo-600 shrink-0" />
+              <PenTool className="w-5 h-5 text-[#0B4EA2] shrink-0" />
               <div>
-                <h3 className="font-extrabold text-slate-800 text-sm uppercase">Decision and Signature Module</h3>
-                <p className="text-[10px] text-slate-405 font-semibold">Electronic signing of Civil Service records</p>
+                <h3 className="font-extrabold text-slate-800 text-sm uppercase">Decision and Signature</h3>
+                <p className="text-[11px] text-slate-400 font-semibold">Approve or disapprove with your digital ID</p>
               </div>
             </div>
 
@@ -482,12 +481,14 @@ export default function SupervisorView({
                 
                 {/* Micro Brief Summary */}
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-600 leading-tight space-y-2 text-left">
-                  <div className="flex justify-between items-center text-[9px] text-slate-400 font-extrabold uppercase">
+                  <div className="flex justify-between items-center text-[11px] text-slate-400 font-extrabold uppercase">
                     <span>Currently Reviewing</span>
-                    <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold">{selectedRequest.id}</span>
+                    <span className="bg-[#0B4EA2]/10 text-[#0B4EA2] px-1.5 py-0.5 rounded font-mono font-bold">{selectedRequest.id}</span>
                   </div>
                   <div>
-                    <p className="font-black text-slate-700 uppercase text-[10px]">{selectedRequest.type}</p>
+                    <p className="font-black text-slate-700 uppercase text-[11px]">{selectedRequest.type}</p>
+                    {selectedRequest.leaveType && selectedRequest.leaveType !== 'N/A' && <p className="font-semibold text-slate-500 mt-0.5">Leave type: <span className="text-slate-800 font-bold">{selectedRequest.leaveType}</span></p>}
+                    <p className="font-semibold text-slate-500 mt-0.5">{selectedRequest.type === 'Travel Order' ? 'Travel dates' : 'Inclusive dates'}: <span className="text-slate-800 font-bold">{dateSpan(selectedRequest.startDate, selectedRequest.endDate)}</span></p>
                     <p className="font-semibold text-slate-500 mt-0.5">Requested by: <span className="text-slate-800 font-bold">{requesterName(selectedRequest)}</span></p>
                     <p className="font-semibold text-slate-500 mt-0.5">Employee ID: <span className="text-slate-800 font-bold">{requesterId(selectedRequest)}</span></p>
                     {selectedRequest.workingDays && <p className="font-semibold text-emerald-800 font-sans mt-0.5">Total Days: {selectedRequest.workingDays} Day(s)</p>}
@@ -501,13 +502,13 @@ export default function SupervisorView({
                 {/* HR 2's certification of the leave credits (7.A) and recommendation (7.B),
                     which the Head decides on. */}
                 {(selectedRequest.creditCertification || selectedRequest.recommendation) && (
-                  <div className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-left text-xs text-slate-600">
+                  <div className="space-y-2 rounded-lg border border-[#0B4EA2]/20 bg-[#0B4EA2]/5 p-3 text-left text-xs text-slate-600">
                     {selectedRequest.creditCertification && (() => {
                       const { asOf, vacationLeave = {}, sickLeave = {}, withoutPayDays, certifiedBy } = selectedRequest.creditCertification;
                       const days = value => Number(value || 0).toFixed(3);
                       return (
                         <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700">Leave credits as of {asOf} · {certifiedBy?.name || 'HR 1'}</p>
+                          <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#0B4EA2]">Leave credits as of {readableDate(asOf)} · {certifiedBy?.name || 'HR 1'}</p>
                           <p className="mt-1 font-semibold">Vacation leave: <span className="font-bold text-slate-800">{days(vacationLeave.earned)} − {days(vacationLeave.less)} = {days(vacationLeave.balance)}</span></p>
                           <p className="font-semibold">Sick leave: <span className="font-bold text-slate-800">{days(sickLeave.earned)} − {days(sickLeave.less)} = {days(sickLeave.balance)}</span></p>
                           {withoutPayDays > 0 && <p className="font-bold text-rose-700">{days(withoutPayDays)} day(s) without pay</p>}
@@ -516,7 +517,7 @@ export default function SupervisorView({
                     })()}
                     {selectedRequest.recommendation && (
                       <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700">Recommendation · {selectedRequest.recommendation.recommendedBy?.name || 'HR 2'}</p>
+                        <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#0B4EA2]">Recommendation · {selectedRequest.recommendation.recommendedBy?.name || 'HR 2'}</p>
                         <p className="mt-1 font-bold text-slate-800">{selectedRequest.recommendation.decision === 'approval' ? 'For approval' : `For disapproval due to: ${selectedRequest.recommendation.reason}`}</p>
                       </div>
                     )}
@@ -527,7 +528,7 @@ export default function SupervisorView({
                     waiting for a decision can be signed, approved, disapproved, or returned. */}
                 {!canDecide(selectedRequest) ? (
                   <div className="space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-left text-xs text-slate-600">
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Decision</p>
+                    <p className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500">Decision</p>
                     <p className="font-bold text-slate-800">{decisionText(selectedRequest)}</p>
                     {selectedRequest.signedForms?.head && <p className="font-semibold text-emerald-700">{signedNoteText(selectedRequest.signedForms.head)}</p>}
                     {['Approved', 'Rejected', 'Returned'].includes(selectedRequest.status) && (selectedRequest.supervisorRemarks || selectedRequest.remarks) && (
@@ -569,7 +570,7 @@ export default function SupervisorView({
 
                 {/* Returning needs no signed form; nor does disapproving a Travel Order. */}
                 <div className="space-y-1.5 border-t border-slate-100 pt-4 text-xs text-left">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Remarks to return{selectedRequest.type === 'Travel Order' ? ' or disapprove' : ''}</label>
+                  <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-widest block font-bold">Remarks to return{selectedRequest.type === 'Travel Order' ? ' or disapprove' : ''}</label>
                   <textarea
                     rows={2}
                     value={remarks}
@@ -615,12 +616,12 @@ export default function SupervisorView({
                 <div className="text-center py-6 text-slate-400 space-y-2">
                   <Signature className="w-10 h-10 text-slate-300 mx-auto animate-none" />
                   <p className="font-extrabold text-xs">No applicant request selected.</p>
-                  <p className="text-[10px] text-slate-400 max-w-[200px] mx-auto leading-relaxed font-semibold">
+                  <p className="text-[11px] text-slate-400 max-w-[200px] mx-auto leading-relaxed font-semibold">
                     Select a request from the left panel to review its details, verify the leave balance, and sign it in Adobe.
                   </p>
                 </div>
 
-                <p className="border-t border-slate-100 pt-4 text-[10px] font-semibold leading-relaxed text-slate-500">
+                <p className="border-t border-slate-100 pt-4 text-[11px] font-semibold leading-relaxed text-slate-500">
                   You sign leave forms, Travel Orders and DTRs in Adobe Acrobat with your digital ID: download the form here, sign it, and upload the signed PDF.
                 </p>
               </div>
