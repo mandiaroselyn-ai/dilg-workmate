@@ -399,7 +399,7 @@ export default function HRAdminRecordsView({ employees = [], attendanceHistory: 
     <div className="space-y-6 p-1 sm:p-2">
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-4">
         <p className="text-sm text-slate-500">
-          Centralized records for attendance, monthly performance, leave applications, approved leaves, travel orders, and DTR review.
+          Centralized records for the DTR, leave applications, travel orders, absences, habitual tardiness, and reports.
         </p>
 
         {/* Reports have their own filters. */}
