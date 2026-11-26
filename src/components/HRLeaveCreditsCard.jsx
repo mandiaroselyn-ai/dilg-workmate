@@ -126,7 +126,7 @@ export default function HRLeaveCreditsCard({ employee, canEdit = false, onEmploy
           {[['Vacation leave', credits.vacationLeaveCredits], ['Sick leave', credits.sickLeaveCredits]].map(([label, days]) => (
             <div key={label} className="rounded-xl bg-slate-50 p-3">
               <p className="text-xs font-black uppercase text-slate-500">{label}</p>
-              <p className="mt-1 text-xl font-black text-slate-900">{days} <span className="text-xs font-bold text-slate-500">days</span></p>
+              <p className="mt-1 text-xl font-black text-slate-900">{balanceText(days)} <span className="text-xs font-bold text-slate-500">days</span></p>
             </div>
           ))}
         </div>

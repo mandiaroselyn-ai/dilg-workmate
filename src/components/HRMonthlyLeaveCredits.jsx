@@ -171,7 +171,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
           <Scale className="h-5 w-5 shrink-0 text-blue-700" />
           <span>
             <span className="block text-sm font-black text-slate-900">Monthly Leave Credits</span>
-            <span className="block text-xs text-slate-500">1. Charge late &amp; undertime to vacation leave. 2. Credit the leave earned (1.25 VL and 1.25 SL a month).</span>
+            <span className="block text-xs text-slate-500">Charge late &amp; undertime to vacation leave, then credit the leave earned (1.25 VL and 1.25 SL a month).</span>
           </span>
         </span>
         <ChevronDown className={`h-5 w-5 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -186,16 +186,16 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
             {monthLoaded && !beforeStart && (
               <>
                 <button type="button" onClick={() => charge(toCharge)} disabled={!canChangeCredits || saving || !toCharge.length} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
-                  1. Charge all not yet charged ({toCharge.length})
+                  Charge late &amp; undertime ({toCharge.length})
                 </button>
                 <button type="button" onClick={() => credit(toCredit)} disabled={!canChangeCredits || saving || !toCredit.length} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white disabled:opacity-50">
-                  2. Credit all earned leave ({toCredit.length})
+                  Credit earned leave ({toCredit.length})
                 </button>
               </>
             )}
           </div>
           <p className="text-xs text-slate-500">
-            Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. A working day absent without approved leave is without pay and is not deducted from leave credits (CSC MC No. 41, s. 1998, Sec. 50); step 1 records it, so have any leave for those days filed and approved first. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge step 1 first. In the month an employee was hired, they earn 1.25/30 for each day from their Date Hired (CSC Table II), so fill in each new employee's Date Hired first.
+            Only a month that has ended can be done. Tardiness uses the CSC table (1 min = 0.002 day, 1 hour = 0.125 day); when vacation leave is not enough, the rest is without pay. A working day absent without approved leave is without pay and is not deducted from leave credits (CSC MC No. 41, s. 1998, Sec. 50); charging late &amp; undertime records it, so have any leave for those days filed and approved first. Each month earns 1.25 days of vacation and of sick leave, less 1.25/30 for each day without pay that month, so charge late &amp; undertime first. In the month an employee was hired, they earn 1.25/30 for each day from their Date Hired (CSC Table II), so fill in each new employee's Date Hired first.
           </p>
           {beforeStart ? (
             <p className="rounded-xl bg-amber-50 p-3 text-xs font-semibold text-amber-800">{beforeStart}</p>
@@ -220,7 +220,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
                       {row.issues > 0 && <span className="font-bold text-amber-700"> · {row.issues} to review</span>}
                     </p>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-slate-600">1. Late &amp; undertime: {row.minutes ? `${durationText(row.minutes)} = ${daysText(row.days)}` : 'none'}</span>
+                      <span className="text-slate-600">Late &amp; undertime: {row.minutes ? `${durationText(row.minutes)} = ${daysText(row.days)}` : 'none'}</span>
                       {row.needsStart && !row.charged ? (
                         <span className="text-[11px] font-semibold text-amber-700">Enter the starting balance first (Leave Credits Start)</span>
                       ) : row.charged ? (
@@ -240,7 +240,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
                     )}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-slate-600">
-                        2. Earned: +{daysText(row.credited ? row.credited.earned : row.earned)} VL and SL
+                        Earned: +{daysText(row.credited ? row.credited.earned : row.earned)} VL and SL
                         {row.shownServiceDays < 30 ? ` (${row.shownServiceDays} of 30 days of service)` : ''}
                         {(row.credited ? row.credited.withoutPayDays : row.withoutPayDays) ? ` (${daysText(row.credited ? row.credited.withoutPayDays : row.withoutPayDays)} without pay that month)` : ''}
                       </span>
@@ -253,7 +253,7 @@ export default function HRMonthlyLeaveCredits({ creditsStart = '', employees = [
                       ) : row.charged ? (
                         <button type="button" onClick={() => credit([row])} disabled={!canChangeCredits || saving} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-black text-emerald-700 disabled:opacity-50">Credit</button>
                       ) : (
-                        <span className="text-[11px] font-semibold text-slate-400">Charge step 1 first</span>
+                        <span className="text-[11px] font-semibold text-slate-400">Charge late &amp; undertime first</span>
                       )}
                     </div>
                   </div>
